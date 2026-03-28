@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include "ringbuffer.h"
 
 // =================================================================
 // 1. ПРИКЛАДНОЙ ИНТЕРФЕЙС (IStream)
@@ -10,12 +11,16 @@ class IStream {
 public:
     virtual ~IStream() = default;
 
-    virtual bool send(const uint8_t* data, size_t size) = 0;
-    virtual size_t receive(uint8_t* buffer, size_t maxSize) = 0;
+    /// Записывает до size байт; возвращает фактически записанное число (0 — нет места / ошибка).
+    virtual size_t write(const uint8_t* data, size_t size) = 0;
+    /// Читает до maxSize байт; возвращает фактически прочитанное число (0 — буфер пуст).
+    virtual size_t read(uint8_t* buffer, size_t maxSize) = 0;
 
-    virtual size_t availableForRead() const = 0;
-    virtual size_t availableForWrite() const = 0;
-    
+    /// Байт в приёмном буфере, доступные для read() без ожидания (аналог Stream::available()).
+    virtual size_t available() const = 0;
+    /// Свободное место в передающем буфере (сколько байт можно записать минимум одним вызовом write).
+    virtual size_t availableWrite() const = 0;
+
     virtual bool isBusy() const = 0; // Идет ли передача (в буфере или железе)
 };
 
@@ -55,44 +60,7 @@ public:
 };
 
 // =================================================================
-// 4. КОЛЬЦЕВОЙ БУФЕР
-// Легковесная структура данных для прерываний
-// =================================================================
-template <size_t Size>
-class RingBuffer {
-    uint8_t buffer[Size];
-    volatile size_t head = 0;
-    volatile size_t tail = 0;
-    volatile size_t overflowCount = 0;
-
-public:
-    bool put(uint8_t data) {
-        size_t next = (head + 1) % Size;
-        if (next == tail) {
-            overflowCount++;
-            return false;
-        }
-        buffer[head] = data;
-        head = next;
-        return true;
-    }
-
-    bool get(uint8_t& data) {
-        if (head == tail) return false;
-        data = buffer[tail];
-        tail = (tail + 1) % Size;
-        return true;
-    }
-
-    size_t available() const { return (head >= tail) ? (head - tail) : (Size - tail + head); }
-    size_t freeSpace() const { return (Size - 1) - available(); }
-    void clear() { head = tail = 0; overflowCount = 0; }
-    size_t getOverflows() const { return overflowCount; }
-    void resetOverflows() { overflowCount = 0; }
-};
-
-// =================================================================
-// 5. БАЗОВАЯ РЕАЛИЗАЦИЯ (BufferedSerial)
+// 4. БАЗОВАЯ РЕАЛИЗАЦИЯ (BufferedSerial)
 // Объединяет интерфейсы и буферы, не привязываясь к конкретному МК
 // =================================================================
 template <size_t TxSize, size_t RxSize>
@@ -106,33 +74,33 @@ protected:
 public:
     bool isInitialized() const override { return initialized; }
 
-    bool send(const uint8_t* data, size_t size) override {
-        if (!initialized || !data || size == 0) return false;
-        
-        SerialGuard guard(*this);
-        if (size > txBuf.freeSpace()) return false;
+    size_t write(const uint8_t* data, size_t size) override {
+        if (!initialized || !data || size == 0) return 0;
 
-        for (size_t i = 0; i < size; ++i) {
-            txBuf.put(data[i]);
+        SerialGuard guard(*this);
+        size_t n = 0;
+        while (n < size && txBuf.push(data[n])) {
+            ++n;
         }
-        
-        startTransmission(); // Железо-зависимый запуск передачи
-        return true;
+        if (n > 0) {
+            startTransmission(); // Железо-зависимый запуск передачи
+        }
+        return n;
     }
 
-    size_t receive(uint8_t* buffer, size_t maxSize) override {
+    size_t read(uint8_t* buffer, size_t maxSize) override {
         if (!buffer) return 0;
         SerialGuard guard(*this);
         size_t count = 0;
-        while (count < maxSize && rxBuf.get(buffer[count])) {
+        while (count < maxSize && rxBuf.pop(buffer[count])) {
             count++;
         }
         return count;
     }
 
-    size_t availableForRead() const override { return rxBuf.available(); }
-    size_t availableForWrite() const override { return txBuf.freeSpace(); }
-    
+    size_t available() const override { return rxBuf.size(); }
+    size_t availableWrite() const override { return txBuf.space(); }
+
     void flush() override { 
         SerialGuard guard(*this); 
         rxBuf.clear(); 
@@ -140,19 +108,19 @@ public:
         stopTransmission(); 
     }
 
-    bool hasErrors() const override { return hwError || rxBuf.getOverflows() > 0; }
-    void clearErrors() override { hwError = false; rxBuf.resetOverflows(); }
+    bool hasErrors() const override { return hwError || rxBuf.overflows() > 0; }
+    void clearErrors() override { hwError = false; rxBuf.clearOverflows(); }
 
     // Логика обработки прерываний
     void handleRxInterrupt() override {
         if (checkHardwareError()) hwError = true;
         uint8_t byte = readHardware();
-        rxBuf.put(byte);
+        rxBuf.push(byte);
     }
 
     void handleTxInterrupt() override {
         uint8_t byte;
-        if (txBuf.get(byte)) {
+        if (txBuf.pop(byte)) {
             writeHardware(byte);
         } else {
             stopTransmission(); // Буфер пуст, выключаем прерывания TXE/TC
