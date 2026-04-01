@@ -21,6 +21,7 @@ extern void DBG_printlnMsg(const char* MSG);
 
 #define debugMSG(MSG) DBG_printExMsg(__FILE__, __LINE__, MSG)
 #define debugNUM(MSG, NUM) DBG_printExMsg(__FILE__, __LINE__, MSG, NUM)
+
 #define errorMSG(MSG) DBG_printError(__FILE__, __LINE__, MSG)
 #define checkPTR(PTR) DBG_CheckPtr(PTR, #PTR, __FILE__, __LINE__)
 

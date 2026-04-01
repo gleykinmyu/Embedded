@@ -13,7 +13,7 @@ uint8_t UART1_rxBuffer[12] = {0};
 
 int main(void)
 {
-  FATFS_LinkDrivers();
+  
 
   board.led.Off();
 

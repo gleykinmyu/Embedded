@@ -1,6 +1,8 @@
 #pragma once
 #include "config.h"
 #include "core/irq.h"
+#include "core/phl.h"
+#include "Debug.h"
 //#include "stm32f4xx_hal_sd.h"
 
 #define SD_errorMSG(m) errorMSG(m)

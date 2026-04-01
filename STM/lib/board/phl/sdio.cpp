@@ -6,7 +6,7 @@
 
 CHW_SD::CHW_SD()
 {
-  _hsd.Instance = SDIO;
+  _hsd.Instance = (SDIO_TypeDef *)PHL::ID::SDIO;
   _hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
   _hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
   _hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
@@ -46,7 +46,7 @@ CHW_Status CHW_SD::Init()
 void CHW_SD::MSP_Init(SD_HandleTypeDef *hsd)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
-    if (hsd->Instance == SDIO)
+    if (hsd->Instance == (SDIO_TypeDef *)PHL::ID::SDIO)
     {
         /* Peripheral clock enable */
         __HAL_RCC_SDIO_CLK_ENABLE();
@@ -138,7 +138,7 @@ extern "C" void HAL_SD_MspInit(SD_HandleTypeDef* hsd)
 
 extern "C" void HAL_SD_MspDeInit(SD_HandleTypeDef* hsd)
 {
-  if(hsd->Instance==SDIO)
+  if (hsd->Instance == (SDIO_TypeDef *)PHL::ID::SDIO)
   {
     /* Peripheral clock disable */
     __HAL_RCC_SDIO_CLK_DISABLE();
