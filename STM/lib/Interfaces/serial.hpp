@@ -11,19 +11,7 @@
 class ISerial : public IByteStream 
 {
 public:
-    enum class Status : uint8_t { 
-        OK = 0, 
-        OverFlow, 
-        BitError, 
-        Disconnected 
-    };
-    
-    virtual bool init(uint32_t baudrate) = 0;
-    virtual bool isInitialized() const = 0;
-    virtual void flush() = 0;
-
-    virtual bool hasErrors() const = 0;
-    virtual void clearErrors() = 0;
+    virtual bool open(uint32_t baudrate) = 0;
 
     /// Передача ещё не завершена (TX-буфер и/или железо — по реализации драйвера).
     virtual bool isBusy() const = 0;
@@ -41,8 +29,10 @@ public:
 // 2. RAII GUARD
 // Автоматическое управление критическими секциями
 // =================================================================
-class SerialGuard {
+class SerialGuard 
+{
     ISerial& _s;
+
 public:
     explicit SerialGuard(ISerial& s) : _s(s) { _s.lock(); }
     ~SerialGuard() { _s.unlock(); }
@@ -55,7 +45,7 @@ public:
 // Объединяет интерфейсы и буферы, не привязываясь к конкретному МК
 // =================================================================
 template <size_t TxSize, size_t RxSize>
-class BufferedSerial : public ISerial 
+class SerialBase : public ISerial 
 {
 protected:
     RingBuffer<TxSize> txBuf;
