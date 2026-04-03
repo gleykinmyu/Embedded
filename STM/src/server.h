@@ -1,5 +1,6 @@
 #pragma once
 #include "stmboard.h"
+#include "nex.h"
 
 class CServerBoard : public CBaseBoard 
 {

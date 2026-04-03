@@ -27,10 +27,10 @@ namespace Nextion {
     };
 
     namespace Prop {
-        extern constexpr char Value[] = ".val";
-        extern constexpr char Text[]  = ".txt";
-        extern constexpr char Color[] = ".pco";
-        extern constexpr char Pic[]   = ".pic";
+        inline constexpr char Value[] = ".val";
+        inline constexpr char Text[]  = ".txt";
+        inline constexpr char Color[] = ".pco";
+        inline constexpr char Pic[]   = ".pic";
     }
 
     struct Config {
@@ -44,7 +44,13 @@ namespace Nextion {
 namespace Nextion {
     class IStream {
     public:
-        enum class Status : uint8_t { OK = 0, OverFlow, BitError, Disconnected };
+        enum class Status : uint8_t { 
+            OK = 0, 
+            OverFlow, 
+            BitError, 
+            Disconnected 
+        };
+        
         virtual ~IStream() = default;
         virtual uint16_t available() const = 0;
         virtual uint16_t availableForWrite() const = 0;
@@ -178,7 +184,8 @@ namespace Nextion {
     protected:
         class NexPageBase& _page; const char* _name; uint16_t _cid = 0xFFFF;
     public:
-        NexComponent(NexPageBase& p, const char* n);
+        NexComponent(NexPageBase& p, const char* n) : _page(p), _name(n) {}
+        virtual ~NexComponent() = default;
         virtual void handle(TouchState s) = 0;
         const char* getName() const { return _name; }
         uint16_t* getCidPtr() { return &_cid; }
@@ -186,6 +193,7 @@ namespace Nextion {
 
     class NexPageBase {
     public:
+        virtual ~NexPageBase() = default;
         virtual uint8_t getId() const = 0;
         virtual void dispatch(uint16_t cid, TouchState s) = 0;
         virtual NexManagerBase& getMgr() = 0;
@@ -214,7 +222,7 @@ namespace Nextion {
         NexComponent& _owner;
     public:
         NexProperty(NexComponent& o) : _owner(o) {}
-        void operator=(T val) { /* Send set cmd via session */ }
-        bool get(T* target) { /* Send get cmd via session */ }
+        void operator=(T /*val*/) { /* TODO: send set cmd via session */ }
+        bool get(T* /*target*/) { /* TODO: send get cmd via session */ return false; }
     };
 }

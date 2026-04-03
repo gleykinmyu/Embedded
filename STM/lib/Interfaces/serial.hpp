@@ -1,41 +1,32 @@
 #pragma once
-#include <cstdint>
-#include <cstddef>
-#include "ringbuffer.h"
+#include <stdint.h>
+#include <stddef.h>
+#include "byte_stream.hpp"
+#include "ringbuffer.hpp"
 
 // =================================================================
-// 1. ПРИКЛАДНОЙ ИНТЕРФЕЙС (IStream)
-// Используется в бизнес-логике (парсеры, протоколы)
-// =================================================================
-class IStream {
-public:
-    virtual ~IStream() = default;
-
-    /// Записывает до size байт; возвращает фактически записанное число (0 — нет места / ошибка).
-    virtual size_t write(const uint8_t* data, size_t size) = 0;
-    /// Читает до maxSize байт; возвращает фактически прочитанное число (0 — буфер пуст).
-    virtual size_t read(uint8_t* buffer, size_t maxSize) = 0;
-
-    /// Байт в приёмном буфере, доступные для read() без ожидания (аналог Stream::available()).
-    virtual size_t available() const = 0;
-    /// Свободное место в передающем буфере (сколько байт можно записать минимум одним вызовом write).
-    virtual size_t availableWrite() const = 0;
-
-    virtual bool isBusy() const = 0; // Идет ли передача (в буфере или железе)
-};
-
-// =================================================================
-// 2. СИСТЕМНЫЙ ИНТЕРФЕЙС (ISerial)
+// 1. СИСТЕМНЫЙ ИНТЕРФЕЙС (ISerial)
 // Описывает управление железом и работу прерываний
 // =================================================================
-class ISerial : public IStream {
+class ISerial : public IByteStream 
+{
 public:
+    enum class Status : uint8_t { 
+        OK = 0, 
+        OverFlow, 
+        BitError, 
+        Disconnected 
+    };
+    
     virtual bool init(uint32_t baudrate) = 0;
     virtual bool isInitialized() const = 0;
     virtual void flush() = 0;
 
     virtual bool hasErrors() const = 0;
     virtual void clearErrors() = 0;
+
+    /// Передача ещё не завершена (TX-буфер и/или железо — по реализации драйвера).
+    virtual bool isBusy() const = 0;
 
     // Синхронизация (для RAII Guard)
     virtual void lock() = 0;
@@ -47,7 +38,7 @@ public:
 };
 
 // =================================================================
-// 3. RAII GUARD
+// 2. RAII GUARD
 // Автоматическое управление критическими секциями
 // =================================================================
 class SerialGuard {
@@ -60,11 +51,12 @@ public:
 };
 
 // =================================================================
-// 4. БАЗОВАЯ РЕАЛИЗАЦИЯ (BufferedSerial)
+// 3. БАЗОВАЯ РЕАЛИЗАЦИЯ (BufferedSerial)
 // Объединяет интерфейсы и буферы, не привязываясь к конкретному МК
 // =================================================================
 template <size_t TxSize, size_t RxSize>
-class BufferedSerial : public ISerial {
+class BufferedSerial : public ISerial 
+{
 protected:
     RingBuffer<TxSize> txBuf;
     RingBuffer<RxSize> rxBuf;
@@ -99,7 +91,10 @@ public:
     }
 
     size_t available() const override { return rxBuf.size(); }
-    size_t availableWrite() const override { return txBuf.space(); }
+    size_t availableForWrite() const override { return txBuf.space(); }
+
+    /// Базово: данные ещё в программном TX-буфере. Для учёта сдвигового регистра переопределите в драйвере.
+    bool isBusy() const override { return txBuf.size() > 0; }
 
     void flush() override { 
         SerialGuard guard(*this); 
