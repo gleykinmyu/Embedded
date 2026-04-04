@@ -5,7 +5,8 @@
 #include "core/irq.h"
 #include "core/phl.h"
 
-#include <stm32f4xx.h>
+#include "stm32f4xx_hal.h"
+#include "stm32f4xx_ll_usart.h"
 
 namespace PHL {
 
@@ -14,38 +15,6 @@ namespace detail {
 inline USART_TypeDef* usart_ptr(PHL::ID id)
 {
     return reinterpret_cast<USART_TypeDef*>(static_cast<uintptr_t>(id));
-}
-
-inline uint32_t uart_pclk_hz(PHL::ID id)
-{
-    switch (static_cast<uintptr_t>(id)) {
-#if defined(USART1_BASE)
-        case USART1_BASE:
-#endif
-#if defined(USART6_BASE)
-        case USART6_BASE:
-#endif
-#if defined(USART1_BASE) || defined(USART6_BASE)
-            return HAL_RCC_GetPCLK2Freq();
-#endif
-#if defined(USART2_BASE)
-        case USART2_BASE:
-#endif
-#if defined(USART3_BASE)
-        case USART3_BASE:
-#endif
-#if defined(UART4_BASE)
-        case UART4_BASE:
-#endif
-#if defined(UART5_BASE)
-        case UART5_BASE:
-#endif
-#if defined(USART2_BASE) || defined(USART3_BASE) || defined(UART4_BASE) || defined(UART5_BASE)
-            return HAL_RCC_GetPCLK1Freq();
-#endif
-        default:
-            return HAL_RCC_GetPCLK1Freq();
-    }
 }
 
 inline IRQn_Type uart_irqn(PHL::ID id)
@@ -74,28 +43,12 @@ inline IRQn_Type uart_irqn(PHL::ID id)
     }
 }
 
-/// BRR при OVERS16: USARTDIV = f_ck / (16 × baud), поля mantissa[15:4] + fraction[3:0].
-inline uint16_t uart_brr(uint32_t pclk_hz, uint32_t baud)
-{
-    if (baud == 0)
-        return 0;
-    const uint32_t divisor = baud * 16U;
-    uint32_t mant = pclk_hz / divisor;
-    const uint32_t rem = pclk_hz % divisor;
-    uint32_t frac = (rem * 16U + divisor / 2U) / divisor;
-    if (frac > 15U) {
-        mant++;
-        frac = 0;
-    }
-    return static_cast<uint16_t>((mant << 4) | (frac & 15U));
-}
-
 } // namespace detail
 
 /**
  * Реализация BIF::ISerial для USART/UART из PHL::ID.
- * Регистры — через CMSIS (USART_TypeDef); тактирование — PHL::IBase::EnableClock();
- * прерывания — IRQ::IHandler + векторы из core/irq.cpp.
+ * Инициализация — HAL (HAL_UART_Init); тактирование — PHL::IBase::EnableClock();
+ * прерывания NVIC — HAL; горячий путь (IRQ, TX/RX) — LL.
  *
  * Перед open() настройте выводы TX/RX (например InitPins).
  */
@@ -108,6 +61,7 @@ class Serial : public BIF::ISerial<TxSize, RxSize>, public IRQ::IHandler<UartId>
 
     USART_TypeDef* hw() const { return detail::usart_ptr(UartId); }
 
+    UART_HandleTypeDef _huart{};
     uint32_t _primaskSave = 0;
 
 public:
@@ -126,17 +80,20 @@ public:
             return false;
 
         Dev::EnableClock();
-        USART_TypeDef* u = hw();
 
-        u->CR1 &= ~USART_CR1_UE;
-        u->CR1 = 0;
-        u->CR2 = 0;
-        u->CR3 = 0;
+        _huart.Instance = hw();
+        _huart.Init.BaudRate = baudrate;
+        _huart.Init.WordLength = UART_WORDLENGTH_8B;
+        _huart.Init.StopBits = UART_STOPBITS_1;
+        _huart.Init.Parity = UART_PARITY_NONE;
+        _huart.Init.Mode = UART_MODE_TX_RX;
+        _huart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+        _huart.Init.OverSampling = UART_OVERSAMPLING_16;
 
-        const uint32_t pclk = detail::uart_pclk_hz(UartId);
-        u->BRR = detail::uart_brr(pclk, baudrate);
+        if (HAL_UART_Init(&_huart) != HAL_OK)
+            return false;
 
-        u->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE | USART_CR1_UE;
+        LL_USART_EnableIT_RXNE(hw());
 
         const IRQn_Type irq = detail::uart_irqn(UartId);
         if (irq != static_cast<IRQn_Type>(0)) {
@@ -155,7 +112,10 @@ public:
             HAL_NVIC_DisableIRQ(irq);
 
         USART_TypeDef* u = hw();
-        u->CR1 &= ~(USART_CR1_RXNEIE | USART_CR1_TXEIE | USART_CR1_TE | USART_CR1_RE | USART_CR1_UE);
+        LL_USART_DisableIT_RXNE(u);
+        LL_USART_DisableIT_TXE(u);
+
+        HAL_UART_DeInit(&_huart);
 
         this->_isOpen = false;
     }
@@ -163,33 +123,33 @@ public:
     void IrqHandler() override
     {
         USART_TypeDef* u = hw();
-        while ((u->SR & USART_SR_RXNE) != 0)
+        while (LL_USART_IsActiveFlag_RXNE(u))
             this->IRQ_RX_Handler();
-        if ((u->SR & USART_SR_TXE) != 0)
+        if (LL_USART_IsActiveFlag_TXE(u))
             this->IRQ_TX_Handler();
     }
 
 protected:
-    void IRQ_TX_Enable() override { hw()->CR1 |= USART_CR1_TXEIE; }
+    void IRQ_TX_Enable() override { LL_USART_EnableIT_TXE(hw()); }
 
-    void IRQ_TX_Disable() override { hw()->CR1 &= ~USART_CR1_TXEIE; }
+    void IRQ_TX_Disable() override { LL_USART_DisableIT_TXE(hw()); }
 
-    bool isHardwareTxBusy() const override { return (hw()->SR & USART_SR_TC) == 0; }
+    bool isHardwareTxBusy() const override { return LL_USART_IsActiveFlag_TC(hw()) == 0U; }
 
-    uint8_t readHardware() override { return static_cast<uint8_t>(hw()->DR & 0xFFU); }
+    uint8_t readHardware() override { return LL_USART_ReceiveData8(hw()); }
 
-    void writeHardware(uint8_t data) override { hw()->DR = data; }
+    void writeHardware(uint8_t data) override { LL_USART_TransmitData8(hw(), data); }
 
     bool checkErrors() override
     {
-        const uint32_t sr = hw()->SR;
-        if (sr & USART_SR_FE)
+        const uint32_t sr = LL_USART_ReadReg(hw(), SR);
+        if (sr & LL_USART_SR_FE)
             this->_isFrameError = true;
-        if (sr & USART_SR_NE)
+        if (sr & LL_USART_SR_NE)
             this->_isBitError = true;
-        if (sr & USART_SR_ORE)
+        if (sr & LL_USART_SR_ORE)
             this->_isDisconnected = true;
-        return (sr & (USART_SR_FE | USART_SR_NE)) != 0;
+        return (sr & (LL_USART_SR_FE | LL_USART_SR_NE)) != 0U;
     }
 
     void lock() override
