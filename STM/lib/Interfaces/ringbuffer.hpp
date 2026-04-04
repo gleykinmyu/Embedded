@@ -6,6 +6,8 @@
 // КОЛЬЦЕВОЙ БУФЕР
 // =================================================================
 
+namespace MISC {
+
 template <size_t Size> 
 class RingBuffer 
 {
@@ -54,8 +56,15 @@ public:
     _ovfCount = 0;
   }
 
+  // Очистка данных в буфере
+  void clearData() {
+    _head = _tail = 0;
+  }
+
   // Количество переполнений буфера
   size_t overflows() const { return _ovfCount; }
   // Очистка счетчика переполнений
   void clearOverflows() { _ovfCount = 0; }
 };
+
+} // namespace MISC
