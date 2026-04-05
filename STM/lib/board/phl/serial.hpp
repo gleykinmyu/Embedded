@@ -1,21 +1,16 @@
 #pragma once
+#include "stm32f4xx_hal.h"
+#include "stm32f4xx_ll_usart.h"
 
 #include "../../Interfaces/iserial.hpp"
 #include "core/gpio.h"
 #include "core/irq.h"
 #include "core/phl.h"
 
-#include "stm32f4xx_hal.h"
-#include "stm32f4xx_ll_usart.h"
 
 namespace PHL {
 
 namespace detail {
-
-inline USART_TypeDef* usart_ptr(PHL::ID id)
-{
-    return reinterpret_cast<USART_TypeDef*>(static_cast<uintptr_t>(id));
-}
 
 inline IRQn_Type uart_irqn(PHL::ID id)
 {
@@ -53,13 +48,11 @@ inline IRQn_Type uart_irqn(PHL::ID id)
  * Перед open() настройте выводы TX/RX (например InitPins).
  */
 template <PHL::ID UartId, size_t TxSize = 256, size_t RxSize = 256>
-class Serial : public BIF::ISerial<TxSize, RxSize>, public IRQ::IHandler<UartId>
+class Serial : private PHL::IBase<UartId>, public IRQ::IHandler<UartId>, public BIF::ISerial<TxSize, RxSize>
 {
     static_assert(PHL::GetType<UartId>::value == PHL::Type::UART, "Serial: только PHL::ID с Type::UART");
 
-    using Dev = PHL::IBase<UartId>;
-
-    USART_TypeDef* hw() const { return detail::usart_ptr(UartId); }
+    USART_TypeDef* hw() const { return reinterpret_cast<USART_TypeDef*>(static_cast<uintptr_t>(UartId)); }
 
     UART_HandleTypeDef _huart{};
     uint32_t _primaskSave = 0;
@@ -70,8 +63,8 @@ public:
     /// TX/RX в режиме AF PP; подтяжка и скорость — как у типичного UART.
     void InitPins(const GPIO::Pin& tx, const GPIO::Pin& rx) const
     {
-        tx.Init(GPIO::ModeAlt::PP, Dev::af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
-        rx.Init(GPIO::ModeAlt::PP, Dev::af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
+        tx.Init(GPIO::ModeAlt::PP, this->af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
+        rx.Init(GPIO::ModeAlt::PP, this->af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
     }
 
     bool open(uint32_t baudrate) override
@@ -79,7 +72,7 @@ public:
         if (baudrate == 0)
             return false;
 
-        Dev::EnableClock();
+        this->EnableClock();
 
         _huart.Instance = hw();
         _huart.Init.BaudRate = baudrate;
@@ -96,10 +89,8 @@ public:
         LL_USART_EnableIT_RXNE(hw());
 
         const IRQn_Type irq = detail::uart_irqn(UartId);
-        if (irq != static_cast<IRQn_Type>(0)) {
-            HAL_NVIC_SetPriority(irq, 5, 0);
-            HAL_NVIC_EnableIRQ(irq);
-        }
+        HAL_NVIC_SetPriority(irq, 5, 0);
+        HAL_NVIC_EnableIRQ(irq);
 
         this->_isOpen = true;
         return true;
@@ -108,8 +99,7 @@ public:
     void close() override
     {
         const IRQn_Type irq = detail::uart_irqn(UartId);
-        if (irq != static_cast<IRQn_Type>(0))
-            HAL_NVIC_DisableIRQ(irq);
+        HAL_NVIC_DisableIRQ(irq);
 
         USART_TypeDef* u = hw();
         LL_USART_DisableIT_RXNE(u);

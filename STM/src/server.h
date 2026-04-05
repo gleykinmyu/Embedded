@@ -1,19 +1,18 @@
 #pragma once
 #include "stmboard.h"
+#include "phl/serial.hpp"
 //#include "nex.h"
 
 class CServerBoard : public CBaseBoard 
 {
 
 public:
+    PHL::Serial<PHL::ID::SERIAL1> uart1;
+
     CServerBoard() : CBaseBoard()
     {
-        HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-        HAL_NVIC_EnableIRQ(USART1_IRQn);
-
-        //uart1.Begin(9600);
-        //uart1.IRQ.SetPriority(0, 0);
-        //uart1.IRQ.Enable();
+        uart1.InitPins(GPIO::PortA::pin<9>, GPIO::PortA::pin<10>);
+        (void)uart1.open(9600);
 
         SD.Init();
     };

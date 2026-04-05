@@ -11,42 +11,42 @@ namespace PHL {
 
     // UART (Унифицировано до PHL_MISC_UARTx)
     #ifdef USART1_BASE
-    #define PHL_MISC_UART1(V) V(UART1, UART, 7, USART1)
-    #undef USART1
+    #define PHL_MISC_UART1(V) V(SERIAL1, UART, 7, USART1)
+    //#undef USART1
     #else
     #define PHL_MISC_UART1(V)
     #endif
 
     #ifdef USART2_BASE
-    #define PHL_MISC_UART2(V) V(UART2, UART, 7, USART2)
+    #define PHL_MISC_UART2(V) V(SERIAL2, UART, 7, USART2)
     #undef USART2
     #else
     #define PHL_MISC_UART2(V)
     #endif
 
     #ifdef USART3_BASE
-    #define PHL_MISC_UART3(V) V(UART3, UART, 7, USART3)
+    #define PHL_MISC_UART3(V) V(SERIAL3, UART, 7, USART3)
     #undef USART3
     #else
     #define PHL_MISC_UART3(V)
     #endif
 
     #ifdef UART4_BASE
-    #define PHL_MISC_UART4(V) V(UART4, UART, 8, UART4)
+    #define PHL_MISC_UART4(V) V(SERIAL4, UART, 8, UART4)
     #undef UART4
     #else
     #define PHL_MISC_UART4(V)
     #endif
 
     #ifdef UART5_BASE
-    #define PHL_MISC_UART5(V) V(UART5, UART, 8, UART5)
+    #define PHL_MISC_UART5(V) V(SERIAL5, UART, 8, UART5)
     #undef UART5
     #else
     #define PHL_MISC_UART5(V)
     #endif
 
     #ifdef USART6_BASE
-    #define PHL_MISC_UART6(V) V(UART6, UART, 8, USART6)
+    #define PHL_MISC_UART6(V) V(SERIAL6, UART, 8, USART6)
     #undef USART6
     #else
     #define PHL_MISC_UART6(V)
@@ -166,6 +166,7 @@ namespace PHL {
         static constexpr Index    index = Index::NAME; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
     };
+
     PHL_PERIPH_LIST(M_IBASE_SPEC)
     #undef M_IBASE_SPEC
 

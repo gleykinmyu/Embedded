@@ -1,37 +1,21 @@
-#include <stdio.h>
 #include <stm32f4xx.h>
 #include <stm32f4xx_hal.h>
-#include <string.h>
 #include "server.h"
-
 
 CServerBoard board;
 
-uint8_t UART1_rxBuffer[12] = {0};
-
-
+namespace {
+constexpr char kUart1TestLine[] = "UART1 test\r\n";
+}
 
 int main(void)
 {
-  
+    board.led.Off();
 
-  board.led.Off();
-
-  printf("Start\n");
-  //board.uart1.Read_IT(UART1_rxBuffer, 10);
-
-
-  while (1)
-  {
-    board.led.Toggle();
-    //printf("Testing!\n");
-    //printf("Time: %lu\n", board.GetTick());
-    board.Delay(1000);
-  }
-}
-
-extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    //board.uart1.Write(UART1_rxBuffer, 10, 0);
-    //board.uart1.Read_IT(UART1_rxBuffer, 10);
+    while (1) {
+        board.led.Toggle();
+        board.uart1.write(reinterpret_cast<const uint8_t*>(kUart1TestLine), sizeof(kUart1TestLine) - 1U);
+        //board.uart1.flush();
+        board.Delay(1000);
+    }
 }
