@@ -39,9 +39,13 @@ protected:
     /// Возвращает true, если байт после readHardware() не следует класть в кольцо (кадр/шум и т.п.).
     virtual bool checkErrors() = 0;
 
+    friend class SGuard;
     //Захват и освобождение критической секции.
     virtual void lock() = 0;
     virtual void unlock() = 0;
+
+};
+
 
     //RAII guard для синхронизации доступа к аппаратному UART.
     class SGuard
@@ -54,7 +58,6 @@ protected:
         SGuard(const SGuard&) = delete;
         SGuard& operator=(const SGuard&) = delete;
     };
-};
 
 // =================================================================
 // Базовая реализация (ISerial)

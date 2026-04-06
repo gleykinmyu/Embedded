@@ -1,6 +1,7 @@
 #pragma once
-#include "stmboard.h"
 #include "phl/serial.hpp"
+#include "stmboard.h"
+
 //#include "nex.h"
 
 class CServerBoard : public CBaseBoard 
@@ -11,8 +12,7 @@ public:
 
     CServerBoard() : CBaseBoard()
     {
-        uart1.InitPins(GPIO::PortA::pin<9>, GPIO::PortA::pin<10>);
-        (void)uart1.open(9600);
+
 
         SD.Init();
     };

@@ -65,7 +65,7 @@ extern "C"
   void SysTick_Handler(void)
   {
     HAL_IncTick();
-    HAL_SYSTICK_IRQHandler();
+    HAL_SYSTICK_IRQHandler(); /* weak HAL_SYSTICK_Callback; не дублирует IncTick */
   }
 
   void NMI_Handler(void)

@@ -12,7 +12,7 @@ namespace PHL {
     // UART (Унифицировано до PHL_MISC_UARTx)
     #ifdef USART1_BASE
     #define PHL_MISC_UART1(V) V(SERIAL1, UART, 7, USART1)
-    //#undef USART1
+    #undef USART1
     #else
     #define PHL_MISC_UART1(V)
     #endif

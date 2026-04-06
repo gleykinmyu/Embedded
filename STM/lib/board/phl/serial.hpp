@@ -1,6 +1,5 @@
 #pragma once
 #include "stm32f4xx_hal.h"
-#include "stm32f4xx_ll_usart.h"
 
 #include "../../Interfaces/iserial.hpp"
 #include "core/gpio.h"
@@ -43,7 +42,7 @@ inline IRQn_Type uart_irqn(PHL::ID id)
 /**
  * Реализация BIF::ISerial для USART/UART из PHL::ID.
  * Инициализация — HAL (HAL_UART_Init); тактирование — PHL::IBase::EnableClock();
- * прерывания NVIC — HAL; горячий путь (IRQ, TX/RX) — LL.
+ * прерывания NVIC и биты TXE/RXNE — HAL (__HAL_UART_*), без LL (совместимость с HAL_UART_Init).
  *
  * Перед open() настройте выводы TX/RX (например InitPins).
  */
@@ -86,7 +85,7 @@ public:
         if (HAL_UART_Init(&_huart) != HAL_OK)
             return false;
 
-        LL_USART_EnableIT_RXNE(hw());
+        __HAL_UART_ENABLE_IT(&_huart, UART_IT_RXNE);
 
         const IRQn_Type irq = detail::uart_irqn(UartId);
         HAL_NVIC_SetPriority(irq, 5, 0);
@@ -101,9 +100,8 @@ public:
         const IRQn_Type irq = detail::uart_irqn(UartId);
         HAL_NVIC_DisableIRQ(irq);
 
-        USART_TypeDef* u = hw();
-        LL_USART_DisableIT_RXNE(u);
-        LL_USART_DisableIT_TXE(u);
+        __HAL_UART_DISABLE_IT(&_huart, UART_IT_RXNE);
+        __HAL_UART_DISABLE_IT(&_huart, UART_IT_TXE);
 
         HAL_UART_DeInit(&_huart);
 
@@ -112,34 +110,44 @@ public:
 
     void IrqHandler() override
     {
-        USART_TypeDef* u = hw();
-        while (LL_USART_IsActiveFlag_RXNE(u))
+        // Как в HAL_UART_IRQHandler: реагируем только если и флаг в SR, и соответствующий IE в CR1.
+        while (__HAL_UART_GET_FLAG(&_huart, UART_FLAG_RXNE) &&
+               __HAL_UART_GET_IT_SOURCE(&_huart, UART_IT_RXNE)) {
             this->IRQ_RX_Handler();
-        if (LL_USART_IsActiveFlag_TXE(u))
+        }
+        if (__HAL_UART_GET_FLAG(&_huart, UART_FLAG_TXE) &&
+            __HAL_UART_GET_IT_SOURCE(&_huart, UART_IT_TXE)) {
             this->IRQ_TX_Handler();
+        }
     }
 
 protected:
-    void IRQ_TX_Enable() override { LL_USART_EnableIT_TXE(hw()); }
+    void IRQ_TX_Enable() override { __HAL_UART_ENABLE_IT(&_huart, UART_IT_TXE); }
 
-    void IRQ_TX_Disable() override { LL_USART_DisableIT_TXE(hw()); }
+    void IRQ_TX_Disable() override { __HAL_UART_DISABLE_IT(&_huart, UART_IT_TXE); }
 
-    bool isHardwareTxBusy() const override { return LL_USART_IsActiveFlag_TC(hw()) == 0U; }
+    bool isHardwareTxBusy() const override
+    {
+        return (__HAL_UART_GET_FLAG(&_huart, UART_FLAG_TC) == RESET);
+    }
 
-    uint8_t readHardware() override { return LL_USART_ReceiveData8(hw()); }
+    uint8_t readHardware() override
+    {
+        return static_cast<uint8_t>(READ_REG(hw()->DR) & 0xFFU);
+    }
 
-    void writeHardware(uint8_t data) override { LL_USART_TransmitData8(hw(), data); }
+    void writeHardware(uint8_t data) override { WRITE_REG(hw()->DR, data); }
 
     bool checkErrors() override
     {
-        const uint32_t sr = LL_USART_ReadReg(hw(), SR);
-        if (sr & LL_USART_SR_FE)
+        const uint32_t sr = READ_REG(hw()->SR);
+        if ((sr & USART_SR_FE) != 0U)
             this->_isFrameError = true;
-        if (sr & LL_USART_SR_NE)
+        if ((sr & USART_SR_NE) != 0U)
             this->_isBitError = true;
-        if (sr & LL_USART_SR_ORE)
+        if ((sr & USART_SR_ORE) != 0U)
             this->_isDisconnected = true;
-        return (sr & (LL_USART_SR_FE | LL_USART_SR_NE)) != 0U;
+        return (sr & (USART_SR_FE | USART_SR_NE)) != 0U;
     }
 
     void lock() override
@@ -148,7 +156,10 @@ protected:
         __disable_irq();
     }
 
-    void unlock() override { __set_PRIMASK(_primaskSave); }
+    void unlock() override 
+    { 
+        __set_PRIMASK(_primaskSave);
+    }
 };
 
 } // namespace PHL
