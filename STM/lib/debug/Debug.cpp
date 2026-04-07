@@ -41,7 +41,7 @@ void DBG_printMsg(const char* MSG) {
 }
 
 void DBG_printNUM(unsigned NUM) {
-  printf("%u", NUM);
+  printf("%u\n", NUM);
 }
 
 void DBG_printlnMsg(const char* MSG) {

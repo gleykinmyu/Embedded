@@ -142,6 +142,8 @@ namespace GPIO {
         inline void Toggle() const { port()->ODR ^= mask; }
         inline bool Read()   const { return (port()->IDR & mask) != 0; }
 
+        void DeInit() const { HAL_GPIO_DeInit(port(), mask); }
+
     private:
         /**
          * @brief Скрытый метод включения тактирования. 

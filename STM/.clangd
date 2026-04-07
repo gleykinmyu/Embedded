@@ -1,0 +1,12 @@
+# Используется compile_commands.json из корня (после `pio run`).
+# Пути к libstdc++ подтягиваются через --query-driver в .vscode/settings.json.
+
+If:
+  PathMatch: .*
+
+CompileFlags:
+  # clang не является полной заменой GCC по этим флагам; убираем шум и ложные ошибки
+  Remove:
+    - -nostdlib
+    - -ffunction-sections
+    - -fdata-sections

@@ -1,5 +1,6 @@
 #pragma once
-#include "phl/serial.hpp"
+#include "impl/serial.hpp"
+#include "impl/sd_disk.hpp"
 #include "stmboard.h"
 
 //#include "nex.h"
@@ -8,13 +9,11 @@ class CServerBoard : public CBaseBoard
 {
 
 public:
-    PHL::Serial<PHL::ID::SERIAL1> uart1;
+    PHL::Serial<PHL::ID::SERIAL1> serial1;
+    PHL::SdDisk SD;
 
-    CServerBoard() : CBaseBoard()
+    CServerBoard() : CBaseBoard(), serial1(), SD()
     {
-
-
-        SD.Init();
     };
 
     //CHW_UART<USART2_BASE, GPIOA_BASE, GPIO_PIN_9, GPIOA_BASE, GPIO_PIN_10, GPIO_AF7_USART1> uart2;
@@ -27,5 +26,3 @@ public:
 };
 
 extern CServerBoard board;
-
-void FATFS_LinkDrivers();

@@ -41,7 +41,7 @@ void do_sd_logging(void) {
 }
 
 uint8_t	init_log_sd(void) {
-		if(board.SD.GetCardState() != HAL_SD_CARD_ERROR)
+		if(board.SD.status() != HAL_SD_CARD_ERROR)
 		{
 		printf("init SD card succeed!\n\r");
 		fresult = f_mount(&fatfs,"",1);

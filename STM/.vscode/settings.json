@@ -1,0 +1,7 @@
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.arguments": [
+        "--query-driver=**/arm-none-eabi-g++.exe",
+        "--query-driver=**/arm-none-eabi-gcc.exe"
+    ]
+}

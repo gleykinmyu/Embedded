@@ -29,15 +29,18 @@ typedef enum {
 
 
 /*---------------------------------------*/
-/* Prototypes for disk control functions */
+/* Prototypes for disk control functions (definitions — lib/Interfaces/diskio.cpp) */
 
-
-DSTATUS disk_initialize (BYTE pdrv);
-DSTATUS disk_status (BYTE pdrv);
-DRESULT disk_read (BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
-DRESULT disk_write (BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
-DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
-DWORD get_fattime (void);
+extern DSTATUS disk_initialize(BYTE pdrv);
+extern DSTATUS disk_status(BYTE pdrv);
+extern DRESULT disk_read(BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
+#if _USE_WRITE == 1
+extern DRESULT disk_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
+#endif
+#if _USE_IOCTL == 1
+extern DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buff);
+#endif
+extern DWORD get_fattime(void);
 
 /* Disk Status Bits (DSTATUS) */
 

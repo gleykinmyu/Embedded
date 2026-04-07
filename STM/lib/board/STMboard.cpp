@@ -1,4 +1,5 @@
 #include "STMboard.h"
+#include "Debug.h"
 
   void CHW_Core::SystemClock_Config()
   {
@@ -35,11 +36,12 @@
     {
       errorMSG("RCC Config error");
     }
-    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-
-    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-
-    /* SysTick_IRQn interrupt configuration */
+    /**
+     * HAL_RCC_ClockConfig уже вызвал HAL_InitTick (1 ms, источник HCLK).
+     * Не вызывать повторно HAL_SYSTICK_Config: SysTick_Config снова ставит
+     * приоритет SysTick = 15 (минимальный); UART и др. с приоритетом 5
+     * тогда вытесняют тик — HAL_GetTick/HAL_Delay «плывут».
+     */
     HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
   }
 
@@ -61,6 +63,7 @@ extern "C"
   }
 
   //==============================================================================================================================
+
 
   void SysTick_Handler(void)
   {

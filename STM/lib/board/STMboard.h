@@ -1,17 +1,16 @@
 #pragma once
 #include "config.h"
-#include "phl/sdio.h"
 #include "boardLED.h"
 #include "core/gpio.h"
-#include "core/phl.h"
-
-
+#include "phl/phl.h"
 
 class CHW_Core {
 public: 
     CHW_Core() {
+        /* Сначала VTOR → RAM (в т.ч. SysTick в слоте 15), затем HAL и тактирование. */
+        VectorTableRam::Init();
         HAL_Init();
-        SystemClock_Config();  
+        SystemClock_Config();
     }
     
     void Delay(uint32_t time) { HAL_Delay(time); };
@@ -31,6 +30,5 @@ public:
 
     //Board HW
     CHW_Led led;
-    CHW_SD SD;
 
 };
