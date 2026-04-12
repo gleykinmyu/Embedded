@@ -15,6 +15,9 @@ constexpr uint32_t kSdDiskTimeout = 30u * 1000u;
 
 constexpr uint32_t kSdDefaultBlockSize = 512u;
 
+/** Ожидание перехода карты в TRANSFER после блоковой операции HAL (не блокировать навсегда). */
+constexpr uint32_t kSdWaitTransferTimeoutMs = kSdDiskTimeout;
+
 /**
  * BIF::IDisk поверх единственного на плате SDIO::SD<PHL::ID::SDIO>.
  * Регистрация FatFs — в базовом IDisk(lun) в списке инициализации.
@@ -25,6 +28,18 @@ class SdDisk : public BIF::IDisk {
 
     HwSd    _sd{};
     DSTATUS _stat = STA_NOINIT;
+
+    bool waitUntilTransfer(uint32_t timeout_ms) noexcept
+    {
+        const uint32_t start = HAL_GetTick();
+        while (_sd.GetCardState() != HAL_SD_CARD_TRANSFER) {
+            if ((HAL_GetTick() - start) >= timeout_ms) {
+                _stat = STA_NOINIT;
+                return false;
+            }
+        }
+        return true;
+    }
 
 public:
     SdDisk() : IDisk(0) {}
@@ -55,9 +70,8 @@ public:
         DRESULT res = RES_ERROR;
         if (_sd.ReadBlocks(reinterpret_cast<uint32_t*>(buff), static_cast<uint32_t>(sector), count,
                            kSdDiskTimeout) == HAL_OK) {
-            while (_sd.GetCardState() != HAL_SD_CARD_TRANSFER) {
-            }
-            res = RES_OK;
+            if (waitUntilTransfer(kSdWaitTransferTimeoutMs))
+                res = RES_OK;
         }
         return res;
     }
@@ -68,9 +82,8 @@ public:
         DRESULT res = RES_ERROR;
         if (_sd.WriteBlocks(reinterpret_cast<uint32_t*>(const_cast<BYTE*>(buff)),
                             static_cast<uint32_t>(sector), count, kSdDiskTimeout) == HAL_OK) {
-            while (_sd.GetCardState() != HAL_SD_CARD_TRANSFER) {
-            }
-            res = RES_OK;
+            if (waitUntilTransfer(kSdWaitTransferTimeoutMs))
+                res = RES_OK;
         }
         return res;
     }

@@ -47,15 +47,29 @@ bool FatFsDiskVolumes::link(IDisk* iface)
 
 bool FatFsDiskVolumes::unlink(char* path)
 {
-    if (nbr_ < 1)
+    if (path == nullptr)
+        return false;
+
+    const uint8_t n = nbr_;
+    if (n < 1u)
         return false;
 
     const uint8_t disk_num = static_cast<uint8_t>(path[0] - '0');
-    if (disk_num >= _VOLUMES || !slots_[disk_num].slotOk())
+    if (disk_num >= _VOLUMES || disk_num >= n || !slots_[disk_num].slotOk())
         return false;
 
-    slots_[disk_num].unbind();
-    nbr_--;
+    /* Сдвиг влево: без дыр в slots_[0..n-2], перенумерация путей FatFs «0:/», «1:/», … */
+    for (uint8_t i = disk_num; static_cast<uint16_t>(i) + 1u < static_cast<uint16_t>(n); ++i) {
+        slots_[i] = slots_[i + 1u];
+        if (IDisk* iface = slots_[i].impl) {
+            iface->_path[0] = static_cast<char>('0' + i);
+            iface->_path[1] = ':';
+            iface->_path[2] = '/';
+            iface->_path[3] = 0;
+        }
+    }
+    slots_[static_cast<uint8_t>(n - 1u)].unbind();
+    nbr_ = static_cast<uint8_t>(n - 1u);
     return true;
 }
 
