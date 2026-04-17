@@ -1,7 +1,45 @@
 {
+    // clangd: сначала ./tools/bootstrap-clangd.sh (официальный zip в tools/clangd-portable/), иначе brew/llvm или CLT.
+    // Cursor Tab: лимит плана, сеть/VPN; в настройках Cursor включите «HTTP Compatibility Mode», если Tab не грузится.
     "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.formatting": "disabled",
+    "C_Cpp.default.configurationProvider": "",
+    "clangd.path": "${workspaceFolder}/tools/clangd-select.sh",
+    "editor.inlineSuggest.enabled": true,
+    "cursor.completions.enabled": true,
+    "editor.semanticHighlighting.enabled": true,
+    "editor.inlayHints.enabled": "onUnlessPressed",
+    "[c]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": false
+        },
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.parameterHints.enabled": true,
+        "editor.inlineSuggest.enabled": true
+    },
+    "[cpp]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": false
+        },
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.parameterHints.enabled": true,
+        "editor.inlineSuggest.enabled": true
+    },
     "clangd.arguments": [
+        "--query-driver=**/arm-none-eabi-g++",
+        "--query-driver=**/arm-none-eabi-gcc",
         "--query-driver=**/arm-none-eabi-g++.exe",
         "--query-driver=**/arm-none-eabi-gcc.exe"
-    ]
+    ],
+    "workbench.sideBar.location": "left",
+    "workbench.activityBar.location": "default",
+    "workbench.activityBar.orientation": "vertical"
 }

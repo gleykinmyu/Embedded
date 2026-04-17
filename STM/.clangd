@@ -1,12 +1,20 @@
 # Используется compile_commands.json из корня (после `pio run`).
 # Пути к libstdc++ подтягиваются через --query-driver в .vscode/settings.json.
+# Бинарник clangd: tools/clangd-select.sh → при необходимости tools/bootstrap-clangd.sh (portable), затем Homebrew/CLT.
 
 If:
   PathMatch: .*
 
 CompileFlags:
+  # Заголовки из arm-none-eabi-* (через --query-driver), чтобы типы из stdint/HAL совпадали с сборкой
+  BuiltinHeaders: QueryDriver
   # clang не является полной заменой GCC по этим флагам; убираем шум и ложные ошибки
   Remove:
     - -nostdlib
     - -ffunction-sections
     - -fdata-sections
+
+InlayHints:
+  Enabled: true
+  DeducedTypes: true
+  ParameterNames: true
