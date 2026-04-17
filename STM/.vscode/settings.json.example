@@ -1,13 +1,24 @@
 {
-    // clangd: Windows — прямой путь к portable .exe, чтобы argv доходили (clangd.arguments + .cmd на Node 20 часто не доезжают → без --query-driver).
-    // Portable: tools/bootstrap-clangd.ps1 / .sh → clangd_22.1.0. macOS/Linux: tools/clangd-select.sh. Если нужен .cmd: "clangd.useScriptAsExecutable": true.
-    // Cursor Tab: лимит плана, сеть/VPN; в настройках Cursor включите «HTTP Compatibility Mode», если Tab не грузится.
+    // Скопируйте в settings.json (локально, не коммитится):
+    //   Windows:  copy .vscode\settings.json.example .vscode\settings.json
+    //   macOS:    cp .vscode/settings.json.example .vscode/settings.json
+    //
+    // Затем добавьте ОДИН вариант clangd.path (или оставьте без ключа, если clangd в PATH):
+    //   Windows (portable после tools/bootstrap-clangd.ps1):
+    //     "clangd.path": "${workspaceFolder}/tools/clangd-portable/clangd_22.1.0/bin/clangd.exe",
+    //   macOS/Linux (обёртка):
+    //     "clangd.path": "${workspaceFolder}/tools/clangd-select.sh",
+    //   Windows через .cmd (нужен флаг для argv): вместе с
+    //     "clangd.useScriptAsExecutable": true,
+    //     "clangd.path": "${workspaceFolder}/tools/clangd-select.cmd",
+    //
+    // clangd.arguments + .cmd на Node 20: без useScriptAsExecutable --query-driver может не доехать.
+    // Cursor Tab: при проблемах с сетью — HTTP Compatibility Mode в настройках Cursor.
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.autocomplete": "disabled",
     "C_Cpp.errorSquiggles": "disabled",
     "C_Cpp.formatting": "disabled",
     "C_Cpp.default.configurationProvider": "",
-    "clangd.path": "${workspaceFolder}/tools/clangd-portable/clangd_22.1.0/bin/clangd.exe",
     "editor.inlineSuggest.enabled": true,
     "cursor.completions.enabled": true,
     "editor.semanticHighlighting.enabled": true,

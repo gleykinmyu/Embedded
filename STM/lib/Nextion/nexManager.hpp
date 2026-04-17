@@ -61,10 +61,11 @@ namespace Nextion {
 
         bool execute(const Transaction& t, uint32_t nowMs) {
             if (_busy) return false;
+            if (!_gate.send(t.cmd, nowMs))
+                return false;
             _target = t.target;
             _expect_header = t.expect_header;
             _busy = true;
-            _gate.send(t.cmd, nowMs);
             return true;
         }
 

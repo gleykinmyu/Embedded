@@ -15,6 +15,8 @@ namespace Nextion {
     namespace Physical {
         static constexpr uint8_t TERM_BYTE = 0xFF;
         static constexpr uint8_t TERM_COUNT = 3;
+        /** Суффикс инструкции Nextion: 0xFF×3 (NIS §16). */
+        inline constexpr uint8_t FRAME_TERMINATORS[TERM_COUNT] = { TERM_BYTE, TERM_BYTE, TERM_BYTE };
     }
 
     struct Config {
@@ -162,12 +164,14 @@ namespace Nextion {
         uint8_t _txAttempt = 0;
         bool _isWaiting = false;
 
-        static void write_all(BIF::IByteStream& s, const uint8_t* data, size_t len);
-        void transmit(const char* c, uint32_t nowMs);
+        /// true — все size байт записаны; false — обрыв (ошибка канала или TX-буфер полон в этом тике).
+        static bool write_all(BIF::IByteStream& s, const uint8_t* data, size_t len);
+        bool transmit(const char* c, uint32_t nowMs);
 
     public:
         explicit NexGate(BIF::IByteStream& s);
-        void send(const char* cmd, uint32_t nowMs);
+        /// false — команда не ушла целиком (см. write_all / getStatus); ожидание ответа не включается.
+        bool send(const char* cmd, uint32_t nowMs);
         bool update(Message& out, uint32_t nowMs, bool* send_aborted = nullptr);
     };
 

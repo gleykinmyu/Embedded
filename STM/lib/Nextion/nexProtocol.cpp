@@ -4,6 +4,9 @@
 
 namespace Nextion 
 {
+//===============================================
+// FrameParser
+//===============================================
 
 void FrameParser::reset() {
     _state = State::WaitHeader;
@@ -49,6 +52,11 @@ bool FrameParser::feed(uint8_t inputByte, Frame& outFrame) {
     }
     return false;
 }
+
+
+//===============================================
+// TranslateMessage
+//===============================================
 
 void TranslateMessage(const Frame& f, Message& out) 
 {
@@ -137,48 +145,72 @@ void TranslateMessage(const Frame& f, Message& out)
     out = msg::Unknown{msg::Unknown::Reason::UnrecognizedHeader, h};
 }
 
-void NexGate::write_all(BIF::IByteStream& s, const uint8_t* data, size_t len) {
-    size_t off = 0;
-    while (off < len) {
-        const size_t w = s.write(data + off, len - off);
-        if (w == 0u)
-            break;
-        off += w;
-    }
-}
-
-void NexGate::transmit(const char* c, uint32_t nowMs) {
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(c);
-    const size_t len = std::strlen(c);
-    write_all(_stream, p, len);
-    const uint8_t term = Physical::TERM_BYTE;
-    for (int i = 0; i < 3; ++i)
-        write_all(_stream, &term, 1u);
-    _stream.flush();
-    _lastTxMs = nowMs;
-    _isWaiting = true;
-}
+//===============================================
+// NexGate
+//===============================================
 
 NexGate::NexGate(BIF::IByteStream& s) : _stream(s) {}
 
-void NexGate::send(const char* cmd, uint32_t nowMs) {
+bool NexGate::write_all(BIF::IByteStream& s, const uint8_t* data, size_t len) {
+    size_t off = 0;
+    while (off < len) {
+        const size_t w = s.write(data + off, len - off);
+        // 0 байт: ошибка канала (см. getStatus) или TX переполнен в этом неблокирующем вызове.
+        if (w == 0u)
+            return false;
+        off += w;
+    }
+    return true;
+}
+
+bool NexGate::transmit(const char* c, uint32_t nowMs) {
+    // Сбой write_all: в SW TX уже лежит начало текущей команды без полного кадра (нет 0xFF×3).
+    // Без purgeOutput() следующий вызов допишет новую команду к этому хвосту — на Nextion уйдёт мусор.
+    // «Остаток старой» команды в нормальном цикле здесь не ожидается: после успешного transmit()
+    // flush() дожидается опустошения TX; иначе это уже аварийное состояние канала, и сброс очереди
+    // передачи — осознанное восстановление, а не потеря заведомо целого кадра.
+    const uint8_t* p = (uint8_t*)(c);
+    const size_t len = std::strlen(c);
+    if (!write_all(_stream, p, len)) {
+        _isWaiting = false;
+        _txAttempt = 0;
+        _stream.purgeOutput();
+        return false;
+    }
+    if (!write_all(_stream, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT)) {
+        _isWaiting = false;
+        _txAttempt = 0;
+        _stream.purgeOutput();
+        return false;
+    }
+    _stream.flush();
+    _lastTxMs = nowMs;
+    _isWaiting = true;
+    return true;
+}
+
+bool NexGate::send(const char* cmd, uint32_t nowMs) {
     if (Config::RETRY_BUF > 0u) {
         _retryBuf[0] = '\0';
         std::strncpy(_retryBuf, cmd, Config::RETRY_BUF - 1u);
         _retryBuf[Config::RETRY_BUF - 1u] = '\0';
     }
     _txAttempt = 1;
-    transmit(_retryBuf, nowMs);
+    return transmit(_retryBuf, nowMs);
 }
 
 bool NexGate::update(Message& out, uint32_t nowMs, bool* send_aborted) {
+    // Сбрасываем флаг «передача сорвана»; вызывающий код узнает об отмене только при исчерпании повторов.
     if (send_aborted)
         *send_aborted = false;
 
+    // Приём: за один вызов забираем всё, что уже лежит в буфере потока, по байту в парсер кадра Nextion.
     while (_stream.available() > 0u) {
         uint8_t b = 0;
         const size_t n = _stream.read(&b, 1u);
         if (n != 1u) {
+            // Не удалось прочитать байт: при ошибке канала сбрасываем незавершённый кадр и очищаем вход,
+            // иначе оставшийся мусор исказит следующий ответ.
             if (_stream.getStatus() != BIF::IByteStream::Status::OK) {
                 _framer.reset();
                 _stream.purge();
@@ -187,6 +219,7 @@ bool NexGate::update(Message& out, uint32_t nowMs, bool* send_aborted) {
         }
         Frame f = {};
         if (_framer.feed(b, f)) {
+            // Собран полный кадр (заголовок + полезная нагрузка + терминатор 0xFF×3) — преобразуем в Message.
             TranslateMessage(f, out);
             _isWaiting = false;
             _txAttempt = 0;
@@ -194,6 +227,7 @@ bool NexGate::update(Message& out, uint32_t nowMs, bool* send_aborted) {
         }
     }
 
+    // Таймаут ответа после send(): если панель молчит дольше TIMEOUT_MS, повторяем команду или сдаёмся.
     if (_isWaiting && Config::TIMEOUT_MS > 0u) {
         const uint32_t elapsed = nowMs - _lastTxMs;
         if (elapsed >= Config::TIMEOUT_MS) {
@@ -202,8 +236,15 @@ bool NexGate::update(Message& out, uint32_t nowMs, bool* send_aborted) {
                 ++_txAttempt;
                 _framer.reset();
                 _stream.purge();
-                transmit(_retryBuf, nowMs);
+                if (!transmit(_retryBuf, nowMs)) {
+                    // transmit() уже сбросил ожидание и TX; чистим приём и сигнализируем как при исчерпании повторов.
+                    _framer.reset();
+                    _stream.purge();
+                    if (send_aborted)
+                        *send_aborted = true;
+                }
             } else {
+                // Лимит попыток исчерпан: сбрасываем состояние ожидания; при необходимости сигнализируем вызывающему коду.
                 _isWaiting = false;
                 _txAttempt = 0;
                 _framer.reset();
@@ -213,6 +254,7 @@ bool NexGate::update(Message& out, uint32_t nowMs, bool* send_aborted) {
             }
         }
     }
+    // Ни одного завершённого кадра в этом тике; out не трогаем (кроме случая return true выше).
     return false;
 }
 

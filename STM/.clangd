@@ -1,4 +1,5 @@
-# Используется compile_commands.json из корня (после `pio run`).
+# compile_commands.json в корне: только локально (`pio run -t compiledb`), не коммитить — пути к ~/.platformio привязаны к машине.
+# Настройки редактора: .vscode/settings.json не в git — шаблон .vscode/settings.json.example.
 # Пути к libstdc++ подтягиваются через --query-driver в .vscode/settings.json.
 # Бинарник clangd: tools/clangd-select.sh → при необходимости tools/bootstrap-clangd.sh (portable), затем Homebrew/CLT.
 
