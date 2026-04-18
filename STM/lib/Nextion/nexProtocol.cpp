@@ -1,5 +1,6 @@
 #include "nexProtocol.hpp"
 #include "../Interfaces/ibyte_stream.hpp"
+#include <cstdint>
 #include <cstring>
 
 namespace Nextion 
@@ -145,6 +146,29 @@ void TranslateMessage(const InputFrame& f, Message& out)
     out = msg::Unknown{msg::Unknown::Reason::UnrecognizedHeader, h};
 }
 
+bool CmdRawBytes::serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept {
+    if (_length > 0u && _text == nullptr)
+        return false;
+    if (_length > cap)
+        return false;
+    if (_length > 0u)
+        std::memcpy(dst, _text, _length);
+    out_len = _length;
+    return true;
+}
+
+bool CmdCString::serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept {
+    if (_z == nullptr)
+        return false;
+    const size_t n = std::strlen(_z);
+    if (n > cap || n > static_cast<size_t>(UINT16_MAX))
+        return false;
+    if (n > 0u)
+        std::memcpy(dst, _z, n);
+    out_len = static_cast<uint16_t>(n);
+    return true;
+}
+
 //===============================================
 // NexGate
 //===============================================
@@ -167,26 +191,18 @@ void NexGate::pumpTx() {
     }
 }
 
-bool NexGate::requestCommand(const char* cmd, size_t len) {
+bool NexGate::request(const BaseCommand& cmd) {
     if (_txPos < _txTotal)
         return false;
-    if (len > 0u && cmd == nullptr)
+    const uint16_t body_cap = TX_CMD_CAP - Physical::TERM_COUNT;
+    uint16_t body_len = 0;
+    if (!cmd.serialize(_txPending, body_cap, body_len))
         return false;
-    if (len + Physical::TERM_COUNT > static_cast<size_t>(TX_CMD_CAP))
-        return false;
-    if (len > 0u)
-        std::memcpy(_txPending, cmd, len);
-    std::memcpy(_txPending + len, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
-    _txTotal = static_cast<uint16_t>(len + Physical::TERM_COUNT);
+    std::memcpy(_txPending + body_len, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
+    _txTotal = body_len + Physical::TERM_COUNT;
     _txPos = 0;
     pumpTx();
     return true;
-}
-
-bool NexGate::requestCommand(const char* cmd) {
-    if (cmd == nullptr)
-        return false;
-    return requestCommand(cmd, std::strlen(cmd));
 }
 
 bool NexGate::update(Message& out) {

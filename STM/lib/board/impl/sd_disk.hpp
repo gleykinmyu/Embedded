@@ -1,6 +1,6 @@
 #pragma once
-#include "../../Interfaces/idisk.hpp"
-#include "../phl/sdio.hpp"
+#include "idisk.hpp"
+#include "phl/sdio.hpp"
 #include <stm32f4xx_hal.h>
 
 namespace PHL {

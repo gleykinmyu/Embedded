@@ -3,7 +3,6 @@
 #include <variant>
 
 #include "nexProtocol.hpp"
-#include "nexComponents.hpp"
 
 namespace Nextion {
     namespace detail {
@@ -61,7 +60,8 @@ namespace Nextion {
 
         bool execute(const Transaction& t) {
             if (_busy) return false;
-            if (!_gate.requestCommand(t.cmd))
+            const CmdCString cmd(t.cmd);
+            if (!_gate.request(cmd))
                 return false;
             _target = t.target;
             _expect_header = t.expect_header;

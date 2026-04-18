@@ -2,7 +2,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <stdint.h>
-#include <type_traits>
 #include <variant>
 
 // --- PROTOCOL DEFINITIONS ---
@@ -14,7 +13,7 @@ class IByteStream;
 namespace Nextion {
     namespace Physical {
         static constexpr uint8_t TERM_BYTE = 0xFF;
-        static constexpr uint8_t TERM_COUNT = 3;
+        static constexpr uint16_t TERM_COUNT = 3;
         /** Суффикс инструкции Nextion: 0xFF×3 (NIS §16). */
         inline constexpr uint8_t FRAME_TERMINATORS[TERM_COUNT] = { TERM_BYTE, TERM_BYTE, TERM_BYTE };
     }
@@ -149,6 +148,37 @@ namespace Nextion {
 
     void TranslateMessage(const InputFrame& f, Message& out);
 
+    /**
+     * Базовая исходящая инструкция Nextion (тело кадра до 0xFF×3).
+     * Наследники реализуют `serialize`; `NexGate::request` вызывает её один раз и копирует результат в TX.
+     */
+    class BaseCommand {
+    public:
+        virtual ~BaseCommand() = default;
+
+        /** Только тело инструкции, без терминатора 0xFF×3. */
+        virtual bool serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept = 0;
+    };
+
+    /** Тело из `length` байт по указателю `text` (без завершающего '\\0'). */
+    class CmdRawBytes final : public BaseCommand {
+        const char* _text;
+        uint16_t _length;
+
+    public:
+        CmdRawBytes(const char* text, uint16_t length) noexcept : _text(text), _length(length) {}
+        bool serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept override;
+    };
+
+    /** NTBS: длина по `strlen`. */
+    class CmdCString final : public BaseCommand {
+        const char* _z;
+
+    public:
+        explicit CmdCString(const char* z) noexcept : _z(z) {}
+        bool serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept override;
+    };
+
     class NexGate {
     public:
         /** Макс. длина тела команды; плюс `Physical::TERM_COUNT` байт терминатора в том же буфере. */
@@ -170,14 +200,11 @@ namespace Nextion {
         bool isTxIdle() const noexcept { return _txPos >= _txTotal; }
 
         /**
-         * Поставить инструкцию в очередь (тело без `0xFF×3`; терминатор добавляется внутри).
-         * `len` — число байт тела (без завершающего `\0`); длина может быть известна при сборке (`snprintf` и т.д.).
+         * Поставить инструкцию в очередь через `serialize` у `BaseCommand`.
+         * Терминатор 0xFF×3 добавляется внутри; при занятом TX или переполнении буфера — false.
          * Неблокирующий: копирует в буфер гейта и сразу `write()` пока есть место; дозапись в `update()`.
          */
-        bool requestCommand(const char* cmd, size_t len);
-
-        /** NTBS: длина по `strlen` (для литералов и строк с нулём в конце). */
-        bool requestCommand(const char* cmd);
+        bool request(const BaseCommand& cmd);
 
         /** Сначала дозапись TX, затем приём одного кадра в `out` (если есть данные). */
         bool update(Message& out);

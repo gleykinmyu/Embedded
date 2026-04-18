@@ -1,6 +1,6 @@
 #pragma once
-#include "../../Interfaces/iserial.hpp"
-#include "../phl/uart.hpp"
+#include "iserial.hpp"
+#include "phl/uart.hpp"
 
 namespace PHL {
 
