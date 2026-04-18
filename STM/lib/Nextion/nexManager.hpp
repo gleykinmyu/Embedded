@@ -59,9 +59,9 @@ namespace Nextion {
     public:
         explicit NexSession(BIF::IByteStream& s) : _gate(s) {}
 
-        bool execute(const Transaction& t, uint32_t nowMs) {
+        bool execute(const Transaction& t) {
             if (_busy) return false;
-            if (!_gate.send(t.cmd, nowMs))
+            if (!_gate.requestCommand(t.cmd))
                 return false;
             _target = t.target;
             _expect_header = t.expect_header;
@@ -69,7 +69,7 @@ namespace Nextion {
             return true;
         }
 
-        void update(NexManagerBase& mgr, uint32_t nowMs);
+        void update(NexManagerBase& mgr);
 
         bool isIdle() const { return !_busy; }
     };
@@ -114,7 +114,7 @@ namespace Nextion {
 
     public:
         explicit NexManager(BIF::IByteStream& s) : _session(s) {}
-        void update(uint32_t nowMs) { _session.update(*this, nowMs); }
+        void update() { _session.update(*this); }
         NexSession& getSession() override { return _session; }
 
         void dispatchAsync(const Message& msg) override {
@@ -137,15 +137,9 @@ namespace Nextion {
         bool get(T* /*target*/) { return false; }
     };
 
-    inline void NexSession::update(NexManagerBase& mgr, uint32_t nowMs) {
-        bool send_aborted = false;
-        if (!_gate.update(_rx, nowMs, &send_aborted)) {
-            if (send_aborted) {
-                _busy = false;
-                _target = nullptr;
-            }
+    inline void NexSession::update(NexManagerBase& mgr) {
+        if (!_gate.update(_rx))
             return;
-        }
 
         if (_busy && detail::message_matches_expect(_rx, _expect_header)) {
             if (const auto* num = std::get_if<msg::NumericResponse>(&_rx)) {

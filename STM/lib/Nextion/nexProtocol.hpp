@@ -19,14 +19,7 @@ namespace Nextion {
         inline constexpr uint8_t FRAME_TERMINATORS[TERM_COUNT] = { TERM_BYTE, TERM_BYTE, TERM_BYTE };
     }
 
-    struct Config {
-        static constexpr uint16_t RETRY_BUF = 64;
-        static constexpr uint16_t TIMEOUT_MS = 150;
-        /** Число попыток передачи одной команды (первая + повторы); `0` трактуется как `1` (без повторов после первой отправки). */
-        static constexpr uint8_t SEND_RETRY_MAX = 3;
-    };
-
-    struct Frame {
+    struct InputFrame {
         static constexpr uint16_t MAX_PAYLOAD = 64;
         uint8_t header;
         uint8_t payload[MAX_PAYLOAD];
@@ -38,11 +31,11 @@ namespace Nextion {
         enum class State : uint8_t { WaitHeader, Collect, WaitTerm };
 
         void reset();
-        bool feed(uint8_t inputByte, Frame& outFrame);
+        bool feed(uint8_t inputByte, InputFrame& outFrame);
 
     private:
         State _state = State::WaitHeader;
-        Frame _current;
+        InputFrame _current;
         uint8_t _terms = 0;
     };
 
@@ -92,7 +85,7 @@ namespace Nextion {
         struct StringResponse {
             constexpr static uint8_t Header = 0x70;
             /** Копия полезной нагрузки кадра; не зависит от времени жизни `RawMessage`. */
-            char chars[Frame::MAX_PAYLOAD]{};
+            char chars[InputFrame::MAX_PAYLOAD]{};
             uint16_t length = 0;
             const char* data() const noexcept { return chars; }
         };
@@ -154,25 +147,40 @@ namespace Nextion {
         msg::PageEvent,
         msg::SystemEvent>;
 
-    void TranslateMessage(const Frame& f, Message& out);
+    void TranslateMessage(const InputFrame& f, Message& out);
 
     class NexGate {
+    public:
+        /** Макс. длина тела команды; плюс `Physical::TERM_COUNT` байт терминатора в том же буфере. */
+        static constexpr uint16_t TX_CMD_CAP = 128;
+
+    private:
         BIF::IByteStream& _stream;
         FrameParser _framer;
-        char _retryBuf[Config::RETRY_BUF]{};
-        uint32_t _lastTxMs = 0;
-        uint8_t _txAttempt = 0;
-        bool _isWaiting = false;
+        uint8_t _txPending[TX_CMD_CAP]{};
+        uint16_t _txTotal = 0;
+        uint16_t _txPos = 0;
 
-        /// true — все size байт записаны; false — обрыв (ошибка канала или TX-буфер полон в этом тике).
-        static bool write_all(BIF::IByteStream& s, const uint8_t* data, size_t len);
-        bool transmit(const char* c, uint32_t nowMs);
+        void pumpTx();
 
     public:
         explicit NexGate(BIF::IByteStream& s);
-        /// false — команда не ушла целиком (см. write_all / getStatus); ожидание ответа не включается.
-        bool send(const char* cmd, uint32_t nowMs);
-        bool update(Message& out, uint32_t nowMs, bool* send_aborted = nullptr);
+
+        /** true — в очереди на UART нет незавершённого кадра (всё уже передано в `write()`). */
+        bool isTxIdle() const noexcept { return _txPos >= _txTotal; }
+
+        /**
+         * Поставить инструкцию в очередь (тело без `0xFF×3`; терминатор добавляется внутри).
+         * `len` — число байт тела (без завершающего `\0`); длина может быть известна при сборке (`snprintf` и т.д.).
+         * Неблокирующий: копирует в буфер гейта и сразу `write()` пока есть место; дозапись в `update()`.
+         */
+        bool requestCommand(const char* cmd, size_t len);
+
+        /** NTBS: длина по `strlen` (для литералов и строк с нулём в конце). */
+        bool requestCommand(const char* cmd);
+
+        /** Сначала дозапись TX, затем приём одного кадра в `out` (если есть данные). */
+        bool update(Message& out);
     };
 
 } // namespace Nextion
