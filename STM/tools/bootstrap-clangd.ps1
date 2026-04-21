@@ -16,7 +16,8 @@ if ((Test-Path $Bin) -and (& $Bin --version 2>$null)) {
 
 Write-Host "Downloading $Url ..."
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-$tmpZip = Join-Path ([System.IO.Path]::GetTempPath()) $ZipName
+# Use repo-local temp path: some environments fail writing very large files to %TEMP%.
+$tmpZip = Join-Path $Dest $ZipName
 try {
     Invoke-WebRequest -Uri $Url -OutFile $tmpZip -UseBasicParsing
     if (Test-Path $ExtractDir) { Remove-Item -Recurse -Force $ExtractDir }

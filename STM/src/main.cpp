@@ -52,7 +52,7 @@ int main(void)
         }
 
         if (board.serial1.available()) {
-            uint8_t data;
+            uint8_t data = 0;
             board.serial1.read(&data, 1);
             board.serial1.write(&data, 1);
         }

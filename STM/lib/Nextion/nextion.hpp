@@ -1,3 +1,2 @@
 #pragma once
-
-#include "nexProtocol.hpp"
+#include <string_view>

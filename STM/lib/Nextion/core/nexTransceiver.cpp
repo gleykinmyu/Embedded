@@ -1,51 +1,48 @@
-#include "nexProtocol.hpp"
-#include "../Interfaces/ibyte_stream.hpp"
-#include <cstdint>
-#include <cstring>
+#include "../nexTransceiver.hpp"
 
-namespace Nextion 
+namespace nex
 {
 //===============================================
-// FrameParser
+// RxFramer
 //===============================================
 
-void FrameParser::reset() {
+void RxFramer::reset() {
     _state = State::WaitHeader;
     _terms = 0;
-    _current.length = 0;
+    frame.length = 0;
 }
 
-bool FrameParser::feed(uint8_t inputByte, InputFrame& outFrame) {
-    switch (_state) 
+bool RxFramer::appendByte(uint8_t byte) {
+    switch (_state)
     {
     // NIS §18 — ожидание заголовка кадра.
     case State::WaitHeader:
-        _current.header = inputByte;
-        _current.length = 0;
+        frame.header = byte;
+        frame.length = 0;
         _terms = 0;
         _state = State::Collect;
         break;
 
     // NIS §17 — сборка полезной нагрузки кадра.
     case State::Collect:
-        if (inputByte == Physical::TERM_BYTE) {
+        if (byte == Physical::TERM_BYTE) {
             _terms = 1;
             _state = State::WaitTerm;
-        } else if (_current.length < InputFrame::MAX_PAYLOAD)
-            _current.payload[_current.length++] = inputByte;
+        } else if (frame.length < RxFrame::MAX_PAYLOAD)
+            frame.payload[frame.length++] = byte;
         break;
 
     // NIS §16 — ожидание терминальных байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
     case State::WaitTerm:
-        if (inputByte == Physical::TERM_BYTE) {
+        if (byte == Physical::TERM_BYTE) {
             if (++_terms >= Physical::TERM_COUNT) {
-                outFrame = _current;
-                reset();
+                _state = State::WaitHeader;
+                _terms = 0;
                 return true;
             }
         } else {
-            for (uint8_t i = 0; i < _terms; i++) _current.payload[_current.length++] = Physical::TERM_BYTE;
-            _current.payload[_current.length++] = inputByte;
+            for (uint8_t i = 0; i < _terms; i++) frame.payload[frame.length++] = Physical::TERM_BYTE;
+            frame.payload[frame.length++] = byte;
             _terms = 0;
             _state = State::Collect;
         }
@@ -54,12 +51,11 @@ bool FrameParser::feed(uint8_t inputByte, InputFrame& outFrame) {
     return false;
 }
 
-
 //===============================================
 // TranslateMessage
 //===============================================
 
-void TranslateMessage(const InputFrame& f, Message& out) 
+void TranslateMessage(const RxFrame& f, Message& out)
 {
     // NIS §7 — первый байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
     if (f.header == 0u && f.length >= 2u) {
@@ -79,11 +75,11 @@ void TranslateMessage(const InputFrame& f, Message& out)
     if (h == msg::StringResponse::Header) {
         msg::StringResponse s{};
         const uint16_t len = f.length;
-        const uint16_t n = len < InputFrame::MAX_PAYLOAD ? len : InputFrame::MAX_PAYLOAD;
+        const uint16_t n = len < RxFrame::MAX_PAYLOAD ? len : RxFrame::MAX_PAYLOAD;
         s.length = len;
         if (n > 0u)
             std::memcpy(s.chars, f.payload, n);
-        if (n < InputFrame::MAX_PAYLOAD)
+        if (n < RxFrame::MAX_PAYLOAD)
             s.chars[n] = '\0';
         out = s;
         return;
@@ -146,69 +142,73 @@ void TranslateMessage(const InputFrame& f, Message& out)
     out = msg::Unknown{msg::Unknown::Reason::UnrecognizedHeader, h};
 }
 
-bool CmdRawBytes::serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept {
-    if (_length > 0u && _text == nullptr)
-        return false;
-    if (_length > cap)
-        return false;
-    if (_length > 0u)
-        std::memcpy(dst, _text, _length);
-    out_len = _length;
-    return true;
-}
-
-bool CmdCString::serialize(uint8_t* dst, uint16_t cap, uint16_t& out_len) const noexcept {
-    if (_z == nullptr)
-        return false;
-    const size_t n = std::strlen(_z);
-    if (n > cap || n > static_cast<size_t>(UINT16_MAX))
-        return false;
-    if (n > 0u)
-        std::memcpy(dst, _z, n);
-    out_len = static_cast<uint16_t>(n);
-    return true;
-}
-
 //===============================================
-// NexGate
+// TxFramer
 //===============================================
 
-NexGate::NexGate(BIF::IByteStream& s) : _stream(s) {}
+void TxFramer::reset() noexcept {
+    _state = State::Idle;
+    frame.length = 0;
+    _pos = 0;
+}
 
-void NexGate::pumpTx() {
-    while (_txPos < _txTotal) {
-        if (_stream.getStatus() != BIF::IByteStream::Status::OK) {
-            _txPos = 0;
-            _txTotal = 0;
-            _stream.purgeOutput();
-            return;
-        }
-        const size_t chunk = static_cast<size_t>(_txTotal - _txPos);
-        const size_t w = _stream.write(_txPending + _txPos, chunk);
-        if (w == 0u)
-            return;
-        _txPos = static_cast<uint16_t>(_txPos + static_cast<uint16_t>(w));
+bool TxFramer::isIdle() const noexcept {
+    return _state == State::Idle && frame.length == 0u;
+}
+
+bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
+    if (_state == State::Idle && frame.length > 0u)
+    {
+        std::memcpy(frame.payload + frame.length, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
+        frame.length += Physical::TERM_COUNT;
+        _state = State::Payload;
     }
-}
 
-bool NexGate::request(const BaseCommand& cmd) {
-    if (_txPos < _txTotal)
-        return false;
-    const uint16_t body_cap = TX_CMD_CAP - Physical::TERM_COUNT;
-    uint16_t body_len = 0;
-    if (!cmd.serialize(_txPending, body_cap, body_len))
-        return false;
-    std::memcpy(_txPending + body_len, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
-    _txTotal = body_len + Physical::TERM_COUNT;
-    _txPos = 0;
-    pumpTx();
+    while (_state == State::Payload) {
+        const size_t w = stream.write(frame.payload + _pos, static_cast<size_t>(frame.length - _pos));
+        if (w == 0u) {
+            if (stream.getStatus() != BIF::IByteStream::Status::OK) {
+                reset();
+                stream.purgeOutput();
+                return false;
+            }
+            return true;
+        }
+        _pos = static_cast<uint16_t>(_pos + static_cast<uint16_t>(w));
+        if (_pos >= frame.length) {
+            reset();
+            return true;
+        }
+    }
     return true;
 }
 
-bool NexGate::update(Message& out) {
-    pumpTx();
-    
-    // Приём: за один вызов забираем всё, что уже лежит в буфере потока, по байту в парсер кадра Nextion.
+//===============================================
+// Transceiver
+//===============================================
+
+Transceiver::Transceiver(BIF::IByteStream& s) : _stream(s) {}
+
+bool Transceiver::pushCommand(const Command& cmd) {
+    if (!_txFramer.isIdle())
+        return false;
+
+    if (!cmd.serialize(_txFramer.frame)) {
+        _txFramer.reset();
+        return false;
+    }
+
+    if (_txFramer.frame.length == 0u)
+        return false;
+
+    return transmit();
+}
+
+bool Transceiver::transmit() noexcept {
+    return _txFramer.tick(_stream);
+}
+
+bool Transceiver::receive(Message& out) {
     while (_stream.available() > 0u) {
         uint8_t b = 0;
         const size_t n = _stream.read(&b, 1u);
@@ -216,19 +216,18 @@ bool NexGate::update(Message& out) {
             // Не удалось прочитать байт: при ошибке канала сбрасываем незавершённый кадр и очищаем вход,
             // иначе оставшийся мусор исказит следующий ответ.
             if (_stream.getStatus() != BIF::IByteStream::Status::OK) {
-                _framer.reset();
+                _rxFramer.reset();
                 _stream.purge();
             }
             break;
         }
-        InputFrame f = {};
-        if (_framer.feed(b, f)) {
-            // Собран полный кадр (заголовок + полезная нагрузка + терминатор 0xFF×3) — преобразуем в Message.
-            TranslateMessage(f, out);
+        if (_rxFramer.appendByte(b)) {
+            // Собран полный кадр — данные в `_rxFramer.frame` до следующего `appendByte`.
+            TranslateMessage(_rxFramer.frame, out);
             return true;
         }
     }
     return false;
 }
 
-} // namespace Nextion
+} // namespace nex

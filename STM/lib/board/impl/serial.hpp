@@ -8,7 +8,7 @@ namespace PHL {
  * Реализация BIF::ISerial для USART/UART из PHL::ID.
  * Формат кадра: setFrameFormat (только при закрытом порте), затем open(baudrate).
  */
-template <PHL::ID UartId, size_t TxSize = 256,  size_t RxSize = 256>
+template <PHL::ID UartId, size_t TxSize = 128,  size_t RxSize = 128>
 class Serial : public BIF::ISerial<TxSize, RxSize>
 {
     static_assert(PHL::GetType<UartId>::value == PHL::Type::UART, "Serial: только PHL::ID с Type::UART");
