@@ -48,8 +48,8 @@ namespace nex {
     public:
         /** Виды компонентов; числовые коды — как у одноимённого атрибута в NIS. */
         enum class Type : uint8_t {
-            Waveform        = 0, //type, id, objname, vscope, drag, aph, effect, sta(color, image, cropimage, transparent), ch, bco(pic, picc), gdc, gdw, gdh, pco0, pco1, pco2, pco3, dis, x, y, w, h
-            Slider          = 1, //type, id, objname, vscope, drag, aph, effect, sta(crop, solid, image), wid, hig, bco(pic, picc), bco1(pic1, picc1), pco, val, maxval, minval, ch, x, y, w, h
+            Waveform        = 0, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), ch, bco(pic, picc), gdc, gdw, gdh, pco0, pco1, pco2, pco3, dis, x, y, w, h
+            Slider          = 1, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image), wid, hig, bco(pic, picc), bco1(pic1, picc1), pco, val, maxval, minval, ch, x, y, w, h
             Gmov            = 2, //type, id, objname, vscope, drag, aph, effect, vid, en, loop, dis, tim, stim(RO), qty(RO), x, y, w, h
             Video           = 3, //type, id, objname, vscope, drag, aph, effect, from(RO: internal, external), vid(path, when from=external), en, loop, dis, tim, stim(RO), qty(RO), x, y, w, h
             Audio           = 4, //type, id, objname, vscope, from(RO: internal, external), vid(path, when from=external), en, loop, tim, stim(RO)
@@ -61,18 +61,18 @@ namespace nex {
             ScrollText      = 55, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), key, font, bco (pic, picc), pco, xcen, ycen, dir, dis, tim, en, txt, txt_maxl, isbr, spax, spay, x, y, w, h
             Checkbox        = 56, //type, id, objname, vscope, drag, aph, effect, bco, pco, val, x, y, w, h
             Radio           = 57, //type, id, objname, vscope, drag, aph, effect, bco, pco, val, x, y, w, h
-            QRCode          = 58, //type, id, objname, vscope, drag, aph, effect, sta(none, has - "LOGO"), dis, bco, pco, pic(only when sta=has), txt, txt_maxl, x, y, w, h
+            QRCode          = 58, //type, id, objname, vscope, drag, aph, effect, dis, bco, pco, txt, txt_maxl, x, y, w, h
             XFloat          = 59, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), key, font, bco (pic, picc), pco, xcen, ycen, val, vvs0, vvs1, isbr, spax, spay, x, y, w, h
             ExternalPicture = 60, //type, id, objname, vscope, drag, aph, effect, path, x, y, w, h
-            ComboBox        = 61, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco, pco, xcen, ycen, spax, dis, txt, txt_maxl, up, pco3(color of arrow), bco1(cell bg color), pco1(font color), path, path_m(RO), dir, qty, vvs0, val, bco2(select bg color), pco2(select font color), hig, down, mode, wid, vvs1, ch, x, y, w, h
-            SLText          = 62, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco, pco, xcen, left, ch, txt, txt_maxl, isbr, spax, spay, maxval_y, val_y, x, y, w, h
+            ComboBox        = 61, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco, pco, xcen, ycen, spax, dis, txt, txt_maxl, up, pco3(color of arrow), bco1(cell bg color), pco1(font color), path, path_m(RO), dir, qty, vvs0, val, bco2(select bg color), pco2(select font color), hig, down, mode, wid, vvs1, ch, x, y, w, h
+            SLText          = 62, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco, pco, xcen, left, ch, txt, txt_maxl, isbr, spax, spay, maxval_y, val_y, x, y, w, h
             FileStream      = 63, //type, id, objname, vscope, val, qty(RO), en(RO), method: open, read, write, close, find
             FileBrowser     = 65, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco, pco, pco2, bco2, left, ch, dir, filter, val, txt(RO), qty(RO), dis, spax, spay, maxval_y, maxval_x, val_x, val_y, psta(RO), pic1, pic2, vvs2, buffsize(RO), fwarning(RO), x, y, w, h
             DataRecord      = 66, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco (pic, picc), pco, xcen, path, lenth(RO), maxval(RO), val(RO), length, format, dir, mode, dis, order, qty(RO), spax, hig, left, gdc, gdw, gdh, bco1, pco1, bco2, pco2, val, txt(RO), ch, maxval_y, val_y, maxval_x, val_x,  y, w, h 
             ToggleSwitch    = 67, //type, id, objname, vscope, drag, aph, effect, val, bco, pco, bco2, pco2, pco1(font color), font, dis, txt (txt_maxl = 24), x, y, w, h  
-            TextSelect      = 68, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco (pic, picc), pco(font color), pco2(selected font color), spax, hig, dis, pco1(line color), txt(RO), val, ch, path, path_m(RO), x, y, w, h
+            TextSelect      = 68, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco (pic, picc), pco(font color), pco2(selected font color), spax, hig, dis, pco1(line color), txt(RO), val, ch, path, path_m(RO), x, y, w, h
             Button          = 98, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco (pic, picc), bco2(pic2, picc2), pco(font color), pco2(pressed font color), xcen, ycen, txt, txt_maxl, isbr, spax, spay, x, y, w, h
-            ProgressBar     = 106, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), val, dis (only when sta=color), bco (bpic), pco (ppic), x, y, w, h
+            ProgressBar     = 106, //type, id, objname, vscope, drag, aph, effect, sta (color, image), val, dis (only when sta=color), bco (bpic), pco (ppic), x, y, w, h
             Hotspot         = 109, //type, id, objname, vscope, x, y, w, h
             Picture         = 112, //type, id, objname, vscope, drag, aph, effect, pic, x, y, w, h
             CropPicture     = 113, //type, id, objname, vscope, drag, aph, effect, cpic, x, y, w, h
@@ -121,60 +121,58 @@ namespace nex {
      *       ├── Hotspot                        // —
      *       │
      *       └── VisualComponent                // drag, aph, effect
-     *           ├── Picture                    // pic
-     *           ├── CropPicture                // cpic
      *           ├── ExternalPicture            // path
-     *           │
      *           ├── MediaComponent             // vid; en; loop; dis; tim; stim(RO); qty(RO)
      *           │   ├── Gmov                   // —
      *           │   └── Video                  // from(RO); vid(path) при from=external
      *           │
-     *           ├── BGComponent                // bg<sta>
-     *           │   │
-     *           │   ├── QRCode                 // sta(none|has); dis; bco; pco; pic(sta=has); txt; txt_maxl
-     *           │   │
-     *           │   │
-     *           │   ├── DrawableColoredComponent 
-     *           │   │   ├── Waveform             // ch; bco(pic,picc); gdc; gdw; gdh; pco0…pco3; dis; wid; hig
-     *           │   │   ├── ProgressBar          // val; dis(sta=color); bco(bpic); pco(ppic)
-     *           │   │   ├── Slider               // wid; hig; bco(pic,picc); bco1(pic1,picc1); pco; val; maxval; minval; ch
-     *           │   │   └── Gauge                // bco(picc,pic) при sta≠transparent; val; format; up; down; left;
-     *           │   │                            // pco; pco2; hig; vvs0; vvs1; vvs2
-     *           │   │
-     *           │   └── PrintableComponent     // font; pco; spax (цвет шрифта)
-     *           │       ├── DataFileRecordComponent // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
-     *           │       │                      // maxval_y; maxval_x; val_x; val_y; bco2; pco2
-     *           │       │                      // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
-     *           │       │
-     *           │       │   ├── DataRecord       //  path; lenth(RO); maxval(RO); val(RO); length; format; mode;
-     *           │       │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
-     *           │       │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
-     *           │       │
-     *           │       ├── ListSelectTextComponent // path <path_m>; text<txt_maxl>, val; ch; dis; hig
-     *           │       │   │
-     *           │       │   ├── ComboBox       //  ycen; up; pco3; bco1; pco1; dir; qty; vvs0; bco2; pco2;
-     *           │       │   │                  // down; mode; wid; vvs1; xcen
-     *           │       │   └── TextSelect     // pco2; pco1(line); txt(RO);
-     *           │       │
-     *           │       └── MultilineComponent // spay; isbr; ycen; xcen;
-     *           │           │
-     *           │           ├── TextComponent      // txt <txt_maxl>
-     *           │           │   ├── SLText         // left; ch; val_y<maxval_y>; ycen = delete
-     *           │           │   ├── Text           // key; pw
-     *           │           │   ├── ScrollText     // key; dir; dis; tim; en
-     *           │           │   │
-     *           │           │   └── ButtonLikeComponent // bco2(pic2,picc2); pco2
-     *           │           │        ├── Button
-     *           │           │        └── DualStateButton // val;
-     *           │           │
-     *           │           └── NumericComponent // key; val; format;
-     *           │               ├── Number           // length
-     *           │               └── XFloat           // vvs0; vvs1;
-     *           │
-     *           └── SelectionComponent         // bco; pco; val — в enum у Checkbox/Radio нет sta и font
-     *               ├── Checkbox               // —
-     *               ├── Radio                  // —
-     *               └── ToggleSwitch           // bco2; pco2; pco1(font color); font; dis; txt(txt_maxl=24)
+     *           └── BGComponent<STYLE = CROP, COLOR, IMAGE, TRANSPARENT>  //templated structure bg: bg.color / bg.image / bg.cropimage / bg
+     *               │
+     *               ├── QRCode<COLOR>          // pco; dis; txt; txt_maxl
+     *               ├── Picture<IMAGE>
+     *               ├── CropPicture<CROP_IMAGE>
+     *               │
+     *               ├── DrawableColoredComponent 
+     *               │   ├── Waveform<chNum>         // {gdc; gdw; gdh;} -> grid.color, grid.width, grid.height; pco0…pco3-> ch[0..3].color (number depends from chNum); dis; wid; hig; {add, addt - add values to form.}
+     *               │   ├── ProgressBar<COLOR, IMAGE>  // val; dis(sta=color); pco(ppic)
+     *               │   ├── Slider<CROP, COLOR, IMAGE> // wid; hig; bco1(pic1,picc1); pco; val -> value; {maxval; minval;} -> value.min; value.max ch
+     *               │   └── Gauge                      // bco(picc,pic); val -> value; format; up; down; left;
+     *               │                                  // pco; pco2; hig; vvs0; vvs1; vvs2
+     *               │
+     *               ├── PrintableComponent          // {font; pco; spax} -> font.id; font.color; font.spacing
+     *               │   ├── DataFileRecordComponent // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
+     *               │   │   │                       // maxval_y; maxval_x; val_x; val_y; bco2; pco2
+     *               │   │   │                       // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
+     *               │   │   │
+     *               │   │   ├── DataRecord       //  path; lenth(RO); maxval(RO); val(RO); length; format; mode;
+     *               │   │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
+     *               │   │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
+     *               │   │
+     *               │   ├── ListSelectTextComponent // path <path_m>; text<txt_maxl>, val; ch; dis; hig
+     *               │   │   │
+     *               │   │   ├── ComboBox       //  ycen; up; pco3; bco1; pco1; dir; qty; vvs0; bco2; pco2;
+     *               │   │   │                  // down; mode; wid; vvs1; xcen
+     *               │   │   └── TextSelect     // pco2; pco1(line); txt(RO);
+     *               │   │
+     *               │   └── MultilineComponent // spay; isbr; ycen; xcen;
+     *               │       │
+     *               │       ├── TextComponent      // txt <txt_maxl>
+     *               │       │   ├── SLText         // left; ch; val_y<maxval_y>; ycen = delete
+     *               │       │   ├── Text           // key; pw
+     *               │       │   ├── ScrollText     // key; dir; dis; tim; en
+     *               │       │   │
+     *               │       │   └── ButtonLikeComponent // bco2(pic2,picc2); pco2
+     *               │       │        ├── Button
+     *               │       │        └── DualStateButton // val;
+     *               │       │
+     *               │       └── NumericComponent // key; val; format;
+     *               │           ├── Number           // length
+     *               │           └── XFloat           // vvs0; vvs1;
+     *               │
+     *               └── SelectionComponent<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
+     *                   ├── Checkbox               // —
+     *                   ├── Radio                  // —
+     *                   └── ToggleSwitch           // bco2; pco2; pco1(font color); font; dis; txt(txt_maxl=24)
      *
      * Пояснения:
      *
