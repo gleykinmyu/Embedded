@@ -31,17 +31,6 @@ namespace nex {
     /**
      * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `ID()` ↔ id).
      *
-     * Общие атрибуты NIS для большинства виджетов на странице (полный набор зависит от типа и серии):
-     * - Геометрия: x, y, w, h — RW
-     * - Включение / прозрачность: en, aph — RW
-     * - Идентификация и область имени: type, id, objname, vscope — всегда RO (как в Attribute Pane)
-     * - drag, ustype — зависят от типа и серии; не у всех объектов (ветки GeometryComponent / VisualBaseComponent — в конце файла)
-     * - sta — одно имя в NIS, но смысл и допустимые коды не едины для всех типов: у большинства видимых виджетов это
-     *   стиль заливки/фона (в инструкции xstr для области текста: 0 crop, 1 solid, 2 image, 3 none — NIS); у `va` (Variable) —
-     *   атрибут `sta` выбирает Number vs String на этапе дизайна (Editor Guide); в C++ — классы NumericVariable / StringVariable; у Waveform и др. — своя таблица (см. Attribute Pane / NIS по типу).
-     * - vscope (RO): область имени в проекте Nextion (NIS: `b[id].…` vs `p[page].b[id].…`),
-     *   не «видимость на экране» (для показа/скрытия — en, vis, aph и т.д.); см. `nex::prop::Prop::Vscope` в nexPropLiterals.hpp
-     *
      * В `nexWidgets.hpp` у наследников перечислены только атрибуты, характерные для данного типа виджета.
      */
     class Component {
@@ -89,6 +78,8 @@ namespace nex {
         Component(Page& owner, const char* compName, Type compType, uint8_t id = 0) noexcept;
 
         constexpr uint8_t ID() const noexcept { return _ID; }
+        constexpr bool isGlobal() const noexcept { return false; }
+        
         virtual void onTouch(const msg::TouchCompEvent& e);
 
     protected:

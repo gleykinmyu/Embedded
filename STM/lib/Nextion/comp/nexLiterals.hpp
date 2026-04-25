@@ -2,12 +2,8 @@
 
 #include <cstdint>
 
-#include "nexColor.hpp"
-
 namespace nex {
 namespace cmd {
-
-static_assert(sizeof(nex::Color) == 2u);
 
 // Целые параметры команд — NIS integer; диапазон и знак по смыслу команды (координаты fill обычно 0…размер-1, не полный int32).
 
@@ -78,19 +74,18 @@ inline constexpr char do_events[] = "doevents";  // void doevents(void);
 } // namespace cmd
 
 namespace prop {
-
-    static_assert(sizeof(nex::Color) == 2u);
-    
+ 
     /**
      * Имена атрибутов Nextion (NIS, без «.»). Типы в `//` — ориентир для MCU; по UART число всё равно строка (десятичная или `0x…` по NIS).
      * Реальный знак и диапазон задаёт компонент и min/max в редакторе: не везде допускаются отрицательные значения и не везде есть смысл в величине > 65535.
      * NumericVariable (`va`, sta=Number) — 32-bit signed (Editor Guide); у слайдера `.val`/`.minval`/`.maxval` в пользовательской доке часто 0…65535; id картинок/шрифтов и координаты пикселей обычно укладываются в uint16_t.
      */
-    struct PropNames {
+    struct AttributeNames {
         static constexpr const char text[] = "txt";  // void txt(const char *utf8);
         static constexpr const char value[] = "val";  // int32_t v: NumericVariable(va) число — 32-bit signed (Editor Guide); иначе целое, диапазон по компоненту (слайдер часто 0…65535). Строка — StringVariable: .txt; covx/cov между .txt↔.val.
         static constexpr const char font_color[] = "pco";  // void pco(nex::Color c);
         static constexpr const char bg_color[] = "bco";  // void bco(nex::Color c);
+        static constexpr const char crop_picture[] = "picc";  // void picc(uint16_t id);
         static constexpr const char picture[] = "pic";  // void pic(uint16_t id);
         static constexpr const char picture_alt[] = "pic2";  // void pic2(uint16_t id);
         static constexpr const char text_center_x[] = "xcen";  // void xcen(bool centered);
@@ -107,16 +102,6 @@ namespace prop {
         static constexpr const char pos_x[] = "x";  // void x(uint16_t px /* на экране ≥0 */);
         static constexpr const char pos_y[] = "y";  // void y(uint16_t px);
     
-        /**
-         * Область видимости имени компонента/переменной в проекте Nextion (NIS): как разрешается путь
-         * `b[id].attr` (локально на странице) vs `p[page].b[id].attr` (глобально по страницам).
-         * Не относится к «видимости на экране» — для показа/скрытия используются другие атрибуты (`vis`, `aph`, …).
-         */
-        enum class Vscope : uint8_t {
-            Private = 0,
-            Global  = 1,
-            Static  = 2,
-        };
         static constexpr const char var_scope[] = "vscope";  // void vscope(Vscope scope); см. enum Vscope
     
         static constexpr const char touch_type[] = "ustype";  // void ustype(uint8_t code);
@@ -132,13 +117,10 @@ namespace prop {
         struct Textbox {
             static constexpr const char password_mask[] = "pw";  // void pw(bool masked);
             static constexpr const char text_len[] = "length";  // void length(uint16_t max_chars /* лимит; не везде у Text */);
-            /** Лимит длины `.txt`: в Editor — txt-maxl; ITEAD User Guide (Text, Button). */
             static constexpr const char text_max_len[] = "txt_maxl";  // void txt_maxl(uint16_t n);
         };
     
-        struct Button {
-            static constexpr const char crop_bg_pic[] = "picc";  // void picc(uint16_t id);
-        };
+
     
         struct Progress {
             static constexpr const char fill_dir[] = "dir";  // void dir(uint8_t code);

@@ -3,34 +3,10 @@
 #include <array>
 #include <cstdint>
 
-#include "nexColor.hpp"
+#include "nexAttribute.hpp"
 #include "nexComponentBase.hpp"
 
 namespace nex {
-
-/**
- * Атрибут `sta` (фон / заливка) в NIS для ветки BG: crop | color | image | transparent.
- * Коды 0…3 совместимы с xstr / типичным Attribute Pane для текстовых виджетов.
- */
-enum class Style : uint8_t {
-    CropImage    = 0,
-    Color        = 1,
-    Image        = 2,
-    Transparent  = 3,
-};
-
-/** `sta` у ProgressBar: только color | image (NIS). */
-enum class ProgressFillStyle : uint8_t {
-    Color = 0,
-    Image = 1,
-};
-
-/** Идентификатор ресурса картинки/страницы в NIS (`pic`, `pic2`, `cpic`, …). */
-using PicId = uint16_t;
-
-/** Идентификатор шрифта в NIS (`font`). */
-using FontId = uint16_t;
-
 // --- Прямые наследники Component (без x,y,w,h на странице) --------------------
 
 /** tim, en */
@@ -100,12 +76,12 @@ protected:
  * Фон (`bco`, `pic`, `picc`) в зависимости от `Style` как параметра шаблона (compile-time `sta`).
  * Значение для UART: `static_cast<uint8_t>(style())` при совпадении с NIS по серии.
  */
-template<Style S>
+template<BGStyle S>
 class BGComponent : public VisualComponent {
 public:
-    static constexpr Style kStyle = S;
+    static constexpr BGStyle kStyle = S;
 
-    static constexpr Style style() noexcept { return S; }
+    static constexpr BGStyle style() noexcept { return S; }
 
     Color bco{};   /**< Фон / цвет заливки при соответствующем `sta`. */
     PicId pic{};   /**< Фоновая картинка (`pic` / bpic и т.п. по типу). */
@@ -117,7 +93,7 @@ protected:
 };
 
 /** pco; dis; txt; txt_maxl (данные QR) */
-class QRCode : public BGComponent<Style::Color> {
+class QRCode : public BGComponent<BGStyle::Color> {
 public:
     Color pco{}; /**< Цвет модулей QR (`pco`). */
     uint16_t dis{};
@@ -125,27 +101,27 @@ public:
     uint16_t txt_maxl{};
 
     QRCode(Page& owner, const char* name, uint8_t id = 0)
-        : BGComponent<Style::Color>(owner, name, Component::Type::QRCode, id) {}
+        : BGComponent<BGStyle::Color>(owner, name, Component::Type::QRCode, id) {}
 };
 
 /** pic — поле `pic` в BG; `Style::Image`. */
-class Picture : public BGComponent<Style::Image> {
+class Picture : public BGComponent<BGStyle::Image> {
 public:
     Picture(Page& owner, const char* name, uint8_t id = 0)
-        : BGComponent<Style::Image>(owner, name, Component::Type::Picture, id) {}
+        : BGComponent<BGStyle::Image>(owner, name, Component::Type::Picture, id) {}
 };
 
 /** cpic — `Style::CropImage`. */
-class CropPicture : public BGComponent<Style::CropImage> {
+class CropPicture : public BGComponent<BGStyle::CropImage> {
 public:
     PicId cpic{}; /**< Окно кропа по ресурсу (`cpic`). */
 
     CropPicture(Page& owner, const char* name, uint8_t id = 0)
-        : BGComponent<Style::CropImage>(owner, name, Component::Type::CropPicture, id) {}
+        : BGComponent<BGStyle::CropImage>(owner, name, Component::Type::CropPicture, id) {}
 };
 
 /** Общая ветка drawable + цветовые каналы (дельта к BG — у листьев). */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class DrawableColoredComponent : public BGComponent<S> {
 protected:
     explicit DrawableColoredComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
@@ -153,7 +129,7 @@ protected:
 };
 
 /** Waveform: ch, gdc, gdw, gdh, pco0…3, dis, wid, hig */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Waveform : public DrawableColoredComponent<S> {
 public:
     uint8_t ch{};
@@ -173,10 +149,9 @@ public:
  * ProgressBar: val; dis (при fill=color); фон `bco`/`bpic`, передний план полосы `pco`/`ppic`
  * (цветовой и картинный режимы — `pb_sta`). У основного `sta` в NIS допустимы только Color и Image.
  */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ProgressBar : public DrawableColoredComponent<S> {
 public:
-    ProgressFillStyle pb_sta{ProgressFillStyle::Color};
     uint32_t val{};
     uint16_t dis{};
     Color pco{}; /**< Цвет заполнения полосы при `pb_sta == Color`. */
@@ -188,7 +163,7 @@ public:
 };
 
 /** Slider: wid, hig, bco1(pic1,picc1), pco, val, maxval, minval, ch */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Slider : public DrawableColoredComponent<S> {
 public:
     uint16_t wid{};
@@ -206,7 +181,7 @@ public:
 };
 
 /** Gauge: val, format, up, down, left, pco, pco2, hig, vvs0…2, bco(picc,pic) */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Gauge : public DrawableColoredComponent<S> {
 public:
     int32_t val{};
@@ -226,7 +201,7 @@ public:
 };
 
 /** font; pco; spax */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class PrintableComponent : public BGComponent<S> {
 public:
     FontId font{};
@@ -242,7 +217,7 @@ protected:
  * DataFileRecordComponent — поля таблицы/файлов (DataRecord, FileBrowser);
  * RO в NIS помечены в комментариях.
  */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class DataFileRecordComponent : public PrintableComponent<S> {
 public:
     std::array<char, 256> txt{};
@@ -266,7 +241,7 @@ protected:
 };
 
 /** path; path_m(RO); val; ch; dis; hig */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ListSelectTextComponent : public PrintableComponent<S> {
 public:
     std::array<char, 512> path{};
@@ -282,7 +257,7 @@ protected:
 };
 
 /** ComboBox — дельта к ListSelectTextComponent (NIS). */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ComboBox : public ListSelectTextComponent<S> {
 public:
     bool ycen{};
@@ -309,7 +284,7 @@ public:
 };
 
 /** spay; isbr; ycen; xcen */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class MultilineComponent : public PrintableComponent<S> {
 public:
     int16_t spay{};
@@ -323,7 +298,7 @@ protected:
 };
 
 /** txt; txt_maxl */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class TextComponent : public MultilineComponent<S> {
 public:
     std::array<char, 256> txt{};
@@ -335,7 +310,7 @@ protected:
 };
 
 /** key; pw */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Text : public TextComponent<S> {
 public:
     bool key{};
@@ -346,7 +321,7 @@ public:
 };
 
 /** key; dir; dis; tim; en */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ScrollText : public TextComponent<S> {
 public:
     bool key{};
@@ -360,7 +335,7 @@ public:
 };
 
 /** bco2(pic2,picc2); pco2 */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ButtonLikeComponent : public TextComponent<S> {
 public:
     Color bco2{};
@@ -373,7 +348,7 @@ protected:
         : TextComponent<S>(owner, objectName, componentType, id) {}
 };
 
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Button : public ButtonLikeComponent<S> {
 public:
     Button(Page& owner, const char* name, uint8_t id = 0)
@@ -381,7 +356,7 @@ public:
 };
 
 /** val — состояние dual-state */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class DualStateButton : public ButtonLikeComponent<S> {
 public:
     uint32_t val{}; /**< 0/1 или диапазон по проекту (`val`). */
@@ -391,7 +366,7 @@ public:
 };
 
 /** key; val; format */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class NumericComponent : public MultilineComponent<S> {
 public:
     bool key{};
@@ -404,7 +379,7 @@ protected:
 };
 
 /** length (`spay` — у MultilineComponent / Numeric). */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Number : public NumericComponent<S> {
 public:
     uint16_t length{}; /**< Лимит символов (`length`). */
@@ -414,7 +389,7 @@ public:
 };
 
 /** vvs0; vvs1 (`spay` — у MultilineComponent). */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class XFloat : public NumericComponent<S> {
 public:
     std::array<char, 24> vvs0{};
@@ -428,7 +403,7 @@ public:
  * pco, val; фон — `bco` (BGComponent). В NIS у Checkbox/Radio нет отдельного `sta`/font;
  * `Style` задаётся шаблоном для единообразия с BG-веткой (по умолчанию Color).
  */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class SelectionComponent : public BGComponent<S> {
 public:
     Color pco{};
@@ -439,14 +414,14 @@ protected:
         : BGComponent<S>(owner, objectName, componentType, id) {}
 };
 
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Checkbox : public SelectionComponent<S> {
 public:
     Checkbox(Page& owner, const char* name, uint8_t id = 0)
         : SelectionComponent<S>(owner, name, Component::Type::Checkbox, id) {}
 };
 
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class Radio : public SelectionComponent<S> {
 public:
     Radio(Page& owner, const char* name, uint8_t id = 0)
@@ -454,7 +429,7 @@ public:
 };
 
 /** ToggleSwitch — дельта к Selection (NIS). */
-template<Style S = Style::Color>
+template<BGStyle S = BGStyle::Color>
 class ToggleSwitch : public SelectionComponent<S> {
 public:
     Color bco2{};
