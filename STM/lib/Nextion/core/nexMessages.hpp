@@ -6,6 +6,7 @@
 namespace nex {
     namespace msg {
 
+        /** Неразобранное или пустое сообщение (заголовок неизвестен или буфер не инициализирован). */
         struct Unknown {
             enum class Reason : uint8_t {
                 /** Сообщение ещё не заполнялось (`Message{}`, до `MessageMaker`). */
@@ -16,6 +17,9 @@ namespace nex {
             uint8_t header = 0;
         };
 
+        /**
+         * Ответ **status** — результат выполнения инструкции (байт кода 0x00… из протокола Nextion).
+         */
         struct StatusResponse {
             enum class Code : uint8_t {
                 InvalidInstruction   = 0x00,
@@ -40,11 +44,13 @@ namespace nex {
             Code status;
         };
 
+        /** Ответ с числом (заголовок **0x71**, например после `get` числового атрибута). */
         struct NumericResponse {
             constexpr static uint8_t Header = 0x71;
             int32_t value;
         };
 
+        /** Ответ со строкой (заголовок **0x70** — текстовое значение атрибута). */
         struct StringResponse {
             constexpr static uint8_t Header = 0x70;
             /** Копия полезной нагрузки кадра; не зависит от времени жизни `InputFrame`. */
@@ -59,6 +65,9 @@ namespace nex {
             Press = 0x01
         };
 
+        /**
+         * Событие касания по **comp**onent — страница, id компонента, press/release (кадр **0x65**).
+         */
         struct TouchCompEvent {
             constexpr static uint8_t Header = 0x65;
             uint8_t page_id;
@@ -71,6 +80,9 @@ namespace nex {
             Sleep = 0x68,
         };
 
+        /**
+         * Событие касания по координатам X и Y (пробуждение или сон; заголовки 0x67 и 0x68).
+         */
         struct TouchXYEvent {
             constexpr static uint8_t Header = 0x67;
             TouchPlane plane;
@@ -79,11 +91,15 @@ namespace nex {
             TouchState state;
         };
 
+        /** Смена страницы на дисплее (заголовок **0x66**, индекс страницы). */
         struct PageEvent {
             constexpr static uint8_t Header = 0x66;
             uint8_t page_id;
         };
 
+        /**
+         * Системное событие дисплея (переполнение буфера, сон, готовность, SD-обновление, **T**ransparent **D**ata и т.д.).
+         */
         struct SystemEvent {
             enum class Code : uint8_t {
                 SerialBufferOverflow = 0x24,
@@ -102,6 +118,7 @@ namespace nex {
 
     } // namespace msg
 
+    /** Разобранное входящее сообщение дисплея — один из типов в `msg::`. */
     using Message = std::variant<msg::Unknown,
         msg::StatusResponse,
         msg::NumericResponse,

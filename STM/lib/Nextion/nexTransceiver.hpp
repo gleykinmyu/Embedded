@@ -6,6 +6,9 @@
 #include "ibyte_stream.hpp"
 
 namespace nex {
+    /**
+     * **Rx** **Framer** — потоковый разбор UART: накопление байт до полного кадра (заголовок Nextion + полезная нагрузка + `0xFF×3`).
+     */
     class RxFramer {
         public:
             enum class State : uint8_t { WaitHeader, Collect, WaitTerm };
@@ -23,7 +26,7 @@ namespace nex {
         };
 
         /**
-         * Неблокирующая отправка `TxFrame` в `IByteStream`: полезная нагрузка, затем 0xFF×3.
+         * **Tx** **Framer** — неблокирующая отправка `TxFrame` в `IByteStream`: полезная нагрузка, затем `0xFF×3`.
          * В `Idle` заполняют `frame`; `tick` при `Idle && frame.length > 0` переходит в `Payload`.
          * `isIdle()` — `Idle` и пустой буфер (`length == 0`), чтобы не перезаписать кадр до конца передачи.
          */
@@ -50,8 +53,8 @@ namespace nex {
     
     
         /**
-         * Низкоуровневый обмен по UART с протоколом Nextion: `send`, `transmit`, `receive`.
-         * Сводный `update` по иерархии выше (сессия / менеджер).
+         * **Transceiver** — приёмник+передатчик: UART с протоколом Nextion (`pushCommand` / `transmit` / `receive`).
+         * Объединяет `RxFramer` и `TxFramer`; верхний уровень может вызывать периодический `update`.
          */
         class Transceiver {
         public:

@@ -5,6 +5,7 @@
 // --- Кадр UART и разбор потока (до семантики сообщений Nextion) ---
 namespace nex {
 
+    /** Физический уровень кадра: байт-терминатор и массив `0xFF×3` (NIS §16). */
     namespace Physical {
         static constexpr uint8_t TERM_BYTE = 0xFF;
         static constexpr uint16_t TERM_COUNT = 3;
@@ -12,6 +13,9 @@ namespace nex {
         inline constexpr uint8_t FRAME_TERMINATORS[TERM_COUNT] = { TERM_BYTE, TERM_BYTE, TERM_BYTE };
     }
 
+    /**
+     * **R**eceive **frame** — один принятый кадр от дисплея: заголовок + полезная нагрузка (до `MAX_PAYLOAD`).
+     */
     struct RxFrame {
         static constexpr uint16_t MAX_PAYLOAD = 64;
         uint8_t header = 0;
@@ -20,8 +24,8 @@ namespace nex {
     };
 
     /**
-     * Исходящий кадр: `length` — сначала только полезная нагрузка (`serialize` в пределах `MAX_PAYLOAD`);
-     * перед отправкой `TxFramer` дописывает `0xFF×3` в `payload[length..]`, тогда `length` включает терминаторы.
+     * **T**ransmit **frame** — буфер исходящего кадра к дисплею.
+     * Сначала `length` — только полезная нагрузка (`serialize` ≤ `MAX_PAYLOAD`); `TxFramer` дописывает `0xFF×3`, после чего `length` может включать терминаторы.
      */
     struct TxFrame {
         static constexpr uint16_t MAX_PAYLOAD = 61;

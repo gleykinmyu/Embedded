@@ -136,7 +136,7 @@ using FontId = uint16_t;
  * Чтение только через `value()` / `const` `value()` (ссылка на зеркало; копию при необходимости делайте явно).
  * Запись: `attr = v` (`v` — тип `T` или совместимый).
  *
- * `pushAssign(tx)` — сформировать кадр `objPath.Name=<десятичное int32>` и вызвать `Transceiver::pushCommand`.
+ * `pushAssign(tx)` — сформировать кадр `objPath.Name=<десятичное int32>` (`cmd::assign::Numeric`) и вызвать `Transceiver::pushCommand`.
  * Префикс объекта: при `!component().isGlobal()` — `objname`; при `isGlobal()` — `p<Page::ID>.objname` (доступ с других страниц в NIS).
  */
 template<const char* Name, typename T>
@@ -185,7 +185,7 @@ public:
     }
 
     /**
-     * Отправить текущее зеркальное значение как присвоение целого атрибута NIS (`AssinInt32`).
+     * Отправить текущее зеркальное значение как присвоение целого атрибута NIS (`cmd::assign::Numeric`).
      * Поддерживаются целые типы и `Color` (в линию уходит `raw` как uint32 ≤ 65535).
      * @return false — тип не поддержан, путь не влез в буфер, `tx` занят или ошибка сериализации/записи.
      */
@@ -193,6 +193,12 @@ public:
         char path[kObjPathCap];
         if (!fillObjectPath(path))
             return false;
+        char lhs[kObjPathCap];
+        {
+            const int w = std::snprintf(lhs, sizeof(lhs), "%s.%s", path, Name);
+            if (w <= 0 || static_cast<size_t>(w) >= sizeof(lhs))
+                return false;
+        }
 
         int32_t wired = 0;
         bool supported = true;
@@ -219,7 +225,7 @@ public:
         if (!supported)
             return false;
 
-        const cmd::AssinInt32<Name> cmd(path, wired);
+        const cmd::assign::Numeric cmd(cmd::TargetAttr(lhs), wired);
         return tx.pushCommand(cmd);
     }
 
