@@ -15,41 +15,32 @@ namespace nex {
 
         /** Записать инструкцию в `tx.payload`; при успехе `tx.length` — число байт полезной нагрузки (терминаторы не входят). */
         virtual bool serialize(TxFrame& tx) const noexcept = 0;
-
-    protected:
-        /** Десятичная ASCII в хвост `tx` (с `tx.length`), без ведущих нулей; не выходит за `TxFrame::MAX_PAYLOAD`. */
-        static bool appendUint32(TxFrame& tx, uint32_t value) noexcept;
-        static bool appendInt32(TxFrame& tx, int32_t value) noexcept;
-        static bool appendComma(TxFrame& tx) noexcept;
     };
 
 namespace cmd {
-
-
-
     /**
-     * **Target** + **Component** — адрес объекта на странице **без имени атрибута** (для `ref`, `vis`, `click`, …).
+     * **Target Component** — адрес объекта на странице **без имени атрибута** (для `ref`, `vis`, `click`, …).
      * `page` — префикс страницы в NIS (часто `p0`); `name` — `objname` на текущей странице, если `page == nullptr`.
      */
-    struct TargetComponent {
+    struct TargetComp {
         const char* page = nullptr;
         const char* name = nullptr;
-        TargetComponent() noexcept : page(nullptr), name(nullptr) {}
-        TargetComponent(const char* pageName, const char* compName) noexcept : page(pageName), name(compName) {}
-        TargetComponent(const char* compName) noexcept : page(nullptr), name(compName) {}
-        TargetComponent(const TargetComponent& other) noexcept : page(other.page), name(other.name) {}
+        TargetComp() noexcept : page(nullptr), name(nullptr) {}
+        TargetComp(const char* pageName, const char* compName) noexcept : page(pageName), name(compName) {}
+        TargetComp(const char* compName) noexcept : page(nullptr), name(compName) {}
+        TargetComp(const TargetComp& other) noexcept : page(other.page), name(other.name) {}
     };
 
     /**
-     * **Target** + **Attribute** — полный адрес значения в NIS: компонент (`TargetComponent`) и имя атрибута (`txt`, `val`, …)
+     * **Target Attribute** — полный адрес значения в NIS: компонент (`TargetComp`) и имя атрибута (`txt`, `val`, …)
      * или одна строка-лексема целиком (`sys0`, `p0.t0.val`).
      */
     struct TargetAttr {
-        TargetComponent comp = {};
+        TargetComp comp = {};
         const char* attr   = nullptr;
 
         TargetAttr() noexcept {}
-        TargetAttr(const TargetComponent& component, const char* attr) noexcept : comp(component), attr(attr) {}
+        TargetAttr(const TargetComp& component, const char* attr) noexcept : comp(component), attr(attr) {}
         TargetAttr(const char* pageName, const char* compName, const char* attr) noexcept : comp(pageName, compName), attr(attr) {}
         TargetAttr(const char* compName, const char* attr) noexcept : comp(nullptr, compName), attr(attr) {}
         /** Вся левая часть одной строкой: `sys0`, `t0.txt`, `p0.t0.val` (поля `comp` пустые). */
@@ -57,16 +48,9 @@ namespace cmd {
         TargetAttr(const TargetAttr& other) noexcept : comp(other.comp), attr(other.attr) {}
     };
 
-/**
- * Собрать в `tx` лексему **атрибута**: `attr` | `name.attr` | `page.name.attr` (`TargetComponent` + имя атрибута).
- */
-bool appendTargetLexeme(TxFrame& tx, const TargetAttr& t) noexcept;
+} // namespace cmd
 
-/**
- * Собрать в `tx` лексему **компонента** (без `.attr`): `name` | `page.name` — для `ref`, `vis`, `click`, `move`, `setlayer`, `cfgpio`.
- */
-bool appendTargetComponentLexeme(TxFrame& tx, const TargetComponent& c) noexcept;
-
+namespace cmd {
 /**
  * NIS §2 — присваивания по UART (`target=…`, без слова set).
  * Порядок в файле: сначала **текстовые** атрибуты (`.txt` и совместимые), затем **числовые**.
@@ -79,7 +63,7 @@ namespace assign {
 
     /**
      * **Text** assign — присвоение строки (NIS §2.1): `…="<text>"` к строковому атрибуту (`txt` и т.д.).
-     * Экранирование `\r`, `\"`, `\\` — §1.11 (сериализация позже).
+     * Экранирование `\r`, `\"`, `\\` — §1.11.
      */
     class Text final : public Command {
         TargetAttr _target;
@@ -144,26 +128,28 @@ namespace assign {
 
 } // namespace assign
 
+} // namespace cmd
+
+namespace cmd {
 /**
  * NIS §3 — operational commands (`команда параметры`, без `{}` / if/while/for по UART).
  * Имена классов — глагол NIS; параметры и диапазоны см. [instruction-set](https://nextion.tech/instruction-set/).
  */
 namespace oper {
 
-    // --- Страница, обновление, запрос значения на UART ---
     /** **Page** — переключить активную страницу по индексу (NIS `page`). */
-    class Page final : public Command {
+    class ChangePage final : public Command {
         uint8_t _pageID;
 
     public:
-        explicit Page(uint8_t pageID) noexcept : _pageID(pageID) {}
+        explicit ChangePage(uint8_t pageID) noexcept : _pageID(pageID) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
      * **Send** **me** — запросить у дисплея номер текущей страницы по UART (NIS `sendme`); ответ — кадр с id страницы.
      */
-    class SendMe final : public Command {
+    class GetCurrentPageID final : public Command {
     public:
         bool serialize(TxFrame& tx) const noexcept override;
     };
@@ -172,10 +158,10 @@ namespace oper {
      * **Ref**resh — принудительно перерисовать компонент (NIS `ref`), например после изменения данных без смены страницы.
      */
     class Refresh final : public Command {
-        TargetComponent _component;
+        TargetComp _component;
 
     public:
-        explicit Refresh(const TargetComponent& component) noexcept : _component(component) {}
+        explicit Refresh(const TargetComp& component) noexcept : _component(component) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -195,6 +181,52 @@ namespace oper {
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
+ // --- Касание, видимость, симуляция press/release ---
+    /**
+     * **Touch** **j** — калибровка сенсора (NIS `touch_j`); после команды дисплей ждёт касаний по углам.
+     */
+    class TouchJ final : public Command {
+    public:
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Vis**ibility — показать/скрыть компонент (NIS `vis`, 0/1).
+     */
+    class Visible final : public Command {
+        TargetComp _component;
+        bool _state;
+
+    public:
+        Visible(const TargetComp& component, bool state) noexcept : _component(component), _state(state) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Touch switch** — включить/выключить реакцию компонента на касания (NIS `tsw`).
+     */
+    class TouchSwitch final : public Command {
+        TargetComp _component;
+        bool _enabled;
+
+    public:
+        TouchSwitch(const TargetComp& component, bool enabled) noexcept : _component(component), _enabled(enabled) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Click** — программно сгенерировать нажатие/отпускание (NIS `click`, press/release).
+     */
+    class Click final : public Command {
+        TargetComp _component;
+        uint8_t _press1Release0;
+
+    public:
+        Click(const TargetComp& component, uint8_t press1Release0) noexcept : _component(component), _press1Release0(press1Release0) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+
     /**
      * **Get** — запросить значение атрибута/переменной; дисплей отправит ответ по UART (NIS `get`).
      */
@@ -211,19 +243,6 @@ namespace oper {
     };
 
     // --- Конвертация и строки ---
-    /**
-     * **Cov**ert — преобразование число↔строка с фиксированной длиной поля (NIS `cov`, без формата).
-     */
-    class Convert final : public Command {
-        TargetAttr _src;
-        TargetAttr _dst;
-        int32_t _length;
-
-    public:
-        Convert(const TargetAttr& src, const TargetAttr& dst, int32_t length) noexcept : _src(src), _dst(dst), _length(length) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
     /**
      * **Covx** (NIS, от *convert* + суффикс `x`) — преобразование число↔строка с параметрами длины и формата (`covx`).
      */
@@ -242,39 +261,36 @@ namespace oper {
     /**
      * **Substr**ing — вырезать подстроку из текста в другой атрибут (NIS `substr`).
      */
-    class Substr final : public Command {
+    class SubStr final : public Command {
         TargetAttr _fromTxt;
         TargetAttr _toTxt;
         uint32_t _start;
         uint32_t _count;
 
     public:
-        Substr(const TargetAttr& fromTxt, const TargetAttr& toTxt, uint32_t start, uint32_t count) noexcept
+        SubStr(const TargetAttr& fromTxt, const TargetAttr& toTxt, uint32_t start, uint32_t count) noexcept
             : _fromTxt(fromTxt), _toTxt(toTxt), _start(start), _count(count) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **Str**ing **len**gth — записать в числовой атрибут длину строки в символах (NIS `strlen`).
+     * Длина текстового атрибута в числовой: **символы** (NIS `strlen`) или **байты UTF-8** (NIS `btlen`).
      */
     class Strlen final : public Command {
+    public:
+        enum class Unit : uint8_t {
+            Chars,     /**< `strlen` — длина в символах */
+            Bytes, /**< `btlen` — длина в байтах */
+        };
+
+    private:
+        Unit _unit;
         TargetAttr _txtAttr;
         TargetAttr _dstNumAttr;
 
     public:
-        Strlen(const TargetAttr& txtAttr, const TargetAttr& dstNumAttr) noexcept : _txtAttr(txtAttr), _dstNumAttr(dstNumAttr) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **B**ytes **len**gth — длина строки в байтах UTF-8 (NIS `btlen`).
-     */
-    class Btlen final : public Command {
-        TargetAttr _txtAttr;
-        TargetAttr _dstNumAttr;
-
-    public:
-        Btlen(const TargetAttr& txtAttr, const TargetAttr& dstNumAttr) noexcept : _txtAttr(txtAttr), _dstNumAttr(dstNumAttr) {}
+        Strlen(const TargetAttr& txtAttr, const TargetAttr& dstNumAttr, Unit unit = Unit::Bytes) noexcept
+            : _unit(unit), _txtAttr(txtAttr), _dstNumAttr(dstNumAttr) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -293,50 +309,6 @@ namespace oper {
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
-    // --- Касание, видимость, симуляция press/release ---
-    /**
-     * **Touch** **j** — калибровка сенсора (NIS `touch_j`); после команды дисплей ждёт касаний по углам.
-     */
-    class TouchJ final : public Command {
-    public:
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Vis**ibility — показать/скрыть компонент (NIS `vis`, 0/1).
-     */
-    class Vis final : public Command {
-        TargetComponent _component;
-        uint8_t _state;
-
-    public:
-        Vis(const TargetComponent& component, uint8_t state) noexcept : _component(component), _state(state) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **T**ouch **sw**itch — включить/выключить реакцию компонента на касания (NIS `tsw`).
-     */
-    class Tsw final : public Command {
-        TargetComponent _component;
-        uint8_t _enabled;
-
-    public:
-        Tsw(const TargetComponent& component, uint8_t enabled01) noexcept : _component(component), _enabled(enabled01) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Click** — программно сгенерировать нажатие/отпускание (NIS `click`, press/release).
-     */
-    class Click final : public Command {
-        TargetComponent _component;
-        uint8_t _press1Release0;
-
-    public:
-        Click(const TargetComponent& component, uint8_t press1Release0) noexcept : _component(component), _press1Release0(press1Release0) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
 
     // --- Случайные числа ---
     /**
@@ -409,50 +381,62 @@ namespace oper {
 
     // --- EEPROM ---
     /**
-     * **W**rite **ep**rom **o**peration — записать значение переменной/константы во встроенную EEPROM (NIS `wepo`).
+     * EEPROM ↔ атрибут или переменная на дисплее (NIS `wepo` / `repo`), не transparent mode.
      */
-    class Wepo final : public Command {
-        TargetAttr _source;
+    class EepromVariable final : public Command {
+    public:
+        enum class Op : uint8_t {
+            Write, /**< `wepo` — значение переменной/константы в EEPROM */
+            Read,  /**< `repo` — из EEPROM в переменную */
+        };
+
+    private:
+        Op _op;
+        TargetAttr _target;
         uint32_t _addr;
 
+        EepromVariable(Op op, const TargetAttr& target, uint32_t addr) noexcept : _op(op), _target(target), _addr(addr) {}
+
     public:
-        Wepo(const TargetAttr& variableOrConstant, uint32_t eepromStart) noexcept : _source(variableOrConstant), _addr(eepromStart) {}
+        static EepromVariable write(const TargetAttr& variableOrConstant, uint32_t eepromStart) noexcept {
+            return EepromVariable(Op::Write, variableOrConstant, eepromStart);
+        }
+        static EepromVariable read(const TargetAttr& destVariable, uint32_t eepromStart) noexcept {
+            return EepromVariable(Op::Read, destVariable, eepromStart);
+        }
+
+        Op op() const noexcept { return _op; }
+
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **R**ead **ep**rom **o**peration — прочитать из EEPROM в переменную (NIS `repo`).
+     * EEPROM в **transparent mode** — сырой блок байт по UART (NIS `wept` / `rept`).
      */
-    class Repo final : public Command {
-        TargetAttr _dest;
-        uint32_t _addr;
-
+    class EepromTransparent final : public Command {
     public:
-        Repo(const TargetAttr& destVariable, uint32_t eepromStart) noexcept : _dest(destVariable), _addr(eepromStart) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
+        enum class Op : uint8_t {
+            Write, /**< `wept` */
+            Read,  /**< `rept` */
+        };
 
-    /**
-     * **W**rite **ep**rom **t**ransparent — запись сырого блока байт в EEPROM (NIS `wept`).
-     */
-    class Wept final : public Command {
+    private:
+        Op _op;
         uint32_t _addr;
         uint32_t _byteCount;
 
-    public:
-        Wept(uint32_t eepromStart, uint32_t byteCount) noexcept : _addr(eepromStart), _byteCount(byteCount) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **R**ead **ep**rom **t**ransparent — чтение блока из EEPROM по UART (NIS `rept`).
-     */
-    class Rept final : public Command {
-        uint32_t _addr;
-        uint32_t _byteCount;
+        EepromTransparent(Op op, uint32_t addr, uint32_t byteCount) noexcept : _op(op), _addr(addr), _byteCount(byteCount) {}
 
     public:
-        Rept(uint32_t eepromStart, uint32_t byteCount) noexcept : _addr(eepromStart), _byteCount(byteCount) {}
+        static EepromTransparent write(uint32_t eepromStart, uint32_t byteCount) noexcept {
+            return EepromTransparent(Op::Write, eepromStart, byteCount);
+        }
+        static EepromTransparent read(uint32_t eepromStart, uint32_t byteCount) noexcept {
+            return EepromTransparent(Op::Read, eepromStart, byteCount);
+        }
+
+        Op op() const noexcept { return _op; }
+
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -463,10 +447,10 @@ namespace oper {
     class Cfgpio final : public Command {
         uint32_t _pin;
         uint32_t _mode;
-        TargetComponent _bindComponentOrZero;
+        TargetComp _bindComponentOrZero;
 
     public:
-        Cfgpio(uint32_t pin, uint32_t mode, const TargetComponent& bindComponentOrZero) noexcept
+        Cfgpio(uint32_t pin, uint32_t mode, const TargetComp& bindComponentOrZero) noexcept
             : _pin(pin), _mode(mode), _bindComponentOrZero(bindComponentOrZero) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
@@ -475,7 +459,7 @@ namespace oper {
      * **Move** — анимация перемещения компонента между двумя точками за время `timeMs` (NIS `move`).
      */
     class Move final : public Command {
-        TargetComponent _component;
+        TargetComp _component;
         int32_t _x0;
         int32_t _y0;
         int32_t _x1;
@@ -484,7 +468,7 @@ namespace oper {
         uint32_t _timeMs;
 
     public:
-        Move(const TargetComponent& component, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t priority, uint32_t timeMs) noexcept
+        Move(const TargetComp& component, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t priority, uint32_t timeMs) noexcept
             : _component(component), _x0(x0), _y0(y0), _x1(x1), _y1(y1), _priority(priority), _timeMs(timeMs) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
@@ -569,11 +553,11 @@ namespace oper {
      * **Set** **layer** — порядок отрисовки (Z-order): объект над другим или «255» как в NIS (`setlayer`).
      */
     class Setlayer final : public Command {
-        TargetComponent _component;
-        TargetComponent _aboveOr255;
+        TargetComp _component;
+        TargetComp _aboveOr255;
 
     public:
-        Setlayer(const TargetComponent& component, const TargetComponent& aboveComponentOr255) noexcept
+        Setlayer(const TargetComp& component, const TargetComp& aboveComponentOr255) noexcept
             : _component(component), _aboveOr255(aboveComponentOr255) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };

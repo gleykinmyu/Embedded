@@ -1,11 +1,78 @@
 #include "nexCommands.hpp"
-#include "../comp/nexLiterals.hpp"
 #include <cstdint>
 #include <cstring>
 
-namespace {
+namespace nex {
+namespace misc {
 
-bool printUint32Digits(nex::TxFrame& tx, uint32_t value) noexcept {
+/** Печать литерала команды NIS (имя команды или ключевое слово) как сырой ASCII, без кавычек.
+ * @param tx буфер исходящего кадра.
+ * @param s ASCIIZ-строка; длина от 1 до UINT16_MAX байт полезной нагрузки. */
+bool printLiteral(TxFrame& tx, const char* s) noexcept {
+    if (s == nullptr)
+        return false;
+    const size_t n = std::strlen(s);
+    if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
+        return false;
+    return tx.pushBytes(s, static_cast<uint16_t>(n));
+}
+
+/** Печать одного пробела U+0020 между лексемами команды.
+ * @param tx буфер исходящего кадра. */
+bool printSpace(TxFrame& tx) noexcept {
+    const uint8_t sp = static_cast<uint8_t>(' ');
+    return tx.pushBytes(&sp, 1u);
+}
+
+/** Печать точки между именем страницы и именем компонента в лексеме цели.
+ * @param tx буфер исходящего кадра. */
+bool printDot(TxFrame& tx) noexcept {
+    const uint8_t dot = static_cast<uint8_t>('.');
+    return tx.pushBytes(&dot, 1u);
+}
+
+/** Печать запятой-разделителя между параметрами команды NIS.
+ * @param tx буфер исходящего кадра. */
+ bool printComma(TxFrame& tx) noexcept {
+    const uint8_t comma = static_cast<uint8_t>(',');
+    return tx.pushBytes(&comma, 1u);
+}
+
+/** Печать строки в двойных кавычках; экранирование `\r`, `\"`, `\\`.
+ * @param tx буфер исходящего кадра.
+ * @param text ASCIIZ содержимое; при nullptr записываются только открывающая и закрывающая кавычки. */
+bool printQuotedString(TxFrame& tx, const char* text) noexcept {
+    const uint8_t dq = static_cast<uint8_t>('"');
+    if (!tx.pushBytes(&dq, 1u))
+        return false;
+    if (text == nullptr)
+        return tx.pushBytes(&dq, 1u);
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != 0u; ++p) {
+        const unsigned char c = *p;
+        if (c == static_cast<unsigned char>('"')) {
+            static const char esc[] = "\\\"";
+            if (!tx.pushBytes(esc, 2u))
+                return false;
+        } else if (c == static_cast<unsigned char>('\\')) {
+            static const char esc[] = "\\\\";
+            if (!tx.pushBytes(esc, 2u))
+                return false;
+        } else if (c == static_cast<unsigned char>('\r')) {
+            static const char esc[] = "\\r";
+            if (!tx.pushBytes(esc, 2u))
+                return false;
+        } else {
+            if (!tx.pushBytes(&c, 1u))
+                return false;
+        }
+    }
+    return tx.pushBytes(&dq, 1u);
+}
+
+/** Печать беззнакового целого в десятичной записи без ведущих нулей (кроме нуля).
+ * @param tx буфер исходящего кадра; байты добавляются в конец полезной нагрузки.
+ * @param value число для вывода. */
+bool printUint32(TxFrame& tx, uint32_t value) noexcept {
     uint8_t digits[10];
     uint8_t n = 0;
     if (value == 0u) {
@@ -25,106 +92,51 @@ bool printUint32Digits(nex::TxFrame& tx, uint32_t value) noexcept {
     return tx.pushBytes(digits, n);
 }
 
-static const char* numericOpAscii(nex::cmd::assign::Numeric::Op op) noexcept {
-    using Op = nex::cmd::assign::Numeric::Op;
+/** Печать знакового целого в десятичной записи (минус и модуль для отрицательных).
+ * @param tx буфер исходящего кадра.
+ * @param value число для вывода. */
+bool printInt32(TxFrame& tx, int32_t value) noexcept {
+    if (value >= 0)
+        return printUint32(tx, static_cast<uint32_t>(value));
+    const uint8_t minus = static_cast<uint8_t>('-');
+    if (!tx.pushBytes(&minus, 1u))
+        return false;
+    uint32_t u = static_cast<uint32_t>(value);
+    u = ~u + 1u;
+    return printUint32(tx, u);
+}
+
+/** Печать оператора присваивания/модификации числового атрибута (`=`, `+=`, `-=`, …).
+ * @param tx буфер исходящего кадра.
+ * @param op вид операции из `cmd::assign::Numeric::Op`. */
+bool printOperation(TxFrame& tx, cmd::assign::Numeric::Op op) noexcept {
+    using Op = cmd::assign::Numeric::Op;
     switch (op) {
     case Op::Assign:
-        return "=";
+        return tx.pushBytes("=", 1u);
     case Op::Add:
-        return "+=";
+        return tx.pushBytes("+=", 2u);
     case Op::Sub:
-        return "-=";
+        return tx.pushBytes("-=", 2u);
     case Op::Mul:
-        return "*=";
+        return tx.pushBytes("*=", 2u);
     case Op::Div:
-        return "/=";
+        return tx.pushBytes("/=", 2u);
     case Op::Mod:
-        return "%=";
+        return tx.pushBytes("%=", 2u);
     }
-    return "=";
+    return tx.pushBytes("=", 1u);
 }
 
-static uint8_t numericOpLen(nex::cmd::assign::Numeric::Op op) noexcept {
-    using Op = nex::cmd::assign::Numeric::Op;
-    switch (op) {
-    case Op::Assign:
-        return 1u;
-    case Op::Add:
-    case Op::Sub:
-    case Op::Mul:
-    case Op::Div:
-    case Op::Mod:
-        return 2u;
-    }
-    return 1u;
-}
-
-static bool pushLit(nex::TxFrame& tx, const char* s) noexcept {
-    if (s == nullptr)
-        return false;
-    const size_t n = std::strlen(s);
-    if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
-        return false;
-    return tx.pushBytes(s, static_cast<uint16_t>(n));
-}
-
-static bool pushSp(nex::TxFrame& tx) noexcept {
-    const uint8_t sp = static_cast<uint8_t>(' ');
-    return tx.pushBytes(&sp, 1u);
-}
-
-static bool pushDot(nex::TxFrame& tx) noexcept {
-    const uint8_t dot = static_cast<uint8_t>('.');
-    return tx.pushBytes(&dot, 1u);
-}
-
-} // namespace
-
-namespace nex {
-namespace cmd {
-
-bool appendTargetLexeme(TxFrame& tx, const TargetAttr& t) noexcept {
-    if (t.attr == nullptr)
-        return false;
-    const TargetComponent& c = t.comp;
-    if (c.page == nullptr && c.name == nullptr)
-        return pushLit(tx, t.attr);
-    if (c.page == nullptr && c.name != nullptr) {
-        const size_t nn = std::strlen(c.name);
-        const size_t na = std::strlen(t.attr);
-        if (nn == 0u || na == 0u || nn > static_cast<size_t>(UINT16_MAX) || na > static_cast<size_t>(UINT16_MAX))
-            return false;
-        if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(nn) + 1u + static_cast<uint32_t>(na) > TxFrame::MAX_PAYLOAD)
-            return false;
-        return tx.pushBytes(c.name, static_cast<uint16_t>(nn)) && pushDot(tx) &&
-               tx.pushBytes(t.attr, static_cast<uint16_t>(na));
-    }
-    if (c.page != nullptr && c.name != nullptr) {
-        const size_t np = std::strlen(c.page);
-        const size_t nn = std::strlen(c.name);
-        const size_t na = std::strlen(t.attr);
-        if (np == 0u || nn == 0u || na == 0u || np > static_cast<size_t>(UINT16_MAX) || nn > static_cast<size_t>(UINT16_MAX) ||
-            na > static_cast<size_t>(UINT16_MAX))
-            return false;
-        if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(np) + 1u + static_cast<uint32_t>(nn) + 1u +
-                static_cast<uint32_t>(na) >
-            TxFrame::MAX_PAYLOAD)
-            return false;
-        return tx.pushBytes(c.page, static_cast<uint16_t>(np)) && pushDot(tx) &&
-               tx.pushBytes(c.name, static_cast<uint16_t>(nn)) && pushDot(tx) &&
-               tx.pushBytes(t.attr, static_cast<uint16_t>(na));
-    }
-    return false;
-}
-
-bool appendTargetComponentLexeme(TxFrame& tx, const TargetComponent& c) noexcept {
+/** Печать лексемы компонента: `name` или `page.name` (без точки и имени атрибута).
+ * @param tx буфер исходящего кадра.
+ * @param c страница и имя компонента; оба nullptr — ошибка; только name — текущая страница. */
+bool printCompLexeme(TxFrame& tx, const cmd::TargetComp& c) noexcept {
     if (c.page == nullptr && c.name == nullptr)
         return false;
     if (c.page == nullptr && c.name != nullptr) {
         const size_t nn = std::strlen(c.name);
         if (nn == 0u || nn > static_cast<size_t>(UINT16_MAX))
-            return false;
-        if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(nn) > TxFrame::MAX_PAYLOAD)
             return false;
         return tx.pushBytes(c.name, static_cast<uint16_t>(nn));
     }
@@ -133,265 +145,244 @@ bool appendTargetComponentLexeme(TxFrame& tx, const TargetComponent& c) noexcept
         const size_t nn = std::strlen(c.name);
         if (np == 0u || nn == 0u || np > static_cast<size_t>(UINT16_MAX) || nn > static_cast<size_t>(UINT16_MAX))
             return false;
-        if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(np) + 1u + static_cast<uint32_t>(nn) > TxFrame::MAX_PAYLOAD)
-            return false;
-        return tx.pushBytes(c.page, static_cast<uint16_t>(np)) && pushDot(tx) &&
+        return tx.pushBytes(c.page, static_cast<uint16_t>(np)) && printDot(tx) &&
                tx.pushBytes(c.name, static_cast<uint16_t>(nn));
     }
     return false;
 }
 
-} // namespace cmd
-
-bool Command::appendComma(TxFrame& tx) noexcept {
-    const uint8_t comma = static_cast<uint8_t>(',');
-    return tx.pushBytes(&comma, 1u);
-}
-
-bool Command::appendUint32(TxFrame& tx, uint32_t value) noexcept {
-    return printUint32Digits(tx, value);
-}
-
-bool Command::appendInt32(TxFrame& tx, int32_t value) noexcept {
-    if (value >= 0)
-        return printUint32Digits(tx, static_cast<uint32_t>(value));
-    const uint8_t minus = static_cast<uint8_t>('-');
-    if (!tx.pushBytes(&minus, 1u))
+/** Печать лексемы атрибута: `attr`, `name.attr` или `page.name.attr` по правилам `TargetAttr` / `TargetComp`.
+ * @param tx буфер исходящего кадра.
+ * @param t цель: компонент (страница/имя) и имя атрибута; без компонента — только имя атрибута. */
+bool printAttrLexeme(TxFrame& tx, const cmd::TargetAttr& t) noexcept {
+    if (t.attr == nullptr)
         return false;
-    uint32_t u = static_cast<uint32_t>(value);
-    u = ~u + 1u;
-    return printUint32Digits(tx, u);
-}
+    const cmd::TargetComp& c = t.comp;
+    if (c.page == nullptr && c.name == nullptr)
+        return nex::misc::printLiteral(tx, t.attr);
 
-bool cmd::assign::Text::serialize(TxFrame& tx) const noexcept {
-    (void)tx;
-    (void)_target;
-    (void)text;
-    return false;
-}
-
-bool cmd::assign::TextAppend::serialize(TxFrame& tx) const noexcept {
-    (void)tx;
-    (void)_target;
-    (void)text;
-    return false;
-}
-
-bool cmd::assign::TextSubtract::serialize(TxFrame& tx) const noexcept {
-    (void)tx;
-    (void)_target;
-    (void)_charsCount;
-    return false;
-}
-
-bool cmd::assign::Numeric::serialize(TxFrame& tx) const noexcept {
-    const uint8_t opLen = numericOpLen(_op);
-    if (!cmd::appendTargetLexeme(tx, _target))
+    const size_t na = std::strlen(t.attr);
+    if (na == 0u || na > static_cast<size_t>(UINT16_MAX))
         return false;
-    if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(opLen) + 11u > TxFrame::MAX_PAYLOAD)
+    return printCompLexeme(tx, c) && printDot(tx) && tx.pushBytes(t.attr, static_cast<uint16_t>(na));
+}
+
+} // namespace misc
+
+namespace cmd {
+namespace assign {
+
+bool Text::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printAttrLexeme(tx, _target))
         return false;
-    const char* opStr = numericOpAscii(_op);
-    if (!tx.pushBytes(opStr, opLen))
+    if (!nex::misc::printOperation(tx, Numeric::Op::Assign))
         return false;
-    return appendInt32(tx, _value);
+    return nex::misc::printQuotedString(tx, text);
 }
 
-// --- NIS §3 operational (nex::cmd::oper) ---
-
-bool cmd::oper::Page::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::page_open) || !pushSp(tx))
+bool TextAppend::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printAttrLexeme(tx, _target))
         return false;
-    return appendUint32(tx, static_cast<uint32_t>(_pageID));
-}
-
-bool cmd::oper::Refresh::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::refresh) || !pushSp(tx))
+    if (!nex::misc::printOperation(tx, Numeric::Op::Add))
         return false;
-    return cmd::appendTargetComponentLexeme(tx, _component);
+    return nex::misc::printQuotedString(tx, text);
 }
 
-bool cmd::oper::RefreshStop::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, "ref_stop");
-}
-
-bool cmd::oper::RefreshStart::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, "ref_star");
-}
-
-bool cmd::oper::Get::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::get_attr) || !pushSp(tx))
+bool TextSubtract::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printAttrLexeme(tx, _target))
         return false;
-    return cmd::appendTargetLexeme(tx, _operand);
-}
-
-bool cmd::oper::SendMe::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, nex::cmd::send_page_id);
-}
-
-bool cmd::oper::Convert::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "cov") || !pushSp(tx))
+    if (!nex::misc::printOperation(tx, Numeric::Op::Sub))
         return false;
-    return cmd::appendTargetLexeme(tx, _src) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dst) && appendComma(tx) &&
-           appendInt32(tx, _length);
+    return nex::misc::printUint32(tx, _charsCount);
 }
 
-bool cmd::oper::ConvertEx::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "covx") || !pushSp(tx))
+bool Numeric::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printAttrLexeme(tx, _target))
         return false;
-    return cmd::appendTargetLexeme(tx, _src) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dst) && appendComma(tx) &&
-           appendInt32(tx, _length) && appendComma(tx) && appendInt32(tx, _format);
-}
-
-bool cmd::oper::Substr::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "substr") || !pushSp(tx))
+    if (!nex::misc::printOperation(tx, _op))
         return false;
-    return cmd::appendTargetLexeme(tx, _fromTxt) && appendComma(tx) && cmd::appendTargetLexeme(tx, _toTxt) && appendComma(tx) &&
-           appendUint32(tx, _start) && appendComma(tx) && appendUint32(tx, _count);
+    return nex::misc::printInt32(tx, _value);
 }
 
-bool cmd::oper::Strlen::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "strlen") || !pushSp(tx))
+} // namespace assign
+
+namespace oper {
+
+// --- NIS §3 operational ---
+
+bool ChangePage::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "page") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetLexeme(tx, _txtAttr) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dstNumAttr);
+    return nex::misc::printUint32(tx, static_cast<uint32_t>(_pageID));
 }
 
-bool cmd::oper::Btlen::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "btlen") || !pushSp(tx))
+bool Refresh::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "ref") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetLexeme(tx, _txtAttr) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dstNumAttr);
+    return nex::misc::printCompLexeme(tx, _component);
 }
 
-bool cmd::oper::Spstr::serialize(TxFrame& tx) const noexcept {
+bool RefreshStop::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "ref_stop");
+}
+
+bool RefreshStart::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "ref_start");
+}
+
+bool Get::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "get") || !nex::misc::printSpace(tx))
+        return false;
+    return nex::misc::printAttrLexeme(tx, _operand);
+}
+
+bool GetCurrentPageID::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "sendme");
+}
+
+bool ConvertEx::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "covx") || !nex::misc::printSpace(tx))
+        return false;
+    return nex::misc::printAttrLexeme(tx, _src) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _dst) && nex::misc::printComma(tx) &&
+           nex::misc::printInt32(tx, _length) && nex::misc::printComma(tx) && nex::misc::printInt32(tx, _format);
+}
+
+bool SubStr::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "substr") || !nex::misc::printSpace(tx))
+        return false;
+    return nex::misc::printAttrLexeme(tx, _fromTxt) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _toTxt) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, _start) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _count);
+}
+
+bool Strlen::serialize(TxFrame& tx) const noexcept {
+    const char* lit = (_unit == Unit::Chars) ? "strlen" : "btlen";
+    if (!nex::misc::printLiteral(tx, lit) || !nex::misc::printSpace(tx))
+        return false;
+    return nex::misc::printAttrLexeme(tx, _txtAttr) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _dstNumAttr);
+}
+
+bool Spstr::serialize(TxFrame& tx) const noexcept {
     if (_delimiterQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "spstr") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "spstr") || !nex::misc::printSpace(tx))
         return false;
     const size_t ndq = std::strlen(_delimiterQuoted);
     if (ndq == 0u || ndq > static_cast<size_t>(UINT16_MAX))
         return false;
-    return cmd::appendTargetLexeme(tx, _src) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dst) && appendComma(tx) &&
-           tx.pushBytes(_delimiterQuoted, static_cast<uint16_t>(ndq)) && appendComma(tx) && appendUint32(tx, _index);
+    return nex::misc::printAttrLexeme(tx, _src) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _dst) && nex::misc::printComma(tx) &&
+           tx.pushBytes(_delimiterQuoted, static_cast<uint16_t>(ndq)) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _index);
 }
 
-bool cmd::oper::TouchJ::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, "touch_j");
+bool TouchJ::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "touch_j");
 }
 
-bool cmd::oper::Vis::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::visibility) || !pushSp(tx))
+bool Visible::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "vis") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetComponentLexeme(tx, _component) && appendComma(tx) && appendUint32(tx, static_cast<uint32_t>(_state));
+    return nex::misc::printCompLexeme(tx, _component) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, static_cast<uint32_t>(_state));
 }
 
-bool cmd::oper::Tsw::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::touch_switch) || !pushSp(tx))
+bool TouchSwitch::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "tsw") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetComponentLexeme(tx, _component) && appendComma(tx) &&
-           appendUint32(tx, static_cast<uint32_t>(_enabled));
+    return nex::misc::printCompLexeme(tx, _component) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, static_cast<uint32_t>(_enabled));
 }
 
-bool cmd::oper::Click::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::click_sim) || !pushSp(tx))
+bool Click::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "click") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetComponentLexeme(tx, _component) && appendComma(tx) &&
-           appendUint32(tx, static_cast<uint32_t>(_press1Release0));
+    return nex::misc::printCompLexeme(tx, _component) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, static_cast<uint32_t>(_press1Release0));
 }
 
-bool cmd::oper::Randset::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "randset") || !pushSp(tx))
+bool Randset::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "randset") || !nex::misc::printSpace(tx))
         return false;
-    return appendInt32(tx, _min) && appendComma(tx) && appendInt32(tx, _max);
+    return nex::misc::printInt32(tx, _min) && nex::misc::printComma(tx) && nex::misc::printInt32(tx, _max);
 }
 
-bool cmd::oper::WaveAdd::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "add") || !pushSp(tx))
+bool WaveAdd::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "add") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _waveformId) && appendComma(tx) && appendUint32(tx, _channel) && appendComma(tx) &&
-           appendUint32(tx, _value0to255);
+    return nex::misc::printUint32(tx, _waveformId) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _channel) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, _value0to255);
 }
 
-bool cmd::oper::WaveAddt::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, nex::cmd::wf_add) || !pushSp(tx))
+bool WaveAddt::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "addt") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _waveformId) && appendComma(tx) && appendUint32(tx, _channel) && appendComma(tx) &&
-           appendUint32(tx, _byteCount);
+    return nex::misc::printUint32(tx, _waveformId) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _channel) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, _byteCount);
 }
 
-bool cmd::oper::WaveCle::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "cle") || !pushSp(tx))
+bool WaveCle::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "cle") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _waveformId) && appendComma(tx) && appendUint32(tx, _channelOr255All);
+    return nex::misc::printUint32(tx, _waveformId) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _channelOr255All);
 }
 
-bool cmd::oper::Rest::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, "rest");
+bool Rest::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "rest");
 }
 
-bool cmd::oper::DoEvents::serialize(TxFrame& tx) const noexcept {
-    return pushLit(tx, nex::cmd::do_events);
+bool DoEvents::serialize(TxFrame& tx) const noexcept {
+    return nex::misc::printLiteral(tx, "doevents");
 }
 
-bool cmd::oper::Wepo::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "wepo") || !pushSp(tx))
+bool EepromVariable::serialize(TxFrame& tx) const noexcept {
+    const char* lit = (_op == Op::Write) ? "wepo" : "repo";
+    if (!nex::misc::printLiteral(tx, lit) || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetLexeme(tx, _source) && appendComma(tx) && appendUint32(tx, _addr);
+    return nex::misc::printAttrLexeme(tx, _target) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _addr);
 }
 
-bool cmd::oper::Repo::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "repo") || !pushSp(tx))
+bool EepromTransparent::serialize(TxFrame& tx) const noexcept {
+    const char* lit = (_op == Op::Write) ? "wept" : "rept";
+    if (!nex::misc::printLiteral(tx, lit) || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetLexeme(tx, _dest) && appendComma(tx) && appendUint32(tx, _addr);
+    return nex::misc::printUint32(tx, _addr) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _byteCount);
 }
 
-bool cmd::oper::Wept::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "wept") || !pushSp(tx))
+bool Cfgpio::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "cfgpio") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _addr) && appendComma(tx) && appendUint32(tx, _byteCount);
+    return nex::misc::printUint32(tx, _pin) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _mode) && nex::misc::printComma(tx) &&
+           nex::misc::printCompLexeme(tx, _bindComponentOrZero);
 }
 
-bool cmd::oper::Rept::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "rept") || !pushSp(tx))
+bool Move::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "move") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _addr) && appendComma(tx) && appendUint32(tx, _byteCount);
+    return nex::misc::printCompLexeme(tx, _component) && nex::misc::printComma(tx) && nex::misc::printInt32(tx, _x0) && nex::misc::printComma(tx) &&
+           nex::misc::printInt32(tx, _y0) && nex::misc::printComma(tx) && nex::misc::printInt32(tx, _x1) && nex::misc::printComma(tx) && nex::misc::printInt32(tx, _y1) &&
+           nex::misc::printComma(tx) && nex::misc::printUint32(tx, _priority) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _timeMs);
 }
 
-bool cmd::oper::Cfgpio::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "cfgpio") || !pushSp(tx))
+bool Play::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "play") || !nex::misc::printSpace(tx))
         return false;
-    return appendUint32(tx, _pin) && appendComma(tx) && appendUint32(tx, _mode) && appendComma(tx) &&
-           cmd::appendTargetComponentLexeme(tx, _bindComponentOrZero);
+    return nex::misc::printUint32(tx, _channel) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _resourceId) && nex::misc::printComma(tx) &&
+           nex::misc::printUint32(tx, _loop01);
 }
 
-bool cmd::oper::Move::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "move") || !pushSp(tx))
-        return false;
-    return cmd::appendTargetComponentLexeme(tx, _component) && appendComma(tx) && appendInt32(tx, _x0) && appendComma(tx) &&
-           appendInt32(tx, _y0) && appendComma(tx) && appendInt32(tx, _x1) && appendComma(tx) && appendInt32(tx, _y1) &&
-           appendComma(tx) && appendUint32(tx, _priority) && appendComma(tx) && appendUint32(tx, _timeMs);
-}
-
-bool cmd::oper::Play::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "play") || !pushSp(tx))
-        return false;
-    return appendUint32(tx, _channel) && appendComma(tx) && appendUint32(tx, _resourceId) && appendComma(tx) &&
-           appendUint32(tx, _loop01);
-}
-
-bool cmd::oper::Twfile::serialize(TxFrame& tx) const noexcept {
+bool Twfile::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "twfile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "twfile") || !nex::misc::printSpace(tx))
         return false;
     const size_t np = std::strlen(_pathQuoted);
     if (np == 0u || np > static_cast<size_t>(UINT16_MAX))
         return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(np)) && appendComma(tx) && appendUint32(tx, _fileSize);
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(np)) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _fileSize);
 }
 
-bool cmd::oper::Delfile::serialize(TxFrame& tx) const noexcept {
+bool Delfile::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "delfile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "delfile") || !nex::misc::printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
@@ -399,64 +390,53 @@ bool cmd::oper::Delfile::serialize(TxFrame& tx) const noexcept {
     return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n));
 }
 
-bool cmd::oper::Refile::serialize(TxFrame& tx) const noexcept {
+bool Refile::serialize(TxFrame& tx) const noexcept {
     if (_pathFromQuoted == nullptr || _pathToQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "refile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "refile") || !nex::misc::printSpace(tx))
         return false;
     const size_t na = std::strlen(_pathFromQuoted);
     const size_t nb = std::strlen(_pathToQuoted);
     if (na == 0u || nb == 0u || na > UINT16_MAX || nb > UINT16_MAX)
         return false;
-    return tx.pushBytes(_pathFromQuoted, static_cast<uint16_t>(na)) && appendComma(tx) &&
+    return tx.pushBytes(_pathFromQuoted, static_cast<uint16_t>(na)) && nex::misc::printComma(tx) &&
            tx.pushBytes(_pathToQuoted, static_cast<uint16_t>(nb));
 }
 
-bool cmd::oper::Findfile::serialize(TxFrame& tx) const noexcept {
+bool Findfile::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "findfile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "findfile") || !nex::misc::printSpace(tx))
         return false;
     const size_t na = std::strlen(_pathQuoted);
     if (na == 0u || na > static_cast<size_t>(UINT16_MAX))
         return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(na)) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dstNumAttr);
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(na)) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _dstNumAttr);
 }
 
-bool cmd::oper::Rdfile::serialize(TxFrame& tx) const noexcept {
+bool Rdfile::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "rdfile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "rdfile") || !nex::misc::printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
         return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n)) && appendComma(tx) && appendUint32(tx, _offset) &&
-           appendComma(tx) && appendUint32(tx, _count) && appendComma(tx) && appendUint32(tx, _crcOption);
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n)) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _offset) &&
+           nex::misc::printComma(tx) && nex::misc::printUint32(tx, _count) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _crcOption);
 }
 
-bool cmd::oper::Setlayer::serialize(TxFrame& tx) const noexcept {
-    if (!pushLit(tx, "setlayer") || !pushSp(tx))
+bool Setlayer::serialize(TxFrame& tx) const noexcept {
+    if (!nex::misc::printLiteral(tx, "setlayer") || !nex::misc::printSpace(tx))
         return false;
-    return cmd::appendTargetComponentLexeme(tx, _component) && appendComma(tx) &&
-           cmd::appendTargetComponentLexeme(tx, _aboveOr255);
+    return nex::misc::printCompLexeme(tx, _component) && nex::misc::printComma(tx) &&
+           nex::misc::printCompLexeme(tx, _aboveOr255);
 }
 
-bool cmd::oper::Newdir::serialize(TxFrame& tx) const noexcept {
+bool Newdir::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "newdir") || !pushSp(tx))
-        return false;
-    const size_t n = std::strlen(_pathQuoted);
-    if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
-        return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n));
-}
-
-bool cmd::oper::Deldir::serialize(TxFrame& tx) const noexcept {
-    if (_pathQuoted == nullptr)
-        return false;
-    if (!pushLit(tx, "deldir") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "newdir") || !nex::misc::printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
@@ -464,39 +444,54 @@ bool cmd::oper::Deldir::serialize(TxFrame& tx) const noexcept {
     return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n));
 }
 
-bool cmd::oper::Redir::serialize(TxFrame& tx) const noexcept {
+bool Deldir::serialize(TxFrame& tx) const noexcept {
+    if (_pathQuoted == nullptr)
+        return false;
+    if (!nex::misc::printLiteral(tx, "deldir") || !nex::misc::printSpace(tx))
+        return false;
+    const size_t n = std::strlen(_pathQuoted);
+    if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
+        return false;
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n));
+}
+
+bool Redir::serialize(TxFrame& tx) const noexcept {
     if (_pathFromQuoted == nullptr || _pathToQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "redir") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "redir") || !nex::misc::printSpace(tx))
         return false;
     const size_t na = std::strlen(_pathFromQuoted);
     const size_t nb = std::strlen(_pathToQuoted);
     if (na == 0u || nb == 0u || na > UINT16_MAX || nb > UINT16_MAX)
         return false;
-    return tx.pushBytes(_pathFromQuoted, static_cast<uint16_t>(na)) && appendComma(tx) &&
+    return tx.pushBytes(_pathFromQuoted, static_cast<uint16_t>(na)) && nex::misc::printComma(tx) &&
            tx.pushBytes(_pathToQuoted, static_cast<uint16_t>(nb));
 }
 
-bool cmd::oper::Finddir::serialize(TxFrame& tx) const noexcept {
+bool Finddir::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "finddir") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "finddir") || !nex::misc::printSpace(tx))
         return false;
     const size_t na = std::strlen(_pathQuoted);
     if (na == 0u || na > static_cast<size_t>(UINT16_MAX))
         return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(na)) && appendComma(tx) && cmd::appendTargetLexeme(tx, _dstNumAttr);
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(na)) && nex::misc::printComma(tx) && nex::misc::printAttrLexeme(tx, _dstNumAttr);
 }
 
-bool cmd::oper::Newfile::serialize(TxFrame& tx) const noexcept {
+bool Newfile::serialize(TxFrame& tx) const noexcept {
     if (_pathQuoted == nullptr)
         return false;
-    if (!pushLit(tx, "newfile") || !pushSp(tx))
+    if (!nex::misc::printLiteral(tx, "newfile") || !nex::misc::printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u || n > static_cast<size_t>(UINT16_MAX))
         return false;
-    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n)) && appendComma(tx) && appendUint32(tx, _reservedSize);
+    return tx.pushBytes(_pathQuoted, static_cast<uint16_t>(n)) && nex::misc::printComma(tx) && nex::misc::printUint32(tx, _reservedSize);
 }
+
+} // namespace oper
+
+} // namespace cmd
 
 } // namespace nex
