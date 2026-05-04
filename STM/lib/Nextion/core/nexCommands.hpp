@@ -19,16 +19,14 @@ namespace nex {
 
 namespace cmd {
     /**
-     * **Target Component** — адрес объекта на странице **без имени атрибута** (для `ref`, `vis`, `click`, …).
-     * `page` — префикс страницы в NIS (часто `p0`); `name` — `objname` на текущей странице, если `page == nullptr`.
+     * **Target Component** — адрес объекта в NIS **без имени атрибута** (для `ref`, `vis`, `click`, …).
+     * `name` — `objname` на текущей странице или путь вида `p0.t0`.
      */
     struct TargetComp {
-        const char* page = nullptr;
         const char* name = nullptr;
-        TargetComp() noexcept : page(nullptr), name(nullptr) {}
-        TargetComp(const char* pageName, const char* compName) noexcept : page(pageName), name(compName) {}
-        TargetComp(const char* compName) noexcept : page(nullptr), name(compName) {}
-        TargetComp(const TargetComp& other) noexcept : page(other.page), name(other.name) {}
+        TargetComp() noexcept : name(nullptr) {}
+        TargetComp(const char* compName) noexcept : name(compName) {}
+        TargetComp(const TargetComp& other) noexcept : name(other.name) {}
     };
 
     /**
@@ -41,8 +39,7 @@ namespace cmd {
 
         TargetAttr() noexcept {}
         TargetAttr(const TargetComp& component, const char* attr) noexcept : comp(component), attr(attr) {}
-        TargetAttr(const char* pageName, const char* compName, const char* attr) noexcept : comp(pageName, compName), attr(attr) {}
-        TargetAttr(const char* compName, const char* attr) noexcept : comp(nullptr, compName), attr(attr) {}
+        TargetAttr(const char* compName, const char* attr) noexcept : comp(compName), attr(attr) {}
         /** Вся левая часть одной строкой: `sys0`, `t0.txt`, `p0.t0.val` (поля `comp` пустые). */
         TargetAttr(const char* fullLhsLexeme) noexcept : comp(), attr(fullLhsLexeme) {}
         TargetAttr(const TargetAttr& other) noexcept : comp(other.comp), attr(other.attr) {}
@@ -237,7 +234,6 @@ namespace oper {
         explicit Get(const TargetAttr& operand) noexcept : _operand(operand) {}
         explicit Get(const char* globalOrFullPath) noexcept : _operand(globalOrFullPath) {}
         explicit Get(const char* objName, const char* attr) noexcept : _operand(objName, attr) {}
-        Get(const char* pageName, const char* objName, const char* attr) noexcept : _operand(pageName, objName, attr) {}
 
         bool serialize(TxFrame& tx) const noexcept override;
     };

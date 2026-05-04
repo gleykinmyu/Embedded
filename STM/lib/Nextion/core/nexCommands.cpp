@@ -128,37 +128,26 @@ bool printOperation(TxFrame& tx, cmd::assign::Numeric::Op op) noexcept {
     return tx.pushBytes("=", 1u);
 }
 
-/** Печать лексемы компонента: `name` или `page.name` (без точки и имени атрибута).
+/** Печать лексемы компонента: `name` или `p0.t0` (без точки и имени атрибута).
  * @param tx буфер исходящего кадра.
- * @param c страница и имя компонента; оба nullptr — ошибка; только name — текущая страница. */
+ * @param c имя компонента; nullptr или пустая строка — ошибка. */
 bool printCompLexeme(TxFrame& tx, const cmd::TargetComp& c) noexcept {
-    if (c.page == nullptr && c.name == nullptr)
+    if (c.name == nullptr)
         return false;
-    if (c.page == nullptr && c.name != nullptr) {
-        const size_t nn = std::strlen(c.name);
-        if (nn == 0u || nn > static_cast<size_t>(UINT16_MAX))
-            return false;
-        return tx.pushBytes(c.name, static_cast<uint16_t>(nn));
-    }
-    if (c.page != nullptr && c.name != nullptr) {
-        const size_t np = std::strlen(c.page);
-        const size_t nn = std::strlen(c.name);
-        if (np == 0u || nn == 0u || np > static_cast<size_t>(UINT16_MAX) || nn > static_cast<size_t>(UINT16_MAX))
-            return false;
-        return tx.pushBytes(c.page, static_cast<uint16_t>(np)) && printDot(tx) &&
-               tx.pushBytes(c.name, static_cast<uint16_t>(nn));
-    }
-    return false;
+    const size_t nn = std::strlen(c.name);
+    if (nn == 0u || nn > static_cast<size_t>(UINT16_MAX))
+        return false;
+    return tx.pushBytes(c.name, static_cast<uint16_t>(nn));
 }
 
-/** Печать лексемы атрибута: `attr`, `name.attr` или `page.name.attr` по правилам `TargetAttr` / `TargetComp`.
+/** Печать лексемы атрибута: `attr`, `name.attr` или полный путь в `name` + `attr` по правилам `TargetAttr` / `TargetComp`.
  * @param tx буфер исходящего кадра.
- * @param t цель: компонент (страница/имя) и имя атрибута; без компонента — только имя атрибута. */
+ * @param t цель: компонент и имя атрибута; без компонента — только имя атрибута. */
 bool printAttrLexeme(TxFrame& tx, const cmd::TargetAttr& t) noexcept {
     if (t.attr == nullptr)
         return false;
     const cmd::TargetComp& c = t.comp;
-    if (c.page == nullptr && c.name == nullptr)
+    if (c.name == nullptr)
         return nex::misc::printLiteral(tx, t.attr);
 
     const size_t na = std::strlen(t.attr);
