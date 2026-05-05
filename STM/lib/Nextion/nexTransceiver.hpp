@@ -69,11 +69,24 @@ namespace nex {
              */
             bool pushCommand(const Command& cmd);
 
+            /**
+             * Отправить **преамбулу** команды с фазой transparent (NIS §1.16): первая строка + `0xFF×3`.
+             * Далее вызывающий обязан передать `cmd.transparentPayloadBytes()` сырых байт по UART (тот же поток).
+             * По сути вызывает `pushCommand`; тип `TransparentCommand` фиксирует контракт на этапе компиляции.
+             */
+            bool pushTransparentPreamble(const TransparentCommand& cmd);
+
             /** Один тик дозаписи кадра на линию (`TxFramer::tick`). @return false — ошибка `getStatus` у потока. */
             bool transmit() noexcept;
 
             /** Приём: доступные байты; при полном кадре — `TranslateMessage` в `out`. */
             bool receive(Message& out);
+
+            /**
+             * Запись **сырых** байт в тот же поток, что и кадры (NIS §1.16 — фаза данных после `pushTransparentPreamble`).
+             * Не добавляет `0xFF×3`; вызывать только когда `Session` / вызывающий в фазе передачи payload.
+             */
+            size_t writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 
         private:
             BIF::IByteStream& _stream;

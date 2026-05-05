@@ -1,14 +1,19 @@
 #pragma once
 #include <cstdint>
 #include "../core/nexMessages.hpp"
+#include "../core/nexProtocol.hpp"
 
 namespace nex {
 
     class Component;
 
+    /** Пустое имя страницы в HMI, если достаточно только `Page::ID`. */
+    inline constexpr Literal kUnnamedPageLexeme{""};
+
     /**
      * Базовая страница: таблица указателей на компоненты заполняется в их конструкторах (registerComponent).
      * Обработка touch без switch — обход таблицы в dispatchTouch.
+     * `name` — копия-представление лексемы objname страницы в проекте (как в HMI); буфер символов — у исходного литерала.
      */
     class Page {
         friend class Component;
@@ -16,8 +21,9 @@ namespace nex {
     public:
         static constexpr unsigned MAX_COMPONENTS = 24;
 
+        const Literal name;
         const uint8_t ID;
-        explicit Page(uint8_t id) noexcept;
+        explicit Page(const Literal& pageObjName, uint8_t id) noexcept;
         void dispatchTouch(const msg::TouchCompEvent& e) noexcept;
 
     protected:
@@ -30,6 +36,7 @@ namespace nex {
 
     /**
      * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `ID()` ↔ id).
+     * Внутри хранится копия-представление `nex::Literal` (указатель на литерал + длина); буфер символов — как у исходного литерала.
      *
      * В `nexWidgets.hpp` у наследников перечислены только атрибуты, характерные для данного типа виджета.
      */
@@ -62,7 +69,7 @@ namespace nex {
             TextSelect      = 68, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco (pic, picc), pco(font color), pco2(selected font color), spax, hig, dis, pco1(line color), txt(RO), val, ch, path, path_m(RO), x, y, w, h
             Button          = 98, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco (pic, picc), bco2(pic2, picc2), pco(font color), pco2(pressed font color), xcen, ycen, txt, txt_maxl, isbr, spax, spay, x, y, w, h
             ProgressBar     = 106, //type, id, objname, vscope, drag, aph, effect, sta (color, image), val, dis (only when sta=color), bco (bpic), pco (ppic), x, y, w, h
-            Hotspot         = 109, //type, id, objname, vscope, x, y, w, h
+            Hotspot         = 109, //type, id, objname, vscope, pos(x,y), w, h
             Picture         = 112, //type, id, objname, vscope, drag, aph, effect, pic, x, y, w, h
             CropPicture     = 113, //type, id, objname, vscope, drag, aph, effect, cpic, x, y, w, h
             Text            = 116, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), key, font, bco (pic, picc), pco, xcen, ycen, pw, txt, txt_maxl, isbr,spax, spay, x, y, w, h
@@ -70,12 +77,12 @@ namespace nex {
             Gauge           = 122, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), bco(picc, pic) - when sta != transparent, val, format, up, down, left, pco, pco2, hig, vvs0, vvs1, vvs2, x, y, w, h
         };
 
-        const char* const name;
+        const Literal name;
         const Page& page;
         /** Вид этого экземпляра (тот же код, что атрибут `type` объекта на панели). */
         const Type type;
 
-        Component(Page& owner, const char* compName, Type compType, uint8_t id = 0) noexcept;
+        Component(Page& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
 
         constexpr uint8_t ID() const noexcept { return _ID; }
         constexpr bool isGlobal() const noexcept { return false; }
@@ -110,7 +117,7 @@ namespace nex {
      *   ├── TouchCap                           // val(RO)
      *   ├── FileStream                         // val; qty(RO); en(RO); open, read, write, close, find
      *   │
-     *   └── GeometryComponent                  // x, y, w, h — компоненты с прямоугольником на странице
+     *   └── GeometryComponent                  // pos (x,y), w, h — компоненты с прямоугольником на странице
      *       ├── Hotspot                        // —
      *       │
      *       └── VisualComponent                // drag, aph, effect
@@ -170,7 +177,7 @@ namespace nex {
      * Пояснения:
      *
      * - Timer, NumericVariable, StringVariable, Audio, TouchCap, FileStream — прямые наследники Component (в панели нет x,y,w,h).
-     * - GeometryComponent: всё с x,y,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
+     * - GeometryComponent: всё с pos,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
      *
      * - VisualBaseComponent: под Geometry — один узел (в NIS drag, aph, effect); потомки: картинки, Media, StaBco (QR,
      *   DrawableColored, FontedSta), Selection; дельта drag/aph/effect не повторяется у детей.

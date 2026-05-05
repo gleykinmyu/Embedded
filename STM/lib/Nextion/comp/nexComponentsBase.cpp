@@ -3,7 +3,7 @@
 namespace nex {
 
 // --- Page -----------------------------------------------------------------
-Page::Page(uint8_t id) noexcept : ID(id) {}
+Page::Page(const nex::Literal& pageObjName, uint8_t id) noexcept : name(pageObjName), ID(id) {}
 
 void Page::registerComponent(Component* c) noexcept {
     if (c == nullptr || _count >= MAX_COMPONENTS)
@@ -25,7 +25,7 @@ void Page::dispatchTouch(const msg::TouchCompEvent& e) noexcept {
 
 // --- Component ------------------------------------------------------------
 
-Component::Component(Page& owner, const char* compName, Component::Type compType, uint8_t id) noexcept
+Component::Component(Page& owner, const nex::Literal& compName, Component::Type compType, uint8_t id) noexcept
     : name(compName),
       page(owner),
       type(compType),

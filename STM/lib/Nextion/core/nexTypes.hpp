@@ -1,15 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdio>
-#include <type_traits>
-
-#include "nexComponentBase.hpp"
-#include "../nexTransceiver.hpp"
 
 namespace nex {
-
-
 /**
  * Цвет RGB565 для Nextion (`raw`). Каналы 565 в API — `r`, `g`, `b`; 8-bit — параметры `r8`, `g8`, `b8`.
  * Именованные значения — `Color::std` (NIS: одно 16-битное слово, часто десятичное 0…65535; R[15:11], G[10:5], B[4:0]).
@@ -124,112 +117,41 @@ using PicId = uint16_t;
 /** Идентификатор шрифта в NIS (`font`). */
 using FontId = uint16_t;
 
-/**
- * Связка «имя атрибута NIS» + «тип значения в MCU» + «компонент» (чтение/запись зеркала на MCU).
- * Только атрибуты с записью; только чтение — отдельно (не этот класс).
- *
- * @tparam Name указатель на строку имени атрибута: статические массивы из `nex::prop::AttributeNames`
- *         (и вложенных структур), годные как NTTP `const char*` в C++17.
- * @tparam T логический тип значения атрибута (`Color`, `int32_t`, буфер текста и т.д.).
- *
- * Второй аргумент конструктора — ссылка на поле-зеркало на MCU (тот же смысл, что атрибут в NIS).
- * Чтение только через `value()` / `const` `value()` (ссылка на зеркало; копию при необходимости делайте явно).
- * Запись: `attr = v` (`v` — тип `T` или совместимый).
- *
- * `pushAssign(tx)` — сформировать кадр `objPath.Name=<десятичное int32>` (`cmd::assign::Numeric`) и вызвать `Transceiver::pushCommand`.
- * Префикс объекта: при `!component().isGlobal()` — `objname`; при `isGlobal()` — `p<Page::ID>.objname` (доступ с других страниц в NIS).
- */
-template<const char* Name, typename T>
-class Attribute {
-    Component& _comp;
-    T& _ref;
+/** Пиксельная координата по оси X или Y на экране Nextion (NIS). */
+using Coord = int16_t;
 
-    /** Буфер под префикс объекта в UART-команде (с запасом под `p255.` + имя). */
-    static constexpr size_t kObjPathCap = 40;
+/** Точка (x, y) на экране в пикселях. */
+struct Point {
+    int16_t x{};
+    int16_t y{};
 
-    bool fillObjectPath(char (&buf)[kObjPathCap]) const noexcept {
-        const char* n = _comp.name;
-        if (n == nullptr || n[0] == '\0')
-            return false;
-        if (!_comp.isGlobal()) {
-            size_t i = 0;
-            for (; n[i] != '\0' && i + 1 < kObjPathCap; ++i)
-                buf[i] = n[i];
-            buf[i] = '\0';
-            return n[i] == '\0';
-        }
-        const int w = std::snprintf(buf, kObjPathCap, "p%u.%s", static_cast<unsigned>(_comp.page.ID), n);
-        return w > 0 && static_cast<size_t>(w) < kObjPathCap;
-    }
-
-public:
-    using value_type = T;
-    using component_type = Component;
-
-    constexpr Attribute(Component& c, T& value) noexcept : _comp(c), _ref(value) {}
-
-    Attribute(const Attribute&) = default;
-    Attribute(Attribute&&) noexcept = default;
-    Attribute& operator=(const Attribute&) = delete;
-    Attribute& operator=(Attribute&&) = delete;
-
-    constexpr Component& component() noexcept { return _comp; }
-    constexpr const Component& component() const noexcept { return _comp; }
-
-    constexpr T& value() noexcept { return _ref; }
-    constexpr const T& value() const noexcept { return _ref; }
-
-    Attribute& operator=(const T& v) noexcept(noexcept(_ref = v)) {
-        _ref = v;
-        return *this;
-    }
+    constexpr Point() noexcept = default;
+    constexpr Point(int16_t px, int16_t py) noexcept : x(px), y(py) {}
+};
 
     /**
-     * Отправить текущее зеркальное значение как присвоение целого атрибута NIS (`cmd::assign::Numeric`).
-     * Поддерживаются целые типы и `Color` (в линию уходит `raw` как uint32 ≤ 65535).
-     * @return false — тип не поддержан, путь не влез в буфер, `tx` занят или ошибка сериализации/записи.
+     * Представление строкового литерала (или массива `const char[N]`): длина без завершающего NUL, указатель на первый символ.
+     * Сконструировать из `const char*` нельзя — только из `const char (&)[N]` (литерал `"..."` и т.п.).
+     * Копирование копирует только `data`/`len` (тот же буфер литерала). Перемещение и присваивание запрещены.
      */
-    bool pushAssign(Transceiver& tx) const noexcept {
-        char path[kObjPathCap];
-        if (!fillObjectPath(path))
-            return false;
-        char lhs[kObjPathCap];
+    class Literal {
+    public:
+        const char* const data;
+        const uint8_t len;
+
+        template<std::size_t N>
+        constexpr Literal(const char (&s)[N]) noexcept
+            : data(s)
+            , len(static_cast<uint8_t>(N > 0u ? N - 1u : 0u))
         {
-            const int w = std::snprintf(lhs, sizeof(lhs), "%s.%s", path, Name);
-            if (w <= 0 || static_cast<size_t>(w) >= sizeof(lhs))
-                return false;
+            static_assert(N <= 256u, "nex::Literal: строка длиннее 255 символов (экран не поддерживает)");
         }
 
-        int32_t wired = 0;
-        bool supported = true;
-        if constexpr (std::is_same_v<T, bool>) {
-            wired = _ref ? 1 : 0;
-        } else if constexpr (std::is_same_v<T, int32_t>) {
-            wired = _ref;
-        } else if constexpr (std::is_same_v<T, uint32_t>) {
-            if (_ref > static_cast<uint32_t>(INT32_MAX))
-                return false;
-            wired = static_cast<int32_t>(_ref);
-        } else if constexpr (std::is_same_v<T, int16_t>) {
-            wired = static_cast<int32_t>(_ref);
-        } else if constexpr (std::is_same_v<T, uint16_t>) {
-            wired = static_cast<int32_t>(_ref);
-        } else if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>) {
-            wired = static_cast<int32_t>(_ref);
-        } else if constexpr (std::is_same_v<T, Color>) {
-            wired = static_cast<int32_t>(_ref.raw);
-        } else {
-            supported = false;
-        }
+        constexpr Literal(const Literal&) noexcept = default;
+        Literal(Literal&&) = delete;
+        Literal& operator=(const Literal&) = delete;
+        Literal& operator=(Literal&&) = delete;
+    };
 
-        if (!supported)
-            return false;
-
-        const cmd::assign::Numeric cmd(cmd::TargetAttr(lhs), wired);
-        return tx.pushCommand(cmd);
-    }
-
-    static constexpr const char* attr_name() noexcept { return Name; }
-};
 
 } // namespace nex

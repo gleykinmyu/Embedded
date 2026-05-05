@@ -2,6 +2,55 @@
 #include <cstdint>
 #include <cstring>
 #include "nexProtocol.hpp"
+#include "nexTypes.hpp"
+
+/**
+ * @file nexCommands.hpp
+ *
+ * **Список классов команд** (исходящие UART-инструкции NIS). Базовые типы: `nex::Command`, `nex::TransparentCommand`
+ * (последний — команды с фазой transparent после первого кадра, §1.16).
+ *
+ * | Пространство имён   | Класс                  | База                   |
+ * |---------------------|------------------------|------------------------|
+ * | `nex`               | `Command`              | —                      |
+ * | `nex`               | `TransparentCommand`   | `Command`              |
+ * | `nex::cmd::assign`  | `Text`                 | `Command`              |
+ * | `nex::cmd::assign`  | `TextSubtract`         | `Command`              |
+ * | `nex::cmd::assign`  | `Numeric`              | `Command`              |
+ * | `nex::cmd::oper`    | `BareOperCmd`          | `Command`              |
+ * | `nex::cmd::oper`    | `Refresh`              | `Command`              |
+ * | `nex::cmd::oper`    | `CompLiteralUintCmd`   | `Command`              |
+ * | `nex::cmd::oper`    | `Setlayer`             | `Command`              |
+ * | `nex::cmd::oper`    | `RefreshWaveform`      | `Command`              |
+ * | `nex::cmd::oper`    | `Get`                  | `Command`              |
+ * | `nex::cmd::oper`    | `ConvertEx`            | `Command`              |
+ * | `nex::cmd::oper`    | `SubString`            | `Command`              |
+ * | `nex::cmd::oper`    | `Strlen`               | `Command`              |
+ * | `nex::cmd::oper`    | `SplitString`          | `Command`              |
+ * | `nex::cmd::oper`    | `Randset`              | `Command`              |
+ * | `nex::cmd::oper`    | `WaveAdd`              | `Command`              |
+ * | `nex::cmd::oper`    | `WaveAddt`             | `TransparentCommand`   |
+ * | `nex::cmd::oper`    | `WaveClear`            | `Command`              |
+ * | `nex::cmd::oper`    | `EepromVariable`       | `Command`              |
+ * | `nex::cmd::oper`    | `EepromTransparent`    | `TransparentCommand`   |
+ * | `nex::cmd::oper`    | `Cfgpio`               | `Command`              |
+ * | `nex::cmd::oper`    | `Move`                 | `Command`              |
+ * | `nex::cmd::oper`    | `Play`                 | `Command`              |
+ * | `nex::cmd::oper`    | `FsPathVerbCmd`        | `Command`              |
+ * | `nex::cmd::oper`    | `FsRenameCmd`          | `Command`              |
+ * | `nex::cmd::oper`    | `FsPathFindCmd`        | `Command`              |
+ * | `nex::cmd::oper`    | `Rdfile`               | `Command`              |
+ * | `nex::cmd::oper`    | `Newfile`              | `Command`              |
+ * | `nex::cmd::oper`    | `Twfile`               | `TransparentCommand`   |
+ * | `nex::cmd::gui`     | `ClearScreen`          | `Command`              |
+ * | `nex::cmd::gui`     | `Picture`              | `Command`              |
+ * | `nex::cmd::gui`     | `PictureCropInPlace`   | `Command`              |
+ * | `nex::cmd::gui`     | `PictureCropDraw`      | `Command`              |
+ * | `nex::cmd::gui`     | `TextInRegion`         | `Command`              |
+ * | `nex::cmd::gui`     | `Rect`                 | `Command`              |
+ * | `nex::cmd::gui`     | `Line`                 | `Command`              |
+ * | `nex::cmd::gui`     | `Circle`               | `Command`              |
+ */
 
 namespace nex {
 
@@ -15,34 +64,42 @@ namespace nex {
 
         /** Записать инструкцию в `tx.payload`; при успехе `tx.length` — число байт полезной нагрузки (терминаторы не входят). */
         virtual bool serialize(TxFrame& tx) const noexcept = 0;
+
+        /** После кадра с `0xFF×3` следует фаза transparent — сырые байты на UART (NIS §1.16). */
+        virtual bool hasTransparentPhase() const noexcept { return false; }
+        /** Число байт 2-й фазы; имеет смысл при `hasTransparentPhase() == true`. */
+        virtual uint32_t transparentPayloadBytes() const noexcept { return 0; }
+        /**
+         * Для `Session`: после успешной отправки команды ожидается один кадр **0x70** или **0x71** с линии
+         * (ответ NIS `get` на последовательный порт).
+         */
+        virtual bool awaitsGetAttributeReply() const noexcept { return false; }
+    };
+
+    /**
+     * Исходящие команды с **transparent**-фазой: после первой строки инструкции хост передаёт блок байт
+     * (`wept`/`rept`, `addt`, `twfile`, …). См. `Transceiver::pushTransparentPreamble`.
+     */
+    class TransparentCommand : public Command {
+    public:
+        bool hasTransparentPhase() const noexcept final { return true; }
     };
 
 namespace cmd {
     /**
-     * **Target Component** — адрес объекта в NIS **без имени атрибута** (для `ref`, `vis`, `click`, …).
-     * `name` — `objname` на текущей странице или путь вида `p0.t0`.
+     * Пустая лексема компонента для `TargetAttr`: при `comp.len == 0` в кадр идёт только `attr`
+     * (`sys0`, `p0.t0.val`, …).
      */
-    struct TargetComp {
-        const char* name = nullptr;
-        TargetComp() noexcept : name(nullptr) {}
-        TargetComp(const char* compName) noexcept : name(compName) {}
-        TargetComp(const TargetComp& other) noexcept : name(other.name) {}
-    };
+    inline constexpr Literal kEmptyCompLexeme{""};
 
     /**
-     * **Target Attribute** — полный адрес значения в NIS: компонент (`TargetComp`) и имя атрибута (`txt`, `val`, …)
-     * или одна строка-лексема целиком (`sys0`, `p0.t0.val`).
+     * **Target Attribute** — адрес значения в NIS: `comp` (объект / путь без точки до атрибута) и `attr`
+     * (`txt`, `val`, …). Если `comp.len == 0`, в кадр выводится только `attr` как вся левая часть.
+     * Объекты `Literal` для `comp` и `attr` должны жить дольше, чем хранящий `TargetAttr` объект.
      */
     struct TargetAttr {
-        TargetComp comp = {};
-        const char* attr   = nullptr;
-
-        TargetAttr() noexcept {}
-        TargetAttr(const TargetComp& component, const char* attr) noexcept : comp(component), attr(attr) {}
-        TargetAttr(const char* compName, const char* attr) noexcept : comp(compName), attr(attr) {}
-        /** Вся левая часть одной строкой: `sys0`, `t0.txt`, `p0.t0.val` (поля `comp` пустые). */
-        TargetAttr(const char* fullLhsLexeme) noexcept : comp(), attr(fullLhsLexeme) {}
-        TargetAttr(const TargetAttr& other) noexcept : comp(other.comp), attr(other.attr) {}
+        const Literal& comp;
+        const Literal& attr;
     };
 
 } // namespace cmd
@@ -59,25 +116,24 @@ namespace assign {
     // -------------------------------------------------------------------------
 
     /**
-     * **Text** assign — присвоение строки (NIS §2.1): `…="<text>"` к строковому атрибуту (`txt` и т.д.).
+     * **Text** assign / append — строковое присваивание к атрибуту (NIS §2.1–2.2): `…="<text>"` или `…+="<text>"`.
      * Экранирование `\r`, `\"`, `\\` — §1.11.
      */
     class Text final : public Command {
+    public:
+        /** **Op**eration — `=` или `+=` для строковых атрибутов. */
+        enum class Op : uint8_t {
+            Assign,
+            Append, /**< += */
+        };
+
+    protected:
         TargetAttr _target;
-        const char* text;
+        const char* _text;
+        Op _op;
 
     public:
-        Text(const TargetAttr& target, const char* text) noexcept : _target(target), text(text) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /** **Text** **append** — дописать строку к атрибуту (NIS §2.2): `…+="<text>"`. */
-    class TextAppend final : public Command {
-        TargetAttr _target;
-        const char* text;
-
-    public:
-        TextAppend(const TargetAttr& target, const char* text) noexcept : _target(target), text(text) {}
+        Text(const TargetAttr& target, const char* text, Op op = Op::Assign) noexcept : _target(target), _text(text), _op(op) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -129,100 +185,117 @@ namespace assign {
 
 namespace cmd {
 /**
- * NIS §3 — operational commands (`команда параметры`, без `{}` / if/while/for по UART).
+ * NIS §3 — operational commands (`команда параметры`)
  * Имена классов — глагол NIS; параметры и диапазоны см. [instruction-set](https://nextion.tech/instruction-set/).
  */
 namespace oper {
 
-    /** **Page** — переключить активную страницу по индексу (NIS `page`). */
-    class ChangePage final : public Command {
-        uint8_t _pageID;
-
-    public:
-        explicit ChangePage(uint8_t pageID) noexcept : _pageID(pageID) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
     /**
-     * **Send** **me** — запросить у дисплея номер текущей страницы по UART (NIS `sendme`); ответ — кадр с id страницы.
+     * Команды без параметров: `touch_j`, `rest`.
      */
-    class GetCurrentPageID final : public Command {
+    class BareOperCmd final : public Command {
     public:
+        enum class Kind : uint8_t {
+            TouchJ, /**< калибровка сенсора (NIS `touch_j`) */
+            Restart, /**< перезагрузка дисплея (NIS `rest`) */
+        };
+
+    private:
+        Kind _kind;
+
+    public:
+        explicit BareOperCmd(Kind k) noexcept : _kind(k) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
-    
+
+    //========== Работа с компонентами =========================================
+
     /**
      * **Ref**resh — принудительно перерисовать компонент (NIS `ref`), например после изменения данных без смены страницы.
      */
     class Refresh final : public Command {
-        TargetComp _component;
+        const Literal& _compName;
 
     public:
-        explicit Refresh(const TargetComp& component) noexcept : _component(component) {}
+        explicit Refresh(const Literal& compName) noexcept : _compName(compName) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **Ref**resh **stop** — остановить автообновление waveform (NIS `ref_stop`).
+     * **vis** / **tsw** / **click** — компонент и одно число 0/1 (NIS `vis`, `tsw`, `click`).
      */
-    class RefreshStop final : public Command {
+    class CompLiteralUintCmd final : public Command {
     public:
+        enum class Kind : uint8_t {
+            Vis,   /**< показать/скрыть */
+            Tsw,   /**< touch switch */
+            Click, /**< программное нажатие/отпускание */
+        };
+
+    private:
+        Kind _kind;
+        const Literal& _compName;
+        uint32_t _arg01;
+
+        CompLiteralUintCmd(Kind k, const Literal& compName, uint32_t arg01) noexcept
+            : _kind(k)
+            , _compName(compName)
+            , _arg01(arg01) {}
+
+    public:
+        static CompLiteralUintCmd vis(const Literal& compName, bool on) noexcept {
+            return CompLiteralUintCmd(Kind::Vis, compName, on ? 1u : 0u);
+        }
+        static CompLiteralUintCmd tsw(const Literal& compName, bool enabled) noexcept {
+            return CompLiteralUintCmd(Kind::Tsw, compName, enabled ? 1u : 0u);
+        }
+        static CompLiteralUintCmd click(const Literal& compName, uint8_t press1Release0) noexcept {
+            return CompLiteralUintCmd(Kind::Click, compName, static_cast<uint32_t>(press1Release0));
+        }
+
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **Ref**resh **start** — возобновить автообновление waveform (NIS `ref_start`).
+     * **Set** **layer** — порядок отрисовки (Z-order): объект над другим или `kTopLayerLexeme` (`255`) в NIS (`setlayer`).
      */
-    class RefreshStart final : public Command {
-    public:
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
- // --- Касание, видимость, симуляция press/release ---
-    /**
-     * **Touch** **j** — калибровка сенсора (NIS `touch_j`); после команды дисплей ждёт касаний по углам.
-     */
-    class TouchJ final : public Command {
-    public:
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Vis**ibility — показать/скрыть компонент (NIS `vis`, 0/1).
-     */
-    class Visible final : public Command {
-        TargetComp _component;
-        bool _state;
+     class Setlayer final : public Command {
+        const Literal& _compName;
+        const Literal& _aboveCompNameOr255;
 
     public:
-        Visible(const TargetComp& component, bool state) noexcept : _component(component), _state(state) {}
+        Setlayer(const Literal& compName, const Literal& aboveCompNameOr255) noexcept
+            : _compName(compName)
+            , _aboveCompNameOr255(aboveCompNameOr255) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **Touch switch** — включить/выключить реакцию компонента на касания (NIS `tsw`).
+     * Лексема `255` для `setlayer` (NIS): компонент **над всеми** (верхний слой / top layer).
+     * @see oper::Setlayer
      */
-    class TouchSwitch final : public Command {
-        TargetComp _component;
-        bool _enabled;
+     inline constexpr Literal TopLayer{"255"};
 
-    public:
-        TouchSwitch(const TargetComp& component, bool enabled) noexcept : _component(component), _enabled(enabled) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
 
     /**
-     * **Click** — программно сгенерировать нажатие/отпускание (NIS `click`, press/release).
+     * **Ref**resh **stop** / **start** — остановить или возобновить автообновление waveform (NIS `ref_stop`, `ref_start`).
      */
-    class Click final : public Command {
-        TargetComp _component;
-        uint8_t _press1Release0;
+    class RefreshWaveform final : public Command {
+    public:
+        enum class Op : uint8_t {
+            Stop,
+            Start,
+        };
+
+    protected:
+        Op _op;
 
     public:
-        Click(const TargetComp& component, uint8_t press1Release0) noexcept : _component(component), _press1Release0(press1Release0) {}
+        explicit RefreshWaveform(Op op = Op::Stop) noexcept : _op(op) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
+    //========== Работа с атрибутами ============================================
 
     /**
      * **Get** — запросить значение атрибута/переменной; дисплей отправит ответ по UART (NIS `get`).
@@ -232,13 +305,13 @@ namespace oper {
 
     public:
         explicit Get(const TargetAttr& operand) noexcept : _operand(operand) {}
-        explicit Get(const char* globalOrFullPath) noexcept : _operand(globalOrFullPath) {}
-        explicit Get(const char* objName, const char* attr) noexcept : _operand(objName, attr) {}
 
         bool serialize(TxFrame& tx) const noexcept override;
+        bool awaitsGetAttributeReply() const noexcept override { return true; }
     };
 
-    // --- Конвертация и строки ---
+    //========== Конвертация и строки ============================================
+
     /**
      * **Covx** (NIS, от *convert* + суффикс `x`) — преобразование число↔строка с параметрами длины и формата (`covx`).
      */
@@ -257,14 +330,14 @@ namespace oper {
     /**
      * **Substr**ing — вырезать подстроку из текста в другой атрибут (NIS `substr`).
      */
-    class SubStr final : public Command {
+    class SubString final : public Command {
         TargetAttr _fromTxt;
         TargetAttr _toTxt;
         uint32_t _start;
         uint32_t _count;
 
     public:
-        SubStr(const TargetAttr& fromTxt, const TargetAttr& toTxt, uint32_t start, uint32_t count) noexcept
+        SubString(const TargetAttr& fromTxt, const TargetAttr& toTxt, uint32_t start, uint32_t count) noexcept
             : _fromTxt(fromTxt), _toTxt(toTxt), _start(start), _count(count) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
@@ -293,20 +366,20 @@ namespace oper {
     /**
      * **Sp**lit **str**ing — взять поле по разделителю (NIS `spstr`, индекс фрагмента).
      */
-    class Spstr final : public Command {
+    class SplitString final : public Command {
         TargetAttr _src;
         TargetAttr _dst;
         const char* _delimiterQuoted;
         uint32_t _index;
 
     public:
-        Spstr(const TargetAttr& src, const TargetAttr& dst, const char* delimiterQuoted, uint32_t index) noexcept
+        SplitString(const TargetAttr& src, const TargetAttr& dst, const char* delimiterQuoted, uint32_t index) noexcept
             : _src(src), _dst(dst), _delimiterQuoted(delimiterQuoted), _index(index) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
 
-    // --- Случайные числа ---
+    //========== Случайные числа ================================================
     /**
      * **Rand**om **set** — задать диапазон для `rand` / случайных значений в проекте (NIS `randset`).
      */
@@ -319,7 +392,7 @@ namespace oper {
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
-    // --- Waveform ---
+    //========== Waveform ========================================================
     class WaveAdd final : public Command {
         uint32_t _waveformId;
         uint32_t _channel;
@@ -334,7 +407,7 @@ namespace oper {
     /**
      * **Wave**form **add** **t**ransparent — режим прозрачной передачи блока точек (NIS `addt`).
      */
-    class WaveAddt final : public Command {
+    class WaveAddt final : public TransparentCommand {
         uint32_t _waveformId;
         uint32_t _channel;
         uint32_t _byteCount;
@@ -343,39 +416,23 @@ namespace oper {
         WaveAddt(uint32_t waveformId, uint32_t channel, uint32_t byteCount) noexcept
             : _waveformId(waveformId), _channel(channel), _byteCount(byteCount) {}
         bool serialize(TxFrame& tx) const noexcept override;
+        uint32_t transparentPayloadBytes() const noexcept override { return _byteCount; }
     };
 
     /**
      * **Wave**form **cle**ar — очистить канал или все каналы осциллограммы (NIS `cle`).
      */
-    class WaveCle final : public Command {
+    class WaveClear final : public Command {
         uint32_t _waveformId;
         uint32_t _channelOr255All;
 
     public:
-        WaveCle(uint32_t waveformId, uint32_t channelOr255All) noexcept
+        WaveClear(uint32_t waveformId, uint32_t channelOr255All) noexcept
             : _waveformId(waveformId), _channelOr255All(channelOr255All) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
-    // --- Устройство и цикл событий ---
-    /**
-     * **Rest**art — перезагрузка дисплея Nextion (NIS `rest`).
-     */
-    class Rest final : public Command {
-    public:
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Do** **events** — отдать управление внутреннему циклу дисплея (обработка очереди, NIS `doevents`).
-     */
-    class DoEvents final : public Command {
-    public:
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    // --- EEPROM ---
+    //========== EEPROM ========================================================
     /**
      * EEPROM ↔ атрибут или переменная на дисплее (NIS `wepo` / `repo`), не transparent mode.
      */
@@ -409,7 +466,7 @@ namespace oper {
     /**
      * EEPROM в **transparent mode** — сырой блок байт по UART (NIS `wept` / `rept`).
      */
-    class EepromTransparent final : public Command {
+    class EepromTransparent final : public TransparentCommand {
     public:
         enum class Op : uint8_t {
             Write, /**< `wept` */
@@ -434,6 +491,7 @@ namespace oper {
         Op op() const noexcept { return _op; }
 
         bool serialize(TxFrame& tx) const noexcept override;
+        uint32_t transparentPayloadBytes() const noexcept override { return _byteCount; }
     };
 
     // --- GPIO, анимация, звук ---
@@ -443,11 +501,11 @@ namespace oper {
     class Cfgpio final : public Command {
         uint32_t _pin;
         uint32_t _mode;
-        TargetComp _bindComponentOrZero;
+        const Literal& _bindCompNameOrZero;
 
     public:
-        Cfgpio(uint32_t pin, uint32_t mode, const TargetComp& bindComponentOrZero) noexcept
-            : _pin(pin), _mode(mode), _bindComponentOrZero(bindComponentOrZero) {}
+        Cfgpio(uint32_t pin, uint32_t mode, const Literal& bindCompNameOrZero) noexcept
+            : _pin(pin), _mode(mode), _bindCompNameOrZero(bindCompNameOrZero) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -455,17 +513,19 @@ namespace oper {
      * **Move** — анимация перемещения компонента между двумя точками за время `timeMs` (NIS `move`).
      */
     class Move final : public Command {
-        TargetComp _component;
-        int32_t _x0;
-        int32_t _y0;
-        int32_t _x1;
-        int32_t _y1;
+        const Literal& _compName;
+        Point _from;
+        Point _to;
         uint32_t _priority;
         uint32_t _timeMs;
 
     public:
-        Move(const TargetComp& component, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t priority, uint32_t timeMs) noexcept
-            : _component(component), _x0(x0), _y0(y0), _x1(x1), _y1(y1), _priority(priority), _timeMs(timeMs) {}
+        Move(const Literal& compName, Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept
+            : _compName(compName)
+            , _from(from)
+            , _to(to)
+            , _priority(priority)
+            , _timeMs(timeMs) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -483,50 +543,66 @@ namespace oper {
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
-    // --- Файлы и каталоги (Intelligent / расширенные серии) ---
+    //========== Файлы и каталоги ==============================================
     /**
-     * **T**ransparent **w**rite **file** — подготовить приём файла по UART (размер, путь; NIS `twfile`).
+     * **delfile** / **deldir** / **newdir** — одна строка пути в кавычках (NIS).
      */
-    class Twfile final : public Command {
+    class FsPathVerbCmd final : public Command {
+    public:
+        enum class Verb : uint8_t {
+            DelFile,
+            DelDir,
+            NewDir,
+        };
+
+    private:
+        Verb _verb;
         const char* _pathQuoted;
-        uint32_t _fileSize;
 
     public:
-        Twfile(const char* pathQuoted, uint32_t fileSize) noexcept : _pathQuoted(pathQuoted), _fileSize(fileSize) {}
+        explicit FsPathVerbCmd(Verb v, const char* pathQuoted) noexcept : _verb(v), _pathQuoted(pathQuoted) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
-    /** **Del**ete **file** — удалить файл на SD/файловой системе дисплея (NIS `delfile`). */
-    class Delfile final : public Command {
-        const char* _pathQuoted;
-
-    public:
-        explicit Delfile(const char* pathQuoted) noexcept : _pathQuoted(pathQuoted) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
     /**
-     * **Re**name **file** — переименовать/переместить файл (NIS `refile`).
+     * **refile** / **redir** — два пути в кавычках через запятую (NIS).
      */
-    class Refile final : public Command {
+    class FsRenameCmd final : public Command {
+    public:
+        enum class Target : uint8_t {
+            File,
+            Dir,
+        };
+
+    private:
+        Target _target;
         const char* _pathFromQuoted;
         const char* _pathToQuoted;
 
     public:
-        Refile(const char* pathFromQuoted, const char* pathToQuoted) noexcept
-            : _pathFromQuoted(pathFromQuoted), _pathToQuoted(pathToQuoted) {}
+        FsRenameCmd(Target t, const char* pathFromQuoted, const char* pathToQuoted) noexcept
+            : _target(t), _pathFromQuoted(pathFromQuoted), _pathToQuoted(pathToQuoted) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
     /**
-     * **Find** **file** — проверить существование файла, результат в числовой атрибут (NIS `findfile`).
+     * **findfile** / **finddir** — путь и числовой атрибут результата (NIS).
      */
-    class Findfile final : public Command {
+    class FsPathFindCmd final : public Command {
+    public:
+        enum class Target : uint8_t {
+            File,
+            Dir,
+        };
+
+    private:
+        Target _target;
         const char* _pathQuoted;
         TargetAttr _dstNumAttr;
 
     public:
-        Findfile(const char* pathQuoted, const TargetAttr& dstNumAttr) noexcept : _pathQuoted(pathQuoted), _dstNumAttr(dstNumAttr) {}
+        FsPathFindCmd(Target t, const char* pathQuoted, const TargetAttr& dstNumAttr) noexcept
+            : _target(t), _pathQuoted(pathQuoted), _dstNumAttr(dstNumAttr) {}
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
@@ -546,63 +622,6 @@ namespace oper {
     };
 
     /**
-     * **Set** **layer** — порядок отрисовки (Z-order): объект над другим или «255» как в NIS (`setlayer`).
-     */
-    class Setlayer final : public Command {
-        TargetComp _component;
-        TargetComp _aboveOr255;
-
-    public:
-        Setlayer(const TargetComp& component, const TargetComp& aboveComponentOr255) noexcept
-            : _component(component), _aboveOr255(aboveComponentOr255) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /** **New** **dir**ectory — создать каталог (NIS `newdir`, путь со слэшем в конце). */
-    class Newdir final : public Command {
-        const char* _pathQuoted;
-
-    public:
-        explicit Newdir(const char* pathQuotedTrailingSlash) noexcept : _pathQuoted(pathQuotedTrailingSlash) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /** **Del**ete **dir**ectory — удалить каталог (NIS `deldir`). */
-    class Deldir final : public Command {
-        const char* _pathQuoted;
-
-    public:
-        explicit Deldir(const char* pathQuotedTrailingSlash) noexcept : _pathQuoted(pathQuotedTrailingSlash) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Re**name **dir**ectory — переименовать каталог (NIS `redir`).
-     */
-    class Redir final : public Command {
-        const char* _pathFromQuoted;
-        const char* _pathToQuoted;
-
-    public:
-        Redir(const char* pathFromQuoted, const char* pathToQuoted) noexcept
-            : _pathFromQuoted(pathFromQuoted), _pathToQuoted(pathToQuoted) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
-     * **Find** **dir**ectory — проверить каталог, результат в числовой атрибут (NIS `finddir`).
-     */
-    class Finddir final : public Command {
-        const char* _pathQuoted;
-        TargetAttr _dstNumAttr;
-
-    public:
-        Finddir(const char* pathQuotedTrailingSlash, const TargetAttr& dstNumAttr) noexcept
-            : _pathQuoted(pathQuotedTrailingSlash), _dstNumAttr(dstNumAttr) {}
-        bool serialize(TxFrame& tx) const noexcept override;
-    };
-
-    /**
      * **New** **file** — создать файл с зарезервированным размером (NIS `newfile`).
      */
     class Newfile final : public Command {
@@ -614,8 +633,172 @@ namespace oper {
         bool serialize(TxFrame& tx) const noexcept override;
     };
 
+    /**
+     * **T**ransparent **w**rite **file** — подготовить приём файла по UART (размер, путь; NIS `twfile`).
+     */
+    class Twfile final : public TransparentCommand {
+        const char* _pathQuoted;
+        uint32_t _fileSize;
+
+    public:
+        Twfile(const char* pathQuoted, uint32_t fileSize) noexcept : _pathQuoted(pathQuoted), _fileSize(fileSize) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+        uint32_t transparentPayloadBytes() const noexcept override { return _fileSize; }
+    };
+
     
 } // namespace oper
+
+/**
+ * NIS §4 — GUI Designing Commands (рисование на активной странице; до загрузки страницы в Program.s недопустимы).
+ * Параметры и примеры: [instruction-set §4](https://nextion.tech/instruction-set/).
+ */
+namespace gui {
+
+    /** **Cls** — залить весь экран цветом (NIS `cls`); в кадр — десятичное `color.raw` (RGB565). */
+    class ClearScreen final : public Command {
+        Color _color;
+
+    public:
+        explicit ClearScreen(Color color) noexcept : _color(color) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /** **Pic** — вывести ресурс-картинку в точке `at` (NIS `pic`). */
+    class Picture final : public Command {
+        Point _at;
+        PicId _pictureId;
+
+    public:
+        Picture(Point at, PicId pictureId) noexcept : _at(at), _pictureId(pictureId) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Pic** **q** — заменить прямоугольник экрана фрагментом той же области из полноэкранного ресурса (NIS `picq`).
+     */
+    class PictureCropInPlace final : public Command {
+        Point _upperLeft;
+        uint32_t _w;
+        uint32_t _h;
+        PicId _pictureId;
+
+    public:
+        PictureCropInPlace(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) noexcept
+            : _upperLeft(upperLeft), _w(w), _h(h), _pictureId(pictureId) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Xpic** — вырезать область из ресурса и нарисовать в `dst` (NIS `xpic`).
+     */
+    class PictureCropDraw final : public Command {
+        Point _dst;
+        uint32_t _w;
+        uint32_t _h;
+        Point _src;
+        PicId _pictureId;
+
+    public:
+        PictureCropDraw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) noexcept
+            : _dst(dst), _w(w), _h(h), _src(src), _pictureId(pictureId) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Xstr** — текст в прямоугольнике (NIS `xstr`).
+     * `fg` / `bg` — в кадр как десятичное `raw` (RGB565); при `BGStyle::CropImage` / `BGStyle::Image` у `bg` — `picid` (то же число в NIS).
+     * `fill` — режим фона (`sta` в NIS для xstr), см. `BGStyle`.
+     * `contentToken` — хвост лексемы (`va0.txt`, `"Hello"`, …).
+     */
+    class TextInRegion final : public Command {
+        Point _upperLeft;
+        uint32_t _w;
+        uint32_t _h;
+        FontId _fontId;
+        Color _fg;
+        Color _bg;
+        uint32_t _hAlign;
+        uint32_t _vAlign;
+        BGStyle _fill;
+        const char* _contentToken;
+
+    public:
+        TextInRegion(Point upperLeft, uint32_t w, uint32_t h, FontId fontId, Color fg, Color bg, uint32_t hAlign, uint32_t vAlign,
+            BGStyle fill, const char* contentToken) noexcept
+            : _upperLeft(upperLeft)
+            , _w(w)
+            , _h(h)
+            , _fontId(fontId)
+            , _fg(fg)
+            , _bg(bg)
+            , _hAlign(hAlign)
+            , _vAlign(vAlign)
+            , _fill(fill)
+            , _contentToken(contentToken) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * Прямоугольник на экране: заливка (`fill`) или контур (`draw`).
+     * Две точки — верхний левый и **включительный** нижний правый угол; `Mode` задаёт команду NIS.
+     */
+    class Rect final : public Command {
+    public:
+        enum class Mode : uint8_t {
+            Fill,    /**< `fill` — в UART уходят x,y и вычисленные w,h по углам */
+            Outline, /**< `draw` */
+        };
+
+    private:
+        Mode _mode;
+        Point _upperLeft;
+        /** Включительный нижний правый угол. */
+        Point _lowerRight;
+        Color _color;
+
+    public:
+        Rect(Mode mode, Point upperLeft, Point lowerRight, Color color) noexcept
+            : _mode(mode), _upperLeft(upperLeft), _lowerRight(lowerRight), _color(color) {}
+
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /** **Line** — отрезок (NIS `line`). */
+    class Line final : public Command {
+        Point _from;
+        Point _to;
+        Color _color;
+
+    public:
+        Line(Point from, Point to, Color color) noexcept : _from(from), _to(to), _color(color) {}
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+    /**
+     * **Cir** / **Cirs** — окружность: только контур или заливка (NIS `cir` / `cirs`).
+     */
+    class Circle final : public Command {
+    public:
+        enum class Kind : uint8_t {
+            Outline, /**< `cir` */
+            Filled,  /**< `cirs` */
+        };
+
+    private:
+        Kind _kind;
+        Point _center;
+        uint32_t _radius;
+        Color _color;
+
+    public:
+        Circle(Kind kind, Point center, uint32_t radius, Color color) noexcept
+            : _kind(kind), _center(center), _radius(radius), _color(color) {}
+
+        bool serialize(TxFrame& tx) const noexcept override;
+    };
+
+} // namespace gui
 
 } // namespace cmd
 

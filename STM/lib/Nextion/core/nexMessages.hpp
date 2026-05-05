@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <variant>
+#include "nexTypes.hpp"
 #include "nexProtocol.hpp"
 
 namespace nex {
@@ -86,8 +87,7 @@ namespace nex {
         struct TouchXYEvent {
             constexpr static uint8_t Header = 0x67;
             TouchPlane plane;
-            uint16_t x;
-            uint16_t y;
+            Point pos{};
             TouchState state;
         };
 

@@ -110,12 +110,13 @@ void TranslateMessage(const RxFrame& f, Message& out)
         msg::TouchXYEvent e{};
         e.plane = (h == static_cast<uint8_t>(msg::TouchPlane::Awake)) ? msg::TouchPlane::Awake : msg::TouchPlane::Sleep;
         if (f.length >= 5u) {
-            e.x = static_cast<uint16_t>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
-            e.y = static_cast<uint16_t>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
+            const uint16_t rx = static_cast<uint16_t>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
+            const uint16_t ry = static_cast<uint16_t>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
+            e.pos.x = static_cast<Coord>(rx);
+            e.pos.y = static_cast<Coord>(ry);
             e.state = static_cast<msg::TouchState>(f.payload[4]);
         } else {
-            e.x = 0u;
-            e.y = 0u;
+            e.pos = {};
             e.state = msg::TouchState::Release;
         }
         out = e;
@@ -204,8 +205,18 @@ bool Transceiver::pushCommand(const Command& cmd) {
     return transmit();
 }
 
+bool Transceiver::pushTransparentPreamble(const TransparentCommand& cmd) {
+    return pushCommand(cmd);
+}
+
 bool Transceiver::transmit() noexcept {
     return _txFramer.tick(_stream);
+}
+
+size_t Transceiver::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
+    if (data == nullptr || len == 0u)
+        return 0u;
+    return _stream.write(data, len);
 }
 
 bool Transceiver::receive(Message& out) {

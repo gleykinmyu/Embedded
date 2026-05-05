@@ -2,8 +2,7 @@
 
 #include <array>
 #include <cstdint>
-
-#include "nexAttribute.hpp"
+#include "../core/nexTypes.hpp"
 #include "nexComponentBase.hpp"
 
 namespace nex {
@@ -15,7 +14,7 @@ public:
     uint32_t tim{}; /**< Интервал, мс (`tim`). */
     bool en{};      /**< Включён (`en`). */
 
-    Timer(Page& owner, const char* name, uint8_t id = 0)
+    Timer(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Timer, id) {}
 };
 
@@ -24,7 +23,7 @@ class NumericVariable : public Component {
 public:
     int32_t val{};
 
-    NumericVariable(Page& owner, const char* name, uint8_t id = 0)
+    NumericVariable(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id) {}
 };
 
@@ -34,29 +33,28 @@ public:
     uint16_t txt_maxl{};
     std::array<char, 256> txt{};
 
-    StringVariable(Page& owner, const char* name, uint8_t id = 0)
+    StringVariable(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id) {}
 };
 
 // --- Геометрия и визуальная оболочка ----------------------------------------
 
-/** x, y, w, h (NIS) */
+/** `pos` (x, y), `w`, `h` (NIS). */
 class GeometryComponent : public Component {
 public:
-    uint16_t x{};
-    uint16_t y{};
+    Point pos{};
     uint16_t w{};
     uint16_t h{};
 
 protected:
-    explicit GeometryComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit GeometryComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Component(owner, objectName, componentType, id) {}
 };
 
 /** только геометрия; отдельных атрибутов в дельте к Geometry — нет */
 class Hotspot : public GeometryComponent {
 public:
-    Hotspot(Page& owner, const char* name, uint8_t id = 0)
+    Hotspot(Page& owner, const Literal& name, uint8_t id = 0)
         : GeometryComponent(owner, name, Component::Type::Hotspot, id) {}
 };
 
@@ -68,7 +66,7 @@ public:
     uint8_t effect{}; /**< Код эффекта (`effect`), набор значений по серии. */
 
 protected:
-    explicit VisualComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit VisualComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : GeometryComponent(owner, objectName, componentType, id) {}
 };
 
@@ -88,7 +86,7 @@ public:
     PicId picc{};  /**< Картинка-источник crop (`picc`). */
 
 protected:
-    explicit BGComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit BGComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : VisualComponent(owner, objectName, componentType, id) {}
 };
 
@@ -100,14 +98,14 @@ public:
     std::array<char, 256> txt{};
     uint16_t txt_maxl{};
 
-    QRCode(Page& owner, const char* name, uint8_t id = 0)
+    QRCode(Page& owner, const Literal& name, uint8_t id = 0)
         : BGComponent<BGStyle::Color>(owner, name, Component::Type::QRCode, id) {}
 };
 
 /** pic — поле `pic` в BG; `Style::Image`. */
 class Picture : public BGComponent<BGStyle::Image> {
 public:
-    Picture(Page& owner, const char* name, uint8_t id = 0)
+    Picture(Page& owner, const Literal& name, uint8_t id = 0)
         : BGComponent<BGStyle::Image>(owner, name, Component::Type::Picture, id) {}
 };
 
@@ -116,7 +114,7 @@ class CropPicture : public BGComponent<BGStyle::CropImage> {
 public:
     PicId cpic{}; /**< Окно кропа по ресурсу (`cpic`). */
 
-    CropPicture(Page& owner, const char* name, uint8_t id = 0)
+    CropPicture(Page& owner, const Literal& name, uint8_t id = 0)
         : BGComponent<BGStyle::CropImage>(owner, name, Component::Type::CropPicture, id) {}
 };
 
@@ -124,7 +122,7 @@ public:
 template<BGStyle S = BGStyle::Color>
 class DrawableColoredComponent : public BGComponent<S> {
 protected:
-    explicit DrawableColoredComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit DrawableColoredComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : BGComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -141,7 +139,7 @@ public:
     uint16_t wid{};
     uint16_t hig{};
 
-    Waveform(Page& owner, const char* name, uint8_t id = 0)
+    Waveform(Page& owner, const Literal& name, uint8_t id = 0)
         : DrawableColoredComponent<S>(owner, name, Component::Type::Waveform, id) {}
 };
 
@@ -158,7 +156,7 @@ public:
     PicId bpic{}; /**< Фон-бар по картинке (`bpic`). */
     PicId ppic{}; /**< Заполнение по картинке (`ppic`). */
 
-    ProgressBar(Page& owner, const char* name, uint8_t id = 0)
+    ProgressBar(Page& owner, const Literal& name, uint8_t id = 0)
         : DrawableColoredComponent<S>(owner, name, Component::Type::ProgressBar, id) {}
 };
 
@@ -176,7 +174,7 @@ public:
     uint16_t minval{};
     uint8_t ch{};
 
-    Slider(Page& owner, const char* name, uint8_t id = 0)
+    Slider(Page& owner, const Literal& name, uint8_t id = 0)
         : DrawableColoredComponent<S>(owner, name, Component::Type::Slider, id) {}
 };
 
@@ -196,7 +194,7 @@ public:
     std::array<char, 24> vvs1{};
     std::array<char, 24> vvs2{};
 
-    Gauge(Page& owner, const char* name, uint8_t id = 0)
+    Gauge(Page& owner, const Literal& name, uint8_t id = 0)
         : DrawableColoredComponent<S>(owner, name, Component::Type::Gauge, id) {}
 };
 
@@ -209,7 +207,7 @@ public:
     int16_t spax{}; /**< Межсимвольный интервал (`spax`). */
 
 protected:
-    explicit PrintableComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit PrintableComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : BGComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -236,7 +234,7 @@ public:
     Color pco2{};
 
 protected:
-    explicit DataFileRecordComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit DataFileRecordComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : PrintableComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -252,7 +250,7 @@ public:
     uint16_t hig{};
 
 protected:
-    explicit ListSelectTextComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit ListSelectTextComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : PrintableComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -279,7 +277,7 @@ public:
     std::array<char, 256> txt{};
     uint16_t txt_maxl{};
 
-    ComboBox(Page& owner, const char* name, uint8_t id = 0)
+    ComboBox(Page& owner, const Literal& name, uint8_t id = 0)
         : ListSelectTextComponent<S>(owner, name, Component::Type::ComboBox, id) {}
 };
 
@@ -293,7 +291,7 @@ public:
     bool xcen{};
 
 protected:
-    explicit MultilineComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit MultilineComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : PrintableComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -305,7 +303,7 @@ public:
     uint16_t txt_maxl{};
 
 protected:
-    explicit TextComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit TextComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : MultilineComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -316,7 +314,7 @@ public:
     bool key{};
     bool pw{}; /**< Маска пароля (`pw`). */
 
-    Text(Page& owner, const char* name, uint8_t id = 0)
+    Text(Page& owner, const Literal& name, uint8_t id = 0)
         : TextComponent<S>(owner, name, Component::Type::Text, id) {}
 };
 
@@ -330,7 +328,7 @@ public:
     uint32_t tim{};
     bool en{};
 
-    ScrollText(Page& owner, const char* name, uint8_t id = 0)
+    ScrollText(Page& owner, const Literal& name, uint8_t id = 0)
         : TextComponent<S>(owner, name, Component::Type::ScrollText, id) {}
 };
 
@@ -344,14 +342,14 @@ public:
     Color pco2{};
 
 protected:
-    explicit ButtonLikeComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit ButtonLikeComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : TextComponent<S>(owner, objectName, componentType, id) {}
 };
 
 template<BGStyle S = BGStyle::Color>
 class Button : public ButtonLikeComponent<S> {
 public:
-    Button(Page& owner, const char* name, uint8_t id = 0)
+    Button(Page& owner, const Literal& name, uint8_t id = 0)
         : ButtonLikeComponent<S>(owner, name, Component::Type::Button, id) {}
 };
 
@@ -361,7 +359,7 @@ class DualStateButton : public ButtonLikeComponent<S> {
 public:
     uint32_t val{}; /**< 0/1 или диапазон по проекту (`val`). */
 
-    DualStateButton(Page& owner, const char* name, uint8_t id = 0)
+    DualStateButton(Page& owner, const Literal& name, uint8_t id = 0)
         : ButtonLikeComponent<S>(owner, name, Component::Type::DualStateButton, id) {}
 };
 
@@ -374,7 +372,7 @@ public:
     std::array<char, 32> format{}; /**< Строка формата (`format`). */
 
 protected:
-    explicit NumericComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit NumericComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : MultilineComponent<S>(owner, objectName, componentType, id) {}
 };
 
@@ -384,7 +382,7 @@ class Number : public NumericComponent<S> {
 public:
     uint16_t length{}; /**< Лимит символов (`length`). */
 
-    Number(Page& owner, const char* name, uint8_t id = 0)
+    Number(Page& owner, const Literal& name, uint8_t id = 0)
         : NumericComponent<S>(owner, name, Component::Type::Number, id) {}
 };
 
@@ -395,7 +393,7 @@ public:
     std::array<char, 24> vvs0{};
     std::array<char, 24> vvs1{};
 
-    XFloat(Page& owner, const char* name, uint8_t id = 0)
+    XFloat(Page& owner, const Literal& name, uint8_t id = 0)
         : NumericComponent<S>(owner, name, Component::Type::XFloat, id) {}
 };
 
@@ -410,21 +408,21 @@ public:
     uint32_t val{}; /**< Состояние/индекс выбора (зависит от типа). */
 
 protected:
-    explicit SelectionComponent(Page& owner, const char* objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit SelectionComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : BGComponent<S>(owner, objectName, componentType, id) {}
 };
 
 template<BGStyle S = BGStyle::Color>
 class Checkbox : public SelectionComponent<S> {
 public:
-    Checkbox(Page& owner, const char* name, uint8_t id = 0)
+    Checkbox(Page& owner, const Literal& name, uint8_t id = 0)
         : SelectionComponent<S>(owner, name, Component::Type::Checkbox, id) {}
 };
 
 template<BGStyle S = BGStyle::Color>
 class Radio : public SelectionComponent<S> {
 public:
-    Radio(Page& owner, const char* name, uint8_t id = 0)
+    Radio(Page& owner, const Literal& name, uint8_t id = 0)
         : SelectionComponent<S>(owner, name, Component::Type::Radio, id) {}
 };
 
@@ -439,7 +437,7 @@ public:
     uint16_t dis{};
     std::array<char, 25> txt{}; /**< txt_maxl = 24 в NIS + NUL. */
 
-    ToggleSwitch(Page& owner, const char* name, uint8_t id = 0)
+    ToggleSwitch(Page& owner, const Literal& name, uint8_t id = 0)
         : SelectionComponent<S>(owner, name, Component::Type::ToggleSwitch, id) {}
 };
 
