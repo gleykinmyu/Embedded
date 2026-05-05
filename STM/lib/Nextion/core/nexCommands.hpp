@@ -78,7 +78,7 @@ namespace nex {
 
     /**
      * Исходящие команды с **transparent**-фазой: после первой строки инструкции хост передаёт блок байт
-     * (`wept`/`rept`, `addt`, `twfile`, …). См. `Transceiver::pushTransparentPreamble`.
+     * (`wept`/`rept`, `addt`, `twfile`, …). См. `Gateway::pushTransparentPreamble`.
      */
     class TransparentCommand : public Command {
     public:

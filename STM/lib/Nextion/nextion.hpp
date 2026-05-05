@@ -1,5 +1,6 @@
 #pragma once
 #include <string_view>
-#include "nexTransceiver.hpp"
-#include "core/nexSession.hpp"
+#include "nexGateway.hpp"
+#include "core/nexFifo.hpp"
+#include "core/nexObjManager.hpp"
 #include "comp/nexComponents.hpp"

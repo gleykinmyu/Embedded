@@ -53,12 +53,12 @@ namespace nex {
     
     
         /**
-         * **Transceiver** — приёмник+передатчик: UART с протоколом Nextion (`pushCommand` / `transmit` / `receive`).
+         * **Gateway** — шлюз UART с протоколом Nextion (`pushCommand` / `transmit` / `receive`).
          * Объединяет `RxFramer` и `TxFramer`; верхний уровень может вызывать периодический `update`.
          */
-        class Transceiver {
+        class Gateway {
         public:
-            explicit Transceiver(BIF::IByteStream& s);
+            explicit Gateway(BIF::IByteStream& s);
 
             /** Можно вызвать `pushCommand`: нет незавершённой передачи кадра на UART. */
             bool isTxIdle() const noexcept { return _txFramer.isIdle(); }

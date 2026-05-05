@@ -1,4 +1,4 @@
-#include "../nexTransceiver.hpp"
+#include "../nexGateway.hpp"
 
 namespace nex
 {
@@ -185,12 +185,12 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
 }
 
 //===============================================
-// Transceiver
+// Gateway
 //===============================================
 
-Transceiver::Transceiver(BIF::IByteStream& s) : _stream(s) {}
+Gateway::Gateway(BIF::IByteStream& s) : _stream(s) {}
 
-bool Transceiver::pushCommand(const Command& cmd) {
+bool Gateway::pushCommand(const Command& cmd) {
     if (!_txFramer.isIdle())
         return false;
 
@@ -205,21 +205,21 @@ bool Transceiver::pushCommand(const Command& cmd) {
     return transmit();
 }
 
-bool Transceiver::pushTransparentPreamble(const TransparentCommand& cmd) {
+bool Gateway::pushTransparentPreamble(const TransparentCommand& cmd) {
     return pushCommand(cmd);
 }
 
-bool Transceiver::transmit() noexcept {
+bool Gateway::transmit() noexcept {
     return _txFramer.tick(_stream);
 }
 
-size_t Transceiver::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
+size_t Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
     if (data == nullptr || len == 0u)
         return 0u;
     return _stream.write(data, len);
 }
 
-bool Transceiver::receive(Message& out) {
+bool Gateway::receive(Message& out) {
     while (_stream.available() > 0u) {
         uint8_t b = 0;
         const size_t n = _stream.read(&b, 1u);
