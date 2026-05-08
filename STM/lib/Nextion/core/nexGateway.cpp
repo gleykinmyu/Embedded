@@ -100,7 +100,7 @@ void TranslateMessage(const RxFrame& f, Message& out)
         msg::TouchCompEvent t{};
         t.page_id = f.length > 0u ? f.payload[0] : 0u;
         t.component_id = f.length > 1u ? f.payload[1] : 0u;
-        t.state = f.length > 2u ? static_cast<msg::TouchState>(f.payload[2]) : msg::TouchState::Release;
+        t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
         out = t;
         return;
     }
@@ -114,10 +114,10 @@ void TranslateMessage(const RxFrame& f, Message& out)
             const uint16_t ry = static_cast<uint16_t>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
             e.pos.x = static_cast<Coord>(rx);
             e.pos.y = static_cast<Coord>(ry);
-            e.state = static_cast<msg::TouchState>(f.payload[4]);
+            e.state = static_cast<TouchState>(f.payload[4]);
         } else {
             e.pos = {};
-            e.state = msg::TouchState::Release;
+            e.state = TouchState::Release;
         }
         out = e;
         return;
@@ -151,10 +151,22 @@ void TxFramer::reset() noexcept {
     _state = State::Idle;
     frame.length = 0;
     _pos = 0;
+    _rawData = nullptr;
+    _rawLen = 0u;
 }
 
 bool TxFramer::isIdle() const noexcept {
     return _state == State::Idle && frame.length == 0u;
+}
+
+bool TxFramer::beginRaw(const uint8_t* data, size_t len) noexcept {
+    if (!isIdle() || data == nullptr || len == 0u)
+        return false;
+    _rawData = data;
+    _rawLen = len;
+    _pos = 0;
+    _state = State::RawPayload;
+    return true;
 }
 
 bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
@@ -162,10 +174,10 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
     {
         std::memcpy(frame.payload + frame.length, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
         frame.length += Physical::TERM_COUNT;
-        _state = State::Payload;
+        _state = State::FramePayload;
     }
 
-    while (_state == State::Payload) {
+    while (_state == State::FramePayload) {
         const size_t w = stream.write(frame.payload + _pos, static_cast<size_t>(frame.length - _pos));
         if (w == 0u) {
             if (stream.getStatus() != BIF::IByteStream::Status::OK) {
@@ -175,8 +187,25 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
             }
             return true;
         }
-        _pos = static_cast<uint16_t>(_pos + static_cast<uint16_t>(w));
+        _pos += w;
         if (_pos >= frame.length) {
+            reset();
+            return true;
+        }
+    }
+
+    while (_state == State::RawPayload) {
+        const size_t w = stream.write(_rawData + _pos, _rawLen - _pos);
+        if (w == 0u) {
+            if (stream.getStatus() != BIF::IByteStream::Status::OK) {
+                reset();
+                stream.purgeOutput();
+                return false;
+            }
+            return true;
+        }
+        _pos += w;
+        if (_pos >= _rawLen) {
             reset();
             return true;
         }
@@ -202,21 +231,17 @@ bool Gateway::pushCommand(const Command& cmd) {
     if (_txFramer.frame.length == 0u)
         return false;
 
-    return transmit();
-}
-
-bool Gateway::pushTransparentPreamble(const TransparentCommand& cmd) {
-    return pushCommand(cmd);
+    return true;
 }
 
 bool Gateway::transmit() noexcept {
     return _txFramer.tick(_stream);
 }
 
-size_t Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
+bool Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
     if (data == nullptr || len == 0u)
-        return 0u;
-    return _stream.write(data, len);
+        return false;
+    return _txFramer.beginRaw(data, len);
 }
 
 bool Gateway::receive(Message& out) {

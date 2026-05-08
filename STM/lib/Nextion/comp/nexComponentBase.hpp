@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include "../core/nexMessages.hpp"
-#include "../core/nexProtocol.hpp"
 
 namespace nex {
 
@@ -25,6 +24,8 @@ namespace nex {
         const uint8_t ID;
         explicit Page(const Literal& pageObjName, uint8_t id) noexcept;
         void dispatchTouch(const msg::TouchCompEvent& e) noexcept;
+        void dispatchCommandResult(const msg::CommandResultEvent& e) noexcept;
+        void dispatchMessageToComponent(uint8_t componentId, const Message& m) noexcept;
 
     protected:
         void registerComponent(Component* c) noexcept;
@@ -88,6 +89,9 @@ namespace nex {
         constexpr bool isGlobal() const noexcept { return false; }
         
         virtual void onTouch(const msg::TouchCompEvent& e);
+        virtual void onCommandResult(const msg::CommandResultEvent& e);
+        /** Ответы/сообщения UART, адресованные компоненту (например, результат `get`). */
+        virtual void onMessage(const Message& m);
 
     protected:
         uint8_t _ID;

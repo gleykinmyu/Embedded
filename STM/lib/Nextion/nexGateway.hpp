@@ -38,6 +38,11 @@ namespace nex {
             /** `Idle` и `frame.length == 0` — можно снова сериализовать команду. */
             bool isIdle() const noexcept;
             /**
+             * Запустить неблокирующую передачу RAW-байт из внешнего буфера (без `0xFF×3`).
+             * Буфер не копируется и должен оставаться валидным до `isIdle()==true`.
+             */
+            bool beginRaw(const uint8_t* data, size_t len) noexcept;
+            /**
              * В `Idle` дописывает `0xFF×3` в хвост `frame` и шлёт буфер целиком (`Payload` до `reset`).
              * @return false — ошибка `getStatus` при `write==0` (`reset` и `purgeOutput`); иначе true
              * (нечего слать, или `write==0` при OK — отложить до следующего вызова).
@@ -45,9 +50,11 @@ namespace nex {
             bool tick(BIF::IByteStream& stream) noexcept;
 
         private:
-            enum class State : uint8_t {Idle, Payload};
+            enum class State : uint8_t {Idle, FramePayload, RawPayload};
 
-            uint16_t _pos = 0;
+            size_t _pos = 0u;
+            const uint8_t* _rawData = nullptr;
+            size_t _rawLen = 0u;
             State _state = State::Idle;
         };
     
@@ -64,17 +71,11 @@ namespace nex {
             bool isTxIdle() const noexcept { return _txFramer.isIdle(); }
 
             /**
-             * Отправить команду (сериализация в `TxFramer::frame`, затем первый `tick`).
-             * @return false — занято, ошибка `serialize`, пустой кадр, или ошибка потока при первой записи.
+             * Поставить команду в неблокирующую отправку (сериализация в `TxFramer::frame`).
+             * Фактическая дозапись в UART выполняется в `transmit()`.
+             * @return false — занято, ошибка `serialize` или пустой кадр.
              */
             bool pushCommand(const Command& cmd);
-
-            /**
-             * Отправить **преамбулу** команды с фазой transparent (NIS §1.16): первая строка + `0xFF×3`.
-             * Далее вызывающий обязан передать `cmd.transparentPayloadBytes()` сырых байт по UART (тот же поток).
-             * По сути вызывает `pushCommand`; тип `TransparentCommand` фиксирует контракт на этапе компиляции.
-             */
-            bool pushTransparentPreamble(const TransparentCommand& cmd);
 
             /** Один тик дозаписи кадра на линию (`TxFramer::tick`). @return false — ошибка `getStatus` у потока. */
             bool transmit() noexcept;
@@ -83,10 +84,11 @@ namespace nex {
             bool receive(Message& out);
 
             /**
-             * Запись **сырых** байт в тот же поток, что и кадры (NIS §1.16 — фаза данных после `pushTransparentPreamble`).
-             * Не добавляет `0xFF×3`; вызывать только когда `Session` / вызывающий в фазе передачи payload.
+             * Неблокирующая отправка **сырых** байт в тот же поток (NIS §1.16 — фаза после `pushTransparentPreamble`).
+             * Не добавляет `0xFF×3`; использует внешний буфер (без копирования), который должен жить до конца передачи.
+             * @return true — передача принята в работу; false — занято или некорректные аргументы.
              */
-            size_t writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
+            bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 
         private:
             BIF::IByteStream& _stream;

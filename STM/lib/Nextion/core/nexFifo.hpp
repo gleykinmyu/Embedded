@@ -18,6 +18,12 @@
 
 namespace nex {
 
+struct CommandMeta {
+    uint8_t page_id = 0u;
+    uint8_t component_id = 0u;
+    uint16_t token = 0u;
+};
+
 /**
  * FIFO исходящих `Command`: объекты конкретных типов создаются через **placement new** в выровненном слоте.
  *
@@ -49,6 +55,8 @@ class CommandFifo {
         void (*destroy)(void*) noexcept = nullptr;
         /** Безопасное приведение адреса `storage` к базе `Command*` (для МИ на MCU обычно не используют). */
         const Command* (*toCommand)(const void*) noexcept = nullptr;
+        /** Идентификатор отправителя и пользовательский токен команды. */
+        CommandMeta meta{};
     };
 
     Slot slots_[Capacity]{};
@@ -78,7 +86,7 @@ public:
      * продвигает хвост. При переполнении очереди — `false`, буфер не трогаем.
      */
     template <typename T>
-    bool tryPush(const T& cmd) {
+    bool tryPush(const T& cmd, CommandMeta meta = {}) {
         static_assert(std::is_base_of<Command, T>::value, "T must derive from nex::Command");
         static_assert(sizeof(T) <= MaxObjectSize, "command type too large for CommandFifo slot");
         static_assert(alignof(T) <= MaxAlign, "alignment too large for CommandFifo slot");
@@ -88,6 +96,7 @@ public:
         new (s.storage) T(cmd);
         s.destroy = [](void* p) noexcept { static_cast<T*>(p)->~T(); };
         s.toCommand = [](const void* p) noexcept -> const Command* { return static_cast<const T*>(p); };
+        s.meta = meta;
         tail_ = next(tail_);
         ++count_;
         return true;
@@ -104,6 +113,12 @@ public:
         return s.toCommand(static_cast<const void*>(s.storage));
     }
 
+    const CommandMeta* peekMeta() const noexcept {
+        if (empty())
+            return nullptr;
+        return &slots_[head_].meta;
+    }
+
     /** Явный деструктор объекта в голове и сдвиг `head_`; для пустой очереди — no-op. */
     void pop() noexcept {
         if (empty())
@@ -112,6 +127,7 @@ public:
         s.destroy(s.storage);
         s.destroy = nullptr;
         s.toCommand = nullptr;
+        s.meta = {};
         head_ = next(head_);
         --count_;
     }

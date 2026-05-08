@@ -60,12 +60,6 @@ namespace nex {
             const char* data() const noexcept { return chars; }
         };
 
-        /** Код нажатия/отпускания в кадре 0x65 и второй аргумент UART-инструкции `click` (NIS, 0 / 1). */
-        enum class TouchState : uint8_t {
-            Release = 0x00,
-            Press = 0x01
-        };
-
         /**
          * Событие касания по **comp**onent — страница, id компонента, press/release (кадр **0x65**).
          */
@@ -116,6 +110,25 @@ namespace nex {
             Code code;
         };
 
+        /**
+         * Внутреннее событие MCU: результат завершения исходящей команды, маршрутизируемый по паре page/component.
+         */
+        struct CommandResultEvent {
+            enum class Outcome : uint8_t {
+                Completed = 0,
+                DeviceStatus,
+                Timeout,
+                TxError,
+                QueueRejected,
+            };
+
+            uint8_t page_id = 0u;
+            uint8_t component_id = 0u;
+            uint16_t token = 0u;
+            Outcome outcome = Outcome::Completed;
+            uint8_t code = 0u; ///< Для `DeviceStatus` — `msg::StatusResponse::Code`, иначе 0.
+        };
+
     } // namespace msg
 
     /** Разобранное входящее сообщение дисплея — один из типов в `msg::`. */
@@ -126,6 +139,7 @@ namespace nex {
         msg::TouchCompEvent,
         msg::TouchXYEvent,
         msg::PageEvent,
-        msg::SystemEvent>;
+        msg::SystemEvent,
+        msg::CommandResultEvent>;
 
 } // namespace nex

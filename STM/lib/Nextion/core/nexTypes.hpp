@@ -111,6 +111,12 @@ enum class BGStyle : uint8_t {
     Transparent  = 3,
 };
 
+/** Код нажатия/отпускания в touch-событиях и аргументе UART-инструкции `click` (NIS, 0 / 1). */
+enum class TouchState : uint8_t {
+    Release = 0x00,
+    Press = 0x01
+};
+
 /** Идентификатор ресурса картинки/страницы в NIS (`pic`, `pic2`, `cpic`, …). */
 using PicId = uint16_t;
 
