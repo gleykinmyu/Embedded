@@ -7,13 +7,12 @@
 /**
  * @file nexCommands.hpp
  *
- * **Список классов команд** (исходящие UART-инструкции NIS). Базовые типы: `nex::Command`, `nex::TransparentCommand`
- * (последний — команды с фазой transparent после первого кадра, §1.16).
+ * **Список классов команд** (исходящие UART-инструкции NIS). Базовый тип: `nex::Command` (в т.ч. команды с фазой
+ * transparent после первого кадра — флаг `Command::Flag::TransparentReadyToReceive`, §1.16).
  *
  * | Пространство имён   | Класс                  | База                   |
  * |---------------------|------------------------|------------------------|
  * | `nex`               | `Command`              | —                      |
- * | `nex`               | `TransparentCommand`   | `Command`              |
  * | `nex::cmd::assign`  | `Text`                 | `Command`              |
  * | `nex::cmd::assign`  | `TextSubtract`         | `Command`              |
  * | `nex::cmd::assign`  | `Numeric`              | `Command`              |
@@ -71,17 +70,11 @@ namespace nex {
         /** Записать инструкцию в `tx.payload`; при успехе `tx.length` — число байт полезной нагрузки (терминаторы не входят). */
         virtual bool serialize(TxFrame& tx) const noexcept = 0;
 
-        /** Число байт 2-й фазы (сырые байты UART); используется при флаге `TransparentReadyToReceive`. */
-        virtual uint32_t transparentPayloadBytes() const noexcept { return 0; }
-    };
-
-    /**
-     * Исходящие команды с **transparent**-фазой: после первой строки инструкции хост передаёт блок байт
-     * (`wept`/`rept`, `addt`, `twfile`, …). См. `Gateway::pushTransparentPreamble`.
-     */
-    class TransparentCommand : public Command {
-    public:
-        TransparentCommand() noexcept : Command(flagMask(Flag::TransparentReadyToReceive)) {}
+        /**
+         * Для команд с `Flag::TransparentReadyToReceive` (MCU → панель): сколько байт сырой полезной нагрузки
+         * после события `0xFE` (NIS §1.16). Иначе `0`.
+         */
+        virtual uint32_t transparentPayloadBytes() const noexcept { return 0u; }
     };
 
 namespace cmd {
@@ -432,7 +425,9 @@ namespace cmd {
         static WaveForm refreshStart() noexcept { return WaveForm(Kind::RefreshStart, 0u, 0u, 0u); }
 
         bool serialize(TxFrame& tx) const noexcept override;
-        uint32_t transparentPayloadBytes() const noexcept override { return (_kind == Kind::AddT) ? _arg2 : 0u; }
+        uint32_t transparentPayloadBytes() const noexcept override {
+            return (_kind == Kind::AddT) ? _arg2 : 0u;
+        }
     };
 
     //========== EEPROM ========================================================
@@ -476,7 +471,7 @@ namespace cmd {
 
         bool serialize(TxFrame& tx) const noexcept override;
         uint32_t transparentPayloadBytes() const noexcept override {
-            return (hasFlag(Flag::TransparentReadyToReceive) || hasFlag(Flag::RawDataReceive)) ? _byteCount : 0u;
+            return (_op == Op::Write && hasFlag(Flag::TransparentReadyToReceive)) ? _byteCount : 0u;
         }
     };
 
@@ -542,15 +537,17 @@ namespace cmd {
         static File create(const char* pathQuoted, uint32_t reservedSize) noexcept {
             return File(Op::Create, pathQuoted, nullptr, nullptr, reservedSize, 0u, 0u, 0u);
         }
-        static File read(const char* pathQuoted, uint32_t offset, uint32_t count, uint32_t crcOption) noexcept {
-            return File(Op::Read, pathQuoted, nullptr, nullptr, 0u, offset, count, crcOption);
+        static File read(const char* pathQuoted, uint32_t offset, uint32_t byteCount, uint32_t crcOption) noexcept {
+            return File(Op::Read, pathQuoted, nullptr, nullptr, 0u, offset, byteCount, crcOption, flagMask(Flag::RawDataReceive));
         }
-        static File writeT(const char* pathQuoted, uint32_t fileSize) noexcept {
-            return File(Op::WriteT, pathQuoted, nullptr, nullptr, fileSize, 0u, 0u, 0u, flagMask(Flag::TransparentReadyToReceive));
+        static File writeT(const char* pathQuoted, uint32_t byteCount) noexcept {
+            return File(Op::WriteT, pathQuoted, nullptr, nullptr, byteCount, 0u, 0u, 0u, flagMask(Flag::TransparentReadyToReceive));
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
-        uint32_t transparentPayloadBytes() const noexcept override { return (_op == Op::WriteT) ? _reservedSize : 0u; }
+        uint32_t transparentPayloadBytes() const noexcept override {
+            return (_op == Op::WriteT) ? _reservedSize : 0u;
+        }
     };
 
 

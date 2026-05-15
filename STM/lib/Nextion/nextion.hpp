@@ -1,6 +1,7 @@
 #pragma once
 #include <string_view>
-#include "nexGateway.hpp"
-#include "core/nexFifo.hpp"
-#include "nexObjManager.hpp"
-#include "comp/nexComponents.hpp"
+#include "impl/nexApplication.hpp"
+#include "impl/nexAttributes.hpp"
+#include "core/nexGateway.hpp"
+#include "impl/nexFifo.hpp"
+#include "impl/nexComponents.hpp"

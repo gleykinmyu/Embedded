@@ -1,4 +1,4 @@
-#include "../nexGateway.hpp"
+#include "nexGateway.hpp"
 
 namespace nex
 {
@@ -96,8 +96,8 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §11 — событие нажатия на компонент.
-    if (h == msg::TouchCompEvent::Header) {
-        msg::TouchCompEvent t{};
+    if (h == msg::TouchEvent::Header) {
+        msg::TouchEvent t{};
         t.page_id = f.length > 0u ? f.payload[0] : 0u;
         t.component_id = f.length > 1u ? f.payload[1] : 0u;
         t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
@@ -140,7 +140,7 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §15 — неизвестное сообщение.
-    out = msg::Unknown{msg::Unknown::Reason::UnrecognizedHeader, h};
+    out = msg::AppEvent::unrecognizedHeader(h);
 }
 
 //===============================================

@@ -7,15 +7,59 @@
 namespace nex {
     namespace msg {
 
-        /** Неразобранное или пустое сообщение (заголовок неизвестен или буфер не инициализирован). */
-        struct Unknown {
-            enum class Reason : uint8_t {
-                /** Сообщение ещё не заполнялось (`Message{}`, до `MessageMaker`). */
+        /**
+         * События уровня приложения / MCU: неинициализированное или неразобранное сообщение с шины,
+         * либо результат завершения исходящей команды (маршрутизация по `page_id` / `component_id`).
+         */
+        struct AppEvent {
+            enum class Kind : uint8_t {
+                /** `Message{}` до разбора кадра. */
                 UninitializedMessage = 0,
+                /** Заголовок кадра не распознан (`TranslateMessage`). */
                 UnrecognizedHeader,
+                /** Результат завершения команды на стороне MCU. */
+                CommandResult,
             };
-            Reason reason  = Reason::UninitializedMessage;
+
+            enum class Outcome : uint8_t {
+                Completed = 0,
+                DeviceStatus,
+                Timeout,
+                TxError,
+                QueueRejected,
+            };
+
+            Kind kind = Kind::UninitializedMessage;
+
+            /** Для `UnrecognizedHeader` — байт заголовка кадра. */
             uint8_t header = 0;
+
+            /** Для `CommandResult` — метаданные команды и исход. */
+            uint8_t page_id = 0u;
+            uint8_t component_id = 0u;
+            uint16_t token = 0u;
+            Outcome outcome = Outcome::Completed;
+            /** Для `outcome == DeviceStatus` — `msg::StatusResponse::Code`, иначе 0. */
+            uint8_t code = 0u;
+
+            static AppEvent unrecognizedHeader(uint8_t h) noexcept {
+                AppEvent e{};
+                e.kind = Kind::UnrecognizedHeader;
+                e.header = h;
+                return e;
+            }
+
+            static AppEvent commandResult(uint8_t page_id, uint8_t component_id, uint16_t token, Outcome outcome,
+                uint8_t code = 0u) noexcept {
+                AppEvent e{};
+                e.kind = Kind::CommandResult;
+                e.page_id = page_id;
+                e.component_id = component_id;
+                e.token = token;
+                e.outcome = outcome;
+                e.code = code;
+                return e;
+            }
         };
 
         /**
@@ -63,7 +107,7 @@ namespace nex {
         /**
          * Событие касания по **comp**onent — страница, id компонента, press/release (кадр **0x65**).
          */
-        struct TouchCompEvent {
+        struct TouchEvent {
             constexpr static uint8_t Header = 0x65;
             uint8_t page_id;
             uint8_t component_id;
@@ -110,36 +154,16 @@ namespace nex {
             Code code;
         };
 
-        /**
-         * Внутреннее событие MCU: результат завершения исходящей команды, маршрутизируемый по паре page/component.
-         */
-        struct CommandResultEvent {
-            enum class Outcome : uint8_t {
-                Completed = 0,
-                DeviceStatus,
-                Timeout,
-                TxError,
-                QueueRejected,
-            };
-
-            uint8_t page_id = 0u;
-            uint8_t component_id = 0u;
-            uint16_t token = 0u;
-            Outcome outcome = Outcome::Completed;
-            uint8_t code = 0u; ///< Для `DeviceStatus` — `msg::StatusResponse::Code`, иначе 0.
-        };
-
     } // namespace msg
 
     /** Разобранное входящее сообщение дисплея — один из типов в `msg::`. */
-    using Message = std::variant<msg::Unknown,
+    using Message = std::variant<msg::AppEvent,
         msg::StatusResponse,
         msg::NumericResponse,
         msg::StringResponse,
-        msg::TouchCompEvent,
+        msg::TouchEvent,
         msg::TouchXYEvent,
         msg::PageEvent,
-        msg::SystemEvent,
-        msg::CommandResultEvent>;
+        msg::SystemEvent>;
 
 } // namespace nex

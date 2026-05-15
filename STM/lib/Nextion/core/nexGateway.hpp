@@ -1,8 +1,8 @@
 #pragma once
 #include <cstdint>
-#include "core/nexProtocol.hpp"
-#include "core/nexMessages.hpp"
-#include "core/nexCommands.hpp"
+#include "nexProtocol.hpp"
+#include "nexMessages.hpp"
+#include "nexCommands.hpp"
 #include "ibyte_stream.hpp"
 
 namespace nex {

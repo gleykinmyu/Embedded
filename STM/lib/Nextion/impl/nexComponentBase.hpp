@@ -4,40 +4,47 @@
 
 namespace nex {
 
+    class Application;
     class Component;
 
-    /** Пустое имя страницы в HMI, если достаточно только `Page::ID`. */
+    /** Пустое имя страницы в HMI, если достаточно только `PageBase::ID`. */
     inline constexpr Literal kUnnamedPageLexeme{""};
 
     /**
-     * Базовая страница: таблица указателей на компоненты заполняется в их конструкторах (registerComponent).
-     * Обработка touch без switch — обход таблицы в dispatchTouch.
-     * `name` — копия-представление лексемы objname страницы в проекте (как в HMI); буфер символов — у исходного литерала.
+     * Базовая страница без шаблона: `Application` хранит `PageBase*`.
+     * Обработка касания — `dispatchTouch` в базе (через виртуальный `getComponent`).
+     * Конкретная страница с таблицей виджетов — `Page<MaxComponents>`; число слотов задаётся параметром шаблона.
      */
-    class Page {
+    class PageBase {
         friend class Component;
 
     public:
-        static constexpr unsigned MAX_COMPONENTS = 24;
-
         const Literal name;
         const uint8_t ID;
-        explicit Page(const Literal& pageObjName, uint8_t id) noexcept;
-        void dispatchTouch(const msg::TouchCompEvent& e) noexcept;
-        void dispatchCommandResult(const msg::CommandResultEvent& e) noexcept;
-        void dispatchMessageToComponent(uint8_t componentId, const Message& m) noexcept;
+        /** Родительское приложение (регистрация, маршрутизация, команды). */
+        Application& application;
+
+        /** Регистрирует страницу в `application` по полю `ID`. */
+        PageBase(Application& application, const Literal& pageObjName, uint8_t id) noexcept;
+        virtual ~PageBase() = default;
+
+        void dispatchTouch(const msg::TouchEvent& e) noexcept;
+
+        virtual void onTouch(const msg::TouchEvent& e);
+        /** Входящее сообщение, адресованное странице (например `AppEvent::CommandResult` из `Application`). */
+        virtual void onAppEvent(const Message& m);
 
     protected:
-        void registerComponent(Component* c) noexcept;
-
-    private:
-        Component* _registry[MAX_COMPONENTS]{};
-        unsigned _count = 0;
+        virtual void registerComponent(Component* c) noexcept = 0;
+        [[nodiscard]] virtual Component* getComponent(uint8_t component_id) const noexcept = 0;
     };
 
     /**
      * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `ID()` ↔ id).
      * Внутри хранится копия-представление `nex::Literal` (указатель на литерал + длина); буфер символов — как у исходного литерала.
+     *
+     * Два конструктора: привязка к `PageBase` (регистрация в таблице страницы) и **фантомный** — только `Application`
+     * (без объекта на странице: системные переменные NIS, пустая лексема `comp` в `TargetAttr`).
      *
      * В `nexWidgets.hpp` у наследников перечислены только атрибуты, характерные для данного типа виджета.
      */
@@ -78,25 +85,68 @@ namespace nex {
             Gauge           = 122, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), bco(picc, pic) - when sta != transparent, val, format, up, down, left, pco, pco2, hig, vvs0, vvs1, vvs2, x, y, w, h
         };
 
+        /** Приложение: команды, ответы, лог (`Application`). */
+        Application& application;
         const Literal name;
-        const Page& page;
         /** Вид этого экземпляра (тот же код, что атрибут `type` объекта на панели). */
         const Type type;
 
-        Component(Page& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
+        /** Обычный компонент на странице: регистрируется в `owner`. */
+        Component(PageBase& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
+        /** Фантомный компонент: только `Application` (например системные переменные `dim`, `rtc0`, …). */
+        Component(Application& app, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
 
         constexpr uint8_t ID() const noexcept { return _ID; }
         constexpr bool isGlobal() const noexcept { return false; }
-        
-        virtual void onTouch(const msg::TouchCompEvent& e);
-        virtual void onCommandResult(const msg::CommandResultEvent& e);
-        /** Ответы/сообщения UART, адресованные компоненту (например, результат `get`). */
-        virtual void onMessage(const Message& m);
+
+        virtual void onTouch(const msg::TouchEvent& e);
 
     protected:
         uint8_t _ID;
     };
 
+    /** Реализация в `nexComponentsBase.cpp` — лог через `Application::Error` без циклического include заголовков. */
+    void nexComponentRegisterFailed(Application& app, PageBase& page, const Component* c, unsigned maxComponents) noexcept;
+
+    /**
+     * Страница: таблица указателей на компоненты по их `id` в панели — `_registry[id]`, `id < MaxComponents`.
+     * Пример: `Page<32> mainUi(app, kName, 0);` если на странице есть объекты с id до 31.
+     */
+    template <unsigned MaxComponents>
+    class Page : public PageBase {
+        static_assert(MaxComponents > 0u, "MaxComponents must be > 0");
+
+    public:
+        using PageBase::PageBase;
+
+    protected:
+        void registerComponent(Component* c) noexcept override;
+        [[nodiscard]] Component* getComponent(uint8_t component_id) const noexcept override;
+
+    private:
+        Component* _registry[MaxComponents]{};
+    };
+
+    template <unsigned MaxComponents>
+    inline void Page<MaxComponents>::registerComponent(Component* c) noexcept {
+        if (c == nullptr) {
+            nexComponentRegisterFailed(application, *this, nullptr, MaxComponents);
+            return;
+        }
+        const uint8_t id = c->ID();
+        if (id >= MaxComponents) {
+            nexComponentRegisterFailed(application, *this, c, MaxComponents);
+            return;
+        }
+        _registry[id] = c;
+    }
+
+    template <unsigned MaxComponents>
+    inline Component* Page<MaxComponents>::getComponent(uint8_t component_id) const noexcept {
+        if (component_id >= MaxComponents)
+            return nullptr;
+        return _registry[component_id];
+    }
 
     /*
      * ---------------------------------------------------------------------------
