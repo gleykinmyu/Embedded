@@ -278,11 +278,14 @@ public:
     {
     }
 
-    /// TX/RX в режиме AF PP; подтяжка и скорость — как у типичного UART.
-    void InitPins(const GPIO::Pin& tx, const GPIO::Pin& rx) const
+    /// TX/RX в режиме alternate function; по умолчанию AF PP (как у типичного UART).
+    /// Для AF OD подтяжка не задаётся (`Pull::None`); для PP — `Pull::Up` на обеих линиях.
+    void InitPins(const GPIO::Pin& tx, const GPIO::Pin& rx,
+        GPIO::ModeAlt modeAlt = GPIO::ModeAlt::PP) const
     {
-        tx.Init(GPIO::ModeAlt::PP, this->af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
-        rx.Init(GPIO::ModeAlt::PP, this->af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
+        const GPIO::Pull pull = (modeAlt == GPIO::ModeAlt::PP) ? GPIO::Pull::Up : GPIO::Pull::None;
+        tx.Init(modeAlt, this->af, pull, GPIO::Speed::VeryHigh);
+        rx.Init(modeAlt, this->af, pull, GPIO::Speed::VeryHigh);
     }
 
     /**

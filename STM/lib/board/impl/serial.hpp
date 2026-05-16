@@ -19,7 +19,11 @@ class Serial : public BIF::ISerial<TxSize, RxSize>
 
 public:
     /// Делегирует в UART::UART (пины TX/RX под альтернативную функцию).
-    void InitPins(const GPIO::Pin& tx, const GPIO::Pin& rx) const { _uart.InitPins(tx, rx); }
+    void InitPins(const GPIO::Pin& tx, const GPIO::Pin& rx,
+        GPIO::ModeAlt modeAlt = GPIO::ModeAlt::PP) const
+    {
+        _uart.InitPins(tx, rx, modeAlt);
+    }
 
     ~Serial() { _uart.IRQ.unregister_handler(); }
 

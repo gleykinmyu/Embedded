@@ -9,14 +9,9 @@ class CServerBoard : public CBaseBoard
 {
 
 public:
-    PHL::Serial<PHL::ID::SERIAL1> serial1;
-    PHL::Serial<PHL::ID::SERIAL2> serial2;
+    PHL::Serial<PHL::ID::SERIAL1, 256, 64> serial1;
+    PHL::Serial<PHL::ID::SERIAL2, 256, 128> serial2;
     PHL::SdDisk SD;
-
-    CServerBoard() : CBaseBoard(), 
-                        serial1(), 
-                        serial2(), 
-                        SD() {}
 
     //CHW_UART<USART2_BASE, GPIOA_BASE, GPIO_PIN_9, GPIOA_BASE, GPIO_PIN_10, GPIO_AF7_USART1> uart2;
     //CHW_UART<USART3_BASE, GPIOA_BASE, GPIO_PIN_9, GPIOA_BASE, GPIO_PIN_10, GPIO_AF7_USART1> uart3;

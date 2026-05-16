@@ -8,106 +8,59 @@ namespace nex {
     namespace msg {
 
         /**
-         * События уровня приложения / MCU: неинициализированное или неразобранное сообщение с шины,
-         * либо результат завершения исходящей команды (маршрутизация по `page_id` / `component_id`).
+         * Ответ **status** — результат выполнения инструкции (байт кода 0x00…0x24 из протокола Nextion).
          */
-        struct AppEvent {
-            enum class Kind : uint8_t {
-                /** `Message{}` до разбора кадра. */
-                UninitializedMessage = 0,
-                /** Заголовок кадра не распознан (`TranslateMessage`). */
-                UnrecognizedHeader,
-                /** Результат завершения команды на стороне MCU. */
-                CommandResult,
-            };
-
-            enum class Outcome : uint8_t {
-                Completed = 0,
-                DeviceStatus,
-                Timeout,
-                TxError,
-                QueueRejected,
-            };
-
-            Kind kind = Kind::UninitializedMessage;
-
-            /** Для `UnrecognizedHeader` — байт заголовка кадра. */
-            uint8_t header = 0;
-
-            /** Для `CommandResult` — метаданные команды и исход. */
-            uint8_t page_id = 0u;
-            uint8_t component_id = 0u;
-            uint16_t token = 0u;
-            Outcome outcome = Outcome::Completed;
-            /** Для `outcome == DeviceStatus` — `msg::StatusResponse::Code`, иначе 0. */
-            uint8_t code = 0u;
-
-            static AppEvent unrecognizedHeader(uint8_t h) noexcept {
-                AppEvent e{};
-                e.kind = Kind::UnrecognizedHeader;
-                e.header = h;
-                return e;
-            }
-
-            static AppEvent commandResult(uint8_t page_id, uint8_t component_id, uint16_t token, Outcome outcome,
-                uint8_t code = 0u) noexcept {
-                AppEvent e{};
-                e.kind = Kind::CommandResult;
-                e.page_id = page_id;
-                e.component_id = component_id;
-                e.token = token;
-                e.outcome = outcome;
-                e.code = code;
-                return e;
-            }
-        };
-
-        /**
-         * Ответ **status** — результат выполнения инструкции (байт кода 0x00… из протокола Nextion).
-         */
-        struct StatusResponse {
+        struct Status {
             enum class Code : uint8_t {
-                InvalidInstruction   = 0x00,
-                InstructionSuccess   = 0x01,
-                InvalidComponentId   = 0x02,
-                InvalidPageId        = 0x03,
-                InvalidPictureId     = 0x04,
-                InvalidFontId        = 0x05,
-                InvalidFileOperation = 0x06,
-                InvalidCrc           = 0x09,
-                InvalidBaudRate      = 0x11,
-                InvalidWaveformIdOrChannel     = 0x12,
-                InvalidVariableNameOrAttribute = 0x1A,
-                InvalidVariableOperation = 0x1B,
-                AssignmentFailedToAssign = 0x1C,
-                EepromOperationFailed    = 0x1D,
-                InvalidQuantityOfParameters = 0x1E,
-                IoOperationFailed      = 0x1F,
-                EscapeCharacterInvalid = 0x20,
-                VariableNameTooLong    = 0x23,
+                Invalid_Instruction = 0x00,
+                Success        = 0x01,
+                Invalid_CompId = 0x02,
+                Invalid_PageId = 0x03,
+                Invalid_PicId  = 0x04,
+                Invalid_FontId = 0x05,
+                Invalid_FileOperation = 0x06,
+                Invalid_CRC    = 0x09,
+                Invalid_BaudRate = 0x11,
+                Invalid_Waveform_ID_Channel = 0x12,
+                Invalid_VarName_Attr = 0x1A,
+                Invalid_VarOperation = 0x1B,
+                Failed_Assignment = 0x1C,
+                Failed_Eeprom     = 0x1D,
+                Invalid_QuantityOfParameters = 0x1E,
+                Failed_IO_Operation     = 0x1F,
+                Invalid_EscapeCharacter = 0x20,
+                VarName_TooLong     = 0x23,
+                Serial_Overflow     = 0x24,
+                /** Синтетический отчёт MCU о завершении очередной команды (`tag_1`/`tag_2` — служебные поля). */
+                AppError = 0xFB,
+                Unrecognized_Header = 0xFF //Не существует в NIS
             };
-            Code status;
+            Code status = Code::Invalid_Instruction;
+
+            /** С шины — не заполняются. Для `status == AppError`: `tag_1` — `Application::Status`, `tag_2` — `ErrorDetail` (см. `nexApplication.hpp`). */
+            uint8_t tag_1 = 0u;
+            uint16_t tag_2 = 0u;
+
+            [[nodiscard]] constexpr bool isOK() const noexcept { return status == Code::Success; }
         };
 
         /** Ответ с числом (заголовок **0x71**, например после `get` числового атрибута). */
-        struct NumericResponse {
+        struct getNumeric {
             constexpr static uint8_t Header = 0x71;
             int32_t value;
         };
 
         /** Ответ со строкой (заголовок **0x70** — текстовое значение атрибута). */
-        struct StringResponse {
+        struct getString {
             constexpr static uint8_t Header = 0x70;
-            /** Копия полезной нагрузки кадра; не зависит от времени жизни `InputFrame`. */
             char chars[RxFrame::MAX_PAYLOAD]{};
             uint16_t length = 0;
-            const char* data() const noexcept { return chars; }
         };
 
         /**
          * Событие касания по **comp**onent — страница, id компонента, press/release (кадр **0x65**).
          */
-        struct TouchEvent {
+        struct evTouch {
             constexpr static uint8_t Header = 0x65;
             uint8_t page_id;
             uint8_t component_id;
@@ -122,7 +75,7 @@ namespace nex {
         /**
          * Событие касания по координатам X и Y (пробуждение или сон; заголовки 0x67 и 0x68).
          */
-        struct TouchXYEvent {
+        struct evTouchXY {
             constexpr static uint8_t Header = 0x67;
             TouchPlane plane;
             Point pos{};
@@ -130,40 +83,51 @@ namespace nex {
         };
 
         /** Смена страницы на дисплее (заголовок **0x66**, индекс страницы). */
-        struct PageEvent {
+        struct evPage {
             constexpr static uint8_t Header = 0x66;
             uint8_t page_id;
         };
 
-        /**
-         * Системное событие дисплея (переполнение буфера, сон, готовность, SD-обновление, **T**ransparent **D**ata и т.д.).
-         */
-        struct SystemEvent {
+        /** Системное событие дисплея (сон, готовность, SD-обновление и т.д.). */
+        struct evSystem {
             enum class Code : uint8_t {
-                SerialBufferOverflow = 0x24,
                 AutoEnteredSleepMode = 0x86,
                 AutoWakeFromSleep = 0x87,
                 NextionReady = 0x88,
                 StartMicroSdUpgrade = 0x89,
-                /** Transparent Data Mode: блок принят (NIS §1.16). */
-                TransparentBlockComplete = 0xFD,
-                /** Transparent Data Mode: готов принять блок. */
-                TransparentReadyToReceive = 0xFE,
-                StartupPreamble = 0xFF,
+                StartupPreamble = 0xFA //Не существует в NIS
             };
+            Code code;
+        };
+
+        /**
+         * Transparent Data Mode (NIS §1.16) и служебные события сессии приложения.
+         * Коды `0xFD` / `0xFE` — заголовки кадров с дисплея; диапазон `0x01`…`0x7F` — внутренние (MCU).
+         */
+        struct evTransparent {
+            enum class Code : uint8_t {
+                // --- внутренние (MCU, не из `TranslateMessage`) ---
+                // (добавлять по мере необходимости, например очередь / таймаут / отмена)
+
+                /** NIS §1.16 — дисплей принял блок сырых данных. */
+                BlockComplete = 0xFD,
+                /** NIS §1.16 — дисплей готов принять блок сырых данных. */
+                ReadyToReceive = 0xFE,
+            };
+
             Code code;
         };
 
     } // namespace msg
 
     /** Разобранное входящее сообщение дисплея — один из типов в `msg::`. */
-    using Message = std::variant<msg::AppEvent,
-        msg::StatusResponse,
-        msg::NumericResponse,
-        msg::StringResponse,
-        msg::TouchEvent,
-        msg::TouchXYEvent,
-        msg::PageEvent,
-        msg::SystemEvent>;
+    using Message = std::variant<msg::Status,
+        msg::getNumeric,
+        msg::getString,
+        msg::evTouch,
+        msg::evTouchXY,
+        msg::evPage,
+        msg::evSystem,
+        msg::evTransparent>;
 
 } // namespace nex

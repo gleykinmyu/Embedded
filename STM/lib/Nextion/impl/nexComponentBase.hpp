@@ -7,44 +7,74 @@ namespace nex {
     class Application;
     class Component;
 
+    /** Результат `Component::setId`: предупреждение, если целевой слот регистра был занят (swap). */
+    enum class SetIdResult : uint8_t {
+        Ok = 0,
+        /** В `_registry[newId]` уже был другой компонент; выполнен swap `id` и указателей. */
+        SwappedWithOccupiedRegistrySlot = 1,
+        /** Некорректные аргументы или `newId` вне диапазона страницы (`ComponentRegisterFailed` в `onError`). */
+        Failed = 2,
+    };
+
+    /** Доступ к таблице компонентов страницы: `slots[i]` — виджет с id `i` или `nullptr`. */
+    struct ComponentRegistryDesc {
+        Component** slots;
+        uint8_t size;
+    };
+
     /** Пустое имя страницы в HMI, если достаточно только `PageBase::ID`. */
     inline constexpr Literal kUnnamedPageLexeme{""};
 
     /**
      * Базовая страница без шаблона: `Application` хранит `PageBase*`.
-     * Обработка касания — `dispatchTouch` в базе (через виртуальный `getComponent`).
-     * Конкретная страница с таблицей виджетов — `Page<MaxComponents>`; число слотов задаётся параметром шаблона.
+     * Касание: `component_id == 0` — `onTouchPage`; иначе маршрутизация в `getComponent` → `Component::onTouch`.
+     * Конкретная страница с таблицей виджетов — `PageImpl<MaxComponents>` (`MaxComponents` — `uint8_t`, 1…255).
      */
-    class PageBase {
-        friend class Component;
-
+    class Page {
     public:
         const Literal name;
         const uint8_t ID;
         /** Родительское приложение (регистрация, маршрутизация, команды). */
-        Application& application;
+        Application& app;
 
         /** Регистрирует страницу в `application` по полю `ID`. */
-        PageBase(Application& application, const Literal& pageObjName, uint8_t id) noexcept;
-        virtual ~PageBase() = default;
+        Page(Application& application, const Literal& pageObjName, uint8_t id) noexcept;
+        virtual ~Page() = default;
 
-        void dispatchTouch(const msg::TouchEvent& e) noexcept;
+        /** Касание по этой странице: фильтр `page_id`, затем `onTouchPage` при `component_id == 0`, иначе виджет. */
+        virtual void onTouch(const msg::evTouch& e);
 
-        virtual void onTouch(const msg::TouchEvent& e);
-        /** Входящее сообщение, адресованное странице (например `AppEvent::CommandResult` из `Application`). */
-        virtual void onAppEvent(const Message& m);
+        /** Touch с `component_id == 0` — касание по странице (фон / область без виджета, NIS). */
+        virtual void onTouchPage(const msg::evTouch& e) { (void)e; }
+
+        /** Панель перешла на эту страницу: `msg::evPage`, новый `page_id` отличается от предыдущего в `Application`. */
+        virtual void onLoad() {}
+        /** Панель уходит с этой страницы на другую (`page_id` меняется); до обновления `Application::currentPageId()`. */
+        virtual void onExit() {}
+        /** `status == Code::AppError`; далее — `Component::onError` по `component_id`. */
+        virtual void onError(const msg::Status& status, uint8_t component_id);
+
+        Component* getComponent(uint8_t component_id)  noexcept;
 
     protected:
-        virtual void registerComponent(Component* c) noexcept = 0;
-        [[nodiscard]] virtual Component* getComponent(uint8_t component_id) const noexcept = 0;
+        /** Таблица `slots[id]`; реализует `PageImpl` или другой наследник. */
+        virtual ComponentRegistryDesc getRegistry() noexcept = 0;
+
+        /** Смена `id` в таблице страницы; см. `Component::setId`. */
+        [[nodiscard]] SetIdResult rebindComponentId(Component* c, uint8_t newId) noexcept;
+
+    private:
+        friend class Application;
+        friend class Component;
+
+        void registerComponent(Component* c) noexcept;
     };
 
     /**
-     * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `ID()` ↔ id).
+     * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `id()` ↔ id).
      * Внутри хранится копия-представление `nex::Literal` (указатель на литерал + длина); буфер символов — как у исходного литерала.
      *
-     * Два конструктора: привязка к `PageBase` (регистрация в таблице страницы) и **фантомный** — только `Application`
-     * (без объекта на странице: системные переменные NIS, пустая лексема `comp` в `TargetAttr`).
+     * Привязка к `PageBase`: компонент регистрируется на странице (`page.ID`, `id()`).
      *
      * В `nexWidgets.hpp` у наследников перечислены только атрибуты, характерные для данного типа виджета.
      */
@@ -85,68 +115,61 @@ namespace nex {
             Gauge           = 122, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), bco(picc, pic) - when sta != transparent, val, format, up, down, left, pco, pco2, hig, vvs0, vvs1, vvs2, x, y, w, h
         };
 
-        /** Приложение: команды, ответы, лог (`Application`). */
-        Application& application;
+        Page& page;
         const Literal name;
         /** Вид этого экземпляра (тот же код, что атрибут `type` объекта на панели). */
         const Type type;
+        uint8_t id() const noexcept { return id_; }
 
-        /** Обычный компонент на странице: регистрируется в `owner`. */
-        Component(PageBase& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
-        /** Фантомный компонент: только `Application` (например системные переменные `dim`, `rtc0`, …). */
-        Component(Application& app, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
+        /**
+         * Зафиксировать реальный `id` на панели после опроса HMI: перенос в `_registry` или swap с компонентом
+         * в целевом слоте. Если целевой слот был непустой (swap), возвращается `SwappedWithOccupiedRegistrySlot`.
+         */
+        [[nodiscard]] SetIdResult setId(uint8_t newId) noexcept;
 
-        constexpr uint8_t ID() const noexcept { return _ID; }
-        constexpr bool isGlobal() const noexcept { return false; }
+        Component(Page& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
 
-        virtual void onTouch(const msg::TouchEvent& e);
+        virtual void onTouch(const msg::evTouch& e);
+        
+        /** Ответ `get` (0x71 / 0x70); `tag` — атрибут, заданный при запросе. */
+        virtual void onResponse(uint8_t tag, const msg::getNumeric& response);
+        virtual void onResponse(uint8_t tag, const msg::getString& response);
 
-    protected:
-        uint8_t _ID;
+        /** Ответ **status** с ошибкой выполнения команды этого компонента. */
+        virtual void onError(const msg::Status& response);
+
+    private:
+        friend class Page;
+
+        uint8_t id_;
     };
 
-    /** Реализация в `nexComponentsBase.cpp` — лог через `Application::Error` без циклического include заголовков. */
-    void nexComponentRegisterFailed(Application& app, PageBase& page, const Component* c, unsigned maxComponents) noexcept;
+    /** Сообщает `ComponentRegisterFailed`: `c == nullptr` или `c->id()` вне `[0, maxComponents)`. */
+    void nexComponentRegisterFailed(Application& app, Page& page, const Component* c, unsigned maxComponents) noexcept;
+    /** Сообщает `ComponentRegisterFailed` / `ComponentRegistryFull` при автоназначении id=0 без свободного слота. */
+    void nexComponentRegistryFull(Application& app, Page& page, unsigned maxComponents) noexcept;
 
     /**
-     * Страница: таблица указателей на компоненты по их `id` в панели — `_registry[id]`, `id < MaxComponents`.
-     * Пример: `Page<32> mainUi(app, kName, 0);` если на странице есть объекты с id до 31.
+     * Страница с массивом `_registry`: логика регистрации и `setId` в базовом `Page`, см. `getRegistry()`.
+     * `MaxComponents` — число слотов (1…255); id виджета на панели — `uint8_t`, индекс `id` строго меньше `MaxComponents`.
+     * Пример: `PageImpl<32>` если на странице есть объекты с id до 31.
      */
-    template <unsigned MaxComponents>
-    class Page : public PageBase {
-        static_assert(MaxComponents > 0u, "MaxComponents must be > 0");
+    template <uint8_t MaxComponents>
+    class PageImpl : public Page {
+        static_assert(MaxComponents > 0u, "PageImpl: MaxComponents must be >= 1");
 
     public:
-        using PageBase::PageBase;
+        using Page::Page;
 
     protected:
-        void registerComponent(Component* c) noexcept override;
-        [[nodiscard]] Component* getComponent(uint8_t component_id) const noexcept override;
+        [[nodiscard]] ComponentRegistryDesc getRegistry() noexcept override {
+            // GCC 7 (arm-none-eabi) не принимает `return { ... }` к агрегату здесь — нужна явная форма.
+            return ComponentRegistryDesc{ _registry, MaxComponents};
+        }
 
     private:
         Component* _registry[MaxComponents]{};
     };
-
-    template <unsigned MaxComponents>
-    inline void Page<MaxComponents>::registerComponent(Component* c) noexcept {
-        if (c == nullptr) {
-            nexComponentRegisterFailed(application, *this, nullptr, MaxComponents);
-            return;
-        }
-        const uint8_t id = c->ID();
-        if (id >= MaxComponents) {
-            nexComponentRegisterFailed(application, *this, c, MaxComponents);
-            return;
-        }
-        _registry[id] = c;
-    }
-
-    template <unsigned MaxComponents>
-    inline Component* Page<MaxComponents>::getComponent(uint8_t component_id) const noexcept {
-        if (component_id >= MaxComponents)
-            return nullptr;
-        return _registry[component_id];
-    }
 
     /*
      * ---------------------------------------------------------------------------

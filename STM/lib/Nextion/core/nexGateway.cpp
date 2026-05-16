@@ -9,13 +9,28 @@ namespace nex
 void RxFramer::reset() {
     _state = State::WaitHeader;
     _terms = 0;
+    _overflowReportPending = false;
     frame.length = 0;
+}
+
+void RxFramer::enterResync(uint8_t byte) noexcept {
+    _overflowReportPending = true;
+    frame.length = 0;
+    _state = State::Resync;
+    _terms = (byte == Physical::TERM_BYTE) ? 1u : 0u;
+}
+
+bool RxFramer::getOverflowReport() noexcept {
+    if (!_overflowReportPending)
+        return false;
+    _overflowReportPending = false;
+    return true;
 }
 
 bool RxFramer::appendByte(uint8_t byte) {
     switch (_state)
     {
-    // NIS §18 — ожидание заголовка кадра.
+    // NIS §18 — ожидание заголовка кадра (первый байт после `0xFF×3`, не «скользящее» окно).
     case State::WaitHeader:
         frame.header = byte;
         frame.length = 0;
@@ -28,8 +43,11 @@ bool RxFramer::appendByte(uint8_t byte) {
         if (byte == Physical::TERM_BYTE) {
             _terms = 1;
             _state = State::WaitTerm;
-        } else if (frame.length < RxFrame::MAX_PAYLOAD)
+        } else if (frame.length < RxFrame::MAX_PAYLOAD) {
             frame.payload[frame.length++] = byte;
+        } else {
+            enterResync(byte);
+        }
         break;
 
     // NIS §16 — ожидание терминальных байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
@@ -41,11 +59,38 @@ bool RxFramer::appendByte(uint8_t byte) {
                 return true;
             }
         } else {
-            for (uint8_t i = 0; i < _terms; i++) frame.payload[frame.length++] = Physical::TERM_BYTE;
-            frame.payload[frame.length++] = byte;
+            for (uint8_t i = 0; i < _terms; i++) {
+                if (frame.length < RxFrame::MAX_PAYLOAD)
+                    frame.payload[frame.length++] = Physical::TERM_BYTE;
+                else {
+                    enterResync(byte);
+                    return false;
+                }
+            }
+            if (frame.length < RxFrame::MAX_PAYLOAD)
+                frame.payload[frame.length++] = byte;
+            else
+                enterResync(byte);
+            if (_state == State::Resync)
+                return false;
             _terms = 0;
             _state = State::Collect;
         }
+        break;
+
+    // После overflow: только поиск `0xFF×3`, кадр не собираем.
+    case State::Resync:
+        if (byte == Physical::TERM_BYTE) {
+            if (++_terms >= Physical::TERM_COUNT) {
+                _state = State::WaitHeader;
+                _terms = 0;
+            }
+        } else {
+            _terms = 0;
+        }
+        break;
+
+    default:
         break;
     }
     return false;
@@ -59,21 +104,21 @@ void TranslateMessage(const RxFrame& f, Message& out)
 {
     // NIS §7 — первый байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
     if (f.header == 0u && f.length >= 2u) {
-        out = msg::SystemEvent{msg::SystemEvent::Code::StartupPreamble};
+        out = msg::evSystem{msg::evSystem::Code::StartupPreamble};
         return;
     }
 
     const uint8_t h = f.header;
 
-    // NIS §8 — статус ответа (успешно, нет такого компонента, нет такой страницы, нет такого файла и т.п.).
-    if (h <= static_cast<uint8_t>(msg::StatusResponse::Code::VariableNameTooLong)) {
-        out = msg::StatusResponse{static_cast<msg::StatusResponse::Code>(h)};
+    // NIS §8 — статус ответа (успешно, нет такого компонента, переполнение буфера и т.п.).
+    if (h <= static_cast<uint8_t>(msg::Status::Code::Serial_Overflow)) {
+        out = msg::Status{static_cast<msg::Status::Code>(h)};
         return;
     }
 
     // NIS §9 — строковый ответ.
-    if (h == msg::StringResponse::Header) {
-        msg::StringResponse s{};
+    if (h == msg::getString::Header) {
+        msg::getString s{};
         const uint16_t len = f.length;
         const uint16_t n = len < RxFrame::MAX_PAYLOAD ? len : RxFrame::MAX_PAYLOAD;
         s.length = len;
@@ -86,8 +131,8 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §10 — числовой ответ.
-    if (h == msg::NumericResponse::Header) {
-        msg::NumericResponse n{};
+    if (h == msg::getNumeric::Header) {
+        msg::getNumeric n{};
         n.value = 0;
         if (f.length >= 4u)
             std::memcpy(&n.value, f.payload, 4u);
@@ -96,8 +141,8 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §11 — событие нажатия на компонент.
-    if (h == msg::TouchEvent::Header) {
-        msg::TouchEvent t{};
+    if (h == msg::evTouch::Header) {
+        msg::evTouch t{};
         t.page_id = f.length > 0u ? f.payload[0] : 0u;
         t.component_id = f.length > 1u ? f.payload[1] : 0u;
         t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
@@ -107,7 +152,7 @@ void TranslateMessage(const RxFrame& f, Message& out)
 
     // NIS §12 — событие нажатия на экран.
     if (h == static_cast<uint8_t>(msg::TouchPlane::Awake) || h == static_cast<uint8_t>(msg::TouchPlane::Sleep)) {
-        msg::TouchXYEvent e{};
+        msg::evTouchXY e{};
         e.plane = (h == static_cast<uint8_t>(msg::TouchPlane::Awake)) ? msg::TouchPlane::Awake : msg::TouchPlane::Sleep;
         if (f.length >= 5u) {
             const uint16_t rx = static_cast<uint16_t>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
@@ -124,23 +169,28 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §13 — событие смены страницы.
-    if (h == msg::PageEvent::Header) {
-        out = msg::PageEvent{static_cast<uint8_t>(f.length > 0u ? f.payload[0] : 0u)};
+    if (h == msg::evPage::Header) {
+        out = msg::evPage{static_cast<uint8_t>(f.length > 0u ? f.payload[0] : 0u)};
+        return;
+    }
+
+    // NIS §1.16 — Transparent Data Mode.
+    if (h == static_cast<uint8_t>(msg::evTransparent::Code::BlockComplete)
+        || h == static_cast<uint8_t>(msg::evTransparent::Code::ReadyToReceive)) {
+        out = msg::evTransparent{static_cast<msg::evTransparent::Code>(h)};
         return;
     }
 
     // NIS §14 — системное событие.
-    if (h == static_cast<uint8_t>(msg::SystemEvent::Code::SerialBufferOverflow)
-        || (h >= static_cast<uint8_t>(msg::SystemEvent::Code::AutoEnteredSleepMode)
-            && h <= static_cast<uint8_t>(msg::SystemEvent::Code::StartMicroSdUpgrade))
-        || h == static_cast<uint8_t>(msg::SystemEvent::Code::TransparentBlockComplete)
-        || h == static_cast<uint8_t>(msg::SystemEvent::Code::TransparentReadyToReceive)) {
-        out = msg::SystemEvent{static_cast<msg::SystemEvent::Code>(h)};
+    if (h >= static_cast<uint8_t>(msg::evSystem::Code::AutoEnteredSleepMode)
+        && h <= static_cast<uint8_t>(msg::evSystem::Code::StartMicroSdUpgrade)) {
+        out = msg::evSystem{static_cast<msg::evSystem::Code>(h)};
         return;
     }
 
-    // NIS §15 — неизвестное сообщение.
-    out = msg::AppEvent::unrecognizedHeader(h);
+    // NIS §15 — неизвестный заголовок кадра (внутренний код `Status`, не с шины).
+    (void)h;
+    out = msg::Status{msg::Status::Code::Unrecognized_Header};
 }
 
 //===============================================
@@ -220,28 +270,49 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
 Gateway::Gateway(BIF::IByteStream& s) : _stream(s) {}
 
 bool Gateway::pushCommand(const Command& cmd) {
-    if (!_txFramer.isIdle())
-        return false;
-
-    if (!cmd.serialize(_txFramer.frame)) {
-        _txFramer.reset();
+    if (!_txFramer.isIdle()) {
+        _status = Status::TxBusy;
         return false;
     }
 
-    if (_txFramer.frame.length == 0u)
+    if (!cmd.serialize(_txFramer.frame)) {
+        _txFramer.reset();
+        _status = Status::SerializeFailed; // деталь — `cmd.getStatus()`
         return false;
+    }
 
+    if (_txFramer.frame.length == 0u) {
+        _txFramer.reset();
+        _status = Status::EmptyPayload;
+        return false;
+    }
+
+    clearError();
     return true;
 }
 
 bool Gateway::transmit() noexcept {
-    return _txFramer.tick(_stream);
+    if (_txFramer.tick(_stream))
+        return true;
+    _status = Status::StreamTxError;
+    return false;
 }
 
 bool Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
-    if (data == nullptr || len == 0u)
+    if (data == nullptr) {
+        _status = Status::NullPointer;
         return false;
-    return _txFramer.beginRaw(data, len);
+    }
+    if (len == 0u) {
+        _status = Status::EmptyPayload;
+        return false;
+    }
+    if (!_txFramer.beginRaw(data, len)) {
+        _status = Status::TxBusyRaw;
+        return false;
+    }
+    clearError();
+    return true;
 }
 
 bool Gateway::receive(Message& out) {
@@ -249,19 +320,20 @@ bool Gateway::receive(Message& out) {
         uint8_t b = 0;
         const size_t n = _stream.read(&b, 1u);
         if (n != 1u) {
-            // Не удалось прочитать байт: при ошибке канала сбрасываем незавершённый кадр и очищаем вход,
-            // иначе оставшийся мусор исказит следующий ответ.
             if (_stream.getStatus() != BIF::IByteStream::Status::OK) {
                 _rxFramer.reset();
                 _stream.purge();
+                _status = Status::StreamRxError;
             }
             break;
         }
         if (_rxFramer.appendByte(b)) {
-            // Собран полный кадр — данные в `_rxFramer.frame` до следующего `appendByte`.
+            clearError();
             TranslateMessage(_rxFramer.frame, out);
             return true;
         }
+        if (_rxFramer.getOverflowReport())
+            _status = Status::RxOverflow;
     }
     return false;
 }

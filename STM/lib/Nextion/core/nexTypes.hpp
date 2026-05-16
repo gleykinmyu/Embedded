@@ -33,6 +33,8 @@ struct Color {
     constexpr Color() noexcept = default;
     /** Готовое слово RGB565 (как в NIS / из регистра дисплея). */
     constexpr explicit Color(uint16_t packed565) noexcept : raw(packed565) {}
+    /** Стандартный цвет NIS (`Color::std`); не `explicit` — неявное преобразование в параметрах `Color`. */
+    constexpr Color(std c) noexcept : raw(static_cast<uint16_t>(c)) {}
 
     constexpr void set(std c) noexcept { raw = static_cast<uint16_t>(c); }
 
@@ -111,6 +113,9 @@ enum class BGStyle : uint8_t {
     Transparent  = 3,
 };
 
+/** Режим заливки фона в `xstr` (NIS); те же коды 0…3, что у `BGStyle`. */
+using FillMode = BGStyle;
+
 /** Код нажатия/отпускания в touch-событиях и аргументе UART-инструкции `click` (NIS, 0 / 1). */
 enum class TouchState : uint8_t {
     Release = 0x00,
@@ -133,6 +138,34 @@ struct Point {
 
     constexpr Point() noexcept = default;
     constexpr Point(int16_t px, int16_t py) noexcept : x(px), y(py) {}
+};
+
+/** Размеры панели в пикселях; пользовательские координаты совпадают с координатами панели. */
+struct ScreenLayout {
+    uint16_t panel_width{};
+    uint16_t panel_height{};
+
+    constexpr ScreenLayout() noexcept = default;
+    constexpr ScreenLayout(uint16_t w, uint16_t h) noexcept
+        : panel_width(w)
+        , panel_height(h)
+    {}
+
+    [[nodiscard]] constexpr uint16_t userWidth() const noexcept { return panel_width; }
+
+    [[nodiscard]] constexpr uint16_t userHeight() const noexcept { return panel_height; }
+
+    [[nodiscard]] constexpr Point mapUserToPanel(int16_t ux, int16_t uy) const noexcept { return Point{ux, uy}; }
+
+    void mapUserRectToPanel(int16_t ux0, int16_t uy0, int16_t ux1, int16_t uy1, Point& upperLeft,
+        Point& lowerRightInclusive) const noexcept {
+        const Point a = mapUserToPanel(ux0, uy0);
+        const Point b = mapUserToPanel(ux1, uy1);
+        upperLeft.x = (a.x < b.x) ? a.x : b.x;
+        upperLeft.y = (a.y < b.y) ? a.y : b.y;
+        lowerRightInclusive.x = (a.x > b.x) ? a.x : b.x;
+        lowerRightInclusive.y = (a.y > b.y) ? a.y : b.y;
+    }
 };
 
     /**
