@@ -152,7 +152,9 @@ public:
         std::printf("[Nextion demo] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
             static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state),
             static_cast<unsigned long>(app_touch_events));
-        nex::Application::onTouch(e);
+        if (e.page_id == 0 && e.component_id == 2 && e.state == TouchState::Release) {
+            msgBox.show("Failed_Assignment");
+        }
     }
 
     void onPageChange(uint8_t page_id) override {
@@ -177,13 +179,13 @@ private:
 
         cs.clear_screen(black);
 
-        const int16_t x = static_cast<int16_t>(20 + static_cast<int16_t>((step % 10u) * 14));
-        const int16_t y = static_cast<int16_t>(40 + static_cast<int16_t>((step % 8u) * 11));
+        const uint16_t x = static_cast<uint16_t>(20u + (step % 10u) * 14u);
+        const uint16_t y = static_cast<uint16_t>(40u + (step % 8u) * 11u);
 
         if ((step & 1u) == 0u)
-            cs.rect_fill(Point{x, y}, Point{static_cast<int16_t>(x + 70), static_cast<int16_t>(y + 45)}, accent);
+            cs.rect_fill(Point{x, y}, Point{static_cast<uint16_t>(x + 70u), static_cast<uint16_t>(y + 45u)}, accent);
         else
-            cs.circle_filled(Point{static_cast<int16_t>(x + 35), static_cast<int16_t>(y + 25)}, 28u, accent);
+            cs.circle_filled(Point{static_cast<uint16_t>(x + 35u), static_cast<uint16_t>(y + 25u)}, 28u, accent);
 
         std::snprintf(_draw_demo_text, sizeof(_draw_demo_text), "demo %u", static_cast<unsigned>(step));
         cs.text_in_region(Point{8, 300}, 400u, 50u, 1u, Color::std::White, Color::std::Gray, 1u, 1u, BGStyle::Color,

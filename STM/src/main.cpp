@@ -20,14 +20,8 @@ int main(void)
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
-    
-    {
-        nex::msg::Status demo{};
-        demo.status = nex::msg::Status::Code::Failed_Assignment;
-        app.cs.clear_screen(nex::Color::std::White);
 
-        app.showErrorBox(demo, 0u, 0u);
-    }
+    app.restart();
     while (1) {
         const uint32_t now = board.GetTick();
         if ((now - last_blink_ms) >= 1000u) {
@@ -35,6 +29,6 @@ int main(void)
             board.led.Toggle();
         }
         app.update(now);
-        app.tickDrawDemo(now);
+        //app.tickDrawDemo(now);
     }
 }

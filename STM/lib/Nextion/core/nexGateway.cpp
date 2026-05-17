@@ -151,14 +151,14 @@ void TranslateMessage(const RxFrame& f, Message& out)
     }
 
     // NIS §12 — событие нажатия на экран.
-    if (h == static_cast<uint8_t>(msg::TouchPlane::Awake) || h == static_cast<uint8_t>(msg::TouchPlane::Sleep)) {
+    if (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake) || h == static_cast<uint8_t>(msg::evTouchXY::Mode::Sleep)) {
         msg::evTouchXY e{};
-        e.plane = (h == static_cast<uint8_t>(msg::TouchPlane::Awake)) ? msg::TouchPlane::Awake : msg::TouchPlane::Sleep;
+        e.mode = (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake)) ? msg::evTouchXY::Mode::Awake : msg::evTouchXY::Mode::Sleep;
         if (f.length >= 5u) {
             const uint16_t rx = static_cast<uint16_t>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
             const uint16_t ry = static_cast<uint16_t>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
-            e.pos.x = static_cast<Coord>(rx);
-            e.pos.y = static_cast<Coord>(ry);
+            e.pos.x = rx;
+            e.pos.y = ry;
             e.state = static_cast<TouchState>(f.payload[4]);
         } else {
             e.pos = {};

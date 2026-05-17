@@ -129,35 +129,35 @@ using PicId = uint16_t;
 using FontId = uint16_t;
 
 /** Пиксельная координата по оси X или Y на экране Nextion (NIS). */
-using Coord = int16_t;
+using Coord = uint16_t;
 
 /** Точка (x, y) на экране в пикселях. */
 struct Point {
-    int16_t x{};
-    int16_t y{};
+    uint16_t x{};
+    uint16_t y{};
 
     constexpr Point() noexcept = default;
-    constexpr Point(int16_t px, int16_t py) noexcept : x(px), y(py) {}
+    constexpr Point(uint16_t px, uint16_t py) noexcept : x(px), y(py) {}
 };
 
 /** Размеры панели в пикселях; пользовательские координаты совпадают с координатами панели. */
 struct ScreenLayout {
-    uint16_t panel_width{};
-    uint16_t panel_height{};
+    uint16_t width{};
+    uint16_t height{};
 
     constexpr ScreenLayout() noexcept = default;
     constexpr ScreenLayout(uint16_t w, uint16_t h) noexcept
-        : panel_width(w)
-        , panel_height(h)
+        : width(w)
+        , height(h)
     {}
 
-    [[nodiscard]] constexpr uint16_t userWidth() const noexcept { return panel_width; }
+    [[nodiscard]] constexpr uint16_t userWidth() const noexcept { return width; }
 
-    [[nodiscard]] constexpr uint16_t userHeight() const noexcept { return panel_height; }
+    [[nodiscard]] constexpr uint16_t userHeight() const noexcept { return height; }
 
-    [[nodiscard]] constexpr Point mapUserToPanel(int16_t ux, int16_t uy) const noexcept { return Point{ux, uy}; }
+    [[nodiscard]] constexpr Point mapUserToPanel(uint16_t ux, uint16_t uy) const noexcept { return Point{ux, uy}; }
 
-    void mapUserRectToPanel(int16_t ux0, int16_t uy0, int16_t ux1, int16_t uy1, Point& upperLeft,
+    void mapUserRectToPanel(uint16_t ux0, uint16_t uy0, uint16_t ux1, uint16_t uy1, Point& upperLeft,
         Point& lowerRightInclusive) const noexcept {
         const Point a = mapUserToPanel(ux0, uy0);
         const Point b = mapUserToPanel(ux1, uy1);
@@ -192,5 +192,21 @@ struct ScreenLayout {
         Literal& operator=(Literal&&) = delete;
     };
 
+/** NIS §6: допустимые значения `baud` / `bauds` (бит/с). */
+enum Baudrate : uint32_t {
+    b2400 = 2400u,
+    b4800 = 4800u,
+    b9600 = 9600u,
+    b19200 = 19200u,
+    b31250 = 31250u,
+    b38400 = 38400u,
+    b57600 = 57600u,
+    b115200 = 115200u,
+    b230400 = 230400u,
+    b250000 = 250000u,
+    b256000 = 256000u,
+    b512000 = 512000u,
+    b921600 = 921600u,
+};
 
 } // namespace nex

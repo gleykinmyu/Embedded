@@ -4,17 +4,15 @@
 // После успешного pushCommand — _session.clearTimeout(), чтобы таймаут ответа не тянулся с прошлой команды.
 //
 // Входящий поток в update(now_ms): сначала checkSessionTimeout, затем TX, при `isTxIdle()` — дедлайн ожидания
-// ответа или при `!bkcmdEnabled()` и `AwaitingStatus` — сразу sessionEnd(true); цикл receive — dispatchResponse / dispatchEvent.
-// txIdle: пока запрос не ушёл целиком, ответ к транзакции не привязывают.
+// ответа; для `AwaitingStatus` при `bkcmd != Always` — сразу sessionEnd(true) (status не гарантирован).
+// Цикл receive — dispatchResponse / dispatchEvent. txIdle: пока запрос не ушёл целиком, ответ не привязывают.
 //
 // Таймаут: после полного TX (isTxIdle) для get/status один раз ставится дедлайн; просрочка — SessionTimeout
-// и sessionEnd(false). Если на панели выключен `bkcmd`, вызовите `setBkcmdEnabled(false)`: для `AwaitingStatus`
-// после полного TX сессия закрывается успешно без ожидания status.
+// и sessionEnd(false). Status по `AwaitingStatus` ждём только при `bkcmd == Always`; иначе — успех без ожидания.
 
 #include "nexApplication.hpp"
 #include "../core/nexErrors.hpp"
 
-#include <type_traits>
 #include <variant>
 
 namespace nex {
@@ -25,6 +23,17 @@ Application::Application(BIF::IByteStream& stream, uint16_t panel_width, uint16_
     : ep(*this)
     , fs(*this)
     , cs(*this)
+    , audio(*this)
+    , touch(*this)
+    , sleep(*this)
+    , msgBox(*this)
+    , bkcmd(*this, "bkcmd", SysVarTag::Bkcmd, BkCmd::OnFailure)
+    , sys{SysVar<uint32_t>(*this, "sys0", SysVarTag::Sys0), SysVar<uint32_t>(*this, "sys1", SysVarTag::Sys1),
+        SysVar<uint32_t>(*this, "sys2", SysVarTag::Sys2)}
+    , pio{SysVar<uint8_t>(*this, "pio0", SysVarTag::Pio0), SysVar<uint8_t>(*this, "pio1", SysVarTag::Pio1),
+        SysVar<uint8_t>(*this, "pio2", SysVarTag::Pio2), SysVar<uint8_t>(*this, "pio3", SysVarTag::Pio3),
+        SysVar<uint8_t>(*this, "pio4", SysVarTag::Pio4), SysVar<uint8_t>(*this, "pio5", SysVarTag::Pio5),
+        SysVar<uint8_t>(*this, "pio6", SysVarTag::Pio6), SysVar<uint8_t>(*this, "pio7", SysVarTag::Pio7)}
     , _screen(panel_width, panel_height)
     , _stream(stream)
     , _gateway(stream)
@@ -83,7 +92,7 @@ bool Application::update(uint32_t now_ms) noexcept {
 
     if (_gateway.isTxIdle() && !_session.isIdle()) {
         const Transaction& active = _session.active();
-        if (active.isStatusResponse() && !_bkcmdEnabled)
+        if (active.isStatusResponse() && bkcmd != BkCmd::Always)
             sessionEnd(true);
         else
             _session.startResponseTimeout(now_ms, kDefaultGetResponseTimeoutMs);
@@ -100,6 +109,7 @@ bool Application::update(uint32_t now_ms) noexcept {
         handleGatewayStreamFailure(Status::GatewayReceiveFailed);
         any = true;
     }
+
     return any;
 }
 
@@ -169,7 +179,10 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
             return true;
         }
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-            if (Component* const c = getComponent(active.page_id, active.comp_id))
+            if (active.page_id == kSysVarRoutePageId && active.comp_id == kSysVarRouteCompId) {
+                dispatchSysVarResponse(active.tag, *nr);
+                onSysResponse(active.tag, *nr);
+            } else if (Component* const c = getComponent(active.page_id, active.comp_id))
                 c->onResponse(active.tag, *nr);
             sessionEnd(true);
             return true;
@@ -213,38 +226,42 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
 }
 
 void Application::dispatchEvent(const Message& m) noexcept {
-    std::visit(
-        [this](auto&& arg) {
-            using T = std::decay_t<decltype(arg)>;
-            if constexpr (std::is_same_v<T, msg::evTouch>) {
-                dispatchTouch(arg);
-            } else if constexpr (std::is_same_v<T, msg::evTouchXY>) {
-                if (_touchBlocked) {
-                    restart();
-                    return;
-                }
-                onTouchXY(arg);
-            } else if constexpr (std::is_same_v<T, msg::evPage>) {
-                dispatchPageChange(arg);
-            } else if constexpr (std::is_same_v<T, msg::evSystem>) {
-                onSystemEvent(arg);
-            } else if constexpr (std::is_same_v<T, msg::evTransparent>) {
-                onTransparentEvent(arg);
-            } else if constexpr (std::is_same_v<T, msg::Status>) {
-                dispatchError(arg, 0u, 0u);
-            }
-        },
-        m);
-}
-
-void Application::dispatchTouch(const msg::evTouch& e) noexcept {
-    if (_touchBlocked) {
-        restart();
+    if (std::get_if<msg::evTouch>(&m) || std::get_if<msg::evTouchXY>(&m)) {
+        dispatchTouch(m);
         return;
     }
-    onTouch(e);
-    if (Page* const p = page(e.page_id))
-        p->onTouch(e);
+    if (const auto* e = std::get_if<msg::evPage>(&m)) {
+        dispatchPageChange(*e);
+        return;
+    }
+    if (const auto* e = std::get_if<msg::evSystem>(&m)) {
+        onSystemEvent(*e);
+        return;
+    }
+    if (const auto* e = std::get_if<msg::evTransparent>(&m)) {
+        onTransparentEvent(*e);
+        return;
+    }
+    if (const auto* e = std::get_if<msg::Status>(&m))
+        dispatchError(*e, 0u, 0u);
+}
+
+void Application::dispatchTouch(const Message& m) noexcept {
+    if (const auto* e = std::get_if<msg::evTouch>(&m)) 
+    {
+        if (!msgBox.isActive()) {
+            onTouch(*e);
+            if (Page* const p = page(e->page_id))
+                p->onTouch(*e);
+            return;
+        }
+    }
+    if (const auto* e = std::get_if<msg::evTouchXY>(&m)) {
+        if (msgBox.isActive())
+            msgBox.onTouchXY(*e);
+        else
+            onTouchXY(*e);
+    }
 }
 
 void Application::dispatchPageChange(const msg::evPage& e) noexcept {
@@ -263,11 +280,42 @@ void Application::dispatchPageChange(const msg::evPage& e) noexcept {
 }
 
 void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
+    _lastError = status;
+    _lastErrorPage = page_id;
+    _lastErrorComp = comp_id;
     onError(status, page_id, comp_id);
     if (page_id == 0u && comp_id == 0u)
         return;
     if (Page* const p = page(page_id))
         p->onError(status, comp_id);
+}
+
+void Application::dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept {
+    switch (static_cast<SysVarTag>(tag)) {
+    case SysVarTag::Bkcmd: bkcmd.applyResponse(response); break;
+    case SysVarTag::Sys0:
+    case SysVarTag::Sys1:
+    case SysVarTag::Sys2:
+        sys[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Sys0)].applyResponse(response);
+        break;
+    case SysVarTag::Pio0:
+    case SysVarTag::Pio1:
+    case SysVarTag::Pio2:
+    case SysVarTag::Pio3:
+    case SysVarTag::Pio4:
+    case SysVarTag::Pio5:
+    case SysVarTag::Pio6:
+    case SysVarTag::Pio7:
+        pio[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Pio0)].applyResponse(response);
+        break;
+    case SysVarTag::Tch0:
+    case SysVarTag::Tch1:
+    case SysVarTag::Tch2:
+    case SysVarTag::Tch3:
+        touch.tch[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Tch0)].applyResponse(response);
+        break;
+    default: break;
+    }
 }
 
 } // namespace nex

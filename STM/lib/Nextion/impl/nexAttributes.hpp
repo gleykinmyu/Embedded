@@ -88,7 +88,7 @@ public:
     /** Записать в зеркало и поставить в очередь `cmd::assign::Numeric` на панель. */
     AttributeNum& operator=(const T& v) noexcept {
         _val = v;
-        const cmd::TargetAttr target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name };
         const cmd::assign::Numeric cmd(target, static_cast<int32_t>(v));
         enqueueTransaction(cmd);
         return *this;
@@ -96,7 +96,7 @@ public:
 
     /** Запрос значения с панели: `get <comp>.<attr>`; ответ — `Component::onResponse(tag, …)`. */
     void get() noexcept {
-        const cmd::TargetAttr target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name };
         enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
     }
 
@@ -156,7 +156,7 @@ public:
 
     /** Запрос строки с панели: `get <comp>.<attr>`; ответ — `Component::onResponse(tag, …)`. */
     void get() noexcept {
-        const cmd::TargetAttr target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name };
         enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
     }
 

@@ -19,6 +19,7 @@
  * | `nex::cmd::assign`  | `TextSubtract`         | `Command`              |
  * | `nex::cmd::assign`  | `Numeric`              | `Command`              |
  * | `nex::cmd`          | `System`               | `Command`              |
+ * | `nex::cmd`          | `Page`                 | `Command`              |
  * | `nex::cmd`          | `Cfgpio`               | `Command`              |
  * | `nex::cmd`          | `Get`                  | `Command`              |
  * | `nex::cmd`          | `String`               | `Command`              |
@@ -40,6 +41,22 @@
 
 namespace nex {
 
+/**
+ * Пустая лексема компонента для `AttrRef`: при `comp.len == 0` в кадр идёт только `attr`
+ * (`sys0`, `p0.t0.val`, …).
+ */
+inline constexpr Literal kEmptyCompLexeme{""};
+
+/**
+ * Ссылка на атрибут NIS: `comp` (объект / путь без точки до атрибута) и `attr` (`txt`, `val`, …).
+ * Если `comp.len == 0`, в кадр выводится только `attr` как вся левая часть.
+ * Объекты `Literal` для `comp` и `attr` должны жить дольше, чем хранящий `AttrRef`.
+ */
+struct AttrRef {
+    const Literal& comp;
+    const Literal& attr;
+};
+
     /**
      * Базовый класс **исходящей UART-инструкции** к дисплею Nextion (NIS — Nextion Instruction Set).
      * Полезная нагрузка до `TxFrame::MAX_PAYLOAD` байт; терминатор `0xFF×3` добавляет `TxFramer`.
@@ -58,6 +75,16 @@ namespace nex {
             UnknownKind,
             SlotTooSmall,
             SlotAlignMismatch,
+        };
+
+        /** Операция числового присваивания NIS (§2.4–2.9): `=`, `+=`, … */
+        enum class Op : uint8_t {
+            Assign,
+            Add,
+            Sub,
+            Mul,
+            Div,
+            Mod,
         };
 
         Command() noexcept = default;
@@ -83,6 +110,19 @@ namespace nex {
             _status = s;
             return false;
         }
+
+        bool pushBytes(TxFrame& tx, const void* src, uint16_t n) const noexcept;
+        bool printLiteral(TxFrame& tx, const Literal& lit) const noexcept;
+        bool printNisToken(TxFrame& tx, const char* token) const noexcept;
+        bool printSpace(TxFrame& tx) const noexcept;
+        bool printDot(TxFrame& tx) const noexcept;
+        bool printComma(TxFrame& tx) const noexcept;
+        bool printQuotedString(TxFrame& tx, const char* text) const noexcept;
+        bool printUint32(TxFrame& tx, uint32_t value) const noexcept;
+        bool printInt32(TxFrame& tx, int32_t value) const noexcept;
+        bool printOperation(TxFrame& tx, Op op) const noexcept;
+        bool printAttrLexeme(TxFrame& tx, const AttrRef& t) const noexcept;
+        bool printColorConst(TxFrame& tx, Color::std c) const noexcept;
     };
 
 inline const char* commandStatusCstr(Command::Status s) noexcept {
@@ -120,25 +160,6 @@ void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept;
 }
 
 namespace cmd {
-    /**
-     * Пустая лексема компонента для `TargetAttr`: при `comp.len == 0` в кадр идёт только `attr`
-     * (`sys0`, `p0.t0.val`, …).
-     */
-    inline constexpr Literal kEmptyCompLexeme{""};
-
-    /**
-     * **Target Attribute** — адрес значения в NIS: `comp` (объект / путь без точки до атрибута) и `attr`
-     * (`txt`, `val`, …). Если `comp.len == 0`, в кадр выводится только `attr` как вся левая часть.
-     * Объекты `Literal` для `comp` и `attr` должны жить дольше, чем хранящий `TargetAttr` объект.
-     */
-    struct TargetAttr {
-        const Literal& comp;
-        const Literal& attr;
-    };
-
-} // namespace cmd
-
-namespace cmd {
 /**
  * NIS §2 — присваивания по UART (`target=…`, без слова set).
  * Порядок в файле: сначала **текстовые** атрибуты (`.txt` и совместимые), затем **числовые**.
@@ -161,7 +182,7 @@ namespace assign {
             Append, /**< += */
         };
 
-        Text(const TargetAttr& target, const char* text, Op op) noexcept
+        Text(const AttrRef& target, const char* text, Op op) noexcept
             : _target(target)
             , _text(text)
             , _op(op) {}
@@ -170,7 +191,7 @@ namespace assign {
         NEX_COMMAND_SLOT(Text)
 
     private:
-        TargetAttr _target;
+        AttrRef _target;
         const char* _text;
         Op _op;
     };
@@ -180,12 +201,12 @@ namespace assign {
      */
     class TextSubtract final : public Command {
     public:
-        TextSubtract(const TargetAttr& target, uint32_t n) noexcept : _target(target), _n(n) {}
+        TextSubtract(const AttrRef& target, uint32_t n) noexcept : _target(target), _n(n) {}
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(TextSubtract)
 
     private:
-        TargetAttr _target;
+        AttrRef _target;
         uint32_t _n;
     };
 
@@ -198,16 +219,7 @@ namespace assign {
      */
     class Numeric final : public Command {
     public:
-        enum class Op : uint8_t {
-            Assign,
-            Add,
-            Sub,
-            Mul,
-            Div,
-            Mod,
-        };
-
-        Numeric(const TargetAttr& target, int32_t value, Op op = Op::Assign) noexcept
+        Numeric(const AttrRef& target, int32_t value, Op op = Op::Assign) noexcept
             : _target(target)
             , _value(value)
             , _op(op) {}
@@ -216,7 +228,7 @@ namespace assign {
         NEX_COMMAND_SLOT(Numeric)
 
     private:
-        TargetAttr _target;
+        AttrRef _target;
         int32_t _value;
         Op _op;
     };
@@ -226,31 +238,53 @@ namespace assign {
     //========== Системные команды =============================================
 
     /**
-     * Системные инструкции NIS: `rest`, `touch_j`, `randset`, …
+     * Системные инструкции NIS: `rest`, `touch_j`, …
      */
     class System final : public Command {
     public:
         enum class Kind : uint8_t {
             Restart,
             TouchJ,
-            Randset,
         };
 
-        static System restart() noexcept { return System(Kind::Restart, 0, 0); }
-        static System touchJ() noexcept { return System(Kind::TouchJ, 0, 0); }
-        static System randset(int32_t minVal, int32_t maxVal) noexcept {
-            return System(Kind::Randset, minVal, maxVal);
-        }
+        static System restart() noexcept { return System(Kind::Restart); }
+        static System touchJ() noexcept { return System(Kind::TouchJ); }
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(System)
 
     private:
         Kind _kind;
-        int32_t _a;
-        int32_t _b;
 
-        System(Kind kind, int32_t a, int32_t b) noexcept : _kind(kind), _a(a), _b(b) {}
+        explicit System(Kind kind) noexcept : _kind(kind) {}
+    };
+
+    /**
+     * Навигация по страницам NIS: `page`, `ref`, `sendme`.
+     */
+    class Page final : public Command {
+    public:
+        enum class Kind : uint8_t {
+            Switch,
+            Refresh,
+            SendMe,
+        };
+
+        /** Переключить страницу по числовому id (`page 0`, …). */
+        static Page switchTo(uint32_t pageId) noexcept { return Page(Kind::Switch, pageId); }
+        /** Перерисовать страницу 0 (`ref 0`). */
+        static Page refresh() noexcept { return Page(Kind::Refresh, 0u); }
+        /** Запросить id текущей страницы; ответ — `0x66` (`msg::evPage`). */
+        static Page sendMe() noexcept { return Page(Kind::SendMe, 0u); }
+
+        bool serialize(TxFrame& tx) const noexcept override;
+        NEX_COMMAND_SLOT(Page)
+
+    private:
+        Kind _kind;
+        uint32_t _pageId;
+
+        Page(Kind kind, uint32_t pageId) noexcept : _kind(kind), _pageId(pageId) {}
     };
 
     /**
@@ -280,16 +314,16 @@ namespace assign {
      */
     class Get final : public Command {
     public:
-        static Get numeric(const TargetAttr& operand) noexcept { return Get(operand); }
-        static Get string(const TargetAttr& operand) noexcept { return Get(operand); }
+        static Get numeric(const AttrRef& operand) noexcept { return Get(operand); }
+        static Get string(const AttrRef& operand) noexcept { return Get(operand); }
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Get)
 
     private:
-        TargetAttr _operand;
+        AttrRef _operand;
 
-        explicit Get(const TargetAttr& operand) noexcept : _operand(operand) {}
+        explicit Get(const AttrRef& operand) noexcept : _operand(operand) {}
     };
 
     /**
@@ -305,23 +339,23 @@ namespace assign {
             Spstr,
         };
 
-        static String covx(const TargetAttr& src, const TargetAttr& dst, int32_t length, int32_t format) noexcept {
+        static String covx(const AttrRef& src, const AttrRef& dst, int32_t length, int32_t format) noexcept {
             return String(Kind::Covx, src, dst, length, format, nullptr);
         }
 
-        static String substr(const TargetAttr& fromTxt, const TargetAttr& toTxt, uint32_t start, uint32_t count) noexcept {
+        static String substr(const AttrRef& fromTxt, const AttrRef& toTxt, uint32_t start, uint32_t count) noexcept {
             return String(Kind::Substr, fromTxt, toTxt, static_cast<int32_t>(start), static_cast<int32_t>(count), nullptr);
         }
 
-        static String strlen(const TargetAttr& txtAttr, const TargetAttr& dstNumAttr) noexcept {
+        static String strlen(const AttrRef& txtAttr, const AttrRef& dstNumAttr) noexcept {
             return String(Kind::Strlen, txtAttr, dstNumAttr, 0, 0, nullptr);
         }
 
-        static String btlen(const TargetAttr& txtAttr, const TargetAttr& dstNumAttr) noexcept {
+        static String btlen(const AttrRef& txtAttr, const AttrRef& dstNumAttr) noexcept {
             return String(Kind::Btlen, txtAttr, dstNumAttr, 0, 0, nullptr);
         }
 
-        static String spstr(const TargetAttr& src, const TargetAttr& dst, const char* delimiterQuoted, uint32_t index) noexcept {
+        static String spstr(const AttrRef& src, const AttrRef& dst, const char* delimiterQuoted, uint32_t index) noexcept {
             return String(Kind::Spstr, src, dst, static_cast<int32_t>(index), 0, delimiterQuoted);
         }
 
@@ -330,13 +364,13 @@ namespace assign {
 
     private:
         Kind _kind;
-        TargetAttr _a1;
-        TargetAttr _a2;
+        AttrRef _a1;
+        AttrRef _a2;
         int32_t _i1;
         int32_t _i2;
         const char* _delimiterQuoted;
 
-        String(Kind kind, const TargetAttr& a1, const TargetAttr& a2, int32_t i1, int32_t i2,
+        String(Kind kind, const AttrRef& a1, const AttrRef& a2, int32_t i1, int32_t i2,
                  const char* delimiterQuoted) noexcept
             : _kind(kind)
             , _a1(a1)
@@ -484,10 +518,10 @@ namespace assign {
             Read,  /**< `repo` / `rept` */
         };
 
-        static Eeprom write(const TargetAttr& variableOrConstant, uint32_t eepromStart) noexcept {
+        static Eeprom write(const AttrRef& variableOrConstant, uint32_t eepromStart) noexcept {
             return Eeprom(Op::Write, &variableOrConstant, eepromStart, 0u);
         }
-        static Eeprom read(const TargetAttr& destVariable, uint32_t eepromStart) noexcept {
+        static Eeprom read(const AttrRef& destVariable, uint32_t eepromStart) noexcept {
             return Eeprom(Op::Read, &destVariable, eepromStart, 0u);
         }
 
@@ -503,11 +537,11 @@ namespace assign {
 
     private:
         Op _op;
-        const TargetAttr* _target;
+        const AttrRef* _target;
         uint32_t _addr;
         uint32_t _byteCount;
 
-        Eeprom(Op op, const TargetAttr* target, uint32_t addr, uint32_t byteCount) noexcept
+        Eeprom(Op op, const AttrRef* target, uint32_t addr, uint32_t byteCount) noexcept
             : _op(op)
             , _target(target)
             , _addr(addr)
@@ -519,13 +553,13 @@ namespace assign {
      */
     class Play final : public Command {
     public:
-        Play(uint32_t channel, uint32_t resourceId, uint32_t loop01) noexcept
+        Play(uint8_t channel, uint32_t resourceId, uint32_t loop01) noexcept
             : _channel(channel), _resourceId(resourceId), _loop01(loop01) {}
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Play)
 
     private:
-        uint32_t _channel;
+        uint8_t _channel;
         uint32_t _resourceId;
         uint32_t _loop01;
     };
@@ -549,7 +583,7 @@ namespace assign {
         static File rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept {
             return File(Op::Rename, pathFromQuoted, pathToQuoted, nullptr, 0u, 0u, 0u, 0u);
         }
-        static File find(const char* pathQuoted, const TargetAttr& dstNumAttr) noexcept {
+        static File find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept {
             return File(Op::Find, pathQuoted, nullptr, &dstNumAttr, 0u, 0u, 0u, 0u);
         }
         static File create(const char* pathQuoted, uint32_t reservedSize) noexcept {
@@ -569,13 +603,13 @@ namespace assign {
         Op _op;
         const char* _pathQuoted;
         const char* _pathToQuoted;
-        const TargetAttr* _dstNumAttr;
+        const AttrRef* _dstNumAttr;
         uint32_t _reservedSize;
         uint32_t _offset;
         uint32_t _count;
         uint32_t _crcOption;
 
-        File(Op op, const char* pathQuoted, const char* pathToQuoted, const TargetAttr* dstNumAttr, uint32_t reservedSize, uint32_t offset,
+        File(Op op, const char* pathQuoted, const char* pathToQuoted, const AttrRef* dstNumAttr, uint32_t reservedSize, uint32_t offset,
              uint32_t count, uint32_t crcOption) noexcept
             : _op(op)
             , _pathQuoted(pathQuoted)
@@ -609,7 +643,7 @@ namespace assign {
         static Directory rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept {
             return Directory(Op::Rename, pathFromQuoted, pathToQuoted, nullptr);
         }
-        static Directory find(const char* pathQuoted, const TargetAttr& dstNumAttr) noexcept {
+        static Directory find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept {
             return Directory(Op::Find, pathQuoted, nullptr, &dstNumAttr);
         }
 
@@ -620,9 +654,9 @@ namespace assign {
         Op _op;
         const char* _pathQuoted;
         const char* _pathToQuoted;
-        const TargetAttr* _dstNumAttr;
+        const AttrRef* _dstNumAttr;
 
-        Directory(Op op, const char* pathQuoted, const char* pathToQuoted, const TargetAttr* dstNumAttr) noexcept
+        Directory(Op op, const char* pathQuoted, const char* pathToQuoted, const AttrRef* dstNumAttr) noexcept
             : _op(op)
             , _pathQuoted(pathQuoted)
             , _pathToQuoted(pathToQuoted)

@@ -4,10 +4,13 @@
 #include <cstdio>
 #include "../../Interfaces/ibyte_stream.hpp"
 #include "nexComponentBase.hpp"
+#include "../core/nexTypes.hpp"
 #include "../core/nexGateway.hpp"
 #include "../core/nexErrors.hpp"
 #include "../core/nexSession.hpp"
 #include "nexApplicationFacades.hpp"
+#include "nexMsgBox.hpp"
+#include "nexSysVars.hpp"
 
 namespace nex {
 
@@ -21,6 +24,10 @@ static constexpr uint32_t kDefaultGetResponseTimeoutMs = 500u;
 class Application 
 {
 public:
+    /** Метаданные транзакции для `SysVar` (вне таблицы страниц / компонентов). */
+    static constexpr uint8_t kSysVarRoutePageId = 0xFFu;
+    static constexpr uint8_t kSysVarRouteCompId = 0xFFu;
+
     /** Исход MCU в `msg::Status::tag_1` при `AppError`. */
     enum class Status : uint8_t {
         OK = 0,
@@ -37,8 +44,6 @@ public:
     explicit Application(BIF::IByteStream& stream, uint16_t panel_width, uint16_t panel_height) noexcept;
     virtual ~Application() = default;
 
-    [[nodiscard]] const ScreenLayout& screenLayout() const noexcept { return _screen; }
-
     // Поставить транзакцию в очередь; UART — в update(now_ms) или после завершения сессии.
     // TODO(QueueFull): при переполнении — отложить tx (буфер ожидания), по session timeout / completeTransaction
     // повторить tryEnqueue, чтобы команда не терялась после EnqueueRejected.
@@ -47,18 +52,14 @@ public:
     // Опрос UART: TX, RX, таймаут ответа по now_ms (монотонные мс). true — был прогресс TX или принят кадр.
     bool update(uint32_t now_ms) noexcept;
 
-    /** Согласовать с HMI `bkcmd`: при `false` панель не присылает завершающий status по командам —
-     * транзакции `AwaitingStatus` после полного TX завершаются успешно без ожидания и без таймаута.
-     * TODO: держать в синхроне с фактическим значением на дисплее (системная переменная `bkcmd` / чтение после загрузки HMI). */
-    void setBkCmd(bool enabled) noexcept { _bkcmdEnabled = enabled; }
-    /** TODO: при синхронизации с панелью отражать реальное `bkcmd`, а не только зеркало MCU. */
-    [[nodiscard]] bool bkcmdEnabled() const noexcept { return _bkcmdEnabled; }
-
     /** Разрешить onError для политики `QueuePolicy::NotifyOptional` (NotIdle, QueueEmpty, …). По умолчанию `false`. */
     void setNotifyOptional(bool enabled) noexcept { _notifyOptional = enabled; }
     [[nodiscard]] bool notifyOptional() const noexcept { return _notifyOptional; }
 
     [[nodiscard]] Status lastStatus() const noexcept { return _lastStatus; }
+    [[nodiscard]] const msg::Status& lastError() const noexcept { return _lastError; }
+    [[nodiscard]] uint8_t lastErrorPage() const noexcept { return _lastErrorPage; }
+    [[nodiscard]] uint8_t lastErrorComp() const noexcept { return _lastErrorComp; }
     [[nodiscard]] NexErrors errors() const noexcept;
     void clearErrors() noexcept;
 
@@ -68,6 +69,7 @@ public:
 
     // nullptr — нет страницы или компонента comp_id.
     [[nodiscard]] Component* getComponent(uint8_t page_id, uint8_t comp_id) noexcept;
+    [[nodiscard]] const ScreenLayout& screenLayout() const noexcept { return _screen; }
 
 
     // Обработчики событий: touch, touchXY, pageChange, systemEvent, transparentEvent, error; у страницы — onExit/onLoad при смене id.
@@ -76,19 +78,51 @@ public:
     virtual void onPageChange(uint8_t) {}
     virtual void onSystemEvent(const msg::evSystem&) {}
     virtual void onTransparentEvent(const msg::evTransparent&) {}
+    /** Ответ `get` по системной переменной (`tag` — `SysVar::tag`); разбор и `applyResponse` — в наследнике. */
+    virtual void onSysResponse(uint8_t tag, const msg::getNumeric& response) noexcept { (void)tag; (void)response; }
     // status с панели (NIS) или синтетика MCU; page_id/comp_id == 0 — только глобальный onError (nexApplicationAddons.cpp).
     virtual void onError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
 
+
+    /** @deprecated используйте `msgBox.show` / `msgBox.showError`. */
+    void showErrorBox(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept {
+        _lastError = status;
+        _lastErrorPage = page_id;
+        _lastErrorComp = comp_id;
+        msgBox.showError();
+    }
+
     // --- доп. команды и UI (nexApplicationAddons.cpp) ---
-    void calibrateTouch() noexcept;
     void restart() noexcept;
-    void setRandGen(int32_t minVal, int32_t maxVal) noexcept;
-    void play(uint32_t channel, uint32_t resourceId, uint32_t loop01) noexcept;
-    void showErrorBox(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
+    /** Переключить страницу на панели (`page N`). */
+    void switchPage(uint8_t pageId) noexcept;
+    /** Запросить id текущей страницы (`sendme`); ответ — `msg::evPage`. */
+    void requestCurrentPage() noexcept;
+    /** Перерисовать текущую страницу (`ref 0`). */
+    void refreshPage() noexcept;
+
+    /** Текущая скорость UART (`baud`) / сохранённая при power-on (`bauds`), NIS §6. */
+    void setBaudrate(Baudrate rate) noexcept;
+    void setBaudrateDefault(Baudrate rate) noexcept;
+    /** Адрес панели в режиме Address Mode (`addr`, 0…2815). */
+    void setAddress(uint16_t address) noexcept;
+    /** Яркость подсветки (`dim`, 0…100). */
+    void setBrightness(uint8_t level) noexcept;
+    /** Яркость при power-on (`dims`, 0…100). */
+    void setBrightnessDefault(uint8_t level) noexcept;
 
     AppEeprom ep;
     AppFileSystem fs;
     AppCanvas cs;
+    AppAudio audio;
+    AppTouch touch;
+    AppSleep sleep;
+    MsgBox msgBox;
+
+    // --- системные переменные NIS (§6) ---
+    SysVar<BkCmd> bkcmd;
+    SysVar<uint32_t> sys[3];
+    SysVar<uint8_t> pio[8];
 
 private:
     friend class Page;
@@ -125,14 +159,16 @@ private:
     // Фоновое сообщение: не ответ текущей транзакции (после dispatchResponse с false).
     void dispatchEvent(const Message& m) noexcept;
 
-    // onTouch приложения, затем `PageBase::onTouch` зарегистрированной страницы (из dispatchEvent).
-    void dispatchTouch(const msg::evTouch& e) noexcept;
+    // `evTouch` / `evTouchXY` в `m`: onTouch(+Page) или onTouchXY; при активном `msgBox` — только `msgBox.onTouchXY`.
+    void dispatchTouch(const Message& m) noexcept;
 
     // `_currentPageId`, onPageChange, PageBase::onExit / onLoad при смене id (из dispatchEvent).
     void dispatchPageChange(const msg::evPage& e) noexcept;
 
     // onError приложения; при ненулевой паре page/comp — PageBase::onError. (0,0) — без страницы.
     void dispatchError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
+
+    void dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept;
 
     // --- ошибки MCU и политики очереди (nexApplicationErrors.cpp) ---
     virtual QueuePolicy enqueueFailurePolicy(Session::Status sessionStatus) const noexcept;
@@ -153,21 +189,17 @@ private:
         uint8_t comp_id, FailureRecovery recovery) noexcept;
     void clearGatewayStream() noexcept;
 
-    static constexpr std::size_t kErrorBoxTextCap = 80u;
-
     ScreenLayout _screen{};
-    char _error_box_text[kErrorBoxTextCap]{};
     BIF::IByteStream& _stream;
     Gateway _gateway;
     Session _session;
     Page* _pages[kMaxPages]{};
     uint8_t _currentPageId = 0xFF;
-    /** Зеркало политики `bkcmd` на панели; TODO: синхронизировать с системной переменной дисплея. */
-    bool _bkcmdEnabled = false;
     bool _notifyOptional = false;
-    /** После `showErrorBox`: touch/touchXY → `restart()`, не в обработчики. */
-    bool _touchBlocked = false;
     Status _lastStatus = Status::OK;
+    msg::Status _lastError{};
+    uint8_t _lastErrorPage = 0u;
+    uint8_t _lastErrorComp = 0u;
 };
 
 inline const char* applicationStatusCstr(Application::Status s) noexcept {

@@ -67,17 +67,15 @@ namespace nex {
             TouchState state;
         };
 
-        enum class TouchPlane : uint8_t {
-            Awake = 0x67,
-            Sleep = 0x68,
-        };
-
         /**
-         * Событие касания по координатам X и Y (пробуждение или сон; заголовки 0x67 и 0x68).
+         * Координаты касания по UART (NIS §7.21–7.22, `sendxy`): заголовок **0x67** (awake) или **0x68** (sleep).
          */
         struct evTouchXY {
-            constexpr static uint8_t Header = 0x67;
-            TouchPlane plane;
+            enum class Mode : uint8_t {
+                Awake = 0x67,
+                Sleep = 0x68,
+            };
+            Mode mode;
             Point pos{};
             TouchState state;
         };

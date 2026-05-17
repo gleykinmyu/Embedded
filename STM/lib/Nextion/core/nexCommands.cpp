@@ -4,102 +4,84 @@
 #include <cstring>
 
 /** Литерал имени команды NIS в кадр; длина — `sizeof(lit) - 1` (без strlen). `lit` — только строковый литерал `"…"`. */
-#define NEX_CMD_PRINT_LIT(tx, st, lit) (misc::pushBytes((tx), (st), (lit), static_cast<uint16_t>(sizeof(lit) - 1u)))
+#define NEX_CMD_PRINT_LIT(tx, lit) pushBytes((tx), (lit), static_cast<uint16_t>(sizeof(lit) - 1u))
 
 namespace nex {
 
-namespace misc {
-
-bool pushBytes(TxFrame& tx, Command::Status& st, const void* src, uint16_t n) noexcept {
+bool Command::pushBytes(TxFrame& tx, const void* src, uint16_t n) const noexcept {
     if (n == 0u)
         return true;
-    if (src == nullptr) {
-        st = Command::Status::NullPointer;
-        return false;
-    }
-    if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(n) > static_cast<uint32_t>(TxFrame::MAX_PAYLOAD)) {
-        st = Command::Status::TxFrameOverflow;
-        return false;
-    }
+    if (src == nullptr)
+        return fail(Status::NullPointer);
+    if (static_cast<uint32_t>(tx.length) + static_cast<uint32_t>(n) > static_cast<uint32_t>(TxFrame::MAX_PAYLOAD))
+        return fail(Status::TxFrameOverflow);
     std::memcpy(tx.payload + tx.length, src, n);
     tx.length = static_cast<uint16_t>(tx.length + n);
     return true;
 }
 
-/** Печать `nex::Literal` в кадр (сырой ASCII, ровно `len` байт с `data`); `nullptr` или `len == 0` — ошибка. */
-bool printLiteral(TxFrame& tx, Command::Status& st, const Literal& lit) noexcept {
-    if (lit.data == nullptr) {
-        st = Command::Status::NullPointer;
-        return false;
-    }
-    if (lit.len == 0u) {
-        st = Command::Status::EmptyLiteral;
-        return false;
-    }
-    return pushBytes(tx, st, lit.data, lit.len);
+bool Command::printLiteral(TxFrame& tx, const Literal& lit) const noexcept {
+    if (lit.data == nullptr)
+        return fail(Status::NullPointer);
+    if (lit.len == 0u)
+        return fail(Status::EmptyLiteral);
+    return pushBytes(tx, lit.data, lit.len);
 }
 
-/** Печать ASCIIZ-токена NIS в кадр как сырые байты (длина через `strlen`). */
-bool printNisToken(TxFrame& tx, Command::Status& st, const char* token) noexcept {
-    if (token == nullptr) {
-        st = Command::Status::NullPointer;
-        return false;
-    }
+bool Command::printNisToken(TxFrame& tx, const char* token) const noexcept {
+    if (token == nullptr)
+        return fail(Status::NullPointer);
     const size_t n = std::strlen(token);
-    if (n == 0u) {
-        st = Command::Status::EmptyLiteral;
-        return false;
-    }
-    if (n > static_cast<size_t>(UINT16_MAX)) {
-        st = Command::Status::TxFrameOverflow;
-        return false;
-    }
-    return pushBytes(tx, st, token, static_cast<uint16_t>(n));
+    if (n == 0u)
+        return fail(Status::EmptyLiteral);
+    if (n > static_cast<size_t>(UINT16_MAX))
+        return fail(Status::TxFrameOverflow);
+    return pushBytes(tx, token, static_cast<uint16_t>(n));
 }
 
-bool printSpace(TxFrame& tx, Command::Status& st) noexcept {
+bool Command::printSpace(TxFrame& tx) const noexcept {
     const uint8_t sp = static_cast<uint8_t>(' ');
-    return pushBytes(tx, st, &sp, 1u);
+    return pushBytes(tx, &sp, 1u);
 }
 
-bool printDot(TxFrame& tx, Command::Status& st) noexcept {
+bool Command::printDot(TxFrame& tx) const noexcept {
     const uint8_t dot = static_cast<uint8_t>('.');
-    return pushBytes(tx, st, &dot, 1u);
+    return pushBytes(tx, &dot, 1u);
 }
 
-bool printComma(TxFrame& tx, Command::Status& st) noexcept {
+bool Command::printComma(TxFrame& tx) const noexcept {
     const uint8_t comma = static_cast<uint8_t>(',');
-    return pushBytes(tx, st, &comma, 1u);
+    return pushBytes(tx, &comma, 1u);
 }
 
-bool printQuotedString(TxFrame& tx, Command::Status& st, const char* text) noexcept {
+bool Command::printQuotedString(TxFrame& tx, const char* text) const noexcept {
     const uint8_t dq = static_cast<uint8_t>('"');
-    if (!pushBytes(tx, st, &dq, 1u))
+    if (!pushBytes(tx, &dq, 1u))
         return false;
     if (text == nullptr)
-        return pushBytes(tx, st, &dq, 1u);
+        return pushBytes(tx, &dq, 1u);
     for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != 0u; ++p) {
         const unsigned char c = *p;
         if (c == static_cast<unsigned char>('"')) {
             static const char esc[] = "\\\"";
-            if (!pushBytes(tx, st, esc, 2u))
+            if (!pushBytes(tx, esc, 2u))
                 return false;
         } else if (c == static_cast<unsigned char>('\\')) {
             static const char esc[] = "\\\\";
-            if (!pushBytes(tx, st, esc, 2u))
+            if (!pushBytes(tx, esc, 2u))
                 return false;
         } else if (c == static_cast<unsigned char>('\r')) {
             static const char esc[] = "\\r";
-            if (!pushBytes(tx, st, esc, 2u))
+            if (!pushBytes(tx, esc, 2u))
                 return false;
-        } else if (!pushBytes(tx, st, &c, 1u)) {
+        } else if (!pushBytes(tx, &c, 1u)) {
             return false;
         }
     }
-    return pushBytes(tx, st, &dq, 1u);
+    return pushBytes(tx, &dq, 1u);
 }
 
-bool printUint32(TxFrame& tx, Command::Status& st, uint32_t value) noexcept {
+bool Command::printUint32(TxFrame& tx, uint32_t value) const noexcept {
     uint8_t digits[10];
     uint8_t n = 0;
     if (value == 0u) {
@@ -116,50 +98,47 @@ bool printUint32(TxFrame& tx, Command::Status& st, uint32_t value) noexcept {
             digits[i] = rev[r - 1u - i];
         n = r;
     }
-    return pushBytes(tx, st, digits, n);
+    return pushBytes(tx, digits, n);
 }
 
-bool printInt32(TxFrame& tx, Command::Status& st, int32_t value) noexcept {
+bool Command::printInt32(TxFrame& tx, int32_t value) const noexcept {
     if (value >= 0)
-        return printUint32(tx, st, static_cast<uint32_t>(value));
+        return printUint32(tx, static_cast<uint32_t>(value));
     const uint8_t minus = static_cast<uint8_t>('-');
-    if (!pushBytes(tx, st, &minus, 1u))
+    if (!pushBytes(tx, &minus, 1u))
         return false;
     uint32_t u = static_cast<uint32_t>(value);
     u = ~u + 1u;
-    return printUint32(tx, st, u);
+    return printUint32(tx, u);
 }
 
-bool printOperation(TxFrame& tx, Command::Status& st, cmd::assign::Numeric::Op op) noexcept {
-    using Op = cmd::assign::Numeric::Op;
+bool Command::printOperation(TxFrame& tx, Op op) const noexcept {
     switch (op) {
     case Op::Assign:
-        return pushBytes(tx, st, "=", 1u);
+        return pushBytes(tx, "=", 1u);
     case Op::Add:
-        return pushBytes(tx, st, "+=", 2u);
+        return pushBytes(tx, "+=", 2u);
     case Op::Sub:
-        return pushBytes(tx, st, "-=", 2u);
+        return pushBytes(tx, "-=", 2u);
     case Op::Mul:
-        return pushBytes(tx, st, "*=", 2u);
+        return pushBytes(tx, "*=", 2u);
     case Op::Div:
-        return pushBytes(tx, st, "/=", 2u);
+        return pushBytes(tx, "/=", 2u);
     case Op::Mod:
-        return pushBytes(tx, st, "%=", 2u);
+        return pushBytes(tx, "%=", 2u);
     }
-    return pushBytes(tx, st, "=", 1u);
+    return pushBytes(tx, "=", 1u);
 }
 
-bool printAttrLexeme(TxFrame& tx, Command::Status& st, const cmd::TargetAttr& t) noexcept {
-    if (t.attr.len == 0u) {
-        st = Command::Status::EmptyAttribute;
-        return false;
-    }
+bool Command::printAttrLexeme(TxFrame& tx, const AttrRef& t) const noexcept {
+    if (t.attr.len == 0u)
+        return fail(Status::EmptyAttribute);
     if (t.comp.len == 0u)
-        return printLiteral(tx, st, t.attr);
-    return printLiteral(tx, st, t.comp) && printDot(tx, st) && printLiteral(tx, st, t.attr);
+        return printLiteral(tx, t.attr);
+    return printLiteral(tx, t.comp) && printDot(tx) && printLiteral(tx, t.attr);
 }
 
-bool printColorConst(TxFrame& tx, Command::Status& st, Color::std c) noexcept {
+bool Command::printColorConst(TxFrame& tx, Color::std c) const noexcept {
     const char* lex = nullptr;
     switch (c) {
     case Color::std::Black: lex = "BLACK"; break;
@@ -179,11 +158,12 @@ bool printColorConst(TxFrame& tx, Command::Status& st, Color::std c) noexcept {
     case Color::std::Olive: lex = "OLIVE"; break;
     case Color::std::Teal: lex = "TEAL"; break;
     default:
-        st = Command::Status::InvalidColor;
-        return false;
+        return fail(Status::InvalidColor);
     }
-    return printNisToken(tx, st, lex);
+    return printNisToken(tx, lex);
 }
+
+namespace misc {
 
 void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
     if (label != nullptr)
@@ -199,31 +179,30 @@ namespace assign {
 
 bool Text::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!misc::printAttrLexeme(tx, _status, _target))
+    if (!printAttrLexeme(tx, _target))
         return false;
-    using NO = Numeric::Op;
-    const NO numOp = (_op == Op::Append) ? NO::Add : NO::Assign;
-    if (!misc::printOperation(tx, _status, numOp))
+    const Command::Op numOp = (_op == Op::Append) ? Command::Op::Add : Command::Op::Assign;
+    if (!printOperation(tx, numOp))
         return false;
-    return misc::printQuotedString(tx, _status, _text);
+    return printQuotedString(tx, _text);
 }
 
 bool TextSubtract::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!misc::printAttrLexeme(tx, _status, _target))
+    if (!printAttrLexeme(tx, _target))
         return false;
-    if (!misc::printOperation(tx, _status, Numeric::Op::Sub))
+    if (!printOperation(tx, Command::Op::Sub))
         return false;
-    return misc::printUint32(tx, _status, _n);
+    return printUint32(tx, _n);
 }
 
 bool Numeric::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!misc::printAttrLexeme(tx, _status, _target))
+    if (!printAttrLexeme(tx, _target))
         return false;
-    if (!misc::printOperation(tx, _status, _op))
+    if (!printOperation(tx, _op))
         return false;
-    return misc::printInt32(tx, _status, _value);
+    return printInt32(tx, _value);
 }
 
 } // namespace assign
@@ -235,13 +214,27 @@ bool System::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     switch (_kind) {
     case Kind::TouchJ:
-        return NEX_CMD_PRINT_LIT(tx, _status, "touch_j");
+        return NEX_CMD_PRINT_LIT(tx, "touch_j");
     case Kind::Restart:
-        return NEX_CMD_PRINT_LIT(tx, _status, "rest");
-    case Kind::Randset:
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "randset") || !misc::printSpace(tx, _status))
+        return NEX_CMD_PRINT_LIT(tx, "rest");
+    default:
+        return fail(Status::UnknownKind);
+    }
+}
+
+bool Page::serialize(TxFrame& tx) const noexcept {
+    _status = Status::OK;
+    switch (_kind) {
+    case Kind::SendMe:
+        return NEX_CMD_PRINT_LIT(tx, "sendme");
+    case Kind::Switch:
+        if (!NEX_CMD_PRINT_LIT(tx, "page") || !printSpace(tx))
             return false;
-        return misc::printInt32(tx, _status, _a) && misc::printComma(tx, _status) && misc::printInt32(tx, _status, _b);
+        return printUint32(tx, _pageId);
+    case Kind::Refresh:
+        if (!NEX_CMD_PRINT_LIT(tx, "ref") || !printSpace(tx))
+            return false;
+        return printUint32(tx, 0u);
     default:
         return fail(Status::UnknownKind);
     }
@@ -249,39 +242,39 @@ bool System::serialize(TxFrame& tx) const noexcept {
 
 bool Get::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "get") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "get") || !printSpace(tx))
         return false;
-    return misc::printAttrLexeme(tx, _status, _operand);
+    return printAttrLexeme(tx, _operand);
 }
 
 bool String::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_kind == Kind::Covx) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "covx") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "covx") || !printSpace(tx))
             return false;
-        return misc::printAttrLexeme(tx, _status, _a1) && misc::printComma(tx, _status) && misc::printAttrLexeme(tx, _status, _a2)
-            && misc::printComma(tx, _status) && misc::printInt32(tx, _status, _i1) && misc::printComma(tx, _status)
-            && misc::printInt32(tx, _status, _i2);
+        return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
+            && printComma(tx) && printInt32(tx, _i1) && printComma(tx)
+            && printInt32(tx, _i2);
     }
 
     if (_kind == Kind::Substr) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "substr") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "substr") || !printSpace(tx))
             return false;
-        return misc::printAttrLexeme(tx, _status, _a1) && misc::printComma(tx, _status) && misc::printAttrLexeme(tx, _status, _a2)
-            && misc::printComma(tx, _status) && misc::printUint32(tx, _status, static_cast<uint32_t>(_i1)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, static_cast<uint32_t>(_i2));
+        return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
+            && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_i1)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(_i2));
     }
 
     if (_kind == Kind::Strlen) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "strlen") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "strlen") || !printSpace(tx))
             return false;
-        return misc::printAttrLexeme(tx, _status, _a1) && misc::printComma(tx, _status) && misc::printAttrLexeme(tx, _status, _a2);
+        return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2);
     }
 
     if (_kind == Kind::Btlen) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "btlen") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "btlen") || !printSpace(tx))
             return false;
-        return misc::printAttrLexeme(tx, _status, _a1) && misc::printComma(tx, _status) && misc::printAttrLexeme(tx, _status, _a2);
+        return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2);
     }
 
     if (_kind != Kind::Spstr)
@@ -289,126 +282,126 @@ bool String::serialize(TxFrame& tx) const noexcept {
 
     if (_delimiterQuoted == nullptr)
         return fail(Status::NullPointer);
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "spstr") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "spstr") || !printSpace(tx))
         return false;
     const size_t ndq = std::strlen(_delimiterQuoted);
     if (ndq == 0u)
         return fail(Status::EmptyLiteral);
     if (ndq > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
-    return misc::printAttrLexeme(tx, _status, _a1) && misc::printComma(tx, _status) && misc::printAttrLexeme(tx, _status, _a2)
-        && misc::printComma(tx, _status) && misc::pushBytes(tx, _status, _delimiterQuoted, static_cast<uint16_t>(ndq))
-        && misc::printComma(tx, _status) && misc::printUint32(tx, _status, static_cast<uint32_t>(_i1));
+    return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
+        && printComma(tx) && pushBytes(tx, _delimiterQuoted, static_cast<uint16_t>(ndq))
+        && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_i1));
 }
 
 bool Component::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_kind == Kind::Refresh) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "ref") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "ref") || !printSpace(tx))
             return false;
-        return misc::printLiteral(tx, _status, _compName);
+        return printLiteral(tx, _compName);
     }
 
     if (_kind == Kind::Setlayer) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "setlayer") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "setlayer") || !printSpace(tx))
             return false;
         if (_arg.aboveCompNameOr255 == nullptr)
             return fail(Status::NullPointer);
-        return misc::printLiteral(tx, _status, _compName) && misc::printComma(tx, _status)
-            && misc::printLiteral(tx, _status, *_arg.aboveCompNameOr255);
+        return printLiteral(tx, _compName) && printComma(tx)
+            && printLiteral(tx, *_arg.aboveCompNameOr255);
     }
 
     if (_kind == Kind::Visible) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "vis") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "vis") || !printSpace(tx))
             return false;
     } else if (_kind == Kind::TouchSwitch) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "tsw") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "tsw") || !printSpace(tx))
             return false;
     } else {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "click") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "click") || !printSpace(tx))
             return false;
     }
-    return misc::printLiteral(tx, _status, _compName) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg.arg01);
+    return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg.arg01);
 }
 
 bool WaveForm::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_kind == Kind::RefreshStart)
-        return NEX_CMD_PRINT_LIT(tx, _status, "ref_start");
+        return NEX_CMD_PRINT_LIT(tx, "ref_start");
 
     if (_kind == Kind::RefreshStop)
-        return NEX_CMD_PRINT_LIT(tx, _status, "ref_stop");
+        return NEX_CMD_PRINT_LIT(tx, "ref_stop");
 
     if (_kind == Kind::Add) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "add") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "add") || !printSpace(tx))
             return false;
-        return misc::printUint32(tx, _status, _waveformId) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg1)
-            && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg2);
+        return printUint32(tx, _waveformId) && printComma(tx) && printUint32(tx, _arg1)
+            && printComma(tx) && printUint32(tx, _arg2);
     }
 
     if (_kind == Kind::AddT) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "addt") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "addt") || !printSpace(tx))
             return false;
-        return misc::printUint32(tx, _status, _waveformId) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg1)
-            && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg2);
+        return printUint32(tx, _waveformId) && printComma(tx) && printUint32(tx, _arg1)
+            && printComma(tx) && printUint32(tx, _arg2);
     }
 
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "cle") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "cle") || !printSpace(tx))
         return false;
-    return misc::printUint32(tx, _status, _waveformId) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _arg1);
+    return printUint32(tx, _waveformId) && printComma(tx) && printUint32(tx, _arg1);
 }
 
 bool Eeprom::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_target != nullptr) {
         if (_op == Op::Write) {
-            if (!NEX_CMD_PRINT_LIT(tx, _status, "wepo") || !misc::printSpace(tx, _status))
+            if (!NEX_CMD_PRINT_LIT(tx, "wepo") || !printSpace(tx))
                 return false;
         } else {
-            if (!NEX_CMD_PRINT_LIT(tx, _status, "repo") || !misc::printSpace(tx, _status))
+            if (!NEX_CMD_PRINT_LIT(tx, "repo") || !printSpace(tx))
                 return false;
         }
-        return misc::printAttrLexeme(tx, _status, *_target) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _addr);
+        return printAttrLexeme(tx, *_target) && printComma(tx) && printUint32(tx, _addr);
     }
 
     if (_target != nullptr || _byteCount == 0u)
         return fail(Status::InvalidFields);
     if (_op == Op::Write) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "wept") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "wept") || !printSpace(tx))
             return false;
     } else {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "rept") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "rept") || !printSpace(tx))
             return false;
     }
-    return misc::printUint32(tx, _status, _addr) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _byteCount);
+    return printUint32(tx, _addr) && printComma(tx) && printUint32(tx, _byteCount);
 }
 
 bool Cfgpio::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "cfgpio") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "cfgpio") || !printSpace(tx))
         return false;
-    return misc::printUint32(tx, _status, _pin) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _mode)
-        && misc::printComma(tx, _status) && misc::printLiteral(tx, _status, _bindCompNameOrZero);
+    return printUint32(tx, _pin) && printComma(tx) && printUint32(tx, _mode)
+        && printComma(tx) && printLiteral(tx, _bindCompNameOrZero);
 }
 
 bool Move::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "move") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "move") || !printSpace(tx))
         return false;
-    return misc::printLiteral(tx, _status, _compName) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_from.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_from.y)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_to.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_to.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, _priority) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _timeMs);
+    return printLiteral(tx, _compName) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_from.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_from.y)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_to.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_to.y)) && printComma(tx)
+        && printUint32(tx, _priority) && printComma(tx) && printUint32(tx, _timeMs);
 }
 
 bool Play::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "play") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "play") || !printSpace(tx))
         return false;
-    return misc::printUint32(tx, _status, _channel) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _resourceId)
-        && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _loop01);
+    return printUint32(tx, _channel) && printComma(tx) && printUint32(tx, _resourceId)
+        && printComma(tx) && printUint32(tx, _loop01);
 }
 
 bool File::serialize(TxFrame& tx) const noexcept {
@@ -417,20 +410,20 @@ bool File::serialize(TxFrame& tx) const noexcept {
         return fail(Status::NullPointer);
 
     if (_op == Op::Delete) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "delfile") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "delfile") || !printSpace(tx))
             return false;
         const size_t n = std::strlen(_pathQuoted);
         if (n == 0u)
             return fail(Status::EmptyLiteral);
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n));
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n));
     }
 
     if (_op == Op::Rename) {
         if (_pathToQuoted == nullptr)
             return fail(Status::NullPointer);
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "refile") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "refile") || !printSpace(tx))
             return false;
         const size_t na = std::strlen(_pathQuoted);
         const size_t nb = std::strlen(_pathToQuoted);
@@ -438,58 +431,58 @@ bool File::serialize(TxFrame& tx) const noexcept {
             return fail(Status::EmptyLiteral);
         if (na > UINT16_MAX || nb > UINT16_MAX)
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(na)) && misc::printComma(tx, _status)
-            && misc::pushBytes(tx, _status, _pathToQuoted, static_cast<uint16_t>(nb));
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(na)) && printComma(tx)
+            && pushBytes(tx, _pathToQuoted, static_cast<uint16_t>(nb));
     }
 
     if (_op == Op::Create) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "newfile") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "newfile") || !printSpace(tx))
             return false;
         const size_t n = std::strlen(_pathQuoted);
         if (n == 0u)
             return fail(Status::EmptyLiteral);
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, _reservedSize);
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
+            && printUint32(tx, _reservedSize);
     }
 
     if (_op == Op::Read) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "rdfile") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "rdfile") || !printSpace(tx))
             return false;
         const size_t n = std::strlen(_pathQuoted);
         if (n == 0u)
             return fail(Status::EmptyLiteral);
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, _offset) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _count)
-            && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _crcOption);
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
+            && printUint32(tx, _offset) && printComma(tx) && printUint32(tx, _count)
+            && printComma(tx) && printUint32(tx, _crcOption);
     }
 
     if (_op == Op::WriteT) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "twfile") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "twfile") || !printSpace(tx))
             return false;
         const size_t np = std::strlen(_pathQuoted);
         if (np == 0u)
             return fail(Status::EmptyLiteral);
         if (np > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(np)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, _reservedSize);
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(np)) && printComma(tx)
+            && printUint32(tx, _reservedSize);
     }
 
     if (_dstNumAttr == nullptr)
         return fail(Status::NullPointer);
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "findfile") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "findfile") || !printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u)
         return fail(Status::EmptyLiteral);
     if (n > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
-    return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n)) && misc::printComma(tx, _status)
-        && misc::printAttrLexeme(tx, _status, *_dstNumAttr);
+    return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
+        && printAttrLexeme(tx, *_dstNumAttr);
     return fail(Status::UnknownKind);
 }
 
@@ -500,10 +493,10 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
 
     if (_op == Op::Delete || _op == Op::Create) {
         if (_op == Op::Delete) {
-            if (!NEX_CMD_PRINT_LIT(tx, _status, "deldir") || !misc::printSpace(tx, _status))
+            if (!NEX_CMD_PRINT_LIT(tx, "deldir") || !printSpace(tx))
                 return false;
         } else {
-            if (!NEX_CMD_PRINT_LIT(tx, _status, "newdir") || !misc::printSpace(tx, _status))
+            if (!NEX_CMD_PRINT_LIT(tx, "newdir") || !printSpace(tx))
                 return false;
         }
         const size_t n = std::strlen(_pathQuoted);
@@ -511,13 +504,13 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
             return fail(Status::EmptyLiteral);
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n));
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n));
     }
 
     if (_op == Op::Rename) {
         if (_pathToQuoted == nullptr)
             return fail(Status::NullPointer);
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "redir") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "redir") || !printSpace(tx))
             return false;
         const size_t na = std::strlen(_pathQuoted);
         const size_t nb = std::strlen(_pathToQuoted);
@@ -525,21 +518,21 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
             return fail(Status::EmptyLiteral);
         if (na > UINT16_MAX || nb > UINT16_MAX)
             return fail(Status::TxFrameOverflow);
-        return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(na)) && misc::printComma(tx, _status)
-            && misc::pushBytes(tx, _status, _pathToQuoted, static_cast<uint16_t>(nb));
+        return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(na)) && printComma(tx)
+            && pushBytes(tx, _pathToQuoted, static_cast<uint16_t>(nb));
     }
 
     if (_dstNumAttr == nullptr)
         return fail(Status::NullPointer);
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "finddir") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "finddir") || !printSpace(tx))
         return false;
     const size_t n = std::strlen(_pathQuoted);
     if (n == 0u)
         return fail(Status::EmptyLiteral);
     if (n > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
-    return misc::pushBytes(tx, _status, _pathQuoted, static_cast<uint16_t>(n)) && misc::printComma(tx, _status)
-        && misc::printAttrLexeme(tx, _status, *_dstNumAttr);
+    return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
+        && printAttrLexeme(tx, *_dstNumAttr);
     return fail(Status::UnknownKind);
 }
 
@@ -547,56 +540,56 @@ namespace gui {
 
 bool ClearScreen::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "cls") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "cls") || !printSpace(tx))
         return false;
-    return misc::printUint32(tx, _status, static_cast<uint32_t>(_color.raw));
+    return printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 
 bool Picture::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "pic") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "pic") || !printSpace(tx))
         return false;
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_at.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_at.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_pictureId));
+    return printInt32(tx, static_cast<int32_t>(_at.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_at.y)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_pictureId));
 }
 
 bool PictureCrop::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_mode == Mode::InPlace) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "picq") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "picq") || !printSpace(tx))
             return false;
-        return misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.x)) && misc::printComma(tx, _status)
-            && misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.y)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, _w) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _h)
-            && misc::printComma(tx, _status) && misc::printUint32(tx, _status, static_cast<uint32_t>(_pictureId));
+        return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
+            && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
+            && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
+            && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_pictureId));
     }
 
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "xpic") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "xpic") || !printSpace(tx))
         return false;
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_dst.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_dst.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, _w) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _h)
-        && misc::printComma(tx, _status) && misc::printInt32(tx, _status, static_cast<int32_t>(_src.x))
-        && misc::printComma(tx, _status) && misc::printInt32(tx, _status, static_cast<int32_t>(_src.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_pictureId));
+    return printInt32(tx, static_cast<int32_t>(_dst.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_dst.y)) && printComma(tx)
+        && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
+        && printComma(tx) && printInt32(tx, static_cast<int32_t>(_src.x))
+        && printComma(tx) && printInt32(tx, static_cast<int32_t>(_src.y)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_pictureId));
 }
 
 bool TextInRegion::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "xstr") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "xstr") || !printSpace(tx))
         return false;
     if (_contentToken == nullptr)
         return fail(Status::NullPointer);
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, _w) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _h)
-        && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _fontId) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_fg.raw)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_bg.raw)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, _hAlign) && misc::printComma(tx, _status) && misc::printUint32(tx, _status, _vAlign)
-        && misc::printComma(tx, _status) && misc::printUint32(tx, _status, static_cast<uint32_t>(static_cast<uint8_t>(_fill)))
-        && misc::printComma(tx, _status) && misc::printQuotedString(tx, _status, _contentToken);
+    return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
+        && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
+        && printComma(tx) && printUint32(tx, _fontId) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_fg.raw)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_bg.raw)) && printComma(tx)
+        && printUint32(tx, _hAlign) && printComma(tx) && printUint32(tx, _vAlign)
+        && printComma(tx) && printUint32(tx, static_cast<uint32_t>(static_cast<uint8_t>(_fill)))
+        && printComma(tx) && printQuotedString(tx, _contentToken);
 }
 
 bool Rect::serialize(TxFrame& tx) const noexcept {
@@ -607,47 +600,47 @@ bool Rect::serialize(TxFrame& tx) const noexcept {
         return fail(Status::InvalidGeometry);
 
     if (_mode == Mode::Fill) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "fill") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "fill") || !printSpace(tx))
             return false;
-        return misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.x)) && misc::printComma(tx, _status)
-            && misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.y)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, static_cast<uint32_t>(w)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, static_cast<uint32_t>(h)) && misc::printComma(tx, _status)
-            && misc::printUint32(tx, _status, static_cast<uint32_t>(_color.raw));
+        return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
+            && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(w)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(h)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(_color.raw));
     }
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "draw") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "draw") || !printSpace(tx))
         return false;
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_upperLeft.y)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_lowerRight.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_lowerRight.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_color.raw));
+    return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_lowerRight.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_lowerRight.y)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 
 bool Line::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (!NEX_CMD_PRINT_LIT(tx, _status, "line") || !misc::printSpace(tx, _status))
+    if (!NEX_CMD_PRINT_LIT(tx, "line") || !printSpace(tx))
         return false;
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_from.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_from.y)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_to.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_to.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_color.raw));
+    return printInt32(tx, static_cast<int32_t>(_from.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_from.y)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_to.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_to.y)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 
 bool Circle::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_kind == Kind::Filled) {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "cirs") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "cirs") || !printSpace(tx))
             return false;
     } else {
-        if (!NEX_CMD_PRINT_LIT(tx, _status, "cir") || !misc::printSpace(tx, _status))
+        if (!NEX_CMD_PRINT_LIT(tx, "cir") || !printSpace(tx))
             return false;
     }
-    return misc::printInt32(tx, _status, static_cast<int32_t>(_center.x)) && misc::printComma(tx, _status)
-        && misc::printInt32(tx, _status, static_cast<int32_t>(_center.y)) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, _radius) && misc::printComma(tx, _status)
-        && misc::printUint32(tx, _status, static_cast<uint32_t>(_color.raw));
+    return printInt32(tx, static_cast<int32_t>(_center.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_center.y)) && printComma(tx)
+        && printUint32(tx, _radius) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 
 } // namespace gui
