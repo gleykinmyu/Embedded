@@ -3,13 +3,13 @@
 #include <cstdint>
 #include <cstdio>
 #include "../../Interfaces/ibyte_stream.hpp"
-#include "nexComponentBase.hpp"
+#include "../comp/nexComponentBase.hpp"
 #include "../core/nexTypes.hpp"
 #include "../core/nexGateway.hpp"
 #include "../core/nexErrors.hpp"
 #include "../core/nexSession.hpp"
 #include "nexApplicationFacades.hpp"
-#include "nexMsgBox.hpp"
+#include "../comp/nexMsgBox.hpp"
 #include "nexSysVars.hpp"
 
 namespace nex {
@@ -41,7 +41,7 @@ public:
         ComponentRegisterFailed,  /**< `Page::registerComponent` / `rebindComponentId`. */
     };
 
-    explicit Application(BIF::IByteStream& stream, uint16_t panel_width, uint16_t panel_height) noexcept;
+    explicit Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept;
     virtual ~Application() = default;
 
     // Поставить транзакцию в очередь; UART — в update(now_ms) или после завершения сессии.
@@ -75,6 +75,8 @@ public:
     // Обработчики событий: touch, touchXY, pageChange, systemEvent, transparentEvent, error; у страницы — onExit/onLoad при смене id.
     virtual void onTouch(const msg::evTouch&) {}
     virtual void onTouchXY(const msg::evTouchXY&) {}
+    /** `MsgBox`: click по кнопке (`Ok`, `Yes`, …) — `onMsgBox` после release на той же кнопке. */
+    virtual void onMsgBox(const MsgBox::Event& e) noexcept { (void)e; }
     virtual void onPageChange(uint8_t) {}
     virtual void onSystemEvent(const msg::evSystem&) {}
     virtual void onTransparentEvent(const msg::evTransparent&) {}
@@ -93,7 +95,7 @@ public:
     }
 
     // --- доп. команды и UI (nexApplicationAddons.cpp) ---
-    void restart() noexcept;
+    void restartScreen() noexcept;
     /** Переключить страницу на панели (`page N`). */
     void switchPage(uint8_t pageId) noexcept;
     /** Запросить id текущей страницы (`sendme`); ответ — `msg::evPage`. */
@@ -125,6 +127,7 @@ public:
     SysVar<uint8_t> pio[8];
 
 private:
+    friend class MsgBox;
     friend class Page;
     friend void nexComponentRegisterFailed(Application& app, Page& page, const Component* c,
         unsigned maxComponents) noexcept;
@@ -159,7 +162,7 @@ private:
     // Фоновое сообщение: не ответ текущей транзакции (после dispatchResponse с false).
     void dispatchEvent(const Message& m) noexcept;
 
-    // `evTouch` / `evTouchXY` в `m`: onTouch(+Page) или onTouchXY; при активном `msgBox` — только `msgBox.onTouchXY`.
+    // `evTouch` / `evTouchXY` в `m`: onTouch(+Page) или onTouchXY; при активном `msgBox` — `msgBox.onTouchXY` (click = release на той же кнопке).
     void dispatchTouch(const Message& m) noexcept;
 
     // `_currentPageId`, onPageChange, PageBase::onExit / onLoad при смене id (из dispatchEvent).

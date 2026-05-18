@@ -689,15 +689,22 @@ namespace gui {
         PicId _pictureId;
     };
 
+    /** NIS: `picq` — crop in place; `xpic` — crop with offset in picture resource. */
     class PictureCrop final : public Command {
     public:
         enum class Mode : uint8_t { InPlace, Draw };
 
-        static PictureCrop inPlace(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) noexcept {
-            return PictureCrop(Mode::InPlace, upperLeft, {}, {}, w, h, pictureId);
+        /** `picq x,y,w,h,picid` — `region` on screen. */
+        static PictureCrop inPlace(Region region, PicId pictureId) noexcept {
+            return PictureCrop(Mode::InPlace, region, pictureId);
         }
-        static PictureCrop draw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) noexcept {
-            return PictureCrop(Mode::Draw, {}, dst, src, w, h, pictureId);
+        static PictureCrop inPlace(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) noexcept {
+            return inPlace(Region(upperLeft, Rect(static_cast<uint16_t>(w), static_cast<uint16_t>(h))), pictureId);
+        }
+
+        /** `xpic dstX,dstY,w,h,srcX,srcY,picid` — `dst` upper-left on screen; `src` crop in picture (w×h from `src`). */
+        static PictureCrop draw(Point dst, Region src, PicId pictureId) noexcept {
+            return PictureCrop(Mode::Draw, dst, src, pictureId);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -705,31 +712,29 @@ namespace gui {
 
     private:
         Mode _mode;
-        Point _upperLeft;
+        /** InPlace: on screen; Draw: crop in picture resource. */
+        Region _region;
         Point _dst;
-        Point _src;
-        uint32_t _w;
-        uint32_t _h;
         PicId _pictureId;
 
-        PictureCrop(Mode mode, Point upperLeft, Point dst, Point src, uint32_t w, uint32_t h, PicId pictureId) noexcept
+        PictureCrop(Mode mode, Region region, PicId pictureId) noexcept
             : _mode(mode)
-            , _upperLeft(upperLeft)
+            , _region(region)
+            , _pictureId(pictureId) {}
+
+        PictureCrop(Mode mode, Point dst, Region src, PicId pictureId) noexcept
+            : _mode(mode)
+            , _region(src)
             , _dst(dst)
-            , _src(src)
-            , _w(w)
-            , _h(h)
             , _pictureId(pictureId) {}
     };
 
     /** `xstr`: `pco`/`bco` — значение 565 (`Color::raw`); текст — в кавычках. */
     class TextInRegion final : public Command {
     public:
-        TextInRegion(Point upperLeft, uint32_t w, uint32_t h, FontId fontId, Color fg, Color bg, uint32_t hAlign, uint32_t vAlign,
+        TextInRegion(Region region, FontId fontId, Color fg, Color bg, HAlign hAlign, VAlign vAlign,
             BGStyle fill, const char* contentToken) noexcept
-            : _upperLeft(upperLeft)
-            , _w(w)
-            , _h(h)
+            : _region(region)
             , _fontId(fontId)
             , _fg(fg)
             , _bg(bg)
@@ -742,14 +747,12 @@ namespace gui {
         NEX_COMMAND_SLOT(TextInRegion)
 
     private:
-        Point _upperLeft;
-        uint32_t _w;
-        uint32_t _h;
+        Region _region;
         FontId _fontId;
         Color _fg;
         Color _bg;
-        uint32_t _hAlign;
-        uint32_t _vAlign;
+        HAlign _hAlign;
+        VAlign _vAlign;
         BGStyle _fill;
         const char* _contentToken;
     };
@@ -758,10 +761,9 @@ namespace gui {
     public:
         enum class Mode : uint8_t { Outline, Fill };
 
-        Rect(Mode mode, Point upperLeft, Point lowerRight, Color color) noexcept
+        Rect(Mode mode, Region region, Color color) noexcept
             : _mode(mode)
-            , _upperLeft(upperLeft)
-            , _lowerRight(lowerRight)
+            , _region(region)
             , _color(color) {}
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -769,8 +771,7 @@ namespace gui {
 
     private:
         Mode _mode;
-        Point _upperLeft;
-        Point _lowerRight;
+        Region _region;
         Color _color;
     };
 
@@ -790,7 +791,7 @@ namespace gui {
     public:
         enum class Kind : uint8_t { Outline, Filled };
 
-        Circle(Kind kind, Point center, uint32_t radius, Color color) noexcept
+        Circle(Kind kind, Point center, uint16_t radius, Color color) noexcept
             : _kind(kind)
             , _center(center)
             , _radius(radius)
@@ -802,7 +803,7 @@ namespace gui {
     private:
         Kind _kind;
         Point _center;
-        uint32_t _radius;
+        uint16_t _radius;
         Color _color;
     };
 

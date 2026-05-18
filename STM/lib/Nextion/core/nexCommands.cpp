@@ -557,21 +557,28 @@ bool Picture::serialize(TxFrame& tx) const noexcept {
 bool PictureCrop::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_mode == Mode::InPlace) {
+        if (_region.size.w == 0u || _region.size.h == 0u)
+            return fail(Status::InvalidGeometry);
         if (!NEX_CMD_PRINT_LIT(tx, "picq") || !printSpace(tx))
             return false;
-        return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
-            && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
-            && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
-            && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_pictureId));
+        return printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
+            && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(_region.size.w)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(_region.size.h)) && printComma(tx)
+            && printUint32(tx, static_cast<uint32_t>(_pictureId));
     }
+
+    if (_region.size.w == 0u || _region.size.h == 0u)
+        return fail(Status::InvalidGeometry);
 
     if (!NEX_CMD_PRINT_LIT(tx, "xpic") || !printSpace(tx))
         return false;
     return printInt32(tx, static_cast<int32_t>(_dst.x)) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_dst.y)) && printComma(tx)
-        && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
-        && printComma(tx) && printInt32(tx, static_cast<int32_t>(_src.x))
-        && printComma(tx) && printInt32(tx, static_cast<int32_t>(_src.y)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_region.size.w)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_region.size.h)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_pictureId));
 }
 
@@ -581,39 +588,41 @@ bool TextInRegion::serialize(TxFrame& tx) const noexcept {
         return false;
     if (_contentToken == nullptr)
         return fail(Status::NullPointer);
-    return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
-        && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
-        && printUint32(tx, _w) && printComma(tx) && printUint32(tx, _h)
+    return printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
+        && printUint32(tx, _region.size.w) && printComma(tx) && printUint32(tx, _region.size.h)
         && printComma(tx) && printUint32(tx, _fontId) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_fg.raw)) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_bg.raw)) && printComma(tx)
-        && printUint32(tx, _hAlign) && printComma(tx) && printUint32(tx, _vAlign)
+        && printUint32(tx, static_cast<uint32_t>(static_cast<uint8_t>(_hAlign))) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(static_cast<uint8_t>(_vAlign)))
         && printComma(tx) && printUint32(tx, static_cast<uint32_t>(static_cast<uint8_t>(_fill)))
         && printComma(tx) && printQuotedString(tx, _contentToken);
 }
 
 bool Rect::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    const int32_t w = static_cast<int32_t>(_lowerRight.x) - static_cast<int32_t>(_upperLeft.x) + 1;
-    const int32_t h = static_cast<int32_t>(_lowerRight.y) - static_cast<int32_t>(_upperLeft.y) + 1;
+    const int32_t w = static_cast<int32_t>(_region.size.w);
+    const int32_t h = static_cast<int32_t>(_region.size.h);
     if (w <= 0 || h <= 0)
         return fail(Status::InvalidGeometry);
 
+    const Point lr = _region.lowerRight();
     if (_mode == Mode::Fill) {
         if (!NEX_CMD_PRINT_LIT(tx, "fill") || !printSpace(tx))
             return false;
-        return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
-            && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
+        return printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
+            && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
             && printUint32(tx, static_cast<uint32_t>(w)) && printComma(tx)
             && printUint32(tx, static_cast<uint32_t>(h)) && printComma(tx)
             && printUint32(tx, static_cast<uint32_t>(_color.raw));
     }
     if (!NEX_CMD_PRINT_LIT(tx, "draw") || !printSpace(tx))
         return false;
-    return printInt32(tx, static_cast<int32_t>(_upperLeft.x)) && printComma(tx)
-        && printInt32(tx, static_cast<int32_t>(_upperLeft.y)) && printComma(tx)
-        && printInt32(tx, static_cast<int32_t>(_lowerRight.x)) && printComma(tx)
-        && printInt32(tx, static_cast<int32_t>(_lowerRight.y)) && printComma(tx)
+    return printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(lr.x)) && printComma(tx)
+        && printInt32(tx, static_cast<int32_t>(lr.y)) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 
@@ -639,7 +648,7 @@ bool Circle::serialize(TxFrame& tx) const noexcept {
     }
     return printInt32(tx, static_cast<int32_t>(_center.x)) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_center.y)) && printComma(tx)
-        && printUint32(tx, _radius) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_radius)) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_color.raw));
 }
 

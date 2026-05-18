@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../comp/nexCanvas.hpp"
 #include "../core/nexCommands.hpp"
 #include "nexSysVars.hpp"
 
@@ -45,37 +46,6 @@ public:
 private:
     Application& _app;
     explicit AppFileSystem(Application& a) noexcept;
-};
-
-/** Фасад `cmd::gui::*` и связанные системные переменные — поле `Application::cs`. */
-class AppCanvas {
-    friend class Application;
-
-    Application& _app;
-
-public:
-    /** Межсимвольный интервал текста (`spax`). */
-    void setCharSpacing(uint16_t spacing) const noexcept;
-    /** Межстрочный интервал текста (`spay`). */
-    void setLineSpacing(uint16_t spacing) const noexcept;
-    /** Цвет кисти touch-рисования (`thc`). */
-    void setTouchDrawColor(Color color) const noexcept;
-    /** Вкл./выкл. touch-рисование (`thdra`). */
-    void drawOnTouch(bool enable) const noexcept;
-
-    void clear_screen(Color color) const noexcept;
-    void picture(Point at, PicId pictureId) const noexcept;
-    void picture_in_place(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) const noexcept;
-    void picture_draw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) const noexcept;
-    void text_in_region(Point upperLeft, uint32_t w, uint32_t h, FontId fontId, Color fg, Color bg,
-        uint32_t hAlign, uint32_t vAlign, BGStyle fill, const char* contentToken) const noexcept;
-    void rect_fill(Point upperLeft, Point lowerRightInclusive, Color color) const noexcept;
-    void rect_outline(Point upperLeft, Point lowerRightInclusive, Color color) const noexcept;
-    void line(Point from, Point to, Color color) const noexcept;
-    void circle_outline(Point center, uint32_t radius, Color color) const noexcept;
-    void circle_filled(Point center, uint32_t radius, Color color) const noexcept;
-
-    explicit AppCanvas(Application& a) noexcept;
 };
 
 /** Один аудиоканал (`play`, `audioN`: stop/pause/resume). */

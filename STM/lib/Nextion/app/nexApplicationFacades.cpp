@@ -11,10 +11,6 @@ constexpr Literal kSysThsp{"thsp"};
 constexpr Literal kSysThup{"thup"};
 constexpr Literal kSysWup{"wup"};
 constexpr Literal kSysUsup{"usup"};
-constexpr Literal kSysSpax{"spax"};
-constexpr Literal kSysSpay{"spay"};
-constexpr Literal kSysThc{"thc"};
-constexpr Literal kSysThdra{"thdra"};
 constexpr Literal kSysEql{"eql"};
 constexpr Literal kSysEqm{"eqm"};
 constexpr Literal kSysEqh{"eqh"};
@@ -120,70 +116,6 @@ void AppFileSystem::dir_rename(const char* pathFromQuoted, const char* pathToQuo
 
 void AppFileSystem::dir_find(const char* pathQuoted, const AttrRef& dstNumAttr) const noexcept {
     _app.enqueue(Transaction{cmd::Directory::find(pathQuoted, dstNumAttr), 0u, 0u});
-}
-
-// --- AppCanvas --------------------------------------------------------------
-
-AppCanvas::AppCanvas(Application& a) noexcept : _app(a) {}
-
-void AppCanvas::setCharSpacing(uint16_t spacing) const noexcept {
-    enqueueSysVarNumericAssign(_app, kSysSpax, static_cast<int32_t>(spacing));
-}
-
-void AppCanvas::setLineSpacing(uint16_t spacing) const noexcept {
-    enqueueSysVarNumericAssign(_app, kSysSpay, static_cast<int32_t>(spacing));
-}
-
-void AppCanvas::setTouchDrawColor(Color color) const noexcept {
-    enqueueSysVarNumericAssign(_app, kSysThc, static_cast<int32_t>(color.raw));
-}
-
-void AppCanvas::drawOnTouch(bool enable) const noexcept {
-    enqueueSysVarNumericAssign(_app, kSysThdra, enable ? 1 : 0);
-}
-
-void AppCanvas::clear_screen(Color color) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::ClearScreen(color), 0u, 0u});
-}
-
-void AppCanvas::picture(Point at, PicId pictureId) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::Picture(at, pictureId), 0u, 0u});
-}
-
-void AppCanvas::picture_in_place(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::PictureCrop::inPlace(upperLeft, w, h, pictureId), 0u, 0u});
-}
-
-void AppCanvas::picture_draw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::PictureCrop::draw(dst, w, h, src, pictureId), 0u, 0u});
-}
-
-void AppCanvas::text_in_region(Point upperLeft, uint32_t w, uint32_t h, FontId fontId, Color fg, Color bg,
-    uint32_t hAlign, uint32_t vAlign, BGStyle fill, const char* contentToken) const noexcept {
-    _app.enqueue(Transaction{
-        cmd::gui::TextInRegion(upperLeft, w, h, fontId, fg, bg, hAlign, vAlign, fill, contentToken), 0u, 0u});
-}
-
-void AppCanvas::rect_fill(Point upperLeft, Point lowerRightInclusive, Color color) const noexcept {
-    _app.enqueue(
-        Transaction{cmd::gui::Rect(cmd::gui::Rect::Mode::Fill, upperLeft, lowerRightInclusive, color), 0u, 0u});
-}
-
-void AppCanvas::rect_outline(Point upperLeft, Point lowerRightInclusive, Color color) const noexcept {
-    _app.enqueue(
-        Transaction{cmd::gui::Rect(cmd::gui::Rect::Mode::Outline, upperLeft, lowerRightInclusive, color), 0u, 0u});
-}
-
-void AppCanvas::line(Point from, Point to, Color color) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::Line(from, to, color), 0u, 0u});
-}
-
-void AppCanvas::circle_outline(Point center, uint32_t radius, Color color) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::Circle(cmd::gui::Circle::Kind::Outline, center, radius, color), 0u, 0u});
-}
-
-void AppCanvas::circle_filled(Point center, uint32_t radius, Color color) const noexcept {
-    _app.enqueue(Transaction{cmd::gui::Circle(cmd::gui::Circle::Kind::Filled, center, radius, color), 0u, 0u});
 }
 
 // --- AppAudio ---------------------------------------------------------------

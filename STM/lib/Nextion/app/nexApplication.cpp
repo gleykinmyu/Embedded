@@ -19,7 +19,7 @@ namespace nex {
 
 //=============================================================================
 
-Application::Application(BIF::IByteStream& stream, uint16_t panel_width, uint16_t panel_height) noexcept
+Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -34,7 +34,7 @@ Application::Application(BIF::IByteStream& stream, uint16_t panel_width, uint16_
         SysVar<uint8_t>(*this, "pio2", SysVarTag::Pio2), SysVar<uint8_t>(*this, "pio3", SysVarTag::Pio3),
         SysVar<uint8_t>(*this, "pio4", SysVarTag::Pio4), SysVar<uint8_t>(*this, "pio5", SysVarTag::Pio5),
         SysVar<uint8_t>(*this, "pio6", SysVarTag::Pio6), SysVar<uint8_t>(*this, "pio7", SysVarTag::Pio7)}
-    , _screen(panel_width, panel_height)
+    , _screen(screen_width, screen_height)
     , _stream(stream)
     , _gateway(stream)
 {}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nexApplication.hpp"
+#include "../app/nexApplication.hpp"
 
 #include <cstdint>
 #include <cstring>

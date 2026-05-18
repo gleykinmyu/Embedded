@@ -37,7 +37,7 @@ void Application::refreshPage() noexcept {
     enqueue(Transaction{cmd::Page::refresh(), 0u, 0u});
 }
 
-void Application::restart() noexcept {
+void Application::restartScreen() noexcept {
     enqueue(Transaction{cmd::System::restart(), 0u, 0u});
 }
 

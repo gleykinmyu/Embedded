@@ -5,6 +5,7 @@
 #include "ff.h"
 
 #include "nex.hpp"
+#include "test/nexTestHarness.hpp"
 
 nex::test::TwoPageTouchDemoApp app(board.serial2);
 int main(void)
@@ -21,7 +22,7 @@ int main(void)
     board.led.Off();
     uint32_t last_blink_ms = 0;
 
-    app.restart();
+    app.restartScreen();
     while (1) {
         const uint32_t now = board.GetTick();
         if ((now - last_blink_ms) >= 1000u) {

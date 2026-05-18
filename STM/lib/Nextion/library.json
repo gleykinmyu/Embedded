@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "build": {
     "libArchive": false,
-    "srcFilter": "+<impl/*.cpp> +<core/*.cpp>"
+    "srcFilter": "+<app/*.cpp> +<comp/*.cpp> +<core/*.cpp>"
   }
 }

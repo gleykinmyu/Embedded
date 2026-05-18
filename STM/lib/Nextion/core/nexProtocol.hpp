@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -33,6 +34,14 @@ namespace nex {
         uint16_t length = 0;
     };
 
+    /** Запас под префикс `xstr` и числовые поля до quoted-текста (`gui::TextInRegion`). */
+    constexpr std::size_t kXstrCommandOverhead = 80u;
 
+    /** Макс. длина строки в `xstr` (байт текста в кавычках, ≤ `TxFrame::MAX_PAYLOAD`). */
+    [[nodiscard]] constexpr std::size_t maxXstrTextLength() noexcept {
+        return (static_cast<std::size_t>(TxFrame::MAX_PAYLOAD) > kXstrCommandOverhead)
+            ? static_cast<std::size_t>(TxFrame::MAX_PAYLOAD) - kXstrCommandOverhead
+            : 0u;
+    }
 
 } // namespace nex

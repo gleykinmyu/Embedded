@@ -7,6 +7,8 @@
  * счётчики `onTouch` / `onPageChange` / `onLoad` / `onExit` — удобно проверить на железе (лог, отладчик).
  *
  * На стороне HMI задайте те же `page` id (0, 1) и `id` компонентов (1, 2), что и константы класса.
+ * page0 comp1 (release) — MsgBox ошибка (`showErrorBox`, симуляция `Status`);
+ * page0 comp2 (release) — MsgBox обычный (цикл preset ×4).
  *
  * @code
  *   nex::test::TwoPageTouchDemoApp nextion_app(board.serial1);
@@ -22,8 +24,7 @@
 #include <cstdio>
 #include <utility>
 
-#include "../impl/nexApplication.hpp"
-#include "../impl/nexComponents.hpp"
+#include "../nex.hpp"
 
 namespace nex::test {
 
@@ -60,11 +61,11 @@ private:
 
 class TwoPageTouchDemoApp : public nex::Application {
 public:
-    static constexpr uint16_t kPanelWidth = 600;
-    static constexpr uint16_t kPanelHeight = 1024;
+    static constexpr uint16_t kScreenWidth = 600;
+    static constexpr uint16_t kScreenHeight = 1024;
 
     explicit TwoPageTouchDemoApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kPanelWidth, kPanelHeight)
+        : Application(stream, kScreenWidth, kScreenHeight)
     {}
 
     static constexpr uint8_t kPage0Id = 0u;
@@ -78,6 +79,7 @@ public:
     uint32_t touch_txt_p1{};
 
     uint32_t app_touch_events{};
+    uint32_t msgbox_demo_presses{};
     uint32_t app_page_changes{};
     uint32_t page0_loads{};
     uint32_t page0_exits{};
@@ -152,9 +154,34 @@ public:
         std::printf("[Nextion demo] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
             static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state),
             static_cast<unsigned long>(app_touch_events));
-        if (e.page_id == 0 && e.component_id == 2 && e.state == TouchState::Release) {
-            msgBox.show("Failed_Assignment");
+        if (e.page_id == kPage0Id && e.state == TouchState::Release) {
+            if (e.component_id == kCompAId) {
+                msg::Status st{};
+                st.status = msg::Status::Code::Invalid_CompId;
+                std::printf("[Nextion demo] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
+                    static_cast<unsigned>(kPage0Id), static_cast<unsigned>(kCompAId));
+                showErrorBox(st, kPage0Id, kCompAId);
+                return;
+            }
+            if (e.component_id == kCompBId) {
+                ++msgbox_demo_presses;
+                static constexpr MsgBox::Preset kPresets[] = {MsgBox::Preset::OK, MsgBox::Preset::OKCancel,
+                    MsgBox::Preset::YesNo, MsgBox::Preset::YesNoCancel};
+                const MsgBox::Preset preset = kPresets[(msgbox_demo_presses - 1u) % 4u];
+                char title[24]{};
+                char body[56]{};
+                std::snprintf(title, sizeof(title), "Demo #%lu", static_cast<unsigned long>(msgbox_demo_presses));
+                std::snprintf(body, sizeof(body), "%s", MsgBox::presetCstr(preset));
+                std::printf("[Nextion demo] msgBox demo press=%lu preset=%s\n",
+                    static_cast<unsigned long>(msgbox_demo_presses), MsgBox::presetCstr(preset));
+                msgBox.show(title, body, preset);
+            }
         }
+    }
+
+    void onMsgBox(const MsgBox::Event& e) noexcept override {
+        std::printf("[Nextion demo] onMsgBox action=%s preset=%s error=%u\n", MsgBox::actionCstr(e.action),
+            MsgBox::presetCstr(msgBox.btnPreset()), e.isError ? 1u : 0u);
     }
 
     void onPageChange(uint8_t page_id) override {
@@ -188,8 +215,8 @@ private:
             cs.circle_filled(Point{static_cast<uint16_t>(x + 35u), static_cast<uint16_t>(y + 25u)}, 28u, accent);
 
         std::snprintf(_draw_demo_text, sizeof(_draw_demo_text), "demo %u", static_cast<unsigned>(step));
-        cs.text_in_region(Point{8, 300}, 400u, 50u, 1u, Color::std::White, Color::std::Gray, 1u, 1u, BGStyle::Color,
-            _draw_demo_text);
+        cs.text_in_region(Region(Point{8u, 300u}, Rect{400u, 50u}), _draw_demo_text, 1u, Color::std::White,
+            HAlign::Center, VAlign::Center, Color::std::Gray, BGStyle::Color);
 
         std::printf("[Nextion demo] draw demo step=%u\n", static_cast<unsigned>(step));
     }

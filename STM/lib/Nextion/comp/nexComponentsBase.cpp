@@ -1,5 +1,5 @@
 #include "nexComponentBase.hpp"
-#include "nexApplication.hpp"
+#include "../app/nexApplication.hpp"
 
 namespace nex {
 

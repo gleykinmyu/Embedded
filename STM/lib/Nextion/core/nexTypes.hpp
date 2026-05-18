@@ -116,6 +116,20 @@ enum class BGStyle : uint8_t {
 /** Режим заливки фона в `xstr` (NIS); те же коды 0…3, что у `BGStyle`. */
 using FillMode = BGStyle;
 
+/** Горизонтальное выравнивание в `xstr` (NIS: xcenter, 0…2). */
+enum class HAlign : uint8_t {
+    Left   = 0,
+    Center = 1,
+    Right  = 2,
+};
+
+/** Вертикальное выравнивание в `xstr` (NIS: ycenter, 0…2). */
+enum class VAlign : uint8_t {
+    Top    = 0,
+    Center = 1,
+    Bottom = 2,
+};
+
 /** Код нажатия/отпускания в touch-событиях и аргументе UART-инструкции `click` (NIS, 0 / 1). */
 enum class TouchState : uint8_t {
     Release = 0x00,
@@ -128,44 +142,92 @@ using PicId = uint16_t;
 /** Идентификатор шрифта в NIS (`font`). */
 using FontId = uint16_t;
 
+/** Шрифт Nextion: id ресурса и высота глифа в пикселях (как в Font Generator). */
+struct Font {
+    FontId id = 1u;
+    uint16_t heightPx = 16u;
+
+    constexpr Font() noexcept = default;
+    constexpr Font(FontId fontId, uint16_t heightPx) noexcept
+        : id(fontId)
+        , heightPx(heightPx)
+    {}
+
+    [[nodiscard]] constexpr FontId fontId() const noexcept { return id; }
+
+    /** Минимальная ширина подписи: оценка по высоте шрифта + `padX` с каждой стороны. */
+    [[nodiscard]] uint16_t minWidthFor(const char* text, uint16_t padX = 12u, int16_t spax = 0) const noexcept;
+
+    /** Минимальная высота под глиф + `padY` сверху и снизу. */
+    [[nodiscard]] constexpr uint16_t minHeightFor(uint16_t padY = 8u) const noexcept {
+        return static_cast<uint16_t>(heightPx + 2u * padY);
+    }
+};
+
 /** Пиксельная координата по оси X или Y на экране Nextion (NIS). */
 using Coord = uint16_t;
 
 /** Точка (x, y) на экране в пикселях. */
 struct Point {
-    uint16_t x{};
-    uint16_t y{};
+    uint16_t x;
+    uint16_t y;
 
-    constexpr Point() noexcept = default;
-    constexpr Point(uint16_t px, uint16_t py) noexcept : x(px), y(py) {}
+    constexpr Point() noexcept
+        : x(0u)
+        , y(0u)
+    {}
+    constexpr Point(uint16_t px, uint16_t py) noexcept
+        : x(px)
+        , y(py)
+    {}
 };
 
-/** Размеры панели в пикселях; пользовательские координаты совпадают с координатами панели. */
+/** Размер прямоугольника в пикселях. */
+struct Rect {
+    uint16_t w = 0u;
+    uint16_t h = 0u;
+
+    constexpr Rect() noexcept = default;
+    constexpr Rect(uint16_t width, uint16_t height) noexcept
+        : w(width)
+        , h(height)
+    {}
+    explicit constexpr Rect(unsigned width, unsigned height) noexcept
+        : w(static_cast<uint16_t>(width))
+        , h(static_cast<uint16_t>(height))
+    {}
+
+    /** `w = (base.w * wNum) / wDen`, `h = (base.h * hNum) / hDen` — беззнаковое целочисленное деление. */
+    constexpr Rect(const Rect& base, unsigned wNum, unsigned wDen, unsigned hNum, unsigned hDen) noexcept
+        : w(static_cast<uint16_t>(static_cast<unsigned>(base.w) * wNum / wDen))
+        , h(static_cast<uint16_t>(static_cast<unsigned>(base.h) * hNum / hDen))
+    {}
+};
+
+/** Прямоугольная область на экране: верхний левый угол и размер. */
+struct Region {
+    Point ul;
+    Rect size;
+
+    constexpr Region() noexcept = default;
+    constexpr Region(Point upperLeft, const Rect& boxSize) noexcept
+        : ul(upperLeft)
+        , size(boxSize)
+    {}
+
+    [[nodiscard]] Point lowerRight() const noexcept {
+        return Point(static_cast<uint16_t>(ul.x + size.w - 1u), static_cast<uint16_t>(ul.y + size.h - 1u));
+    }
+};
+
+/** Размеры экрана в пикселях; пользовательские координаты совпадают с координатами экрана. */
 struct ScreenLayout {
-    uint16_t width{};
-    uint16_t height{};
+    Rect size{};
 
     constexpr ScreenLayout() noexcept = default;
     constexpr ScreenLayout(uint16_t w, uint16_t h) noexcept
-        : width(w)
-        , height(h)
+        : size(w, h)
     {}
-
-    [[nodiscard]] constexpr uint16_t userWidth() const noexcept { return width; }
-
-    [[nodiscard]] constexpr uint16_t userHeight() const noexcept { return height; }
-
-    [[nodiscard]] constexpr Point mapUserToPanel(uint16_t ux, uint16_t uy) const noexcept { return Point{ux, uy}; }
-
-    void mapUserRectToPanel(uint16_t ux0, uint16_t uy0, uint16_t ux1, uint16_t uy1, Point& upperLeft,
-        Point& lowerRightInclusive) const noexcept {
-        const Point a = mapUserToPanel(ux0, uy0);
-        const Point b = mapUserToPanel(ux1, uy1);
-        upperLeft.x = (a.x < b.x) ? a.x : b.x;
-        upperLeft.y = (a.y < b.y) ? a.y : b.y;
-        lowerRightInclusive.x = (a.x > b.x) ? a.x : b.x;
-        lowerRightInclusive.y = (a.y > b.y) ? a.y : b.y;
-    }
 };
 
     /**
