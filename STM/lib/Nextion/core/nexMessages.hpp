@@ -116,6 +116,25 @@ namespace nex {
             Code code;
         };
 
+        /** Закрытие MCU `MsgBox` по кнопке (внутреннее, не с UART). */
+        struct evMsgBox {
+            enum class Action : uint8_t {
+                None = 0,
+                Ok = 0x02,
+                Yes = 0x03,
+                No = 0x04,
+                Cancel = 0x05,
+            };
+
+            /** Зарезервирован для `MsgBox::showError` / `showErrorBox` (прочие `tag` — код вызывающего). */
+            static constexpr uint8_t kTagError = 0xFFu;
+
+            uint8_t page_id = 0u;
+            uint8_t comp_id = 0u;
+            uint8_t tag = 0u;
+            Action action = Action::None;
+        };
+
     } // namespace msg
 
     /** Разобранное входящее сообщение дисплея — один из типов в `msg::`. */
@@ -126,6 +145,7 @@ namespace nex {
         msg::evTouchXY,
         msg::evPage,
         msg::evSystem,
-        msg::evTransparent>;
+        msg::evTransparent,
+        msg::evMsgBox>;
 
 } // namespace nex

@@ -54,6 +54,9 @@ namespace nex {
         /** `status == Code::AppError`; далее — `Component::onError` по `component_id`. */
         virtual void onError(const msg::Status& status, uint8_t component_id);
 
+        /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`component_id == 0`). */
+        virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
+
         Component* getComponent(uint8_t component_id)  noexcept;
 
     protected:
@@ -137,6 +140,9 @@ namespace nex {
 
         /** Ответ **status** с ошибкой выполнения команды этого компонента. */
         virtual void onError(const msg::Status& response);
+
+        /** Ответ MCU `MsgBox`, маршрутизированный на этот компонент. */
+        virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
     private:
         friend class Page;

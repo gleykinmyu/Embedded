@@ -52,6 +52,12 @@ public:
         Base::onTouch(e);
     }
 
+    void onMsgBox(const msg::evMsgBox& e) override {
+        std::printf("[Nextion demo] %s onMsgBox action=%s tag=%u\n", tag,
+            MsgBox::actionCstr(static_cast<MsgBox::Action>(e.action)), static_cast<unsigned>(e.tag));
+        Base::onMsgBox(e);
+    }
+
 private:
     uint32_t& hits;
     const char* const tag;
@@ -174,14 +180,10 @@ public:
                 std::snprintf(body, sizeof(body), "%s", MsgBox::presetCstr(preset));
                 std::printf("[Nextion demo] msgBox demo press=%lu preset=%s\n",
                     static_cast<unsigned long>(msgbox_demo_presses), MsgBox::presetCstr(preset));
-                msgBox.show(title, body, preset);
+                msgBox.setRoute(kPage0Id, kCompBId);
+                msgBox.show(title, body, preset, kCompBId);
             }
         }
-    }
-
-    void onMsgBox(const MsgBox::Event& e) noexcept override {
-        std::printf("[Nextion demo] onMsgBox action=%s preset=%s error=%u\n", MsgBox::actionCstr(e.action),
-            MsgBox::presetCstr(msgBox.btnPreset()), e.isError ? 1u : 0u);
     }
 
     void onPageChange(uint8_t page_id) override {

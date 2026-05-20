@@ -75,8 +75,8 @@ public:
     // Обработчики событий: touch, touchXY, pageChange, systemEvent, transparentEvent, error; у страницы — onExit/onLoad при смене id.
     virtual void onTouch(const msg::evTouch&) {}
     virtual void onTouchXY(const msg::evTouchXY&) {}
-    /** `MsgBox`: click по кнопке (`Ok`, `Yes`, …) — `onMsgBox` после release на той же кнопке. */
-    virtual void onMsgBox(const MsgBox::Event& e) noexcept { (void)e; }
+    /** `evMsgBox`: только при маршруте `(0, 0)`; иначе — `Page` / `Component`, заданные в `MsgBox::setRoute` / `showError`. */
+    virtual void onMsgBox(const msg::evMsgBox& e) noexcept { (void)e; }
     virtual void onPageChange(uint8_t) {}
     virtual void onSystemEvent(const msg::evSystem&) {}
     virtual void onTransparentEvent(const msg::evTransparent&) {}
@@ -87,11 +87,12 @@ public:
 
 
     /** @deprecated используйте `msgBox.show` / `msgBox.showError`. */
-    void showErrorBox(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept {
+    void showErrorBox(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u,
+        uint8_t tag = msg::evMsgBox::kTagError) noexcept {
         _lastError = status;
         _lastErrorPage = page_id;
         _lastErrorComp = comp_id;
-        msgBox.showError();
+        msgBox.showError(MsgBox::Preset::OK, tag);
     }
 
     // --- доп. команды и UI (nexApplicationAddons.cpp) ---
@@ -164,6 +165,9 @@ private:
 
     // `evTouch` / `evTouchXY` в `m`: onTouch(+Page) или onTouchXY; при активном `msgBox` — `msgBox.onTouchXY` (click = release на той же кнопке).
     void dispatchTouch(const Message& m) noexcept;
+
+    // `evMsgBox` — к `Page` / `Component` по `page_id` / `component_id`, иначе `onMsgBox` приложения.
+    void dispatchMsgBox(const msg::evMsgBox& e) noexcept;
 
     // `_currentPageId`, onPageChange, PageBase::onExit / onLoad при смене id (из dispatchEvent).
     void dispatchPageChange(const msg::evPage& e) noexcept;

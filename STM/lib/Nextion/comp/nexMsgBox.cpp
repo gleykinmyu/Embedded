@@ -102,6 +102,19 @@ MsgBox::Box::Box() noexcept
 
 MsgBox::MsgBox(Application& app) noexcept : _app(app) {}
 
+void MsgBox::setRoute(const uint8_t page_id, const uint8_t component_id) noexcept {
+    _ev.page_id = page_id;
+    _ev.comp_id = component_id;
+    _routePinned = true;
+}
+
+void MsgBox::applyShow(const Preset preset, const Action defaultAction, const uint8_t tag) noexcept {
+    _ev.tag = tag;
+    _ev.action = Action::None;
+    _preset = preset;
+    _defaultAction = defaultAction;
+}
+
 void MsgBox::Box::fit(const Rect& screen, const Preset preset) noexcept {
     const unsigned margin = (screen.w < screen.h ? screen.w : screen.h) / 16;
 
@@ -296,11 +309,9 @@ void MsgBox::setTextV(const char* fmt, va_list ap) noexcept {
     clampTextForXstr(_text, kTextCap);
 }
 
-void MsgBox::showFormatted(const char* title, const Preset preset, const Action defaultAction, const char* fmt,
-    va_list ap) noexcept {
-    _isError = false;
-    _preset = preset;
-    _defaultAction = defaultAction;
+void MsgBox::showFormatted(const char* title, const Preset preset, const Action defaultAction, const uint8_t tag,
+    const char* fmt, va_list ap) noexcept {
+    applyShow(preset, defaultAction, tag);
     setTitle(title != nullptr ? title : kTitleMessage.data);
     setTextV(fmt, ap);
     present();
@@ -309,79 +320,104 @@ void MsgBox::showFormatted(const char* title, const Preset preset, const Action 
 void MsgBox::show(const Preset preset, const char* fmt, ...) noexcept {
     va_list ap;
     va_start(ap, fmt);
-    showFormatted(kTitleMessage.data, preset, defaultForPreset(preset), fmt, ap);
+    showFormatted(kTitleMessage.data, preset, defaultForPreset(preset), 0u, fmt, ap);
+    va_end(ap);
+}
+
+void MsgBox::show(const Preset preset, const uint8_t tag, const char* fmt, ...) noexcept {
+    va_list ap;
+    va_start(ap, fmt);
+    showFormatted(kTitleMessage.data, preset, defaultForPreset(preset), tag, fmt, ap);
     va_end(ap);
 }
 
 void MsgBox::show(const Preset preset, const Action defaultAction, const char* fmt, ...) noexcept {
     va_list ap;
     va_start(ap, fmt);
-    showFormatted(kTitleMessage.data, preset, defaultAction, fmt, ap);
+    showFormatted(kTitleMessage.data, preset, defaultAction, 0u, fmt, ap);
+    va_end(ap);
+}
+
+void MsgBox::show(const Preset preset, const Action defaultAction, const uint8_t tag, const char* fmt, ...) noexcept {
+    va_list ap;
+    va_start(ap, fmt);
+    showFormatted(kTitleMessage.data, preset, defaultAction, tag, fmt, ap);
     va_end(ap);
 }
 
 void MsgBox::show(const char* title, const Preset preset, const char* fmt, ...) noexcept {
     va_list ap;
     va_start(ap, fmt);
-    showFormatted(title, preset, defaultForPreset(preset), fmt, ap);
+    showFormatted(title, preset, defaultForPreset(preset), 0u, fmt, ap);
+    va_end(ap);
+}
+
+void MsgBox::show(const char* title, const Preset preset, const uint8_t tag, const char* fmt, ...) noexcept {
+    va_list ap;
+    va_start(ap, fmt);
+    showFormatted(title, preset, defaultForPreset(preset), tag, fmt, ap);
     va_end(ap);
 }
 
 void MsgBox::show(const char* title, const Preset preset, const Action defaultAction, const char* fmt, ...) noexcept {
     va_list ap;
     va_start(ap, fmt);
-    showFormatted(title, preset, defaultAction, fmt, ap);
+    showFormatted(title, preset, defaultAction, 0u, fmt, ap);
     va_end(ap);
 }
 
-void MsgBox::show(const char* text, const Preset preset) noexcept {
-    show(text, preset, defaultForPreset(preset));
+void MsgBox::show(const char* title, const Preset preset, const Action defaultAction, const uint8_t tag,
+    const char* fmt, ...) noexcept {
+    va_list ap;
+    va_start(ap, fmt);
+    showFormatted(title, preset, defaultAction, tag, fmt, ap);
+    va_end(ap);
 }
 
-void MsgBox::show(const char* text, const Preset preset, const Action defaultAction) noexcept {
-    _isError = false;
-    _preset = preset;
-    _defaultAction = defaultAction;
+void MsgBox::show(const char* text, const Preset preset, const uint8_t tag) noexcept {
+    show(text, preset, defaultForPreset(preset), tag);
+}
+
+void MsgBox::show(const char* text, const Preset preset, const Action defaultAction, const uint8_t tag) noexcept {
+    applyShow(preset, defaultAction, tag);
     setTitle(kTitleMessage.data);
     setText(text);
     present();
 }
 
-void MsgBox::show(const char* title, const char* text, const Preset preset) noexcept {
-    show(title, text, preset, defaultForPreset(preset));
+void MsgBox::show(const char* title, const char* text, const Preset preset, const uint8_t tag) noexcept {
+    show(title, text, preset, defaultForPreset(preset), tag);
 }
 
-void MsgBox::show(const char* title, const char* text, const Preset preset, const Action defaultAction) noexcept {
-    _isError = false;
-    _preset = preset;
-    _defaultAction = defaultAction;
+void MsgBox::show(const char* title, const char* text, const Preset preset, const Action defaultAction,
+    const uint8_t tag) noexcept {
+    applyShow(preset, defaultAction, tag);
     setTitle(title != nullptr ? title : kTitleMessage.data);
     setText(text);
     present();
 }
 
-void MsgBox::showError(const Preset preset) noexcept {
-    showError(preset, defaultForPreset(preset));
+void MsgBox::showError(const Preset preset, const uint8_t tag) noexcept {
+    showError(preset, defaultForPreset(preset), tag);
 }
 
-void MsgBox::showError(const Preset preset, const Action defaultAction) noexcept {
-    _isError = true;
-    _preset = preset;
-    _defaultAction = defaultAction;
+void MsgBox::showError(const Preset preset, const Action defaultAction, const uint8_t tag) noexcept {
+    _ev.page_id = _app.lastErrorPage();
+    _ev.comp_id = _app.lastErrorComp();
+    applyShow(preset, defaultAction, tag);
     setTitle(kTitleError.data);
     formatStatusMessage(_app.lastError(), _app.lastErrorPage(), _app.lastErrorComp(), _text, kTextCap);
     clampTextForXstr(_text, kTextCap);
     present();
 }
 
-void MsgBox::notify(const Action action) noexcept {
-    Event e{};
-    e.action = action;
-    e.isError = _isError;
-    _app.onMsgBox(e);
-}
-
 void MsgBox::present() noexcept {
+    if (!_routePinned) {
+        _ev.page_id = _app.currentPageId();
+        _ev.comp_id = 0u;
+    }
+    _routePinned = false;
+
     const ScreenLayout& screen = _app.screenLayout();
     if (screen.size.w == 0u || screen.size.h == 0u || screen.size.w < 32u || screen.size.h < 32u)
         return;
@@ -392,16 +428,23 @@ void MsgBox::present() noexcept {
     _box.layoutButtons(_preset, _defaultAction);
 
     _pressing = false;
-    _pressedAction = Action::None;
+    _ev.action = Action::None;
     _active = true;
-    const Color titleFg = _isError ? Color::std::Yellow : Color::std::White;
-    _box.draw(_app.cs, _title, _text, titleFg, _pressedAction, false);
+    const Color titleFg = (_ev.tag == msg::evMsgBox::kTagError) ? Color::std::Yellow : Color::std::White;
+    _box.draw(_app.cs, _title, _text, titleFg, _ev.action, false);
     _app.touch.sendXY(true);
 }
 
-void MsgBox::onButtonClick(const Action action) noexcept {
-    notify(action);
-    dismiss();
+void MsgBox::onButtonClick() noexcept {
+    if (!_active)
+        return;
+    _app.dispatchEvent(_ev);
+    _active = false;
+    _pressing = false;
+    _ev.action = Action::None;
+    _app.touch.sendXY(false);
+    _app.touch.touchSwitch(true);
+    _app.refreshPage();
 }
 
 void MsgBox::onTouchXY(const msg::evTouchXY& e) noexcept {
@@ -417,7 +460,7 @@ void MsgBox::onTouchXY(const msg::evTouchXY& e) noexcept {
         Action hit;
         if (_box.hitAction(e.pos, hit)) {
             _pressing = true;
-            _pressedAction = hit;
+            _ev.action = hit;
             _box.drawButton(_app.cs, hit, true, hit);
         }
         return;
@@ -425,25 +468,15 @@ void MsgBox::onTouchXY(const msg::evTouchXY& e) noexcept {
     if (e.state != TouchState::Release || !_pressing)
         return;
 
-    const Action pressed = _pressedAction;
+    const Action pressed = _ev.action;
     _pressing = false;
 
     if (pressed != Action::None && _box.hitPressedButton(e.pos, pressed)) {
-        onButtonClick(pressed);
+        onButtonClick();
         return;
     }
+    _ev.action = Action::None;
     _box.drawButtons(_app.cs, false, pressed);
-}
-
-void MsgBox::dismiss() noexcept {
-    if (!_active)
-        return;
-    _active = false;
-    _pressing = false;
-    _pressedAction = Action::None;
-    _app.touch.sendXY(false);
-    _app.touch.touchSwitch(true);
-    _app.refreshPage();
 }
 
 } // namespace nex

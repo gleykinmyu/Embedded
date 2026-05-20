@@ -242,8 +242,27 @@ void Application::dispatchEvent(const Message& m) noexcept {
         onTransparentEvent(*e);
         return;
     }
+    if (const auto* e = std::get_if<msg::evMsgBox>(&m)) {
+        dispatchMsgBox(*e);
+        return;
+    }
     if (const auto* e = std::get_if<msg::Status>(&m))
         dispatchError(*e, 0u, 0u);
+}
+
+void Application::dispatchMsgBox(const msg::evMsgBox& e) noexcept {
+    if (e.comp_id != 0u) {
+        if (Component* const c = getComponent(e.page_id, e.comp_id)) {
+            c->onMsgBox(e);
+            return;
+        }
+    }
+    if (Page* const p = page(e.page_id)) {
+        p->onMsgBox(e);
+        if (e.comp_id == 0u)
+            return;
+    }
+    onMsgBox(e);
 }
 
 void Application::dispatchTouch(const Message& m) noexcept {
