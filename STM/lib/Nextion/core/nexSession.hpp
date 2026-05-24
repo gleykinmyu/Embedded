@@ -77,7 +77,7 @@ public:
         EmplaceFailed,
     };
 
-    static constexpr std::size_t kCapacity = 32u;
+    static constexpr std::size_t kCapacity = 64u;
     static constexpr std::size_t kMaxObjectSize = 128u;
     static constexpr std::size_t kMaxAlign = alignof(std::max_align_t);
 

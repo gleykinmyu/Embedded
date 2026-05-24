@@ -11,6 +11,7 @@
 #include "nexApplicationFacades.hpp"
 #include "../comp/nexMsgBox.hpp"
 #include "nexSysVars.hpp"
+#include "nexCompId.hpp"
 
 namespace nex {
 
@@ -41,7 +42,8 @@ public:
         ComponentRegisterFailed,  /**< `Page::registerComponent` / `rebindComponentId`. */
     };
 
-    explicit Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept;
+    explicit Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height,
+        CidTable& cid_table) noexcept;
     virtual ~Application() = default;
 
     // Поставить транзакцию в очередь; UART — в update(now_ms) или после завершения сессии.
@@ -82,6 +84,15 @@ public:
     virtual void onTransparentEvent(const msg::evTransparent&) {}
     /** Ответ `get` по системной переменной (`tag` — `SysVar::tag`); разбор и `applyResponse` — в наследнике. */
     virtual void onSysResponse(uint8_t tag, const msg::getNumeric& response) noexcept { (void)tag; (void)response; }
+    /**
+     * Завершён опрос cID в режиме `Discover` (`setMode(Discover)` до первого `update`).
+     * При `success` режим уже `Flash`; таблица — буфер, переданный в конструктор `Application`.
+     */
+    virtual void onCidPollComplete(bool success) noexcept { (void)success; }
+
+    /** Режим привязки `comp_id` (Compiled / Discover / Flash). */
+    void setMode(CidMode mode) noexcept;
+    [[nodiscard]] CidMode getMode() const noexcept;
     // status с панели (NIS) или синтетика MCU; page_id/comp_id == 0 — только глобальный onError (nexApplicationAddons.cpp).
     virtual void onError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
 
@@ -128,6 +139,7 @@ public:
     SysVar<uint8_t> pio[8];
 
 private:
+    friend class Cid;
     friend class MsgBox;
     friend class Page;
     friend void nexComponentRegisterFailed(Application& app, Page& page, const Component* c,
@@ -201,12 +213,15 @@ private:
     Gateway _gateway;
     Session _session;
     Page* _pages[kMaxPages]{};
+    uint8_t _pageCount = 0u; /**< Страницы `0.._pageCount-1` подряд; читает `Cid` (friend). */
     uint8_t _currentPageId = 0xFF;
     bool _notifyOptional = false;
     Status _lastStatus = Status::OK;
     msg::Status _lastError{};
     uint8_t _lastErrorPage = 0u;
     uint8_t _lastErrorComp = 0u;
+
+    Cid _cid;
 };
 
 inline const char* applicationStatusCstr(Application::Status s) noexcept {

@@ -136,6 +136,15 @@ enum class TouchState : uint8_t {
     Press = 0x01
 };
 
+/**
+ * Идентификатор компонента в кадрах touch/status (NIS): `0` — сама страница, не виджет.
+ * На панели у объектов `.id` начинается с `kFirstCompId`.
+ */
+constexpr uint8_t kPageCompId = 0u;
+
+/** Минимальный допустимый `.id` виджета на странице. */
+constexpr uint8_t kFirstCompId = 1u;
+
 /** Идентификатор ресурса картинки/страницы в NIS (`pic`, `pic2`, `cpic`, …). */
 using PicId = uint16_t;
 

@@ -25,7 +25,7 @@ Page::Page(Application& application, const Literal& pageObjName, uint8_t id) noe
 void Page::onTouch(const msg::evTouch& e) {
     if (e.page_id != ID)
         return;
-    if (e.component_id == 0u) {
+    if (e.component_id == kPageCompId) {
         onTouchPage(e);
         return;
     }
@@ -42,7 +42,7 @@ void Page::onError(const msg::Status& status, uint8_t component_id) {
 namespace {
 
 unsigned firstFreeRegistrySlot(ComponentRegistryDesc reg) noexcept {
-    for (unsigned i = 0u; i < reg.size; ++i) {
+    for (unsigned i = kFirstCompId; i < reg.size; ++i) {
         if (reg.slots[i] == nullptr)
             return i;
     }
@@ -62,6 +62,7 @@ void Page::registerComponent(Component* c) noexcept {
         nexComponentRegisterFailed(app, *this, c, reg.size);
         return;
     }
+    // В конструкторе `id == 0` — автослот (не panel id; на панели 0 = страница в touch).
     if (id == 0u) {
         const unsigned slot = firstFreeRegistrySlot(reg);
         if (slot >= reg.size) {
@@ -82,7 +83,7 @@ SetIdResult Page::rebindComponentId(Component* c, uint8_t newId) noexcept {
     }
     if (&c->page != this)
         return SetIdResult::Failed;
-    if (newId >= reg.size) {
+    if (newId >= reg.size || newId == kPageCompId) {
         nexComponentRegisterFailed(app, *this, c, reg.size);
         return SetIdResult::Failed;
     }
@@ -113,7 +114,9 @@ SetIdResult Page::rebindComponentId(Component* c, uint8_t newId) noexcept {
     return SetIdResult::SwappedWithOccupiedRegistrySlot;
 }
 
-Component* Page::getComponent(uint8_t component_id)  noexcept {
+Component* Page::getComponent(uint8_t component_id) noexcept {
+    if (component_id == kPageCompId)
+        return nullptr;
     const ComponentRegistryDesc reg = getRegistry();
     if (component_id >= reg.size)
         return nullptr;

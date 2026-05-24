@@ -19,7 +19,8 @@ namespace nex {
 
 //=============================================================================
 
-Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept
+Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height,
+    CidTable& cid_table) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -37,7 +38,16 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
     , _screen(screen_width, screen_height)
     , _stream(stream)
     , _gateway(stream)
+    , _cid(*this, cid_table)
 {}
+
+void Application::setMode(CidMode mode) noexcept {
+    _cid.setMode(mode);
+}
+
+CidMode Application::getMode() const noexcept {
+    return _cid.mode();
+}
 
 Page* Application::page(uint8_t id) noexcept {
     return (id < kMaxPages) ? _pages[id] : nullptr;
@@ -62,12 +72,20 @@ void Application::registerPage(Page& page) noexcept {
         return;
     }
     Page* const slot = _pages[id];
-    if (slot != nullptr && slot != &page) {
+    if (slot == &page)
+        return;
+    if (slot != nullptr) {
         reportRegisterError(Status::PageRegisterFailed, RegisterError::PageSlotOccupied, static_cast<uint8_t>(id),
             0u);
         return;
     }
+    if (id != static_cast<unsigned>(_pageCount)) {
+        reportRegisterError(Status::PageRegisterFailed, RegisterError::PageIdNotSequential,
+            static_cast<uint8_t>(id), 0u);
+        return;
+    }
     _pages[id] = &page;
+    ++_pageCount;
 }
 
 //=============================================================================
@@ -84,6 +102,9 @@ void Application::enqueue(Transaction tx) noexcept {
 }
 
 bool Application::update(uint32_t now_ms) noexcept {
+    // cID Discover: шаг машины опроса (очередь/RX — ниже, см. nexCompId.cpp).
+    _cid.updateDiscovery(now_ms);
+
     checkSessionTimeout(now_ms);
     bool any = false;
 
@@ -136,7 +157,7 @@ void Application::sessionBegin() noexcept {
 }
 
 void Application::sessionEnd(bool Success) noexcept {
-    (void)Success;
+    _cid.onSessionEnd(Success); // ошибка get .id в фазе Discover
     _session.completeTransaction();
 }
 
@@ -157,6 +178,11 @@ void Application::checkSessionTimeout(uint32_t now_ms) noexcept {
     if (!_session.isResponseTimedOut(now_ms))
         return;
     const Transaction& active = _session.active();
+    if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
+        std::printf("[CID] SessionTimeout slot_tag=%u state=%u\n", static_cast<unsigned>(active.tag),
+            static_cast<unsigned>(active.state));
+        _cid.onSessionEnd(false);
+    }
     dispatchError(makeAppError(Status::SessionTimeout), active.page_id, active.comp_id);
     sessionEnd(false);
 }
@@ -174,11 +200,21 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     switch (active.state) {
     case Transaction::State::AwaitingNumericGet: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
+            if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
+                std::printf("[CID] dispatchResponse NIS status=%s tag1=%u tag2=%u slot_tag=%u\n",
+                    statusCodeCstr(st->status), static_cast<unsigned>(st->tag_1),
+                    static_cast<unsigned>(st->tag_2), static_cast<unsigned>(active.tag));
+            }
             dispatchError(*st, active.page_id, active.comp_id);
             sessionEnd(false);
             return true;
         }
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
+            if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
+                _cid.onPollResponse(active.tag, *nr);
+                sessionEnd(true);
+                return true;
+            }
             if (active.page_id == kSysVarRoutePageId && active.comp_id == kSysVarRouteCompId) {
                 dispatchSysVarResponse(active.tag, *nr);
                 onSysResponse(active.tag, *nr);
@@ -225,13 +261,22 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     }
 }
 
-void Application::dispatchEvent(const Message& m) noexcept {
-    if (std::get_if<msg::evTouch>(&m) || std::get_if<msg::evTouchXY>(&m)) {
-        dispatchTouch(m);
-        return;
-    }
+void Application::dispatchEvent(const Message& m) noexcept 
+{
     if (const auto* e = std::get_if<msg::evPage>(&m)) {
         dispatchPageChange(*e);
+        return;
+    }
+    if (const auto* e = std::get_if<msg::Status>(&m)) {
+        dispatchError(*e, 0u, 0u);
+        return;
+    }
+    // Discover: touch/MsgBox/system не мешают опросу; evPage и Status — выше.
+    if (_cid.isDiscoveryBusy()) return;
+
+    //=======================================================
+    if (std::get_if<msg::evTouch>(&m) || std::get_if<msg::evTouchXY>(&m)) {
+        dispatchTouch(m);
         return;
     }
     if (const auto* e = std::get_if<msg::evSystem>(&m)) {
@@ -246,8 +291,6 @@ void Application::dispatchEvent(const Message& m) noexcept {
         dispatchMsgBox(*e);
         return;
     }
-    if (const auto* e = std::get_if<msg::Status>(&m))
-        dispatchError(*e, 0u, 0u);
 }
 
 void Application::dispatchMsgBox(const msg::evMsgBox& e) noexcept {
@@ -292,6 +335,7 @@ void Application::dispatchPageChange(const msg::evPage& e) noexcept {
     }
     _currentPageId = next;
     onPageChange(next);
+    _cid.onPageChange(next);
     if (prev != next) {
         if (Page* const new_page = page(next))
             new_page->onLoad();

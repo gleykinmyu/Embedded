@@ -14,9 +14,10 @@ namespace nex {
 enum class RegisterError : uint8_t {
     PageIdOutOfRange = 0,     /**< `Page::ID` ≥ `kMaxPages`. */
     PageSlotOccupied,         /**< `_pages[id]` уже указывает на другую страницу. */
+    PageIdNotSequential,      /**< `Page::ID` ≠ числу уже зарегистрированных страниц (ожидается 0, 1, 2, …). */
     ComponentNullPointer,     /**< `registerComponent(nullptr)` или `rebindComponentId(nullptr, …)`. */
     ComponentIdOutOfRange,    /**< `id()` ≥ размера таблицы `PageImpl`. */
-    ComponentRegistryFull,    /**< `id == 0`, свободных слотов в `_registry` нет. */
+    ComponentRegistryFull,    /**< автослот (`id==0` в конструкторе): нет места в `_registry[1…]`. */
 };
 
 enum class ErrorSubsystem : uint8_t {
@@ -104,6 +105,7 @@ inline const char* registerErrorCstr(RegisterError e) noexcept {
     switch (e) {
     case RegisterError::PageIdOutOfRange: return "PageIdOutOfRange";
     case RegisterError::PageSlotOccupied: return "PageSlotOccupied";
+    case RegisterError::PageIdNotSequential: return "PageIdNotSequential";
     case RegisterError::ComponentNullPointer: return "ComponentNullPointer";
     case RegisterError::ComponentIdOutOfRange: return "ComponentIdOutOfRange";
     case RegisterError::ComponentRegistryFull: return "ComponentRegistryFull";

@@ -1,36 +1,24 @@
 #pragma once
 
 /**
- * @file nexTestHarness.hpp
+ * Пример 1: две страницы, touch, MsgBox, смена страниц.
  *
- * Демо-приложение Nextion для **реального UART** (`BIF::IByteStream`): две страницы, по два компонента,
- * счётчики `onTouch` / `onPageChange` / `onLoad` / `onExit` — удобно проверить на железе (лог, отладчик).
- *
- * На стороне HMI задайте те же `page` id (0, 1) и `id` компонентов (1, 2), что и константы класса.
- * page0 comp1 (release) — MsgBox ошибка (`showErrorBox`, симуляция `Status`);
- * page0 comp2 (release) — MsgBox обычный (цикл preset ×4).
- *
- * @code
- *   nex::test::TwoPageTouchDemoApp nextion_app(board.serial1);
- *   while (1) {
- *       const uint32_t now = board.GetTick();
- *       nextion_app.update(now);
- *       nextion_app.tickDrawDemo(now);
- *   }
- * @endcode
+ * HMI: page id 0 и 1, компоненты с id 1 и 2 (см. константы класса).
+ * page0 comp1 (release) — MsgBox ошибка; page0 comp2 — MsgBox обычный.
  */
 
 #include <cstdint>
 #include <cstdio>
 #include <utility>
 
-#include "../nex.hpp"
+#include "nex.hpp"
 
-namespace nex::test {
+namespace nex::examples {
 
 namespace detail {
 
-inline const char* touch_state_cstr(TouchState s) noexcept {
+inline const char* touch_state_cstr(TouchState s) noexcept
+{
     return s == TouchState::Press ? "press" : "release";
 }
 
@@ -44,16 +32,18 @@ public:
         , tag(widget_tag != nullptr ? widget_tag : "?")
     {}
 
-    void onTouch(const msg::evTouch& e) override {
+    void onTouch(const msg::evTouch& e) override
+    {
         ++hits;
-        std::printf("[Nextion demo] %s onTouch page=%u comp=%u state=%s hits=%lu\n", tag,
+        std::printf("[2page] %s onTouch page=%u comp=%u state=%s hits=%lu\n", tag,
             static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), touch_state_cstr(e.state),
             static_cast<unsigned long>(hits));
         Base::onTouch(e);
     }
 
-    void onMsgBox(const msg::evMsgBox& e) override {
-        std::printf("[Nextion demo] %s onMsgBox action=%s tag=%u\n", tag,
+    void onMsgBox(const msg::evMsgBox& e) override
+    {
+        std::printf("[2page] %s onMsgBox action=%s tag=%u\n", tag,
             MsgBox::actionCstr(static_cast<MsgBox::Action>(e.action)), static_cast<unsigned>(e.tag));
         Base::onMsgBox(e);
     }
@@ -65,13 +55,16 @@ private:
 
 } // namespace detail
 
-class TwoPageTouchDemoApp : public nex::Application {
+class TwoPageTouchDemoApp : public Application {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
+    static constexpr uint16_t kCidRecordCount = 8u;
+
+    CidTableStorage<kCidRecordCount> cid_registration;
 
     explicit TwoPageTouchDemoApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight)
+        : Application(stream, kScreenWidth, kScreenHeight, cid_registration.table)
     {}
 
     static constexpr uint8_t kPage0Id = 0u;
@@ -97,45 +90,49 @@ public:
     TouchState last_touch_state = TouchState::Release;
     uint8_t last_page_change_id = 0xFF;
 
-    struct Page0 : nex::PageImpl<4> {
-        detail::CountingTouchWidget<nex::Button<>> btn;
-        detail::CountingTouchWidget<nex::DualStateButton<>> dsbtn;
+    struct Page0 : PageImpl<2> {
+        detail::CountingTouchWidget<Button<>> btn;
+        detail::CountingTouchWidget<DualStateButton<>> dsbtn;
 
         Page0(TwoPageTouchDemoApp& a) noexcept
-            : nex::PageImpl<4>(a, "page0", TwoPageTouchDemoApp::kPage0Id)
+            : PageImpl<2>(a, "page0", TwoPageTouchDemoApp::kPage0Id)
             , btn(a.touch_btn_p0, "btn_p0", *this, "b0", TwoPageTouchDemoApp::kCompAId)
             , dsbtn(a.touch_dsbtn_p0, "dsbtn_p0", *this, "ds0", TwoPageTouchDemoApp::kCompBId)
         {}
-        void onLoad() override {
+        void onLoad() override
+        {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page0_loads;
-            std::printf("[Nextion demo] page0 onLoad loads=%lu\n", static_cast<unsigned long>(o.page0_loads));
+            std::printf("[2page] page0 onLoad loads=%lu\n", static_cast<unsigned long>(o.page0_loads));
         }
-        void onExit() override {
+        void onExit() override
+        {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page0_exits;
-            std::printf("[Nextion demo] page0 onExit exits=%lu\n", static_cast<unsigned long>(o.page0_exits));
+            std::printf("[2page] page0 onExit exits=%lu\n", static_cast<unsigned long>(o.page0_exits));
         }
     };
 
-    struct Page1 : nex::PageImpl<4> {
-        detail::CountingTouchWidget<nex::Button<>> btn;
-        detail::CountingTouchWidget<nex::Text<>> txt;
+    struct Page1 : PageImpl<2> {
+        detail::CountingTouchWidget<Button<>> btn;
+        detail::CountingTouchWidget<Text<>> txt;
 
         Page1(TwoPageTouchDemoApp& a) noexcept
-            : nex::PageImpl<4>(a, "page1", TwoPageTouchDemoApp::kPage1Id)
+            : PageImpl<2>(a, "page1", TwoPageTouchDemoApp::kPage1Id)
             , btn(a.touch_btn_p1, "btn_p1", *this, "b0", TwoPageTouchDemoApp::kCompAId)
             , txt(a.touch_txt_p1, "txt_p1", *this, "t0", TwoPageTouchDemoApp::kCompBId)
         {}
-        void onLoad() override {
+        void onLoad() override
+        {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page1_loads;
-            std::printf("[Nextion demo] page1 onLoad loads=%lu\n", static_cast<unsigned long>(o.page1_loads));
+            std::printf("[2page] page1 onLoad loads=%lu\n", static_cast<unsigned long>(o.page1_loads));
         }
-        void onExit() override {
+        void onExit() override
+        {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page1_exits;
-            std::printf("[Nextion demo] page1 onExit exits=%lu\n", static_cast<unsigned long>(o.page1_exits));
+            std::printf("[2page] page1 onExit exits=%lu\n", static_cast<unsigned long>(o.page1_exits));
         }
     };
 
@@ -144,7 +141,8 @@ public:
 
     static constexpr uint32_t kDrawDemoPeriodMs = 1000u;
 
-    void tickDrawDemo(uint32_t now_ms) noexcept {
+    void tickDrawDemo(uint32_t now_ms) noexcept
+    {
         if (_draw_demo_last_ms != 0u && (now_ms - _draw_demo_last_ms) < kDrawDemoPeriodMs)
             return;
         _draw_demo_last_ms = now_ms;
@@ -152,19 +150,20 @@ public:
         ++_draw_demo_step;
     }
 
-    void onTouch(const msg::evTouch& e) override {
+    void onTouch(const msg::evTouch& e) override
+    {
         ++app_touch_events;
         last_touch_page = e.page_id;
         last_touch_component = e.component_id;
         last_touch_state = e.state;
-        std::printf("[Nextion demo] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
+        std::printf("[2page] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
             static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state),
             static_cast<unsigned long>(app_touch_events));
         if (e.page_id == kPage0Id && e.state == TouchState::Release) {
             if (e.component_id == kCompAId) {
                 msg::Status st{};
                 st.status = msg::Status::Code::Invalid_CompId;
-                std::printf("[Nextion demo] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
+                std::printf("[2page] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
                     static_cast<unsigned>(kPage0Id), static_cast<unsigned>(kCompAId));
                 showErrorBox(st, kPage0Id, kCompAId);
                 return;
@@ -178,7 +177,7 @@ public:
                 char body[56]{};
                 std::snprintf(title, sizeof(title), "Demo #%lu", static_cast<unsigned long>(msgbox_demo_presses));
                 std::snprintf(body, sizeof(body), "%s", MsgBox::presetCstr(preset));
-                std::printf("[Nextion demo] msgBox demo press=%lu preset=%s\n",
+                std::printf("[2page] msgBox demo press=%lu preset=%s\n",
                     static_cast<unsigned long>(msgbox_demo_presses), MsgBox::presetCstr(preset));
                 msgBox.setRoute(kPage0Id, kCompBId);
                 msgBox.show(title, body, preset, kCompBId);
@@ -186,13 +185,14 @@ public:
         }
     }
 
-    void onPageChange(uint8_t page_id) override {
+    void onPageChange(uint8_t page_id) override
+    {
         ++app_page_changes;
         last_page_change_id = page_id;
-        std::printf("[Nextion demo] onPageChange -> page=%u page_changes=%lu currentPageId=%u\n",
+        std::printf("[2page] onPageChange -> page=%u page_changes=%lu currentPageId=%u\n",
             static_cast<unsigned>(page_id), static_cast<unsigned long>(app_page_changes),
             static_cast<unsigned>(currentPageId()));
-        nex::Application::onPageChange(page_id);
+        Application::onPageChange(page_id);
     }
 
 private:
@@ -200,7 +200,8 @@ private:
     uint8_t _draw_demo_step = 0u;
     char _draw_demo_text[32]{};
 
-    void runDrawDemoStep(uint8_t step) noexcept {
+    void runDrawDemoStep(uint8_t step) noexcept
+    {
         static constexpr Color::std kAccents[] = {Color::std::Red, Color::std::Green, Color::std::Blue,
             Color::std::Yellow, Color::std::Cyan, Color::std::Magenta};
         const Color black = Color::std::Black;
@@ -220,8 +221,8 @@ private:
         cs.text_in_region(Region(Point{8u, 300u}, Rect{400u, 50u}), _draw_demo_text, 1u, Color::std::White,
             HAlign::Center, VAlign::Center, Color::std::Gray, BGStyle::Color);
 
-        std::printf("[Nextion demo] draw demo step=%u\n", static_cast<unsigned>(step));
+        std::printf("[2page] draw demo step=%u\n", static_cast<unsigned>(step));
     }
 };
 
-} // namespace nex::test
+} // namespace nex::examples

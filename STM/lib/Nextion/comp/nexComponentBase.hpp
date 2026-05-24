@@ -5,6 +5,7 @@
 namespace nex {
 
     class Application;
+    class Cid;
     class Component;
 
     /** Результат `Component::setId`: предупреждение, если целевой слот регистра был занят (swap). */
@@ -16,7 +17,10 @@ namespace nex {
         Failed = 2,
     };
 
-    /** Доступ к таблице компонентов страницы: `slots[i]` — виджет с id `i` или `nullptr`. */
+    /**
+     * Таблица компонентов страницы: `slots[i]` — виджет с panel id `i` или `nullptr`.
+     * `slots[0]` не используется для виджетов (`kPageCompId` — касание по странице).
+     */
     struct ComponentRegistryDesc {
         Component** slots;
         uint8_t size;
@@ -27,8 +31,8 @@ namespace nex {
 
     /**
      * Базовая страница без шаблона: `Application` хранит `PageBase*`.
-     * Касание: `component_id == 0` — `onTouchPage`; иначе маршрутизация в `getComponent` → `Component::onTouch`.
-     * Конкретная страница с таблицей виджетов — `PageImpl<MaxComponents>` (`MaxComponents` — `uint8_t`, 1…255).
+     * Касание: `component_id == kPageCompId` — `onTouchPage`; иначе `getComponent` → `Component::onTouch`.
+     * Конкретная страница с таблицей виджетов — `PageImpl<MaxWidgets>` (число виджетов, panel id 1…N).
      */
     class Page {
     public:
@@ -44,7 +48,7 @@ namespace nex {
         /** Касание по этой странице: фильтр `page_id`, затем `onTouchPage` при `component_id == 0`, иначе виджет. */
         virtual void onTouch(const msg::evTouch& e);
 
-        /** Touch с `component_id == 0` — касание по странице (фон / область без виджета, NIS). */
+        /** Touch с `component_id == kPageCompId` — касание по странице (NIS). */
         virtual void onTouchPage(const msg::evTouch& e) { (void)e; }
 
         /** Панель перешла на эту страницу: `msg::evPage`, новый `page_id` отличается от предыдущего в `Application`. */
@@ -68,6 +72,7 @@ namespace nex {
 
     private:
         friend class Application;
+        friend class Cid;
         friend class Component;
 
         void registerComponent(Component* c) noexcept;
@@ -130,6 +135,10 @@ namespace nex {
          */
         [[nodiscard]] SetIdResult setId(uint8_t newId) noexcept;
 
+        /**
+         * `@p id` — panel id (`≥ kFirstCompId`) или `0` = автослот при регистрации
+         * (не panel id; на панели у виджетов id начинается с 1).
+         */
         Component(Page& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
 
         virtual void onTouch(const msg::evTouch& e);
@@ -157,12 +166,16 @@ namespace nex {
 
     /**
      * Страница с массивом `_registry`: логика регистрации и `setId` в базовом `Page`, см. `getRegistry()`.
-     * `MaxComponents` — число слотов (1…255); id виджета на панели — `uint8_t`, индекс `id` строго меньше `MaxComponents`.
-     * Пример: `PageImpl<32>` если на странице есть объекты с id до 31.
+     *
+     * `MaxWidgets` — макс. число виджетов и макс. panel id (`kFirstCompId`…`MaxWidgets`); `0` — только страница.
+     * Внутри `_registry[MaxWidgets + 1]`: слот `0` — `kPageCompId`, слоты `1…MaxWidgets` — виджеты.
+     * Пример: 10 кнопок id 1…10 → `PageImpl<10>`; пустая страница → `PageImpl<0>`.
      */
-    template <uint8_t MaxComponents>
+    template <uint8_t MaxWidgets>
     class PageImpl : public Page {
-        static_assert(MaxComponents > 0u, "PageImpl: MaxComponents must be >= 1");
+        static_assert(MaxWidgets < 255u, "PageImpl: MaxWidgets must be < 255 (registry size)");
+
+        static constexpr uint8_t kRegistrySize = static_cast<uint8_t>(MaxWidgets + 1u);
 
     public:
         using Page::Page;
@@ -170,11 +183,12 @@ namespace nex {
     protected:
         [[nodiscard]] ComponentRegistryDesc getRegistry() noexcept override {
             // GCC 7 (arm-none-eabi) не принимает `return { ... }` к агрегату здесь — нужна явная форма.
-            return ComponentRegistryDesc{ _registry, MaxComponents};
+            return ComponentRegistryDesc{_registry, kRegistrySize};
         }
 
     private:
-        Component* _registry[MaxComponents]{};
+        // TODO: уплотнение по слотам — хранить виджеты с индекса 0, panel id с 1 (getComponent: id - 1).
+        Component* _registry[kRegistrySize]{};
     };
 
     /*

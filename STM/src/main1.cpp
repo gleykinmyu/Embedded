@@ -1,13 +1,22 @@
+/**
+ * Пример 1: две страницы, touch, MsgBox.
+ * Приложение: lib/Nextion/examples/example1/app.hpp
+ *
+ * Сборка: pio run -e example1
+ */
+
 #include <stm32f4xx.h>
 #include <stm32f4xx_hal.h>
+
 #include "Debug.h"
 #include "server.h"
 #include "ff.h"
 
 #include "nex.hpp"
-#include "test/nexTestHarness.hpp"
+#include "examples/example1/app.hpp"
 
-nex::test::TwoPageTouchDemoApp app(board.serial2);
+nex::examples::TwoPageTouchDemoApp app(board.serial2);
+
 int main(void)
 {
     board.serial1.InitPins(GPIO::PortA::pin<9>, GPIO::PortA::pin<10>);
@@ -16,8 +25,7 @@ int main(void)
     board.serial1.open(115200);
     board.serial2.open(115200);
 
-    printf("Nextion Demo App started\n");
-
+    printf("Nextion example1: two-page demo\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
@@ -30,6 +38,5 @@ int main(void)
             board.led.Toggle();
         }
         app.update(now);
-        //app.tickDrawDemo(now);
     }
 }
