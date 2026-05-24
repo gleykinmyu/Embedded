@@ -1,0 +1,33 @@
+CompileFlags:
+  CompilationDatabase: .
+  Compiler: C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/bin/arm-none-eabi-g++
+  Remove:
+    - -mthumb
+    - -mcpu=*
+    - -mfloat-abi=*
+    - -mfpu=*
+    - -nostdlib
+    - -fno-rtti
+    - -fno-exceptions
+    - -ffunction-sections
+    - -fdata-sections
+    - -Os
+    - --target=*
+  Add:
+    - -std=gnu++17
+    - -Isrc
+    - -Iinclude
+    - -Wno-unknown-warning-option
+    - -Wno-unused-command-line-argument
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/arm-none-eabi/include/c++/7.2.1
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/arm-none-eabi/include/c++/7.2.1/arm-none-eabi
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/arm-none-eabi/include/c++/7.2.1/backward
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/lib/gcc/arm-none-eabi/7.2.1/include
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/lib/gcc/arm-none-eabi/7.2.1/include-fixed
+    - -isystem
+    - C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/arm-none-eabi/include

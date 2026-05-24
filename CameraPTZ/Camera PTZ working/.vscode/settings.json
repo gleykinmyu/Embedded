@@ -1,0 +1,9 @@
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.path": "c:\\Users\\User\\AppData\\Roaming\\Cursor\\User\\globalStorage\\llvm-vs-code-extensions.vscode-clangd\\install\\22.1.0\\clangd_22.1.0\\bin\\clangd.exe",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}",
+        "--query-driver=C:/Users/User/.platformio/packages/toolchain-gccarmnoneeabi@1.70201.0/bin/arm-none-eabi-*",
+        "--header-insertion=never"
+    ]
+}
