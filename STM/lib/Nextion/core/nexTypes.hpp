@@ -260,8 +260,28 @@ struct ScreenLayout {
         constexpr Literal(const Literal&) noexcept = default;
         Literal(Literal&&) = delete;
         Literal& operator=(const Literal&) = delete;
-        Literal& operator=(Literal&&) = delete;
+        Literal& operator=(Literal&&) = delete; 
     };
+
+/**
+ * Специальные пары `(page_id, comp_id)` в `Transaction` — вне таблицы страниц/компонентов.
+ * SysVar — системные переменные NIS.
+ * CompIdMap poll (`0xFE/0xFE`) — маршрут процедуры Discover (`AppProcedure::CompIdMapDiscover`), не транспортный слой.
+ */
+namespace Route {
+    static constexpr uint8_t kSysVarPageId = 0xFFu;
+    static constexpr uint8_t kSysVarCompId = 0xFFu;
+    static constexpr uint8_t kCompIdMapPollPageId = 0xFEu;
+    static constexpr uint8_t kCompIdMapPollCompId = 0xFEu;
+
+    [[nodiscard]] constexpr bool isSysVar(uint8_t page_id, uint8_t comp_id) noexcept {
+        return page_id == kSysVarPageId && comp_id == kSysVarCompId;
+    }
+
+    [[nodiscard]] constexpr bool isCompIdMapPoll(uint8_t page_id, uint8_t comp_id) noexcept {
+        return page_id == kCompIdMapPollPageId && comp_id == kCompIdMapPollCompId;
+    }
+} // namespace Route
 
 /** NIS §6: допустимые значения `baud` / `bauds` (бит/с). */
 enum Baudrate : uint32_t {

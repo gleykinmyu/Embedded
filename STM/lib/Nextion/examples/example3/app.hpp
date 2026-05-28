@@ -36,8 +36,8 @@ public:
     void onTouch(const msg::evTouch& e) override
     {
         ++hits;
-        std::printf("[10btn-id] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id),
+        NEX_DBG("[10btn-id] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
+            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id),
             touch_state_cstr(e.state), static_cast<unsigned long>(hits),
             static_cast<unsigned>(id()));
         Button<>::onTouch(e);
@@ -56,12 +56,12 @@ public:
     static constexpr uint16_t kScreenHeight = 1024;
     static constexpr uint8_t kPageId = 0u;
     static constexpr unsigned kButtonCount = 10u;
-    static constexpr uint16_t kCidRecordCount = 1u;
+    static constexpr uint16_t kIdMapRecordCount = 1u;
 
-    CidTableStorage<kCidRecordCount> cid_registration;
+    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
 
     explicit TenButtonsCompiledApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, cid_registration.table)
+        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
         , buttons_page(*this)
     {}
 
@@ -98,8 +98,8 @@ public:
 
     void onTouch(const msg::evTouch& e) override
     {
-        std::printf("[10btn-id] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
-            static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state));
+        NEX_DBG("[10btn-id] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
+            static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state));
     }
 };
 

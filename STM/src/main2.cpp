@@ -1,5 +1,5 @@
 /**
- * Пример 2: 2 страницы x 10 кнопок — CID Discover, затем touch.
+ * Пример 2: 2 страницы x 10 кнопок — CompIdMap Discover, затем touch.
  * Приложение: lib/Nextion/examples/example2/app.hpp
  *
  * Сборка: pio run -e example2  (по умолчанию)
@@ -21,7 +21,7 @@ int main(void)
     board.serial1.open(250000);
     board.serial2.open(250000);
 
-    printf("Nextion example2: 2 pages x 10 buttons + CID discover\n");
+    NEX_DBG("Nextion example2: 2 pages x 10 buttons + IdMap discover\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
@@ -36,19 +36,19 @@ int main(void)
     }
 
     const uint32_t boot = board.GetTick();
-    app.runCidDiscover(boot);
+    app.runIdMapDiscover(boot);
 
-    while (app.tickCidDiscover(board.GetTick())) {
+    while (app.tickIdMapDiscover(board.GetTick())) {
         if ((board.GetTick() - boot) > 120000u) {
-            printf("[ex2] Discover timeout\n");
+            NEX_DBG("[ex2] Discover timeout\n");
             break;
         }
     }
 
-    if (!app.cid_poll_ok) {
-        printf("[ex2] Running without successful CID poll (touch may not route)\n");
+    if (!app.id_map_poll_ok) {
+        NEX_DBG("[ex2] Running without successful IdMap poll (touch may not route)\n");
     } else {
-        printf("[ex2] Ready for touch (switch pages on panel to test page1)\n");
+        NEX_DBG("[ex2] Ready for touch (switch pages on panel to test page1)\n");
     }
 
     while (1) {

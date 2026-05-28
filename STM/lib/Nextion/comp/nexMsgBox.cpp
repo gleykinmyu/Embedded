@@ -102,9 +102,9 @@ MsgBox::Box::Box() noexcept
 
 MsgBox::MsgBox(Application& app) noexcept : _app(app) {}
 
-void MsgBox::setRoute(const uint8_t page_id, const uint8_t component_id) noexcept {
+void MsgBox::setRoute(const uint8_t page_id, const uint8_t comp_id) noexcept {
     _ev.page_id = page_id;
-    _ev.comp_id = component_id;
+    _ev.comp_id = comp_id;
     _routePinned = true;
 }
 
@@ -452,7 +452,7 @@ void MsgBox::onTouchXY(const msg::evTouchXY& e) noexcept {
         return;
 
     // Debug: print touch position and state
-    //std::printf("[MB] %u,%u %s\n", static_cast<unsigned>(e.pos.x), static_cast<unsigned>(e.pos.y), touchStateTag(e.state));
+    // NEX_DBG("[MB] %u,%u %s\n", static_cast<unsigned>(e.pos.x), static_cast<unsigned>(e.pos.y), touchStateTag(e.state));
 
     if (e.state == TouchState::Press) {
         if (_pressing)

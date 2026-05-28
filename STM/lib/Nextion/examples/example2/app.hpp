@@ -5,7 +5,7 @@
  *
  * HMI: page id 0 и page id 1; на обеих страницах кнопки `b0` … `b9`.
  * Touch Press/Release: **Send Component ID** (кадры 0x65 на MCU).
- * Старт: CID Discover по обеим страницам, затем touch.
+ * Старт: CompIdMap Discover по обеим страницам, затем touch.
  *
  * Сборка: pio run -e example2
  */
@@ -35,8 +35,8 @@ public:
     void onTouch(const msg::evTouch& e) override
     {
         ++hits;
-        std::printf("[ex2] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id),
+        NEX_DBG("[ex2] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
+            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id),
             touch_state_cstr(e.state), static_cast<unsigned long>(hits),
             static_cast<unsigned>(id()));
         Button<>::onTouch(e);
@@ -57,12 +57,12 @@ public:
     static constexpr uint8_t kPage1Id = 1u;
     static constexpr unsigned kPageCount = 2u;
     static constexpr unsigned kButtonsPerPage = 10u;
-    static constexpr uint16_t kCidRecordCount = 20u;
+    static constexpr uint16_t kIdMapRecordCount = 20u;
 
-    CidTableStorage<kCidRecordCount> cid_registration;
+    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
 
     explicit TenButtonsApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, cid_registration.table)
+        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
         , page0(*this)
         , page1(*this)
     {}
@@ -94,8 +94,8 @@ public:
             , btn8(a.button_hits[0][8], *this, "p0/b8", "b8")
             , btn9(a.button_hits[0][9], *this, "p0/b9", "b9")
         {}
-        void onLoad() override { std::printf("[ex2] page0 onLoad\n"); }
-        void onExit() override { std::printf("[ex2] page0 onExit\n"); }
+        void onLoad() override { NEX_DBG("[ex2] page0 onLoad\n"); }
+        void onExit() override { NEX_DBG("[ex2] page0 onExit\n"); }
     };
 
     struct Page1 : PageImpl<10> {
@@ -123,69 +123,71 @@ public:
             , btn8(a.button_hits[1][8], *this, "p1/b8", "b8")
             , btn9(a.button_hits[1][9], *this, "p1/b9", "b9")
         {}
-        void onLoad() override { std::printf("[ex2] page1 onLoad\n"); }
-        void onExit() override { std::printf("[ex2] page1 onExit\n"); }
+        void onLoad() override { NEX_DBG("[ex2] page1 onLoad\n"); }
+        void onExit() override { NEX_DBG("[ex2] page1 onExit\n"); }
     };
 
     Page0 page0;
     Page1 page1;
 
-    bool cid_poll_done = false;
-    bool cid_poll_ok = false;
+    bool id_map_poll_done = false;
+    bool id_map_poll_ok = false;
 
-    void runCidDiscover(uint32_t now_ms) noexcept
+    void runIdMapDiscover(uint32_t now_ms) noexcept
     {
-        setMode(CidMode::Discover);
-        cid_poll_done = false;
-        cid_poll_ok = false;
-        printf("[ex2] CID Discover started (%u pages x %u buttons)\n", static_cast<unsigned>(kPageCount),
+        idMap.setMode(CompIdMapMode::Discover);
+        id_map_poll_done = false;
+        id_map_poll_ok = false;
+        NEX_DBG("[ex2] IdMap Discover started (%u pages x %u buttons)\n", static_cast<unsigned>(kPageCount),
             static_cast<unsigned>(kButtonsPerPage));
         (void)now_ms;
     }
 
-    bool tickCidDiscover(uint32_t now_ms) noexcept
+    bool tickIdMapDiscover(uint32_t now_ms) noexcept
     {
-        if (cid_poll_done)
+        if (id_map_poll_done)
             return false;
 
         update(now_ms);
 
-        return !cid_poll_done;
+        return !id_map_poll_done;
     }
 
-    void onCidPollComplete(bool success) noexcept override
+    void onCompIdMapComplete(bool success) noexcept override
     {
-        cid_poll_done = true;
-        cid_poll_ok = success;
+        id_map_poll_done = true;
+        id_map_poll_ok = success;
         if (!success) {
-            printf("[ex2] CID poll FAILED\n");
+            NEX_DBG("[ex2] IdMap poll FAILED\n");
             return;
         }
 
-        const CidTable& table = cid_registration.table;
-        printf("[ex2] CID poll OK, records=%u (expect %u)\n", static_cast<unsigned>(table.count),
-            static_cast<unsigned>(kCidRecordCount));
+        const CompIdMapTable& table = id_map_storage.table;
+        NEX_DBG("[ex2] IdMap poll OK, records=%u (expect %u)\n", static_cast<unsigned>(table.count),
+            static_cast<unsigned>(kIdMapRecordCount));
+#if defined(NEX_DEBUG)
         for (uint16_t i = 0u; i < table.count; ++i) {
-            const CidRecord& r = table.records[i];
+            const CompIdMapRecord& r = table.records[i];
             char name[32]{};
             const uint8_t n = (r.name_len < 31u) ? r.name_len : 31u;
             for (uint8_t j = 0u; j < n; ++j)
                 name[j] = r.name[j];
             name[n] = '\0';
-            printf("  page=%u name=%s panel_id=%u\n", static_cast<unsigned>(r.page_id), name,
+            NEX_DBG("  page=%u name=%s panel_id=%u\n", static_cast<unsigned>(r.page_id), name,
                 static_cast<unsigned>(r.panel_id));
         }
+#endif
     }
 
     void onPageChange(uint8_t page_id) noexcept override
     {
-        std::printf("[ex2] onPageChange -> page=%u\n", static_cast<unsigned>(page_id));
+        NEX_DBG("[ex2] onPageChange -> page=%u\n", static_cast<unsigned>(page_id));
     }
 
     void onTouch(const msg::evTouch& e) override
     {
-        std::printf("[ex2] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
-            static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state));
+        NEX_DBG("[ex2] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
+            static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state));
     }
 };
 

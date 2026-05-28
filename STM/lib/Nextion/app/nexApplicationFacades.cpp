@@ -1,5 +1,6 @@
 #include "nexApplicationFacades.hpp"
 #include "nexApplication.hpp"
+#include "nexSysVars.hpp"
 
 namespace nex {
 
@@ -28,12 +29,6 @@ constexpr Literal kSysVolume{"volume"};
 constexpr Literal kSysAudio0{"audio0"};
 constexpr Literal kSysAudio1{"audio1"};
 constexpr Literal kSysSendxy{"sendxy"};
-
-void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
-    const AttrRef target{kEmptyCompLexeme, sysName};
-    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Application::kSysVarRoutePageId,
-        Application::kSysVarRouteCompId, 0u});
-}
 
 const Literal& audioChannelSysName(uint8_t channel) noexcept {
     return (channel == 0u) ? kSysAudio0 : kSysAudio1;

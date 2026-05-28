@@ -155,7 +155,7 @@ inline const char* commandStatusCstr(Command::Status s) noexcept {
     void destroyIn(void* storage) const noexcept override { static_cast<ClassName*>(storage)->~ClassName(); }
 
 namespace misc {
-/** Отладка: печать полезной нагрузки `serialize` (терминатор `0xFF×3` дописывает `TxFramer`). */
+/** Отладка TX: печать полезной нагрузки `serialize` (`-DNEX_TRACE_TX` или `-DNEX_DEBUG`). */
 void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept;
 }
 

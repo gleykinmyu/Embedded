@@ -35,15 +35,15 @@ public:
     void onTouch(const msg::evTouch& e) override
     {
         ++hits;
-        std::printf("[2page] %s onTouch page=%u comp=%u state=%s hits=%lu\n", tag,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), touch_state_cstr(e.state),
+        NEX_DBG("[2page] %s onTouch page=%u comp=%u state=%s hits=%lu\n", tag,
+            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id), touch_state_cstr(e.state),
             static_cast<unsigned long>(hits));
         Base::onTouch(e);
     }
 
     void onMsgBox(const msg::evMsgBox& e) override
     {
-        std::printf("[2page] %s onMsgBox action=%s tag=%u\n", tag,
+        NEX_DBG("[2page] %s onMsgBox action=%s tag=%u\n", tag,
             MsgBox::actionCstr(static_cast<MsgBox::Action>(e.action)), static_cast<unsigned>(e.tag));
         Base::onMsgBox(e);
     }
@@ -59,12 +59,12 @@ class TwoPageTouchDemoApp : public Application {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
-    static constexpr uint16_t kCidRecordCount = 8u;
+    static constexpr uint16_t kIdMapRecordCount = 8u;
 
-    CidTableStorage<kCidRecordCount> cid_registration;
+    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
 
     explicit TwoPageTouchDemoApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, cid_registration.table)
+        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
     {}
 
     static constexpr uint8_t kPage0Id = 0u;
@@ -86,7 +86,7 @@ public:
     uint32_t page1_exits{};
 
     uint8_t last_touch_page = 0xFF;
-    uint8_t last_touch_component = 0xFF;
+    uint8_t last_touch_comp_id = 0xFF;
     TouchState last_touch_state = TouchState::Release;
     uint8_t last_page_change_id = 0xFF;
 
@@ -103,13 +103,13 @@ public:
         {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page0_loads;
-            std::printf("[2page] page0 onLoad loads=%lu\n", static_cast<unsigned long>(o.page0_loads));
+            NEX_DBG("[2page] page0 onLoad loads=%lu\n", static_cast<unsigned long>(o.page0_loads));
         }
         void onExit() override
         {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page0_exits;
-            std::printf("[2page] page0 onExit exits=%lu\n", static_cast<unsigned long>(o.page0_exits));
+            NEX_DBG("[2page] page0 onExit exits=%lu\n", static_cast<unsigned long>(o.page0_exits));
         }
     };
 
@@ -126,13 +126,13 @@ public:
         {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page1_loads;
-            std::printf("[2page] page1 onLoad loads=%lu\n", static_cast<unsigned long>(o.page1_loads));
+            NEX_DBG("[2page] page1 onLoad loads=%lu\n", static_cast<unsigned long>(o.page1_loads));
         }
         void onExit() override
         {
             auto& o = static_cast<TwoPageTouchDemoApp&>(app);
             ++o.page1_exits;
-            std::printf("[2page] page1 onExit exits=%lu\n", static_cast<unsigned long>(o.page1_exits));
+            NEX_DBG("[2page] page1 onExit exits=%lu\n", static_cast<unsigned long>(o.page1_exits));
         }
     };
 
@@ -154,21 +154,22 @@ public:
     {
         ++app_touch_events;
         last_touch_page = e.page_id;
-        last_touch_component = e.component_id;
+        last_touch_comp_id = e.comp_id;
         last_touch_state = e.state;
-        std::printf("[2page] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.component_id), detail::touch_state_cstr(e.state),
+        NEX_DBG("[2page] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
+            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state),
             static_cast<unsigned long>(app_touch_events));
         if (e.page_id == kPage0Id && e.state == TouchState::Release) {
-            if (e.component_id == kCompAId) {
+            if (e.comp_id == kCompAId) {
                 msg::Status st{};
                 st.status = msg::Status::Code::Invalid_CompId;
-                std::printf("[2page] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
+                NEX_DBG("[2page] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
                     static_cast<unsigned>(kPage0Id), static_cast<unsigned>(kCompAId));
-                showErrorBox(st, kPage0Id, kCompAId);
+                onError(st, kPage0Id, kCompAId);
+                msgBox.show("NIS error", statusCodeCstr(st.status), MsgBox::Preset::OK);
                 return;
             }
-            if (e.component_id == kCompBId) {
+            if (e.comp_id == kCompBId) {
                 ++msgbox_demo_presses;
                 static constexpr MsgBox::Preset kPresets[] = {MsgBox::Preset::OK, MsgBox::Preset::OKCancel,
                     MsgBox::Preset::YesNo, MsgBox::Preset::YesNoCancel};
@@ -177,7 +178,7 @@ public:
                 char body[56]{};
                 std::snprintf(title, sizeof(title), "Demo #%lu", static_cast<unsigned long>(msgbox_demo_presses));
                 std::snprintf(body, sizeof(body), "%s", MsgBox::presetCstr(preset));
-                std::printf("[2page] msgBox demo press=%lu preset=%s\n",
+                NEX_DBG("[2page] msgBox demo press=%lu preset=%s\n",
                     static_cast<unsigned long>(msgbox_demo_presses), MsgBox::presetCstr(preset));
                 msgBox.setRoute(kPage0Id, kCompBId);
                 msgBox.show(title, body, preset, kCompBId);
@@ -189,7 +190,7 @@ public:
     {
         ++app_page_changes;
         last_page_change_id = page_id;
-        std::printf("[2page] onPageChange -> page=%u page_changes=%lu currentPageId=%u\n",
+        NEX_DBG("[2page] onPageChange -> page=%u page_changes=%lu currentPageId=%u\n",
             static_cast<unsigned>(page_id), static_cast<unsigned long>(app_page_changes),
             static_cast<unsigned>(currentPageId()));
         Application::onPageChange(page_id);
@@ -221,7 +222,7 @@ private:
         cs.text_in_region(Region(Point{8u, 300u}, Rect{400u, 50u}), _draw_demo_text, 1u, Color::std::White,
             HAlign::Center, VAlign::Center, Color::std::Gray, BGStyle::Color);
 
-        std::printf("[2page] draw demo step=%u\n", static_cast<unsigned>(step));
+        NEX_DBG("[2page] draw demo step=%u\n", static_cast<unsigned>(step));
     }
 };
 

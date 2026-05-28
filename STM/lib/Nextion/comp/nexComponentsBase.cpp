@@ -1,22 +1,15 @@
 #include "nexComponentBase.hpp"
 #include "../app/nexApplication.hpp"
+#include "../core/nexTypes.hpp"
 
 namespace nex {
 
-void nexComponentRegisterFailed(Application& app, Page& page, const Component* c, unsigned maxComponents) noexcept {
-    (void)maxComponents;
-    const RegisterError code =
-        (c == nullptr) ? RegisterError::ComponentNullPointer : RegisterError::ComponentIdOutOfRange;
-    const uint8_t comp_id = (c != nullptr) ? c->id() : 0u;
-    app.reportRegisterError(Application::Status::ComponentRegisterFailed, code, page.ID, comp_id);
+void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept {
+    app.reportRegisterError(Application::Status::ComponentRegisterFailed, st, page.ID, c.id());
 }
 
-void nexComponentRegistryFull(Application& app, Page& page, unsigned maxComponents) noexcept {
-    (void)maxComponents;
-    app.reportRegisterError(Application::Status::ComponentRegisterFailed, RegisterError::ComponentRegistryFull, page.ID, 0u);
-}
+// --- Page -----------------------------------------------------------------
 
-// --- PageBase -------------------------------------------------------------
 Page::Page(Application& application, const Literal& pageObjName, uint8_t id) noexcept
     : name(pageObjName), ID(id), app(application) {
     application.registerPage(*this);
@@ -25,102 +18,44 @@ Page::Page(Application& application, const Literal& pageObjName, uint8_t id) noe
 void Page::onTouch(const msg::evTouch& e) {
     if (e.page_id != ID)
         return;
-    if (e.component_id == kPageCompId) {
+    if (e.comp_id == kPageCompId) {
         onTouchPage(e);
         return;
     }
-    if (Component* const c = getComponent(e.component_id)) {
+    if (Component* const c = getComponent(e.comp_id)) {
         c->onTouch(e);
     }
 }
 
-void Page::onError(const msg::Status& status, uint8_t component_id) {
-    if (Component* const c = getComponent(component_id))
+void Page::onError(const msg::Status& status, uint8_t comp_id) {
+    if (Component* const c = getComponent(comp_id))
         c->onError(status);
 }
 
-namespace {
-
-unsigned firstFreeRegistrySlot(ComponentRegistryDesc reg) noexcept {
-    for (unsigned i = kFirstCompId; i < reg.size; ++i) {
-        if (reg.slots[i] == nullptr)
-            return i;
-    }
-    return reg.size;
+uint8_t Page::compCount() const noexcept {
+    return registry().registeredCount();
 }
 
-} // namespace
+void Page::registerComponent(Component& c) noexcept {
+    MISC::ObjRegistry<Component, uint8_t>& reg = registry();
 
-void Page::registerComponent(Component* c) noexcept {
-    const ComponentRegistryDesc reg = getRegistry();
-    if (c == nullptr) {
-        nexComponentRegisterFailed(app, *this, nullptr, reg.size);
-        return;
+    // `id == 0` в конструкторе — автослот; `registerAt(0, …)` дал бы IdOutOfRange (firstId == kFirstCompId).
+    MISC::RegStatus st;
+    if (c.id() == 0u) {
+        uint8_t assignedId = 0u;
+        st = reg.registerAuto(&c, assignedId);
+    } else {
+        st = reg.registerAt(c.id(), &c);
     }
-    uint8_t id = c->id();
-    if (id >= reg.size) {
-        nexComponentRegisterFailed(app, *this, c, reg.size);
-        return;
-    }
-    // В конструкторе `id == 0` — автослот (не panel id; на панели 0 = страница в touch).
-    if (id == 0u) {
-        const unsigned slot = firstFreeRegistrySlot(reg);
-        if (slot >= reg.size) {
-            nexComponentRegistryFull(app, *this, reg.size);
-            return;
-        }
-        id = static_cast<uint8_t>(slot);
-        c->id_ = id;
-    }
-    reg.slots[id] = c;
+
+    if (st != MISC::RegStatus::Ok)
+        nexComponentRegisterFailed(app, *this, c, st);
 }
 
-SetIdResult Page::rebindComponentId(Component* c, uint8_t newId) noexcept {
-    const ComponentRegistryDesc reg = getRegistry();
-    if (c == nullptr) {
-        nexComponentRegisterFailed(app, *this, nullptr, reg.size);
-        return SetIdResult::Failed;
-    }
-    if (&c->page != this)
-        return SetIdResult::Failed;
-    if (newId >= reg.size || newId == kPageCompId) {
-        nexComponentRegisterFailed(app, *this, c, reg.size);
-        return SetIdResult::Failed;
-    }
-    const uint8_t oldId = c->id_;
-    if (oldId == newId)
-        return SetIdResult::Ok;
-
-    Component* const other = reg.slots[newId];
-    if (other == nullptr) {
-        if (oldId < reg.size && reg.slots[oldId] == c)
-            reg.slots[oldId] = nullptr;
-        c->id_ = newId;
-        reg.slots[newId] = c;
-        return SetIdResult::Ok;
-    }
-    if (other == c)
-        return SetIdResult::Ok;
-
-    if (oldId < reg.size && reg.slots[oldId] == c)
-        reg.slots[oldId] = nullptr;
-
-    reg.slots[newId] = c;
-    c->id_ = newId;
-
-    reg.slots[oldId] = other;
-    other->id_ = oldId;
-
-    return SetIdResult::SwappedWithOccupiedRegistrySlot;
-}
-
-Component* Page::getComponent(uint8_t component_id) noexcept {
-    if (component_id == kPageCompId)
+Component* Page::getComponent(uint8_t comp_id) noexcept {
+    if (comp_id == kPageCompId)
         return nullptr;
-    const ComponentRegistryDesc reg = getRegistry();
-    if (component_id >= reg.size)
-        return nullptr;
-    return reg.slots[component_id];
+    return registry().get(comp_id);
 }
 
 // --- Component ------------------------------------------------------------
@@ -130,7 +65,7 @@ Component::Component(Page& owner, const nex::Literal& compName, Component::Type 
       name(compName),
       type(compType),
       id_(id) {
-    owner.registerComponent(this);
+    owner.registerComponent(*this);
 }
 
 void Component::onTouch(const msg::evTouch& e) {
@@ -149,10 +84,6 @@ void Component::onResponse(uint8_t tag, const msg::getString& response) {
 
 void Component::onError(const msg::Status& response) {
     (void)response;
-}
-
-SetIdResult Component::setId(uint8_t newId) noexcept {
-    return page.rebindComponentId(this, newId);
 }
 
 } // namespace nex

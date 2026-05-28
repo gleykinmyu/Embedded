@@ -107,6 +107,9 @@ protected:
         Transaction::State state = Transaction::State::AwaitingStatus) const noexcept;
 };
 
+/** `sysN=…` через маршрут `Route::kSysVar*` (общий helper для facades / canvas / addons). */
+void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept;
+
 /**
  * Числовая системная переменная: зеркало в MCU, `operator=` → `sys0=…`.
  * Ответ `get` в зеркало — вручную: `onSysResponse` → `applyResponse`.

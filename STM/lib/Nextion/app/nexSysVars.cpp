@@ -18,7 +18,12 @@ AttrRef SysVarBase::target() const noexcept {
 }
 
 void SysVarBase::enqueueTransaction(const Command& cmd, Transaction::State state) const noexcept {
-    _app.enqueue(Transaction{cmd, Application::kSysVarRoutePageId, Application::kSysVarRouteCompId, tag, state});
+    _app.enqueue(Transaction{cmd, Route::kSysVarPageId, Route::kSysVarCompId, tag, state});
+}
+
+void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
+    const AttrRef target{kEmptyCompLexeme, sysName};
+    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Route::kSysVarPageId, Route::kSysVarCompId, 0u});
 }
 
 } // namespace nex

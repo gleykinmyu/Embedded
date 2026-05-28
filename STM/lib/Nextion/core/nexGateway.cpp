@@ -144,7 +144,7 @@ void TranslateMessage(const RxFrame& f, Message& out)
     if (h == msg::evTouch::Header) {
         msg::evTouch t{};
         t.page_id = f.length > 0u ? f.payload[0] : 0u;
-        t.component_id = f.length > 1u ? f.payload[1] : 0u;
+        t.comp_id = f.length > 1u ? f.payload[1] : 0u;
         t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
         out = t;
         return;

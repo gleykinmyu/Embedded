@@ -1,37 +1,21 @@
 #pragma once
 #include <cstdint>
+#include "../../Interfaces/obj_registry.hpp"
 #include "../core/nexMessages.hpp"
+#include "../core/nexTypes.hpp"
 
 namespace nex {
 
     class Application;
-    class Cid;
+    class CompIdMap;
     class Component;
-
-    /** Результат `Component::setId`: предупреждение, если целевой слот регистра был занят (swap). */
-    enum class SetIdResult : uint8_t {
-        Ok = 0,
-        /** В `_registry[newId]` уже был другой компонент; выполнен swap `id` и указателей. */
-        SwappedWithOccupiedRegistrySlot = 1,
-        /** Некорректные аргументы или `newId` вне диапазона страницы (`ComponentRegisterFailed` в `onError`). */
-        Failed = 2,
-    };
-
-    /**
-     * Таблица компонентов страницы: `slots[i]` — виджет с panel id `i` или `nullptr`.
-     * `slots[0]` не используется для виджетов (`kPageCompId` — касание по странице).
-     */
-    struct ComponentRegistryDesc {
-        Component** slots;
-        uint8_t size;
-    };
 
     /** Пустое имя страницы в HMI, если достаточно только `PageBase::ID`. */
     inline constexpr Literal kUnnamedPageLexeme{""};
 
     /**
      * Базовая страница без шаблона: `Application` хранит `PageBase*`.
-     * Касание: `component_id == kPageCompId` — `onTouchPage`; иначе `getComponent` → `Component::onTouch`.
+     * Касание: `comp_id == kPageCompId` — `onTouchPage`; иначе `getComponent` → `Component::onTouch`.
      * Конкретная страница с таблицей виджетов — `PageImpl<MaxWidgets>` (число виджетов, panel id 1…N).
      */
     class Page {
@@ -45,37 +29,39 @@ namespace nex {
         Page(Application& application, const Literal& pageObjName, uint8_t id) noexcept;
         virtual ~Page() = default;
 
-        /** Касание по этой странице: фильтр `page_id`, затем `onTouchPage` при `component_id == 0`, иначе виджет. */
+        /** Касание по этой странице: фильтр `page_id`, затем `onTouchPage` при `comp_id == 0`, иначе виджет. */
         virtual void onTouch(const msg::evTouch& e);
 
-        /** Touch с `component_id == kPageCompId` — касание по странице (NIS). */
+        /** Touch с `comp_id == kPageCompId` — касание по странице (NIS). */
         virtual void onTouchPage(const msg::evTouch& e) { (void)e; }
 
         /** Панель перешла на эту страницу: `msg::evPage`, новый `page_id` отличается от предыдущего в `Application`. */
         virtual void onLoad() {}
         /** Панель уходит с этой страницы на другую (`page_id` меняется); до обновления `Application::currentPageId()`. */
         virtual void onExit() {}
-        /** `status == Code::AppError`; далее — `Component::onError` по `component_id`. */
-        virtual void onError(const msg::Status& status, uint8_t component_id);
+        /** `status == Code::AppError`; далее — `Component::onError` по `comp_id`. */
+        virtual void onError(const msg::Status& status, uint8_t comp_id);
 
-        /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`component_id == 0`). */
+        /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`comp_id == 0`). */
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
-        Component* getComponent(uint8_t component_id)  noexcept;
-
-    protected:
-        /** Таблица `slots[id]`; реализует `PageImpl` или другой наследник. */
-        virtual ComponentRegistryDesc getRegistry() noexcept = 0;
-
-        /** Смена `id` в таблице страницы; см. `Component::setId`. */
-        [[nodiscard]] SetIdResult rebindComponentId(Component* c, uint8_t newId) noexcept;
+        Component* getComponent(uint8_t comp_id) noexcept;
+        uint8_t compCount() const noexcept;
 
     private:
-        friend class Application;
-        friend class Cid;
+        friend class MISC::ObjRegistry<Page, uint8_t>;        
+        friend class CompIdMap;
         friend class Component;
 
-        void registerComponent(Component* c) noexcept;
+        virtual MISC::ObjRegistry<Component, uint8_t>& registry() noexcept = 0;
+
+        MISC::ObjRegistry<Component, uint8_t>& registry() const noexcept {
+            return const_cast<Page*>(this)->registry();
+        }
+
+        /** `ID` фиксирован при создании; вызывается только из `ObjRegistry`. */
+        void set_id(uint8_t) noexcept {}
+        void registerComponent(Component& c) noexcept;
     };
 
     /**
@@ -130,12 +116,6 @@ namespace nex {
         uint8_t id() const noexcept { return id_; }
 
         /**
-         * Зафиксировать реальный `id` на панели после опроса HMI: перенос в `_registry` или swap с компонентом
-         * в целевом слоте. Если целевой слот был непустой (swap), возвращается `SwappedWithOccupiedRegistrySlot`.
-         */
-        [[nodiscard]] SetIdResult setId(uint8_t newId) noexcept;
-
-        /**
          * `@p id` — panel id (`≥ kFirstCompId`) или `0` = автослот при регистрации
          * (не panel id; на панели у виджетов id начинается с 1).
          */
@@ -154,41 +134,33 @@ namespace nex {
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
     private:
-        friend class Page;
+        friend class MISC::ObjRegistry<Component, uint8_t>;
+
+        void set_id(uint8_t id) noexcept { id_ = id; }
 
         uint8_t id_;
     };
 
-    /** Сообщает `ComponentRegisterFailed`: `c == nullptr` или `c->id()` вне `[0, maxComponents)`. */
-    void nexComponentRegisterFailed(Application& app, Page& page, const Component* c, unsigned maxComponents) noexcept;
-    /** Сообщает `ComponentRegisterFailed` / `ComponentRegistryFull` при автоназначении id=0 без свободного слота. */
-    void nexComponentRegistryFull(Application& app, Page& page, unsigned maxComponents) noexcept;
+    /** Сообщает `ComponentRegisterFailed` с кодом `MISC::RegStatus`. */
+    void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept;
 
     /**
-     * Страница с массивом `_registry`: логика регистрации и `setId` в базовом `Page`, см. `getRegistry()`.
-     *
-     * `MaxWidgets` — макс. число виджетов и макс. panel id (`kFirstCompId`…`MaxWidgets`); `0` — только страница.
-     * Внутри `_registry[MaxWidgets + 1]`: слот `0` — `kPageCompId`, слоты `1…MaxWidgets` — виджеты.
-     * Пример: 10 кнопок id 1…10 → `PageImpl<10>`; пустая страница → `PageImpl<0>`.
+     * Страница с `ObjStorage<Component, MaxWidgets, uint8_t, kFirstCompId>` — только виджеты (panel id 1…N).
+     * `kPageCompId` в реестре не хранится; `getComponent(0)` всегда `nullptr`.
      */
     template <uint8_t MaxWidgets>
     class PageImpl : public Page {
-        static_assert(MaxWidgets < 255u, "PageImpl: MaxWidgets must be < 255 (registry size)");
-
-        static constexpr uint8_t kRegistrySize = static_cast<uint8_t>(MaxWidgets + 1u);
+        static_assert(MaxWidgets < 255u, "PageImpl: MaxWidgets must be < 255");
+        static constexpr size_t kRegistryCapacity = (MaxWidgets > 0u) ? static_cast<size_t>(MaxWidgets) : 1u;
 
     public:
         using Page::Page;
 
     protected:
-        [[nodiscard]] ComponentRegistryDesc getRegistry() noexcept override {
-            // GCC 7 (arm-none-eabi) не принимает `return { ... }` к агрегату здесь — нужна явная форма.
-            return ComponentRegistryDesc{_registry, kRegistrySize};
-        }
+        MISC::ObjRegistry<Component, uint8_t>& registry() noexcept override { return _components; }
 
     private:
-        // TODO: уплотнение по слотам — хранить виджеты с индекса 0, panel id с 1 (getComponent: id - 1).
-        Component* _registry[kRegistrySize]{};
+        MISC::ObjStorage<Component, kRegistryCapacity, uint8_t, kFirstCompId> _components;
     };
 
     /*

@@ -1,7 +1,7 @@
 // nexApplicationAddons.cpp — вспомогательные команды и UI ошибок Application.
 
 #include "nexApplication.hpp"
-
+#include "nexSysVars.hpp"
 
 namespace nex {
 
@@ -12,12 +12,6 @@ constexpr Literal kSysBauds{"bauds"};
 constexpr Literal kSysAddr{"addr"};
 constexpr Literal kSysDim{"dim"};
 constexpr Literal kSysDims{"dims"};
-
-void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
-    const AttrRef target{kEmptyCompLexeme, sysName};
-    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Application::kSysVarRoutePageId,
-        Application::kSysVarRouteCompId, 0u});
-}
 
 } // namespace
 

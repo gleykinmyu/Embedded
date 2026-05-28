@@ -1,6 +1,6 @@
 #include "nexCommands.hpp"
+#include "nexDebug.hpp"
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 
 /** Литерал имени команды NIS в кадр; длина — `sizeof(lit) - 1` (без strlen). `lit` — только строковый литерал `"…"`. */
@@ -167,8 +167,8 @@ namespace misc {
 
 void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
     if (label != nullptr)
-        std::printf("%s", label);
-    std::printf("\"%.*s\" + 0xFF 0xFF 0xFF\n", static_cast<int>(tx.length),
+        NEX_DBG_TRACE_TX("%s", label);
+    NEX_DBG_TRACE_TX("\"%.*s\" + 0xFF 0xFF 0xFF\n", static_cast<int>(tx.length),
         reinterpret_cast<const char*>(tx.payload));
 }
 

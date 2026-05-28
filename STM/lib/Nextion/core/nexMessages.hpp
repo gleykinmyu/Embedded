@@ -37,7 +37,7 @@ namespace nex {
             };
             Code status = Code::Invalid_Instruction;
 
-            /** С шины — не заполняются. Для `status == AppError`: `tag_1` — `Application::Status`, `tag_2` — `ErrorDetail` (см. `nexApplication.hpp`). */
+            /** С шины — не заполняются. Для `AppError`: `tag_1` — `AppOperation`, `tag_2` — `ErrorDetail` (`app/error/nexErrors.hpp`). */
             uint8_t tag_1 = 0u;
             uint16_t tag_2 = 0u;
 
@@ -63,7 +63,7 @@ namespace nex {
         struct evTouch {
             constexpr static uint8_t Header = 0x65;
             uint8_t page_id;
-            uint8_t component_id;
+            uint8_t comp_id;
             TouchState state;
         };
 
@@ -126,7 +126,7 @@ namespace nex {
                 Cancel = 0x05,
             };
 
-            /** Зарезервирован для `MsgBox::showError` / `showErrorBox` (прочие `tag` — код вызывающего). */
+            /** Зарезервирован для `MsgBox::showError` (прочие `tag` — код вызывающего). */
             static constexpr uint8_t kTagError = 0xFFu;
 
             uint8_t page_id = 0u;

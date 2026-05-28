@@ -1,5 +1,6 @@
 #include "nexCanvas.hpp"
 #include "../app/nexApplication.hpp"
+#include "../app/nexSysVars.hpp"
 #include "../core/nexProtocol.hpp"
 
 namespace nex {
@@ -10,12 +11,6 @@ constexpr Literal kSysSpax{"spax"};
 constexpr Literal kSysSpay{"spay"};
 constexpr Literal kSysThc{"thc"};
 constexpr Literal kSysThdra{"thdra"};
-
-void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
-    const AttrRef target{kEmptyCompLexeme, sysName};
-    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Application::kSysVarRoutePageId,
-        Application::kSysVarRouteCompId, 0u});
-}
 
 } // namespace
 

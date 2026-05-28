@@ -21,7 +21,7 @@ int main(void)
     board.serial1.open(250000);
     board.serial2.open(250000);
 
-    printf("Nextion example3: ten buttons, compiled ids 1..10\n");
+    NEX_DBG("Nextion example3: ten buttons, compiled ids 1..10\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
@@ -35,7 +35,7 @@ int main(void)
             app.update(board.GetTick());
     }
 
-    printf("[10btn-id] Ready for touch\n");
+    NEX_DBG("[10btn-id] Ready for touch\n");
 
     while (1) {
         const uint32_t now = board.GetTick();

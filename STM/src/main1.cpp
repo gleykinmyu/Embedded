@@ -25,7 +25,7 @@ int main(void)
     board.serial1.open(115200);
     board.serial2.open(115200);
 
-    printf("Nextion example1: two-page demo\n");
+    NEX_DBG("Nextion example1: two-page demo\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;

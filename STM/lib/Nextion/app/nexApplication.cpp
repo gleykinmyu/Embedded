@@ -11,7 +11,6 @@
 // и sessionEnd(false). Status по `AwaitingStatus` ждём только при `bkcmd == Always`; иначе — успех без ожидания.
 
 #include "nexApplication.hpp"
-#include "../core/nexErrors.hpp"
 
 #include <variant>
 
@@ -20,7 +19,7 @@ namespace nex {
 //=============================================================================
 
 Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height,
-    CidTable& cid_table) noexcept
+    CompIdMapTable& id_map_table) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -28,6 +27,7 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
     , touch(*this)
     , sleep(*this)
     , msgBox(*this)
+    , idMap(*this, id_map_table)
     , bkcmd(*this, "bkcmd", SysVarTag::Bkcmd, BkCmd::OnFailure)
     , sys{SysVar<uint32_t>(*this, "sys0", SysVarTag::Sys0), SysVar<uint32_t>(*this, "sys1", SysVarTag::Sys1),
         SysVar<uint32_t>(*this, "sys2", SysVarTag::Sys2)}
@@ -38,54 +38,34 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
     , _screen(screen_width, screen_height)
     , _stream(stream)
     , _gateway(stream)
-    , _cid(*this, cid_table)
+    , _errors(*this, _stream, _gateway, _session)
 {}
 
-void Application::setMode(CidMode mode) noexcept {
-    _cid.setMode(mode);
+QueuePolicy Application::queuePolicy(const AppFailure& failure) const noexcept {
+    (void)failure;
+    return QueuePolicy::None;
 }
 
-CidMode Application::getMode() const noexcept {
-    return _cid.mode();
+uint8_t Application::resetActiveRetryLimit() const noexcept {
+    return kDefaultResetActiveRetryLimit;
 }
 
-Page* Application::page(uint8_t id) noexcept {
-    return (id < kMaxPages) ? _pages[id] : nullptr;
-}
-
-const Page* Application::page(uint8_t id) const noexcept {
-    return (id < kMaxPages) ? _pages[id] : nullptr;
+Page* Application::getPage(uint8_t id) noexcept {
+    return _pageStorage.get(id);
 }
 
 Component* Application::getComponent(uint8_t page_id, uint8_t comp_id) noexcept {
-    Page* const p = page(page_id);
+    Page* const p = getPage(page_id);
     if (p == nullptr)
         return nullptr;
     return p->getComponent(comp_id);
 }
 
 void Application::registerPage(Page& page) noexcept {
-    const unsigned id = page.ID;
-    if (id >= kMaxPages) {
-        reportRegisterError(Status::PageRegisterFailed, RegisterError::PageIdOutOfRange, static_cast<uint8_t>(id),
-            0u);
-        return;
-    }
-    Page* const slot = _pages[id];
-    if (slot == &page)
-        return;
-    if (slot != nullptr) {
-        reportRegisterError(Status::PageRegisterFailed, RegisterError::PageSlotOccupied, static_cast<uint8_t>(id),
-            0u);
-        return;
-    }
-    if (id != static_cast<unsigned>(_pageCount)) {
-        reportRegisterError(Status::PageRegisterFailed, RegisterError::PageIdNotSequential,
-            static_cast<uint8_t>(id), 0u);
-        return;
-    }
-    _pages[id] = &page;
-    ++_pageCount;
+    const uint8_t id = page.ID;
+    const MISC::RegStatus st = _pageStorage.registerSeq(&page, id);
+    if (st != MISC::RegStatus::Ok)
+        reportRegisterError(Status::PageRegisterFailed, st, id, 0u);
 }
 
 //=============================================================================
@@ -96,16 +76,31 @@ void Application::registerPage(Page& page) noexcept {
 //TODO(QueueFull): при переполнении — отложить tx (буфер ожидания), по session timeout / completeTransaction
 //повторить tryEnqueue, чтобы команда не терялась после EnqueueRejected.
 void Application::enqueue(Transaction tx) noexcept {
+    if (_errors.isLinkDown())
+        return;
     if (_session.tryEnqueue(tx))
         return;
-    handleEnqueueFailure(tx);
+    _errors.handle(captureEnqueueFailure(tx, _session));
 }
 
 bool Application::update(uint32_t now_ms) noexcept {
-    // cID Discover: шаг машины опроса (очередь/RX — ниже, см. nexCompId.cpp).
-    _cid.updateDiscovery(now_ms);
+    idMap.updateDiscovery(now_ms);
+    _errors.clearLinkDownIfStreamOk();
 
     checkSessionTimeout(now_ms);
+
+    if (_errors.isLinkDown()) {
+        bool any = false;
+        Message m{};
+        while (_gateway.receive(m)) {
+            any = true;
+            if (dispatchResponse(m, _gateway.isTxIdle()))
+                continue;
+            dispatchEvent(m);
+        }
+        return any;
+    }
+
     bool any = false;
 
     if (!sessionTransmit())
@@ -127,7 +122,7 @@ bool Application::update(uint32_t now_ms) noexcept {
         dispatchEvent(m);
     }
     if (_stream.getStatus() != BIF::IByteStream::Status::OK || _gateway.getStatus() != Gateway::Status::OK) {
-        handleGatewayStreamFailure(Status::GatewayReceiveFailed);
+        _errors.handle(captureGatewayStreamFailure(AppOperation::GatewayReceiveFailed, _session, _stream, _gateway));
         any = true;
     }
 
@@ -145,20 +140,21 @@ void Application::sessionBegin() noexcept {
         return;
 
     if (!_session.activateHead()) {
-        handleSessionActivateFailure();
+        _errors.handle(captureSessionActivateFailure(_session));
         return;
     }
 
     if (!_gateway.pushCommand(_session.active().command())) {
-        handleGatewayPushFailure();
+        _errors.handle(captureGatewayPushFailure(_session, _gateway));
         return;
     }
     _session.clearTimeout();
 }
 
 void Application::sessionEnd(bool Success) noexcept {
-    _cid.onSessionEnd(Success); // ошибка get .id в фазе Discover
+    idMap.onSessionEnd(Success);
     _session.completeTransaction();
+    _errors.onSessionEnded();
 }
 
 //Шаг TX: при необходимости `sessionBegin`, затем `Gateway::transmit`.
@@ -170,7 +166,7 @@ bool Application::sessionTransmit() noexcept {
     if (_gateway.transmit())
         return true;
 
-    handleGatewayStreamFailure(Status::GatewayTransmitFailed);
+    _errors.handle(captureGatewayStreamFailure(AppOperation::GatewayTransmitFailed, _session, _stream, _gateway));
     return false;
 }
 
@@ -178,12 +174,12 @@ void Application::checkSessionTimeout(uint32_t now_ms) noexcept {
     if (!_session.isResponseTimedOut(now_ms))
         return;
     const Transaction& active = _session.active();
-    if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
-        std::printf("[CID] SessionTimeout slot_tag=%u state=%u\n", static_cast<unsigned>(active.tag),
-            static_cast<unsigned>(active.state));
-        _cid.onSessionEnd(false);
+    if (Route::isCompIdMapPoll(active.page_id, active.comp_id)) {
+        idMap.onSessionEnd(false);
+        sessionEnd(false);
+        return;
     }
-    dispatchError(makeAppError(Status::SessionTimeout), active.page_id, active.comp_id);
+    _errors.handle(makeSessionTimeout(active));
     sessionEnd(false);
 }
 
@@ -200,22 +196,17 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     switch (active.state) {
     case Transaction::State::AwaitingNumericGet: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
-            if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
-                std::printf("[CID] dispatchResponse NIS status=%s tag1=%u tag2=%u slot_tag=%u\n",
-                    statusCodeCstr(st->status), static_cast<unsigned>(st->tag_1),
-                    static_cast<unsigned>(st->tag_2), static_cast<unsigned>(active.tag));
-            }
             dispatchError(*st, active.page_id, active.comp_id);
             sessionEnd(false);
             return true;
         }
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-            if (active.page_id == Cid::kRoutePageId && active.comp_id == Cid::kRouteCompId) {
-                _cid.onPollResponse(active.tag, *nr);
+            if (Route::isCompIdMapPoll(active.page_id, active.comp_id)) {
+                idMap.onPollResponse(active.tag, *nr);
                 sessionEnd(true);
                 return true;
             }
-            if (active.page_id == kSysVarRoutePageId && active.comp_id == kSysVarRouteCompId) {
+            if (Route::isSysVar(active.page_id, active.comp_id)) {
                 dispatchSysVarResponse(active.tag, *nr);
                 onSysResponse(active.tag, *nr);
             } else if (Component* const c = getComponent(active.page_id, active.comp_id))
@@ -272,7 +263,7 @@ void Application::dispatchEvent(const Message& m) noexcept
         return;
     }
     // Discover: touch/MsgBox/system не мешают опросу; evPage и Status — выше.
-    if (_cid.isDiscoveryBusy()) return;
+    if (idMap.isDiscoveryBusy()) return;
 
     //=======================================================
     if (std::get_if<msg::evTouch>(&m) || std::get_if<msg::evTouchXY>(&m)) {
@@ -300,7 +291,7 @@ void Application::dispatchMsgBox(const msg::evMsgBox& e) noexcept {
             return;
         }
     }
-    if (Page* const p = page(e.page_id)) {
+    if (Page* const p = getPage(e.page_id)) {
         p->onMsgBox(e);
         if (e.comp_id == 0u)
             return;
@@ -313,7 +304,7 @@ void Application::dispatchTouch(const Message& m) noexcept {
     {
         if (!msgBox.isActive()) {
             onTouch(*e);
-            if (Page* const p = page(e->page_id))
+            if (Page* const p = getPage(e->page_id))
                 p->onTouch(*e);
             return;
         }
@@ -330,27 +321,31 @@ void Application::dispatchPageChange(const msg::evPage& e) noexcept {
     const uint8_t prev = _currentPageId;
     const uint8_t next = e.page_id;
     if (prev != next) {
-        if (Page* const old_page = page(prev))
+        if (Page* const old_page = getPage(prev))
             old_page->onExit();
     }
     _currentPageId = next;
     onPageChange(next);
-    _cid.onPageChange(next);
+    idMap.onPageChange(next);
     if (prev != next) {
-        if (Page* const new_page = page(next))
+        if (Page* const new_page = getPage(next))
             new_page->onLoad();
     }
 }
 
-void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
-    _lastError = status;
-    _lastErrorPage = page_id;
-    _lastErrorComp = comp_id;
-    onError(status, page_id, comp_id);
-    if (page_id == 0u && comp_id == 0u)
-        return;
-    if (Page* const p = page(page_id))
-        p->onError(status, comp_id);
+NexErrors Application::errors() const noexcept {
+    NexErrors e{};
+    e.stream = _stream.getStatus();
+    e.gateway = _gateway.getStatus();
+    e.session = _session.getStatus();
+    return e;
+}
+
+void Application::clearErrors() noexcept {
+    _errors.clearErrors();
+    _stream.clearErrors();
+    _gateway.clearError();
+    _session.clearError();
 }
 
 void Application::dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept {
