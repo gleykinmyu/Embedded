@@ -19,6 +19,23 @@ inline constexpr bool is_nex_numeric_storage_v = std::disjunction_v<
     std::is_convertible<T, uint16_t>,
     std::is_convertible<T, int32_t>>;
 
+template<typename T>
+[[nodiscard]] constexpr T from_wire(int32_t wire) noexcept {
+    return static_cast<T>(wire);
+}
+
+/** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
+inline void copy_string_mirror(char* buf, uint8_t buf_cap, const msg::getString& response) noexcept {
+    if (buf_cap == 0u)
+        return;
+    const std::size_t cap = static_cast<std::size_t>(buf_cap) - 1u;
+    const std::size_t n = static_cast<std::size_t>(response.length);
+    const std::size_t copy = (n < cap) ? n : cap;
+    if (copy > 0u)
+        std::memcpy(buf, response.chars, copy);
+    buf[copy] = '\0';
+}
+
 } // namespace attr_detail
 
 /**
@@ -63,7 +80,7 @@ protected:
  * `bool` или целых 8 / 16 бит (со знаком и без) и знакового 32 бита (`int32_t`) — как при ограничении полей NIS (`val`, `tim`, …).
  *
  * Чтение зеркала: неявное приведение к `T` (`T x = attr;`). Запись на панель и в зеркало: `attr = v` → `cmd::assign::Numeric`.
- * Запрос с панели: `get()` → ответ в `Component::onResponse(tag, …)` (зеркало обновляет виджет по `tag`).
+ * Запрос с панели: `get()` → `applyResponse` в `Component::onResponse(tag, …)`.
  */
 template<typename T>
 class AttributeNum : public Attribute {
@@ -82,8 +99,11 @@ public:
         , _val(initial)
     {}
 
-    /** Текущее значение в зеркале MCU (ответ `get` обновляется снаружи по протоколу). */
     [[nodiscard]] constexpr operator T() const noexcept { return _val; }
+
+    void applyResponse(const msg::getNumeric& response) noexcept {
+        _val = attr_detail::from_wire<T>(response.value);
+    }
 
     /** Записать в зеркало и поставить в очередь `cmd::assign::Numeric` на панель. */
     AttributeNum& operator=(const T& v) noexcept {
@@ -110,9 +130,51 @@ private:
 };
 
 /**
+ * Числовой атрибут NIS только для чтения (RO в редакторе): зеркало в MCU, без `cmd::assign::Numeric`.
+ *
+ * Чтение: `T x = attr;`. Запрос с панели: `get()` → `applyResponse` в `Component::onResponse(tag, …)`.
+ */
+template<typename T>
+class AttributeNumReadOnly : public Attribute {
+public:
+    static_assert(
+        attr_detail::is_nex_numeric_storage_v<T>,
+        "nex::AttributeNumReadOnly<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
+
+    constexpr explicit AttributeNumReadOnly(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Attribute(parent, name, tag)
+        , _val{}
+    {}
+
+    constexpr AttributeNumReadOnly(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
+        : Attribute(parent, name, tag)
+        , _val(initial)
+    {}
+
+    [[nodiscard]] constexpr operator T() const noexcept { return _val; }
+
+    void applyResponse(const msg::getNumeric& response) noexcept {
+        _val = attr_detail::from_wire<T>(response.value);
+    }
+
+    void get() noexcept {
+        const AttrRef target{ _parent.name, name };
+        enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
+    }
+
+    AttributeNumReadOnly(const AttributeNumReadOnly&) = delete;
+    AttributeNumReadOnly& operator=(const AttributeNumReadOnly&) = delete;
+    AttributeNumReadOnly(AttributeNumReadOnly&&) = delete;
+    AttributeNumReadOnly& operator=(AttributeNumReadOnly&&) = delete;
+
+private:
+    T _val{};
+};
+
+/**
  * Строковый атрибут NIS, параметр `MaxL` (`uint8_t`):
  * - **`MaxL == 0`** — см. `AttributeString<0>`: без зеркала, без `get`; только `cmd::assign::Text` / `TextSubtract` на шину.
- * - **`MaxL > 0`** — зеркало `buf[MaxL]`, `*attr`, `set` / `append` / `subtract`, `get()` → `Component::onResponse(tag, …)`.
+ * - **`MaxL > 0`** — зеркало `buf[MaxL]`, `*attr`, `set` / `subtract`, `get()` → `applyResponse` в `onResponse`.
  */
 template<uint8_t MaxL>
 class AttributeString : public Attribute {
@@ -154,7 +216,10 @@ public:
         pushCmdAssignTextSubtract(n);
     }
 
-    /** Запрос строки с панели: `get <comp>.<attr>`; ответ — `Component::onResponse(tag, …)`. */
+    void applyResponse(const msg::getString& response) noexcept {
+        attr_detail::copy_string_mirror(buf, MaxL, response);
+    }
+
     void get() noexcept {
         const AttrRef target{ _parent.name, name };
         enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
