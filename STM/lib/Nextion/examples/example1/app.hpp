@@ -59,12 +59,8 @@ class TwoPageTouchDemoApp : public Application {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
-    static constexpr uint16_t kIdMapRecordCount = 8u;
-
-    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
-
     explicit TwoPageTouchDemoApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
+        : Application(stream, kScreenWidth, kScreenHeight)
     {}
 
     static constexpr uint8_t kPage0Id = 0u;
@@ -163,10 +159,10 @@ public:
             if (e.comp_id == kCompAId) {
                 msg::Status st{};
                 st.status = msg::Status::Code::Invalid_CompId;
-                NEX_DBG("[2page] msgBox Status sim %s p%u c%u\n", statusCodeCstr(st.status),
+                NEX_DBG("[2page] msgBox Status sim %s p%u c%u\n", cstr(st.status),
                     static_cast<unsigned>(kPage0Id), static_cast<unsigned>(kCompAId));
                 onError(st, kPage0Id, kCompAId);
-                msgBox.show("NIS error", statusCodeCstr(st.status), MsgBox::Preset::OK);
+                msgBox.show("NIS error", cstr(st.status), MsgBox::Preset::OK);
                 return;
             }
             if (e.comp_id == kCompBId) {
@@ -184,9 +180,10 @@ public:
                 msgBox.show(title, body, preset, kCompBId);
             }
         }
+        Application::onTouch(e);
     }
 
-    void onPageChange(uint8_t page_id) override
+    void onPageChange(uint8_t page_id) noexcept override
     {
         ++app_page_changes;
         last_page_change_id = page_id;

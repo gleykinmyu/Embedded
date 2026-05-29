@@ -59,4 +59,16 @@ public:
     virtual void clearErrors() = 0;
 };
 
+inline const char* cstr(IByteStream::Status s) noexcept {
+    switch (s) {
+    case IByteStream::Status::OK: return "OK";
+    case IByteStream::Status::OverFlowRX: return "OverFlowRX";
+    case IByteStream::Status::OverFlowTX: return "OverFlowTX";
+    case IByteStream::Status::BitError: return "BitError";
+    case IByteStream::Status::FrameError: return "FrameError";
+    case IByteStream::Status::Disconnected: return "Disconnected";
+    default: return "?";
+    }
+}
+
 } // namespace BIF

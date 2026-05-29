@@ -7,7 +7,7 @@
 namespace nex {
 
     class Application;
-    class CompIdMap;
+    class SmartApp;
     class Component;
 
     /** Пустое имя страницы в HMI, если достаточно только `PageBase::ID`. */
@@ -50,7 +50,7 @@ namespace nex {
 
     private:
         friend class MISC::ObjRegistry<Page, uint8_t>;        
-        friend class CompIdMap;
+        friend class SmartApp;
         friend class Component;
 
         virtual MISC::ObjRegistry<Component, uint8_t>& registry() noexcept = 0;

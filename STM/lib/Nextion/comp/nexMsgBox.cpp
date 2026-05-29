@@ -20,7 +20,7 @@ constexpr uint16_t kButtonW = 140u;
 constexpr uint16_t kButtonWMulti = 96u;
 constexpr uint16_t kButtonWCancel = 140u;
 constexpr Font kTitleFont{0u, 32u};
-constexpr Font kBtnFont{1u, 24u};
+constexpr Font kBtnFont{0u, 32u};
 constexpr Color kFrameBg{Color(0x4208u)};
 constexpr Color kFrameBorder{Color(0x7BEFu)};
 constexpr Color kBtnBg{Color(0x528Au)};

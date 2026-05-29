@@ -6,6 +6,7 @@
 #include "../core/nexCommands.hpp"
 #include "../core/nexMessages.hpp"
 #include "../core/nexSession.hpp"
+#include "../core/nexTypes.hpp"
 
 namespace nex {
 
@@ -66,14 +67,6 @@ enum class SysVarTag : uint8_t {
     Tch1,
     Tch2,
     Tch3,
-};
-
-/** NIS §6 `bkcmd`: pass/fail после команд по UART (0–3, на панели default 2). */
-enum class BkCmd : uint8_t {
-    Off = 0,
-    OnSuccess = 1,
-    OnFailure = 2,
-    Always = 3,
 };
 
 /**

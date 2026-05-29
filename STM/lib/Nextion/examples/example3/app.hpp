@@ -56,12 +56,8 @@ public:
     static constexpr uint16_t kScreenHeight = 1024;
     static constexpr uint8_t kPageId = 0u;
     static constexpr unsigned kButtonCount = 10u;
-    static constexpr uint16_t kIdMapRecordCount = 1u;
-
-    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
-
     explicit TenButtonsCompiledApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
+        : Application(stream, kScreenWidth, kScreenHeight)
         , buttons_page(*this)
     {}
 

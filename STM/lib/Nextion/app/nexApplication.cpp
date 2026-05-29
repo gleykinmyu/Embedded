@@ -1,25 +1,10 @@
-// nexApplication.cpp — очередь исходящих команд в Session, по одной активной транзакции на UART.
-//
-// Исходящий поток: enqueue только в очередь; передача в sessionTransmit (sessionBegin + transmit).
-// После успешного pushCommand — _session.clearTimeout(), чтобы таймаут ответа не тянулся с прошлой команды.
-//
-// Входящий поток в update(now_ms): сначала checkSessionTimeout, затем TX, при `isTxIdle()` — дедлайн ожидания
-// ответа; для `AwaitingStatus` при `bkcmd != Always` — сразу sessionEnd(true) (status не гарантирован).
-// Цикл receive — dispatchResponse / dispatchEvent. txIdle: пока запрос не ушёл целиком, ответ не привязывают.
-//
-// Таймаут: после полного TX (isTxIdle) для get/status один раз ставится дедлайн; просрочка — SessionTimeout
-// и sessionEnd(false). Status по `AwaitingStatus` ждём только при `bkcmd == Always`; иначе — успех без ожидания.
-
 #include "nexApplication.hpp"
 
 #include <variant>
 
 namespace nex {
 
-//=============================================================================
-
-Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height,
-    CompIdMapTable& id_map_table) noexcept
+Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -27,7 +12,6 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
     , touch(*this)
     , sleep(*this)
     , msgBox(*this)
-    , idMap(*this, id_map_table)
     , bkcmd(*this, "bkcmd", SysVarTag::Bkcmd, BkCmd::OnFailure)
     , sys{SysVar<uint32_t>(*this, "sys0", SysVarTag::Sys0), SysVar<uint32_t>(*this, "sys1", SysVarTag::Sys1),
         SysVar<uint32_t>(*this, "sys2", SysVarTag::Sys2)}
@@ -38,16 +22,19 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
     , _screen(screen_width, screen_height)
     , _stream(stream)
     , _gateway(stream)
-    , _errors(*this, _stream, _gateway, _session)
 {}
 
-QueuePolicy Application::queuePolicy(const AppFailure& failure) const noexcept {
-    (void)failure;
-    return QueuePolicy::None;
+void Application::onTimeout(const Transaction& active) noexcept {
+    dispatchError(appErrorFrom(Session::Status::Timeout), active.page_id, active.comp_id);
 }
 
-uint8_t Application::resetActiveRetryLimit() const noexcept {
-    return kDefaultResetActiveRetryLimit;
+void Application::abortSessionFault() noexcept {
+    if (const Transaction* const tx = _session.faultingTransaction())
+        dispatchError(appErrorFrom(_session.getStatus(), _gateway.getStatus()), tx->page_id, tx->comp_id);
+}
+
+void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept {
+    app.dispatchError(appErrorFrom(st), page.ID, c.id());
 }
 
 Page* Application::getPage(uint8_t id) noexcept {
@@ -62,130 +49,74 @@ Component* Application::getComponent(uint8_t page_id, uint8_t comp_id) noexcept 
 }
 
 void Application::registerPage(Page& page) noexcept {
-    const uint8_t id = page.ID;
-    const MISC::RegStatus st = _pageStorage.registerSeq(&page, id);
-    if (st != MISC::RegStatus::Ok)
-        reportRegisterError(Status::PageRegisterFailed, st, id, 0u);
+    (void)_pageStorage.registerSeq(&page, page.ID);
 }
 
-//=============================================================================
-//Рабочий цикл сбора и обработки событий
-//=============================================================================
-
-//Поставить транзакцию в очередь; UART — в update(now_ms) или после завершения сессии.
-//TODO(QueueFull): при переполнении — отложить tx (буфер ожидания), по session timeout / completeTransaction
-//повторить tryEnqueue, чтобы команда не терялась после EnqueueRejected.
 void Application::enqueue(Transaction tx) noexcept {
-    if (_errors.isLinkDown())
-        return;
     if (_session.tryEnqueue(tx))
         return;
-    _errors.handle(captureEnqueueFailure(tx, _session));
+    dispatchError(appErrorFrom(_session.getStatus()), tx.page_id, tx.comp_id);
 }
 
-bool Application::update(uint32_t now_ms) noexcept {
-    idMap.updateDiscovery(now_ms);
-    _errors.clearLinkDownIfStreamOk();
-
-    checkSessionTimeout(now_ms);
-
-    if (_errors.isLinkDown()) {
-        bool any = false;
-        Message m{};
-        while (_gateway.receive(m)) {
-            any = true;
-            if (dispatchResponse(m, _gateway.isTxIdle()))
-                continue;
-            dispatchEvent(m);
+void Application::update(uint32_t now_ms) noexcept {
+    if (!_session.begin(_gateway)) {
+        if (_session.getStatus() == Session::Status::PushFailed) {
+            abortSessionFault();
+            _session.end(false);
         }
-        return any;
     }
 
-    bool any = false;
+    if (!_session.transmit(_gateway)) {
+        abortSessionFault();
+        _session.end(false);
+    }
 
-    if (!sessionTransmit())
-        any = true;
-
-    if (_gateway.isTxIdle() && !_session.isIdle()) {
-        const Transaction& active = _session.active();
-        if (active.isStatusResponse() && bkcmd != BkCmd::Always)
-            sessionEnd(true);
-        else
-            _session.startResponseTimeout(now_ms, kDefaultGetResponseTimeoutMs);
+    if (_session.pollTimeout(_gateway, now_ms, kDefaultGetResponseTimeoutMs, bkcmd)) {
+        const Session::Status st = _session.getStatus();
+        if (st == Session::Status::Timeout) {
+            onTimeout(_session.active());
+            _session.end(false);
+        } else if (st == Session::Status::Complete)
+            _session.end(true);
     }
 
     Message m{};
     while (_gateway.receive(m)) {
-        any = true;
         if (dispatchResponse(m, _gateway.isTxIdle()))
             continue;
         dispatchEvent(m);
     }
-    if (_stream.getStatus() != BIF::IByteStream::Status::OK || _gateway.getStatus() != Gateway::Status::OK) {
-        _errors.handle(captureGatewayStreamFailure(AppOperation::GatewayReceiveFailed, _session, _stream, _gateway));
-        any = true;
-    }
 
-    return any;
+    const Gateway::Status gwSt = _gateway.getStatus();
+    const BIF::IByteStream::Status streamSt = _stream.getStatus();
+    if (gwSt != Gateway::Status::OK || streamSt != BIF::IByteStream::Status::OK)
+        dispatchError(appErrorFrom(gwSt, streamSt), 0u, 0u);
+    else if (_lastError.status != msg::Status::Code::Success)
+        _lastError = msg::Status{};
 }
 
-//=============================================================================
-//Сессия: активная транзакция и очередь, внутренние функции для управления сессией
-//=============================================================================
+namespace {
 
-//При idle-сессии и свободном TX взять голову очереди, `pushCommand`. false — activate/push провал;
-//после успешного push — `_session.clearTimeout()` под новый дедлайн ответа.
-void Application::sessionBegin() noexcept {
-    if (!_session.hasQueued() || !_session.isIdle() || !_gateway.isTxIdle())
-        return;
-
-    if (!_session.activateHead()) {
-        _errors.handle(captureSessionActivateFailure(_session));
-        return;
-    }
-
-    if (!_gateway.pushCommand(_session.active().command())) {
-        _errors.handle(captureGatewayPushFailure(_session, _gateway));
-        return;
-    }
-    _session.clearTimeout();
+bool statusSame(const msg::Status& a, const msg::Status& b) noexcept {
+    return a.status == b.status && a.tag_1 == b.tag_1 && a.tag_2 == b.tag_2;
 }
 
-void Application::sessionEnd(bool Success) noexcept {
-    idMap.onSessionEnd(Success);
-    _session.completeTransaction();
-    _errors.onSessionEnded();
-}
+} // namespace
 
-//Шаг TX: при необходимости `sessionBegin`, затем `Gateway::transmit`.
-//true — нечего слать, байт ушёл или write==0 при OK потока (отложить).
-//false — ошибка UART при TX: handleGatewayStreamFailure (деталь stream/gateway, recovery, onError).
-bool Application::sessionTransmit() noexcept {
-    sessionBegin();
-
-    if (_gateway.transmit())
-        return true;
-
-    _errors.handle(captureGatewayStreamFailure(AppOperation::GatewayTransmitFailed, _session, _stream, _gateway));
-    return false;
-}
-
-void Application::checkSessionTimeout(uint32_t now_ms) noexcept {
-    if (!_session.isResponseTimedOut(now_ms))
+void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
+    if (_lastError.status != msg::Status::Code::Success && statusSame(status, _lastError)
+        && page_id == _lastErrorPage && comp_id == _lastErrorComp)
         return;
-    const Transaction& active = _session.active();
-    if (Route::isCompIdMapPoll(active.page_id, active.comp_id)) {
-        idMap.onSessionEnd(false);
-        sessionEnd(false);
-        return;
-    }
-    _errors.handle(makeSessionTimeout(active));
-    sessionEnd(false);
-}
 
-//=============================================================================
-//Dispatch (входящие кадры / ошибки)
-//=============================================================================
+    _lastError = status;
+    _lastErrorPage = page_id;
+    _lastErrorComp = comp_id;
+    onError(status, page_id, comp_id);
+    if (page_id == 0u && comp_id == 0u)
+        return;
+    if (Page* const p = getPage(page_id))
+        p->onError(status, comp_id);
+}
 
 bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     if (!txIdle || _session.isIdle())
@@ -197,21 +128,16 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     case Transaction::State::AwaitingNumericGet: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
             dispatchError(*st, active.page_id, active.comp_id);
-            sessionEnd(false);
+            _session.end(false);
             return true;
         }
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-            if (Route::isCompIdMapPoll(active.page_id, active.comp_id)) {
-                idMap.onPollResponse(active.tag, *nr);
-                sessionEnd(true);
-                return true;
-            }
             if (Route::isSysVar(active.page_id, active.comp_id)) {
                 dispatchSysVarResponse(active.tag, *nr);
                 onSysResponse(active.tag, *nr);
             } else if (Component* const c = getComponent(active.page_id, active.comp_id))
                 c->onResponse(active.tag, *nr);
-            sessionEnd(true);
+            _session.end(true);
             return true;
         }
         return false;
@@ -220,13 +146,13 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     case Transaction::State::AwaitingStringGet: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
             dispatchError(*st, active.page_id, active.comp_id);
-            sessionEnd(false);
+            _session.end(false);
             return true;
         }
         if (const auto* sr = std::get_if<msg::getString>(&m)) {
             if (Component* const c = getComponent(active.page_id, active.comp_id))
                 c->onResponse(active.tag, *sr);
-            sessionEnd(true);
+            _session.end(true);
             return true;
         }
         return false;
@@ -239,10 +165,10 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
 
         dispatchError(*st, active.page_id, active.comp_id);
         if (!st->isOK()) {
-            sessionEnd(false);
+            _session.end(false);
             return true;
         }
-        sessionEnd(true);
+        _session.end(true);
         return true;
     }
 
@@ -252,22 +178,21 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     }
 }
 
-void Application::dispatchEvent(const Message& m) noexcept 
-{
+void Application::dispatchEvent(const Message& m) noexcept {
     if (const auto* e = std::get_if<msg::evPage>(&m)) {
-        dispatchPageChange(*e);
+        onPageChange(e->page_id);
         return;
     }
     if (const auto* e = std::get_if<msg::Status>(&m)) {
         dispatchError(*e, 0u, 0u);
         return;
     }
-    // Discover: touch/MsgBox/system не мешают опросу; evPage и Status — выше.
-    if (idMap.isDiscoveryBusy()) return;
-
-    //=======================================================
-    if (std::get_if<msg::evTouch>(&m) || std::get_if<msg::evTouchXY>(&m)) {
-        dispatchTouch(m);
+    if (const auto* e = std::get_if<msg::evTouch>(&m)) {
+        onTouch(*e);
+        return;
+    }
+    if (const auto* e = std::get_if<msg::evTouchXY>(&m)) {
+        onTouchXY(*e);
         return;
     }
     if (const auto* e = std::get_if<msg::evSystem>(&m)) {
@@ -279,12 +204,24 @@ void Application::dispatchEvent(const Message& m) noexcept
         return;
     }
     if (const auto* e = std::get_if<msg::evMsgBox>(&m)) {
-        dispatchMsgBox(*e);
+        onMsgBox(*e);
         return;
     }
 }
 
-void Application::dispatchMsgBox(const msg::evMsgBox& e) noexcept {
+void Application::onTouch(const msg::evTouch& e) {
+    if (msgBox.isActive())
+        return;
+    if (Page* const p = getPage(e.page_id))
+        p->onTouch(e);
+}
+
+void Application::onTouchXY(const msg::evTouchXY& e) {
+    if (msgBox.isActive())
+        msgBox.onTouchXY(e);
+}
+
+void Application::onMsgBox(const msg::evMsgBox& e) noexcept {
     if (e.comp_id != 0u) {
         if (Component* const c = getComponent(e.page_id, e.comp_id)) {
             c->onMsgBox(e);
@@ -296,53 +233,25 @@ void Application::dispatchMsgBox(const msg::evMsgBox& e) noexcept {
         if (e.comp_id == 0u)
             return;
     }
-    onMsgBox(e);
 }
 
-void Application::dispatchTouch(const Message& m) noexcept {
-    if (const auto* e = std::get_if<msg::evTouch>(&m)) 
-    {
-        if (!msgBox.isActive()) {
-            onTouch(*e);
-            if (Page* const p = getPage(e->page_id))
-                p->onTouch(*e);
-            return;
-        }
-    }
-    if (const auto* e = std::get_if<msg::evTouchXY>(&m)) {
-        if (msgBox.isActive())
-            msgBox.onTouchXY(*e);
-        else
-            onTouchXY(*e);
-    }
-}
-
-void Application::dispatchPageChange(const msg::evPage& e) noexcept {
+void Application::onPageChange(uint8_t page_id) noexcept {
     const uint8_t prev = _currentPageId;
-    const uint8_t next = e.page_id;
-    if (prev != next) {
+    if (prev != page_id) {
         if (Page* const old_page = getPage(prev))
             old_page->onExit();
     }
-    _currentPageId = next;
-    onPageChange(next);
-    idMap.onPageChange(next);
-    if (prev != next) {
-        if (Page* const new_page = getPage(next))
+    _currentPageId = page_id;
+    if (prev != page_id) {
+        if (Page* const new_page = getPage(page_id))
             new_page->onLoad();
     }
 }
 
-NexErrors Application::errors() const noexcept {
-    NexErrors e{};
-    e.stream = _stream.getStatus();
-    e.gateway = _gateway.getStatus();
-    e.session = _session.getStatus();
-    return e;
-}
-
 void Application::clearErrors() noexcept {
-    _errors.clearErrors();
+    _lastError = msg::Status{};
+    _lastErrorPage = 0u;
+    _lastErrorComp = 0u;
     _stream.clearErrors();
     _gateway.clearError();
     _session.clearError();

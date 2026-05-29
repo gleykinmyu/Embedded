@@ -4,9 +4,7 @@
 
 namespace nex {
 
-void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept {
-    app.reportRegisterError(Application::Status::ComponentRegisterFailed, st, page.ID, c.id());
-}
+// nexComponentRegisterFailed — в nexApplication.cpp
 
 // --- Page -----------------------------------------------------------------
 

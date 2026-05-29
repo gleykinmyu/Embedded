@@ -125,7 +125,7 @@ struct AttrRef {
         bool printColorConst(TxFrame& tx, Color::std c) const noexcept;
     };
 
-inline const char* commandStatusCstr(Command::Status s) noexcept {
+inline const char* cstr(Command::Status s) noexcept {
     switch (s) {
     case Command::Status::OK: return "OK";
     case Command::Status::NullPointer: return "NullPointer";

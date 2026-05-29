@@ -233,7 +233,7 @@ public:
     static constexpr Id staticFirstId() noexcept { return FirstId; }
 };
 
-inline const char* toStr(RegStatus v) noexcept {
+inline const char* cstr(RegStatus v) noexcept {
     switch (v) {
     case RegStatus::Ok: return "Ok";
     case RegStatus::NullEntry: return "NullEntry";

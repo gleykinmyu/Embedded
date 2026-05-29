@@ -37,7 +37,7 @@ namespace nex {
             };
             Code status = Code::Invalid_Instruction;
 
-            /** С шины — не заполняются. Для `AppError`: `tag_1` — `AppOperation`, `tag_2` — `ErrorDetail` (`app/error/nexErrors.hpp`). */
+            /** С шины — обычно не заполняются; зарезервированы для расширений MCU. */
             uint8_t tag_1 = 0u;
             uint16_t tag_2 = 0u;
 
@@ -147,5 +147,32 @@ namespace nex {
         msg::evSystem,
         msg::evTransparent,
         msg::evMsgBox>;
+
+inline const char* cstr(msg::Status::Code c) noexcept {
+    switch (c) {
+    case msg::Status::Code::Invalid_Instruction: return "Invalid_Instruction";
+    case msg::Status::Code::Success: return "Success";
+    case msg::Status::Code::Invalid_CompId: return "Invalid_CompId";
+    case msg::Status::Code::Invalid_PageId: return "Invalid_PageId";
+    case msg::Status::Code::Invalid_PicId: return "Invalid_PicId";
+    case msg::Status::Code::Invalid_FontId: return "Invalid_FontId";
+    case msg::Status::Code::Invalid_FileOperation: return "Invalid_FileOperation";
+    case msg::Status::Code::Invalid_CRC: return "Invalid_CRC";
+    case msg::Status::Code::Invalid_BaudRate: return "Invalid_BaudRate";
+    case msg::Status::Code::Invalid_Waveform_ID_Channel: return "Invalid_Waveform_ID_Channel";
+    case msg::Status::Code::Invalid_VarName_Attr: return "Invalid_VarName_Attr";
+    case msg::Status::Code::Invalid_VarOperation: return "Invalid_VarOperation";
+    case msg::Status::Code::Failed_Assignment: return "Failed_Assignment";
+    case msg::Status::Code::Failed_Eeprom: return "Failed_Eeprom";
+    case msg::Status::Code::Invalid_QuantityOfParameters: return "Invalid_QuantityOfParameters";
+    case msg::Status::Code::Failed_IO_Operation: return "Failed_IO_Operation";
+    case msg::Status::Code::Invalid_EscapeCharacter: return "Invalid_EscapeCharacter";
+    case msg::Status::Code::VarName_TooLong: return "VarName_TooLong";
+    case msg::Status::Code::Serial_Overflow: return "Serial_Overflow";
+    case msg::Status::Code::AppError: return "AppError";
+    case msg::Status::Code::Unrecognized_Header: return "Unrecognized_Header";
+    default: return "?";
+    }
+}
 
 } // namespace nex

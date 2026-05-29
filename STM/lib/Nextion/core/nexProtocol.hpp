@@ -29,7 +29,7 @@ namespace nex {
      * `length` — только полезная нагрузка (`serialize` ≤ `MAX_PAYLOAD`); `TxFramer` дописывает `0xFF×3`.
      */
     struct TxFrame {
-        static constexpr uint16_t MAX_PAYLOAD = 160;
+        static constexpr uint16_t MAX_PAYLOAD = 160; //TODO сделать настраиваемым
         uint8_t payload[MAX_PAYLOAD + Physical::TERM_COUNT]{};
         uint16_t length = 0;
     };

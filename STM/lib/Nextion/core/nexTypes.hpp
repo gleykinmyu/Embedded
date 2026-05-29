@@ -283,6 +283,14 @@ namespace Route {
     }
 } // namespace Route
 
+/** NIS §6 `bkcmd`: UART status после команд (0–3, на панели default 2). */
+enum class BkCmd : uint8_t {
+    Off = 0,
+    OnSuccess = 1,
+    OnFailure = 2,
+    Always = 3,
+};
+
 /** NIS §6: допустимые значения `baud` / `bauds` (бит/с). */
 enum Baudrate : uint32_t {
     b2400 = 2400u,

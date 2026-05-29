@@ -3,9 +3,12 @@
 /**
  * Пример 2: две страницы, на каждой 10 кнопок (objname b0…b9).
  *
- * HMI: page id 0 и page id 1; на обеих страницах кнопки `b0` … `b9`.
+ * HMI: page id 0 и page id 1; на обеих страницах кнопки `b0` … `b9` (panel id 1…10).
  * Touch Press/Release: **Send Component ID** (кадры 0x65 на MCU).
  * Старт: CompIdMap Discover по обеим страницам, затем touch.
+ *
+ * page0: у `b3`/`b4` переставлены id (5 и 4), у `b7` — id 9 (panel 8); для `printIdMapDiff`.
+ * page1: все кнопки с автослотом (после Discover совпадают с panel id).
  *
  * Сборка: pio run -e example2
  */
@@ -26,8 +29,9 @@ inline const char* touch_state_cstr(TouchState s) noexcept
 
 class CountingButton : public Button<> {
 public:
-    CountingButton(uint32_t& counter, Page& owner, const char* tag, const Literal& objname) noexcept
-        : Button<>(owner, objname, 0u)
+    CountingButton(uint32_t& counter, Page& owner, const char* tag, const Literal& objname,
+        uint8_t reg_id = 0u) noexcept
+        : Button<>(owner, objname, reg_id)
         , hits(counter)
         , label(tag != nullptr ? tag : "?")
     {}
@@ -49,7 +53,7 @@ private:
 
 } // namespace detail
 
-class TenButtonsApp : public Application {
+class TenButtonsApp : public SmartApp {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
@@ -59,10 +63,10 @@ public:
     static constexpr unsigned kButtonsPerPage = 10u;
     static constexpr uint16_t kIdMapRecordCount = 20u;
 
-    CompIdMapTableStorage<kIdMapRecordCount> id_map_storage;
+    idmap::TableStorage<kIdMapRecordCount> id_map_storage;
 
     explicit TenButtonsApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
+        : SmartApp(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
         , page0(*this)
         , page1(*this)
     {}
@@ -86,11 +90,11 @@ public:
             , btn0(a.button_hits[0][0], *this, "p0/b0", "b0")
             , btn1(a.button_hits[0][1], *this, "p0/b1", "b1")
             , btn2(a.button_hits[0][2], *this, "p0/b2", "b2")
-            , btn3(a.button_hits[0][3], *this, "p0/b3", "b3")
-            , btn4(a.button_hits[0][4], *this, "p0/b4", "b4")
+            , btn3(a.button_hits[0][3], *this, "p0/b3", "b3", 5u)
+            , btn4(a.button_hits[0][4], *this, "p0/b4", "b4", 4u)
             , btn5(a.button_hits[0][5], *this, "p0/b5", "b5")
             , btn6(a.button_hits[0][6], *this, "p0/b6", "b6")
-            , btn7(a.button_hits[0][7], *this, "p0/b7", "b7")
+            , btn7(a.button_hits[0][7], *this, "p0/b7", "b7", 9u)
             , btn8(a.button_hits[0][8], *this, "p0/b8", "b8")
             , btn9(a.button_hits[0][9], *this, "p0/b9", "b9")
         {}
@@ -135,7 +139,7 @@ public:
 
     void runIdMapDiscover(uint32_t now_ms) noexcept
     {
-        idMap.setMode(CompIdMapMode::Discover);
+        startDiscover();
         id_map_poll_done = false;
         id_map_poll_ok = false;
         NEX_DBG("[ex2] IdMap Discover started (%u pages x %u buttons)\n", static_cast<unsigned>(kPageCount),
@@ -153,7 +157,7 @@ public:
         return !id_map_poll_done;
     }
 
-    void onCompIdMapComplete(bool success) noexcept override
+    void onDiscoverComplete(bool success) noexcept override
     {
         id_map_poll_done = true;
         id_map_poll_ok = success;
@@ -162,25 +166,13 @@ public:
             return;
         }
 
-        const CompIdMapTable& table = id_map_storage.table;
-        NEX_DBG("[ex2] IdMap poll OK, records=%u (expect %u)\n", static_cast<unsigned>(table.count),
-            static_cast<unsigned>(kIdMapRecordCount));
-#if defined(NEX_DEBUG)
-        for (uint16_t i = 0u; i < table.count; ++i) {
-            const CompIdMapRecord& r = table.records[i];
-            char name[32]{};
-            const uint8_t n = (r.name_len < 31u) ? r.name_len : 31u;
-            for (uint8_t j = 0u; j < n; ++j)
-                name[j] = r.name[j];
-            name[n] = '\0';
-            NEX_DBG("  page=%u name=%s panel_id=%u\n", static_cast<unsigned>(r.page_id), name,
-                static_cast<unsigned>(r.panel_id));
-        }
-#endif
+        NEX_DBG("[ex2] IdMap poll OK, records=%u (expect %u)\n",
+            static_cast<unsigned>(id_map_storage.table.count), static_cast<unsigned>(kIdMapRecordCount));
     }
 
     void onPageChange(uint8_t page_id) noexcept override
     {
+        SmartApp::onPageChange(page_id);
         NEX_DBG("[ex2] onPageChange -> page=%u\n", static_cast<unsigned>(page_id));
     }
 
@@ -188,6 +180,7 @@ public:
     {
         NEX_DBG("[ex2] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
             static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state));
+        Application::onTouch(e);
     }
 };
 

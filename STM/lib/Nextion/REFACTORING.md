@@ -43,11 +43,12 @@
 | Источник сбоя | Reporter / канал | Operation (`AppStatus`) | Subject |
 |---------------|-------------------|-------------------------|---------|
 | `tryEnqueue` false | Session (+ Command при emplace) | `EnqueueRejected` | `Transaction` / route из `tx` |
-| `activateHead` false | Session | `SessionActivateFailed` | — |
-| `pushCommand` false | Gateway или Command | `GatewayPushFailed` | active `Transaction` |
-| `transmit` / RX tail | Stream или Gateway | `GatewayTransmit/ReceiveFailed` | active `Transaction` |
-| `checkSessionTimeout` (не 0xFE) | (в `tag_2` пусто) | `SessionTimeout` | active `Transaction` |
-| `checkSessionTimeout` (0xFE) | — → CompIdMap | — | `pollFail` |
+| `Session::begin` / activate | Session (`NotIdle`, `QueueEmpty`, …) | `SessionActivateFailed` | — |
+| `Session::begin` push fail | Session `PushFailed` + Gateway/Command | `GatewayPushFailed` | active `Transaction` |
+| `Session::transmit` fail | Session `TransmitFailed` + Stream/Gateway | `GatewayTransmitFailed` | active `Transaction` |
+| RX tail в `update` | Stream или Gateway | `GatewayReceiveFailed` | active `Transaction` |
+| `Session::checkResponseTimeout` (не 0xFE) | Session `ResponseTimedOut` | `SessionTimeout` | active `Transaction` |
+| timeout (0xFE) | — → CompIdMap | — | `pollFail` |
 | `registerPage` / `registerComponent` | Domain | `Page/ComponentRegisterFailed` | Page / Component |
 | `dispatchResponse` NIS Status | Panel (`msg::Status`) | — | route транзакции |
 | `dispatchEvent` Status | Panel | — | (0,0) глобальный |
@@ -208,6 +209,10 @@
 - [x] **NEX-R203a** — `AppFailure`: recovery/clear внутри handler (шаг A)
   - **Что:** из struct убраны `FailureRecovery` и флаги `clear_*`; `recoveryModeFor(operation)` + `clearLayerErrors(operation)` в `nexAppErrorHandler.cpp`.
   - **Далее (шаг B):** `handleTransport` / `notifyApp`, `queuePolicy(ErrorDetail)`.
+
+- [x] **NEX-R203b** — `Session`: `begin` / `transmit` / `end`, fault в `update`
+  - **Что:** UART-шаги в `Session` (`Gateway&`); `Session::Status` + `hasFaultStatus()`; `Application::processSessionFaults()` / `finishSession()`; коды `PushFailed`, `TransmitFailed`, `ResponseTimedOut`.
+  - **Файлы:** `core/nexSession.*`, `app/nexApplication.*`.
 
 - [ ] **NEX-R204** — Свести `friend class` к минимуму
   - **Аудит:** `Application` ↔ `Cid`, `Page`, `MsgBox`; `Page` ↔ `Application`, `Cid`; facades ↔ `Application`.

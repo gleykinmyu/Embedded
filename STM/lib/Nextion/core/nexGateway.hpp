@@ -53,15 +53,29 @@ private:
 /** Шлюз UART с протоколом Nextion (`pushCommand` / `transmit` / `receive`). */
 class Gateway {
 public:
+    /**
+     * Последняя ошибка шлюза (`_status`). Выставляет только `Gateway` (nexGateway.cpp);
+     * сброс — `clearError()` (успех в `pushCommand` / `writeTransparentRaw` / `receive`,
+     * либо снаружи: `Application::clearErrors()`).
+     */
     enum class Status : uint8_t {
+        /** Нет ошибки; начальное значение и после `clearError()`. */
         OK = 0,
+        /** `transmit()`: `TxFramer::tick()` вернул false — сбой записи в `IByteStream` (не OK у потока). */
         StreamTxError,
+        /** `receive()`: сбой RX потока или переполнение RX-кольца — framer reset, `purge()`; при OverFlowRX ещё `clearErrors()`. */
         StreamRxError,
+        /** `pushCommand()`: TX занят — предыдущий кадр ещё не ушёл (`!_txFramer.isIdle()`). */
         TxBusy,
+        /** `writeTransparentRaw()`: `TxFramer::beginRaw()` не стартовал — TX занят (raw или frame). */
         TxBusyRaw,
+        /** `receive()`: `RxFramer` переполнил payload (`MAX_PAYLOAD`), resync до `0xFF×3`; кадр отброшен. */
         RxOverflow,
+        /** `pushCommand()`: `Command::serialize()` вернул false; деталь — `cmd.getStatus()`. */
         SerializeFailed,
+        /** `pushCommand()` — длина кадра 0 после serialize; `writeTransparentRaw()` — `len == 0`. */
         EmptyPayload,
+        /** `writeTransparentRaw()` — `data == nullptr`. */
         NullPointer
     };
 
@@ -78,13 +92,16 @@ public:
     bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 
 private:
+    void recoverStreamRxOverFlow() noexcept;
+    void onStreamReadFault(BIF::IByteStream::Status streamSt) noexcept;
+
     BIF::IByteStream& _stream;
     RxFramer _rxFramer;
     TxFramer _txFramer;
     Status _status = Status::OK;
 };
 
-inline const char* gatewayStatusCstr(Gateway::Status s) noexcept {
+inline const char* cstr(Gateway::Status s) noexcept {
     switch (s) {
     case Gateway::Status::OK: return "OK";
     case Gateway::Status::TxBusy: return "TxBusy";

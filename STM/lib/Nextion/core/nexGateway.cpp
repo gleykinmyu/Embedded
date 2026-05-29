@@ -269,6 +269,23 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
 
 Gateway::Gateway(BIF::IByteStream& s) : _stream(s) {}
 
+void Gateway::recoverStreamRxOverFlow() noexcept {
+    _rxFramer.reset();
+    _stream.purge();
+    _stream.clearErrors();
+    _status = Status::StreamRxError;
+}
+
+void Gateway::onStreamReadFault(BIF::IByteStream::Status streamSt) noexcept {
+    if (streamSt == BIF::IByteStream::Status::OverFlowRX) {
+        recoverStreamRxOverFlow();
+        return;
+    }
+    _rxFramer.reset();
+    _stream.purge();
+    _status = Status::StreamRxError;
+}
+
 bool Gateway::pushCommand(const Command& cmd) {
     if (!_txFramer.isIdle()) {
         _status = Status::TxBusy;
@@ -316,15 +333,17 @@ bool Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {
 }
 
 bool Gateway::receive(Message& out) {
+    if (_stream.getStatus() == BIF::IByteStream::Status::OverFlowRX) {
+        recoverStreamRxOverFlow();
+        return false;
+    }
+
     while (_stream.available() > 0u) {
         uint8_t b = 0;
         const size_t n = _stream.read(&b, 1u);
         if (n != 1u) {
-            if (_stream.getStatus() != BIF::IByteStream::Status::OK) {
-                _rxFramer.reset();
-                _stream.purge();
-                _status = Status::StreamRxError;
-            }
+            if (_stream.getStatus() != BIF::IByteStream::Status::OK)
+                onStreamReadFault(_stream.getStatus());
             break;
         }
         if (_rxFramer.appendByte(b)) {
@@ -335,6 +354,9 @@ bool Gateway::receive(Message& out) {
         if (_rxFramer.getOverflowReport())
             _status = Status::RxOverflow;
     }
+
+    if (_stream.getStatus() == BIF::IByteStream::Status::OverFlowRX)
+        recoverStreamRxOverFlow();
     return false;
 }
 

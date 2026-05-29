@@ -1,4 +1,5 @@
 #include "nexSession.hpp"
+#include "nexGateway.hpp"
 
 namespace nex {
 namespace detail {
@@ -79,37 +80,102 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
     case detail::TransactionQueue::Status::EmplaceFailed:
         return Session::Status::QueueEmplaceFailed;
     default:
-        return Session::Status::OK;
+        return Session::Status::Idle;
     }
 }
 
 } // namespace
 
+const Transaction* Session::faultingTransaction() const noexcept {
+    if (!_active.isIdle())
+        return &_active;
+    return _queue.peek();
+}
+
 bool Session::tryEnqueue(Transaction tx) noexcept {
     if (_queue.push(tx)) {
-        if (_status != Status::NotIdle)
-            _status = Status::OK;
+        if (_status != Status::Active)
+            _status = Status::Idle;
         return true;
     }
     _status = queueToSession(_queue.getStatus());
     return false;
 }
 
-bool Session::activateHead() noexcept {
-    // Не ошибка приложения: сессия уже ведёт UART-транзакцию (sessionBegin обычно отсекает раньше).
-    if (!_active.isIdle()) {
-        _status = Status::NotIdle;
+bool Session::begin(Gateway& gateway) noexcept {
+    if (!hasQueued() || !isIdle() || !gateway.isTxIdle())
         return false;
-    }
-    const Transaction* const head = _queue.peek();
-    // Не ошибка: рассинхрон с hasQueued() или очередь опустела между проверками.
-    if (head == nullptr) {
-        _status = Status::QueueEmpty;
-        return false;
-    }
-    _active = *head;
+
+    const Transaction* const queued = _queue.peek();
     clearError();
+
+    if (!gateway.pushCommand(queued->command())) {
+        _status = Status::PushFailed;
+        return false;
+    }
+
+    _active = *queued;
+    clearTimeout();
+    _status = Status::Active;
     return true;
+}
+
+bool Session::transmit(Gateway& gateway) noexcept {
+    if (isIdle())
+        return true;
+
+    if (!gateway.transmit()) {
+        _status = Status::TransmitFailed;
+        return false;
+    }
+    return true;
+}
+
+void Session::end(bool success) noexcept {
+    clearTimeout();
+    _active = {};
+    _queue.pop();
+    if (success)
+        clearError();
+}
+
+bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms, BkCmd bkcmd) noexcept {
+    if (_responseDeadlineActive && !isIdle()) {
+        constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
+        if ((now_ms - _responseDeadlineMs) < kMsHalfModulus) {
+            _status = Status::Timeout;
+            return true;
+        }
+    }
+
+    if (!gateway.isTxIdle() || isIdle())
+        return false;
+
+    switch (_active.state) {
+    case Transaction::State::AwaitingTransparentTx:
+    case Transaction::State::AwaitingRawDataRx:
+        return false;
+
+    case Transaction::State::AwaitingStatus:
+        if (bkcmd != BkCmd::Always) {
+            _status = Status::Complete;
+            return true;
+        }
+        break;
+
+    case Transaction::State::AwaitingNumericGet:
+    case Transaction::State::AwaitingStringGet:
+        break;
+
+    case Transaction::State::Idle:
+        return false;
+    }
+
+    if (!_responseDeadlineActive) {
+        _responseDeadlineMs = now_ms + timeout_ms;
+        _responseDeadlineActive = true;
+    }
+    return false;
 }
 
 void Session::clearTimeout() noexcept {
@@ -120,28 +186,8 @@ void Session::clearTimeout() noexcept {
 void Session::resetActive() noexcept {
     clearTimeout();
     _active = {};
-}
-
-void Session::startResponseTimeout(uint32_t now_ms, uint32_t timeout_ms) noexcept {
-    if (!_active.isResponse() || _responseDeadlineActive)
-        return;
-
-    _responseDeadlineMs = now_ms + timeout_ms;
-    _responseDeadlineActive = true;
-}
-
-bool Session::isResponseTimedOut(uint32_t now_ms) const noexcept {
-    if (!_responseDeadlineActive || isIdle())
-        return false;
-
-    constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-    return (now_ms - _responseDeadlineMs) < kMsHalfModulus;
-}
-
-void Session::completeTransaction() noexcept {
-    clearTimeout();
-    _active = {};
-    _queue.pop();
+    if (_status == Status::Active)
+        _status = Status::Idle;
 }
 
 } // namespace nex
