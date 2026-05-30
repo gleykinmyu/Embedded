@@ -11,21 +11,94 @@ namespace nex {
 namespace attr_detail {
 
 template<typename T>
+struct is_color_storage : std::false_type {};
+
+template<>
+struct is_color_storage<Color> : std::true_type {};
+
+template<typename T>
+struct is_halign_storage : std::false_type {};
+
+template<>
+struct is_halign_storage<HAlign> : std::true_type {};
+
+template<typename T>
+struct is_valign_storage : std::false_type {};
+
+template<>
+struct is_valign_storage<VAlign> : std::true_type {};
+
+template<typename T>
+struct is_number_format_storage : std::false_type {};
+
+template<>
+struct is_number_format_storage<NumFormat> : std::true_type {};
+
+template<typename T>
 inline constexpr bool is_nex_numeric_storage_v = std::disjunction_v<
     std::is_convertible<T, bool>,
     std::is_convertible<T, int8_t>,
     std::is_convertible<T, uint8_t>,
     std::is_convertible<T, int16_t>,
     std::is_convertible<T, uint16_t>,
-    std::is_convertible<T, int32_t>>;
+    std::is_convertible<T, int32_t>,
+    is_color_storage<T>,
+    is_halign_storage<T>,
+    is_valign_storage<T>,
+    is_number_format_storage<T>>;
 
 template<typename T>
 [[nodiscard]] constexpr T from_wire(int32_t wire) noexcept {
     return static_cast<T>(wire);
 }
 
+template<>
+[[nodiscard]] constexpr Color from_wire<Color>(int32_t wire) noexcept {
+    return Color(static_cast<uint16_t>(wire));
+}
+
+template<>
+[[nodiscard]] constexpr HAlign from_wire<HAlign>(int32_t wire) noexcept {
+    return static_cast<HAlign>(wire);
+}
+
+template<>
+[[nodiscard]] constexpr VAlign from_wire<VAlign>(int32_t wire) noexcept {
+    return static_cast<VAlign>(wire);
+}
+
+template<>
+[[nodiscard]] constexpr NumFormat from_wire<NumFormat>(int32_t wire) noexcept {
+    return static_cast<NumFormat>(wire);
+}
+
+template<typename T>
+[[nodiscard]] constexpr int32_t to_wire(const T& v) noexcept {
+    return static_cast<int32_t>(v);
+}
+
+template<>
+[[nodiscard]] constexpr int32_t to_wire(const Color& v) noexcept {
+    return static_cast<int32_t>(v.raw);
+}
+
+template<>
+[[nodiscard]] constexpr int32_t to_wire(const HAlign& v) noexcept {
+    return static_cast<int32_t>(static_cast<uint8_t>(v));
+}
+
+template<>
+[[nodiscard]] constexpr int32_t to_wire(const VAlign& v) noexcept {
+    return static_cast<int32_t>(static_cast<uint8_t>(v));
+}
+
+template<>
+[[nodiscard]] constexpr int32_t to_wire(const NumFormat& v) noexcept {
+    return static_cast<int32_t>(static_cast<uint8_t>(v));
+}
+
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
-inline void copy_string_mirror(char* buf, uint8_t buf_cap, const msg::getString& response) noexcept {
+inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString& response) noexcept {
     if (buf_cap == 0u)
         return;
     const std::size_t cap = static_cast<std::size_t>(buf_cap) - 1u;
@@ -39,27 +112,28 @@ inline void copy_string_mirror(char* buf, uint8_t buf_cap, const msg::getString&
 } // namespace attr_detail
 
 /**
- * Имя атрибута NIS (`txt`, `val`, `bco`, …) и ссылка на родительский `Component`.
+ * Атрибуты NIS, привязанные к `Component`: `attr::Num`, `attr::NumRO`, `attr::String`, `attr::StringRO`.
  */
-class Attribute {
+namespace attr {
+
+/** Имя атрибута NIS (`txt`, `val`, …) и ссылка на родительский `Component`. */
+class Base {
 public:
-    /** Лексема имени атрибута NIS (`txt`, `val`, …) — правая часть `comp.attr`. */
     const Literal name;
-    /** Байт маршрутизации: `Component::onResponse` / `onError`, `Status::tag_2` при `Application::Status`. */
     const uint8_t tag;
 
-    constexpr explicit Attribute(const Component& parent, const Literal& name, uint8_t tag) noexcept
+    constexpr explicit Base(const Component& parent, const Literal& name, uint8_t tag) noexcept
         : name(name)
         , tag(tag)
         , _parent(parent)
     {}
 
-    Attribute(const Attribute&) = delete;
-    Attribute& operator=(const Attribute&) = delete;
-    Attribute(Attribute&&) = delete;
-    Attribute& operator=(Attribute&&) = delete;
+    Base(const Base&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(Base&&) = delete;
 
-    virtual ~Attribute() = default;
+    virtual ~Base() = default;
 
     [[nodiscard]] constexpr operator const Literal&() const noexcept { return name; }
 
@@ -75,27 +149,21 @@ protected:
     }
 };
 
-/**
- * Атрибут с числовым зеркалом в MCU: `T` должен быть приводим хотя бы к одному из
- * `bool` или целых 8 / 16 бит (со знаком и без) и знакового 32 бита (`int32_t`) — как при ограничении полей NIS (`val`, `tim`, …).
- *
- * Чтение зеркала: неявное приведение к `T` (`T x = attr;`). Запись на панель и в зеркало: `attr = v` → `cmd::assign::Numeric`.
- * Запрос с панели: `get()` → `applyResponse` в `Component::onResponse(tag, …)`.
- */
+/** Числовой атрибут: зеркало в MCU, `operator=` → `cmd::assign::Numeric`, `get()` → `applyResponse`. */
 template<typename T>
-class AttributeNum : public Attribute {
+class Num : public Base {
 public:
     static_assert(
         attr_detail::is_nex_numeric_storage_v<T>,
-        "nex::AttributeNum<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
+        "nex::attr::Num<T>: T — bool, целое 8/16/32 бит или nex::Color");
 
-    constexpr explicit AttributeNum(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr explicit Num(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Base(parent, name, tag)
         , _val{}
     {}
 
-    constexpr AttributeNum(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr Num(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
+        : Base(parent, name, tag)
         , _val(initial)
     {}
 
@@ -105,49 +173,43 @@ public:
         _val = attr_detail::from_wire<T>(response.value);
     }
 
-    /** Записать в зеркало и поставить в очередь `cmd::assign::Numeric` на панель. */
-    AttributeNum& operator=(const T& v) noexcept {
+    Num& operator=(const T& v) noexcept {
         _val = v;
         const AttrRef target{ _parent.name, name };
-        const cmd::assign::Numeric cmd(target, static_cast<int32_t>(v));
+        const cmd::assign::Numeric cmd(target, attr_detail::to_wire(v));
         enqueueTransaction(cmd);
         return *this;
     }
 
-    /** Запрос значения с панели: `get <comp>.<attr>`; ответ — `Component::onResponse(tag, …)`. */
     void get() noexcept {
         const AttrRef target{ _parent.name, name };
         enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
     }
 
-    AttributeNum(const AttributeNum&) = delete;
-    AttributeNum& operator=(const AttributeNum&) = delete;
-    AttributeNum(AttributeNum&&) = delete;
-    AttributeNum& operator=(AttributeNum&&) = delete;
+    Num(const Num&) = delete;
+    Num& operator=(const Num&) = delete;
+    Num(Num&&) = delete;
+    Num& operator=(Num&&) = delete;
 
 private:
     T _val{};
 };
 
-/**
- * Числовой атрибут NIS только для чтения (RO в редакторе): зеркало в MCU, без `cmd::assign::Numeric`.
- *
- * Чтение: `T x = attr;`. Запрос с панели: `get()` → `applyResponse` в `Component::onResponse(tag, …)`.
- */
+/** Числовой атрибут RO в NIS: зеркало и `get()`, без `operator=`. */
 template<typename T>
-class AttributeNumReadOnly : public Attribute {
+class NumRO : public Base {
 public:
     static_assert(
         attr_detail::is_nex_numeric_storage_v<T>,
-        "nex::AttributeNumReadOnly<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
+        "nex::attr::NumRO<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
 
-    constexpr explicit AttributeNumReadOnly(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr explicit NumRO(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Base(parent, name, tag)
         , _val{}
     {}
 
-    constexpr AttributeNumReadOnly(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr NumRO(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
+        : Base(parent, name, tag)
         , _val(initial)
     {}
 
@@ -162,37 +224,35 @@ public:
         enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
     }
 
-    AttributeNumReadOnly(const AttributeNumReadOnly&) = delete;
-    AttributeNumReadOnly& operator=(const AttributeNumReadOnly&) = delete;
-    AttributeNumReadOnly(AttributeNumReadOnly&&) = delete;
-    AttributeNumReadOnly& operator=(AttributeNumReadOnly&&) = delete;
+    NumRO(const NumRO&) = delete;
+    NumRO& operator=(const NumRO&) = delete;
+    NumRO(NumRO&&) = delete;
+    NumRO& operator=(NumRO&&) = delete;
 
 private:
     T _val{};
 };
 
 /**
- * Строковый атрибут NIS, параметр `MaxL` (`uint8_t`):
- * - **`MaxL == 0`** — см. `AttributeString<0>`: без зеркала, без `get`; только `cmd::assign::Text` / `TextSubtract` на шину.
- * - **`MaxL > 0`** — зеркало `buf[MaxL]`, `*attr`, `set` / `subtract`, `get()` → `applyResponse` в `onResponse`.
+ * Строковый атрибут (`MaxL > 0`): зеркало `buf[MaxL]`, `set` / `subtract`, `get()`.
+ * Для `MaxL == 0` — `attr::String<0>`: без зеркала и без `get`.
  */
-template<uint8_t MaxL>
-class AttributeString : public Attribute {
-    static_assert(MaxL > 0u, "nex::AttributeString<MaxL>: для MaxL > 0 используйте этот шаблон; для MaxL == 0 — AttributeString<0>");
+template<uint16_t MaxL>
+class String : public Base {
+    static_assert(MaxL > 0u, "nex::attr::String<MaxL>: для MaxL > 0; для MaxL == 0 — attr::String<0>");
 
 public:
-    static constexpr uint8_t maxl = MaxL;
+    static constexpr uint16_t maxl = MaxL;
 
     char buf[MaxL]{};
 
-    constexpr explicit AttributeString(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr explicit String(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Base(parent, name, tag)
     {}
 
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
     [[nodiscard]] char* operator*() noexcept { return buf; }
 
-    /** `cmd::assign::Text` с `Op::Assign`: зеркало = `text` (NUL-terminated), затем отправка. */
     void set(const char* text) noexcept {
         if (text == nullptr) {
             buf[0] = '\0';
@@ -204,7 +264,6 @@ public:
         pushCmdAssignText(buf, cmd::assign::Text::Op::Assign);
     }
 
-    /** `cmd::assign::TextSubtract`: укоротить зеркало и строку на панели на `n` символов с конца. */
     void subtract(uint32_t n) noexcept {
         if (n == 0u)
             return;
@@ -225,49 +284,76 @@ public:
         enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
     }
 
-    AttributeString(const AttributeString&) = delete;
-    AttributeString& operator=(const AttributeString&) = delete;
-    AttributeString(AttributeString&&) = delete;
-    AttributeString& operator=(AttributeString&&) = delete;
+    String(const String&) = delete;
+    String& operator=(const String&) = delete;
+    String(String&&) = delete;
+    String& operator=(String&&) = delete;
 };
 
-/**
- * Строковый атрибут без зеркала в MCU (`MaxL == 0`): только адресация; без `buf`, без `get`.
- * Команды `cmd::assign::Text` / `TextSubtract`: указатели на строки должны жить до сериализации команды.
- */
+/** Строковый атрибут RO в NIS: зеркало `buf[MaxL]`, только `get()`. */
+template<uint16_t MaxL>
+class StringRO : public Base {
+    static_assert(MaxL > 0u, "nex::attr::StringRO<MaxL>: MaxL должен быть > 0");
+
+public:
+    static constexpr uint16_t maxl = MaxL;
+
+    char buf[MaxL]{};
+
+    constexpr explicit StringRO(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Base(parent, name, tag)
+    {}
+
+    [[nodiscard]] const char* operator*() const noexcept { return buf; }
+
+    void applyResponse(const msg::getString& response) noexcept {
+        attr_detail::copy_string_mirror(buf, MaxL, response);
+    }
+
+    void get() noexcept {
+        const AttrRef target{ _parent.name, name };
+        enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
+    }
+
+    StringRO(const StringRO&) = delete;
+    StringRO& operator=(const StringRO&) = delete;
+    StringRO(StringRO&&) = delete;
+    StringRO& operator=(StringRO&&) = delete;
+};
+
+/** Строковый атрибут без зеркала (`MaxL == 0`): только `set` / `append` / `subtract` на шину. */
 template<>
-class AttributeString<0> : public Attribute {
+class String<0> : public Base {
 public:
     static constexpr uint8_t maxl = 0;
 
-    constexpr explicit AttributeString(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Attribute(parent, name, tag)
+    constexpr explicit String(const Component& parent, const Literal& name, uint8_t tag) noexcept
+        : Base(parent, name, tag)
     {}
 
-    /** `cmd::assign::Text` с `Op::Assign`; `text` — NUL-terminated (или `nullptr` → пустая строка). */
     void set(const char* text) const noexcept {
         const char* const p = text != nullptr ? text : "";
         pushCmdAssignText(p, cmd::assign::Text::Op::Assign);
     }
 
-    /** `cmd::assign::Text` с `Op::Append`; `suffix` — NUL-terminated. */
     void append(const char* suffix) const noexcept {
         if (suffix == nullptr || *suffix == '\0')
             return;
         pushCmdAssignText(suffix, cmd::assign::Text::Op::Append);
     }
 
-    /** `cmd::assign::TextSubtract`. */
     void subtract(uint32_t n) const noexcept {
         if (n == 0u)
             return;
         pushCmdAssignTextSubtract(n);
     }
 
-    AttributeString(const AttributeString&) = delete;
-    AttributeString& operator=(const AttributeString&) = delete;
-    AttributeString(AttributeString&&) = delete;
-    AttributeString& operator=(AttributeString&&) = delete;
+    String(const String&) = delete;
+    String& operator=(const String&) = delete;
+    String(String&&) = delete;
+    String& operator=(String&&) = delete;
 };
+
+} // namespace attr
 
 } // namespace nex

@@ -130,6 +130,21 @@ enum class VAlign : uint8_t {
     Bottom = 2,
 };
 
+/** Привязка к экранной клавиатуре (`key` в NIS); задаётся в HMI, не зеркалируется в MCU. */
+enum class BindingKeyboard : uint8_t {
+    None       = 0,
+    FullQwerty = 1,
+    Numeric    = 2,
+    SpeedDial  = 3,
+};
+
+/** Формат отображения числа (`format` в NIS): Decimal, Currency, Hex. */
+enum class NumFormat : uint8_t {
+    Decimal  = 0,
+    Currency = 1,
+    Hex      = 2,
+};
+
 /** Код нажатия/отпускания в touch-событиях и аргументе UART-инструкции `click` (NIS, 0 / 1). */
 enum class TouchState : uint8_t {
     Release = 0x00,
