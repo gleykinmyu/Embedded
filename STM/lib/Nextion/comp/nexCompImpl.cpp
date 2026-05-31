@@ -1,23 +1,34 @@
 #include "nexCompImpl.hpp"
 
 namespace nex {
+namespace comp {
 
-void GeometryComponent::onResponse(uint8_t tag, const msg::getNumeric& response)
+void TouchArea::touchSwitch(bool enabled) noexcept
+{
+    page.app.enqueue(Transaction{cmd::Component::tsw(name, enabled), page.ID, id()});
+}
+
+void TouchArea::click(TouchState state) noexcept
+{
+    page.app.enqueue(Transaction{cmd::Component::click(name, state), page.ID, id()});
+}
+
+void TouchArea::onResponse(uint8_t tag, const msg::getNumeric& response)
 {
     switch (tag) {
-#if NEX_GEOMETRY_POSITION
-    case GeometryComponent::Tag::X:
+#if NEX_TOUCH_AREA_POSITION
+    case TouchArea::Tag::X:
         x.applyResponse(response);
         return;
-    case GeometryComponent::Tag::Y:
+    case TouchArea::Tag::Y:
         y.applyResponse(response);
         return;
 #endif
-#if NEX_GEOMETRY_SIZE
-    case GeometryComponent::Tag::W:
+#if NEX_TOUCH_AREA_SIZE
+    case TouchArea::Tag::W:
         w.applyResponse(response);
         return;
-    case GeometryComponent::Tag::H:
+    case TouchArea::Tag::H:
         h.applyResponse(response);
         return;
 #endif
@@ -27,38 +38,54 @@ void GeometryComponent::onResponse(uint8_t tag, const msg::getNumeric& response)
     Component::onResponse(tag, response);
 }
 
-void GeometryComponent::onResponse(uint8_t tag, const msg::getString& response)
+void TouchArea::onResponse(uint8_t tag, const msg::getString& response)
 {
     Component::onResponse(tag, response);
 }
 
-void VisualComponent::onResponse(uint8_t tag, const msg::getNumeric& response)
+void Drawable::refresh() noexcept
 {
-    switch (tag) {
-#if NEX_VISUAL_DRAG
-    case VisualComponent::Tag::Drag:
-        drag.applyResponse(response);
-        return;
-#endif
-#if NEX_VISUAL_APH
-    case VisualComponent::Tag::Aph:
-        aph.applyResponse(response);
-        return;
-#endif
-#if NEX_VISUAL_EFFECT
-    case VisualComponent::Tag::Effect:
-        effect.applyResponse(response);
-        return;
-#endif
-    default:
-        break;
-    }
-    GeometryComponent::onResponse(tag, response);
+    page.app.enqueue(Transaction{cmd::Component::refresh(name), page.ID, id()});
 }
 
-void VisualComponent::onResponse(uint8_t tag, const msg::getString& response)
+void Drawable::visible(bool on) noexcept
 {
-    GeometryComponent::onResponse(tag, response);
+    page.app.enqueue(Transaction{cmd::Component::visible(name, on), page.ID, id()});
 }
 
+void Drawable::show() noexcept
+{
+    visible(true);
+}
+
+void Drawable::hide() noexcept
+{
+    visible(false);
+}
+
+void Drawable::setLayer(const Drawable& above) noexcept
+{
+    page.app.enqueue(Transaction{
+        cmd::Component::setlayer(name, above.name),
+        page.ID, id()});
+}
+
+void Drawable::move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept
+{
+    page.app.enqueue(Transaction{
+        cmd::Move(name, from, to, priority, timeMs),
+        page.ID, id()});
+}
+
+void Drawable::onResponse(uint8_t tag, const msg::getNumeric& response)
+{
+    TouchArea::onResponse(tag, response);
+}
+
+void Drawable::onResponse(uint8_t tag, const msg::getString& response)
+{
+    TouchArea::onResponse(tag, response);
+}
+
+} // namespace comp
 } // namespace nex

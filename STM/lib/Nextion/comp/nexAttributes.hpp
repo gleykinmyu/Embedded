@@ -77,6 +77,15 @@ template<typename T>
     return static_cast<int32_t>(v);
 }
 
+/** MCU: `assign` числового атрибута без зеркала (только исходящая команда). */
+template<typename T>
+inline void assignNumeric(const Component& parent, const Literal& attrName, uint8_t tag, T value) noexcept
+{
+    const AttrRef target{parent.name, attrName};
+    const cmd::assign::Numeric cmd(target, to_wire(value));
+    parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(), tag});
+}
+
 template<>
 [[nodiscard]] constexpr int32_t to_wire(const Color& v) noexcept {
     return static_cast<int32_t>(v.raw);
@@ -113,6 +122,11 @@ inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString
 
 /**
  * Атрибуты NIS, привязанные к `Component`: `attr::Num`, `attr::NumRO`, `attr::String`, `attr::StringRO`.
+ *
+ * У каждого поля виджета — комментарий категории:
+ * - `user` — публичное поле `attr::Num` / `attr::String` (касание, ползунок, ввод с клавиатуры).
+ * - `mcu` (числовой) — только `set…()` с `attr_detail::assignNumeric` (без чтения зеркала).
+ *   `attr::String` и `attr::NumRO` не трогаем. `x`, `y` — поля `attr::Num`.
  */
 namespace attr {
 

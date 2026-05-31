@@ -287,8 +287,7 @@ void Canvas::Button::hide() noexcept {
 
 void Canvas::Button::placeRight(const Button& left, const uint16_t gap) noexcept {
     setSize(Rect(0, left._region.size.h));
-    const uint16_t x = static_cast<uint16_t>(left._region.ul.x + left._region.size.w + gap);
-    show(Point(x, left._region.ul.y));
+    show(left._region.ul.right(static_cast<uint16_t>(left._region.size.w + gap)));
 }
 
 bool Canvas::Button::contains(const Point p) const noexcept {

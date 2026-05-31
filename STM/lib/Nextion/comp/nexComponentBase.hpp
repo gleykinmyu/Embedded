@@ -166,6 +166,7 @@ namespace nex {
     /*
      * ---------------------------------------------------------------------------
      * Дерево наследования C++ (план по enum Type — строки комментариев у значений enum = эталон атрибутов NIS).
+     * Листья и impl-базы — `namespace nex::comp`; `Page` и `Component` — `namespace nex`.
      * Узел: только дельта к непосредственному родителю (без повторения type, id, vscope, objname и полей предков).
      * RO — как в enum; у PageComponent в редакторе нет objname.
      *
@@ -173,8 +174,8 @@ namespace nex {
      *   StaBcoComponent — в базе sta (режимы по типу), bco; без font. Атрибут pco как «цвет шрифта» (глифы) не на этом узле.
      *   FontedStaComponent — дельта + font; здесь же единый базовый `pco` (цвет шрифта NIS). У потомков FontedSta в дельтах
      *   `pco` не повторяем; оставляем только отличные от базового имена: pco1, pco2, pco3, … (отдельные атрибуты в панели).
-     *   Под StaBco (без FontedSta): QR, DrawableColored — в enum нет font; у листьев свои дельты (в т.ч. pco0…3, pco(ppic) — не смешивать с pco шрифта).
-     *   SelectionComponent — у Checkbox/Radio в enum нет sta и font; у ToggleSwitch есть font (см. enum), sta нет.
+     *   Под StaBco (без FontedSta): QR, Waveform, Gauge — в enum нет font; у листьев свои дельты (в т.ч. pco0…3, pco(ppic) — не смешивать с pco шрифта).
+     *   Selection — у Checkbox/Radio в enum нет sta и font; у ToggleSwitch есть font (см. enum), sta нет.
      *
      *   PageComponent                          // effect; up; down; left; right; sta; bco(pic при sta≠no background)
      *   Component                              // type(RO), id(RO), vscope(RO); objname(RO) — если есть у типа
@@ -186,30 +187,31 @@ namespace nex {
      *   ├── TouchCap                           // val(RO)
      *   ├── FileStream                         // val; qty(RO); en(RO); open, read, write, close, find
      *   │
-     *   └── GeometryComponent                  // pos (x,y), w, h — компоненты с прямоугольником на странице
+     *   └── TouchArea                          // pos (x,y), w, h — компоненты с прямоугольником на странице
      *       ├── Hotspot                        // —
      *       │
-     *       └── VisualComponent                // drag, aph, effect
+     *       └── Drawable                         // drag, aph, effect
      *           ├── ExternalPicture            // path
      *           ├── MediaComponent             // vid; en; loop; dis; tim; stim(RO); qty(RO)
      *           │   ├── Gmov                   // —
      *           │   └── Video                  // from(RO); vid(path) при from=external
      *           │
-     *           └── BGComponent<STYLE = CROP, COLOR, IMAGE, TRANSPARENT>  //templated structure bg: bg.color / bg.image / bg.cropimage / bg
+     *           └── Styled<STYLE = CROP, COLOR, IMAGE, TRANSPARENT>  //templated structure bg: bg.color / bg.image / bg.cropimage / bg
      *               │
      *               ├── QRCode<COLOR>          // pco; dis; txt; txt_maxl
      *               ├── Picture<IMAGE>
      *               ├── CropPicture<CROP_IMAGE>
      *               │
-     *               ├── DrawableColoredComponent 
-     *               │   ├── Waveform<chNum>         // {gdc; gdw; gdh;} -> grid.color, grid.width, grid.height; pco0…pco3-> ch[0..3].color (number depends from chNum); dis; wid; hig; {add, addt - add values to form.}
-     *               │   ├── ProgressBar<COLOR, IMAGE>  // val; dis(sta=color); pco(ppic)
-     *               │   ├── Slider<CROP, COLOR, IMAGE> // wid; hig; bco1(pic1,picc1); pco; val -> value; {maxval; minval;} -> value.min; value.max ch
-     *               │   └── Gauge                      // bco(picc,pic); val -> value; format; up; down; left;
-     *               │                                  // pco; pco2; hig; vvs0; vvs1; vvs2
+     *               ├── Waveform                         // gdc; gdw; gdh; pco0…pco3; dis; wid; hig; ch
+     *               ├── Gauge                            // val; format; up; down; left; pco; pco2; hig; vvs0…vvs2
      *               │
-     *               ├── PrintableComponent          // {font; pco; spax} -> font.id; font.color; font.spacing
-     *               │   ├── DataFileRecordComponent // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
+     *               ├── Linear                         // value
+     *               │   ├── ProgressBar<Color>           // barColor; cornerRadius
+     *               │   ├── ProgressBar<Image>           // value; bg.bpic; ppic
+     *               │   └── Slider<CROP, COLOR, IMAGE> // cursor; bg2; value (Linear)
+     *               │
+     *               ├── Printable                   // {font; pco; spax} -> font.id; font.color; font.spacing
+     *               │   ├── DataFile // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
      *               │   │   │                       // maxval_y; maxval_x; val_x; val_y; bco2; pco2
      *               │   │   │                       // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
      *               │   │   │
@@ -217,13 +219,13 @@ namespace nex {
      *               │   │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
      *               │   │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
      *               │   │
-     *               │   ├── ListSelectTextComponent // path <path_m>; text<txt_maxl>, val; ch; dis; hig
+     *               │   ├── ListSelect              // path <path_m>; text<txt_maxl>, val; ch; dis; hig
      *               │   │   │
      *               │   │   ├── ComboBox       //  ycen; up; pco3; bco1; pco1; dir; qty; vvs0; bco2; pco2;
      *               │   │   │                  // down; mode; wid; vvs1; xcen
      *               │   │   └── TextSelect     // pco2; pco1(line); txt(RO);
      *               │   │
-     *               │   └── MultilineComponent // spay; isbr; ycen; xcen;
+     *               │   └── Multiline                 // spay; isbr; ycen; xcen;
      *               │       │
      *               │       ├── TextComponent      // txt <txt_maxl>
      *               │       │   ├── SLText         // left; ch; val_y<maxval_y>; ycen = delete
@@ -234,11 +236,11 @@ namespace nex {
      *               │       │        ├── Button
      *               │       │        └── DualStateButton // val;
      *               │       │
-     *               │       └── NumericComponent // key; val; format;
+     *               │       └── Numeric                 // key; val; format;
      *               │           ├── Number           // length
-     *               │           └── XFloat           // vvs0; vvs1;
+     *               │           └── XFloat           // point (left, right);
      *               │
-     *               └── SelectionComponent<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
+     *               └── Selection<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
      *                   ├── Checkbox               // —
      *                   ├── Radio                  // —
      *                   └── ToggleSwitch           // bco2; pco2; pco1(font color); font; dis; txt(txt_maxl=24)
@@ -246,10 +248,11 @@ namespace nex {
      * Пояснения:
      *
      * - Timer, NumericVariable, StringVariable, Audio, TouchCap, FileStream — прямые наследники Component (в панели нет x,y,w,h).
-     * - GeometryComponent: всё с pos,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
+     * - TouchArea: всё с pos,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
+     * - Drawable: refresh/show/hide/setLayer/move — команды NIS на видимых виджетах.
      *
      * - VisualBaseComponent: под Geometry — один узел (в NIS drag, aph, effect); потомки: картинки, Media, StaBco (QR,
-     *   DrawableColored, FontedSta), Selection; дельта drag/aph/effect не повторяется у детей.
+     *   Waveform, Gauge, FontedSta), Selection; дельта drag/aph/effect не повторяется у детей.
      * - Picture / CropPicture / ExternalPicture — не StaBco (набор атрибутов в enum другой). QR — под StaBco, sta none|has,
      *   не путать с растром; обязательный txt как данные кода, pic условно.
      *
@@ -258,7 +261,7 @@ namespace nex {
      *
      * - FontedStaComponent: единственное место в ветке для базового `pco` (цвет шрифта); у потомков в дельтах не дублируется,
      *   кроме отдельных имён pco1, pco2, pco3 в NIS (другие роли, не «ещё раз pco»).
-     * - DataFileRecordComponent: прямой потомок FontedSta (рядом с Textual, не внутри него); txt/txt_maxl + общие поля
+     * - DataFile: прямой потомок FontedSta (рядом с Textual, не внутри него); txt/txt_maxl + общие поля
      *   скролла/ячеек для DataRecord и FileBrowser; DataRecord — path и график; FileBrowser — filter, spay, pic*, предупреждения.
      *
      * - SLText — прямой потомок Textual (не MultilineText); в NIS без атрибута key; xcen, left, ch, maxval_y, val_y, isbr, spax, spay.
@@ -267,7 +270,7 @@ namespace nex {
      *
      * - Checkbox/Radio — Selection, не FontedSta (в enum нет sta и font); ToggleSwitch — Selection + дельта с font и txt (enum).
      *
-     * - DataRecord: в enum дублируется val — сверять RO/RW с редактором; общие поля см. DataFileRecordComponent.
+     * - DataRecord: в enum дублируется val — сверять RO/RW с редактором; общие поля см. DataFile.
      * - Классы C++ не для всех листьев — см. nexWidgets.hpp.
      *
      * --- Архитектурное дерево (имена; атрибуты — сумма дельт от Component до листа) ---
@@ -277,7 +280,7 @@ namespace nex {
      *       → geometry (x,y,w,h) → hotspot | page | visual_base (drag, aph, effect)
      *
      *       → visual_base → picture | croppicture | externalpicture | media
-     *                   → sta_bco ( qrcode | drawable_colored | fonted_sta → DataFileRecord…; textual…; NumericText… )
+     *                   → sta_bco ( qrcode | drawable_colored | fonted_sta → DataFile…; textual…; NumericText… )
      *                   → selection (checkbox | radio | toggleswitch)
      */
 

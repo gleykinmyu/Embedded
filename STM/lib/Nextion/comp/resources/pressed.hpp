@@ -4,32 +4,33 @@
 
 namespace nex::resources {
 
-/** Цвет шрифта в нажатом состоянии (`pco2`). */
 struct PressedFont {
     enum Tag : uint8_t {
         Color = 147u,
     };
 
-    attr::Num<nex::Color> color;
+    Component& owner;
 
-    explicit PressedFont(Component& owner) noexcept
-        : color{owner, "pco2", Tag::Color}
+    explicit PressedFont(Component& ownerIn) noexcept
+        : owner{ownerIn}
     {}
+
+    void setColor(nex::Color v) noexcept
+    {
+        attr_detail::assignNumeric(owner, Literal{"pco2"}, Tag::Color, v);
+    }
 
     bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
     {
-        if (tag == Tag::Color) {
-            color.applyResponse(response);
-            return true;
-        }
+        (void)tag;
+        (void)response;
         return false;
     }
 };
 
-/** Состояние «нажато»: фон и цвет текста. */
 template<BGStyle S>
 struct Pressed {
-    Background<S, true> bg;
+    Background<S, 2u> bg;
     PressedFont font;
 
     explicit Pressed(Component& owner) noexcept

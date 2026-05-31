@@ -6,32 +6,32 @@
 
 namespace nex::resources {
 
-struct Font {
+struct Cursor {
     enum Tag : uint8_t {
-        Id = 48u,
+        W = 193u,
+        H,
         Color,
-        Spacing,
     };
 
     Component& owner;
 
-    explicit Font(Component& ownerIn) noexcept
+    explicit Cursor(Component& ownerIn) noexcept
         : owner{ownerIn}
     {}
 
-    void setId(FontId v) noexcept
+    void setW(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"font"}, Tag::Id, v);
+        attr_detail::assignNumeric(owner, Literal{"wid"}, Tag::W, v);
+    }
+
+    void setH(uint16_t v) noexcept
+    {
+        attr_detail::assignNumeric(owner, Literal{"hig"}, Tag::H, v);
     }
 
     void setColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"pco"}, Tag::Color, v);
-    }
-
-    void setSpacing(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(owner, Literal{"spax"}, Tag::Spacing, v);
     }
 
     bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept

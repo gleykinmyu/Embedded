@@ -20,6 +20,8 @@
 
 namespace nex::examples {
 
+using namespace nex::comp;
+
 namespace detail {
 
 inline const char* touch_state_cstr(TouchState s) noexcept

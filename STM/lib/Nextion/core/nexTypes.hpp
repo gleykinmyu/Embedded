@@ -140,7 +140,7 @@ enum class BindingKeyboard : uint8_t {
 
 /** Формат отображения числа (`format` в NIS): Decimal, Currency, Hex. */
 enum class NumFormat : uint8_t {
-    Decimal  = 0,
+    Dec  = 0,
     Currency = 1,
     Hex      = 2,
 };
@@ -204,6 +204,18 @@ struct Point {
         : x(px)
         , y(py)
     {}
+
+    /** Точка правее на `dx` пикселей (тот же `y`). */
+    [[nodiscard]] constexpr Point right(uint16_t dx) const noexcept
+    {
+        return Point(static_cast<uint16_t>(x + dx), y);
+    }
+
+    /** Точка левее на `dx` пикселей (тот же `y`, `x` не меньше 0). */
+    [[nodiscard]] constexpr Point left(uint16_t dx) const noexcept
+    {
+        return Point(x >= dx ? static_cast<uint16_t>(x - dx) : 0u, y);
+    }
 };
 
 /** Размер прямоугольника в пикселях. */

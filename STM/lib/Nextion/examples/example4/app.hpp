@@ -20,6 +20,8 @@
 
 namespace nex::examples {
 
+using namespace nex::comp;
+
 class ErrorTestApp : public Application {
 public:
     static constexpr uint16_t kScreenWidth = 600;
