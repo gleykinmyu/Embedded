@@ -15,7 +15,7 @@ struct PressedFont {
         : owner{ownerIn}
     {}
 
-    void setColor(nex::Color v) noexcept
+    void setPressedTextColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"pco2"}, Tag::Color, v);
     }

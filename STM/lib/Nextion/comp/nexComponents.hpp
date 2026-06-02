@@ -17,7 +17,7 @@ public:
         En,
     };
 
-    void setTim(uint32_t v) noexcept
+    void setPeriod(uint32_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim, v);
     }
@@ -30,16 +30,6 @@ public:
     void disable() noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Component::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Component::onResponse(tag, response);
     }
 
     Timer(Page& owner, const Literal& name, uint8_t id = 0)
@@ -57,17 +47,13 @@ public:
     /** user: значение глобальной числовой переменной */
     attr::Num<int32_t> val;
 
+    using Component::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        Component::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Component::onResponse(tag, response);
     }
 
@@ -88,11 +74,7 @@ public:
     /** user: значение глобальной строковой переменной */
     attr::String<TxtMaxL> txt;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Component::onResponse(tag, response);
-    }
-
+    using Component::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         if (tag == Tag::Txt) {
@@ -130,7 +112,8 @@ public:
         attr_detail::assignNumeric(*this, Literal{"pco"}, Tag::Pco, v);
     }
 
-    void setDis(uint16_t v) noexcept
+    //TODO проверить реальное назначение атрибута dis
+    void setScale(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
@@ -138,13 +121,7 @@ public:
     /** mcu: полезная нагрузка QR (строка) */
     attr::String<256> txt;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Styled<BGStyle::Color>::onResponse(tag, response);
-        (void)tag;
-        (void)response;
-    }
-
+    using Styled<BGStyle::Color>::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         if (tag == Tag::Txt) {
@@ -177,18 +154,6 @@ public:
         attr_detail::assignNumeric(*this, Literal{"cpic"}, Tag::Cpic, v);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Styled<BGStyle::CropImage>::onResponse(tag, response);
-        (void)tag;
-        (void)response;
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Styled<BGStyle::CropImage>::onResponse(tag, response);
-    }
-
     CropPicture(Page& owner, const Literal& name, uint8_t id = 0)
         : Styled<BGStyle::CropImage>(owner, name, Component::Type::CropPicture, id)
     {}
@@ -211,7 +176,7 @@ public:
         Hig,
     };
 
-    void setCh(uint8_t v) noexcept
+    void setChannel(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"ch"}, Tag::Ch, v);
     }
@@ -256,24 +221,14 @@ public:
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
 
-    void setWid(uint16_t v) noexcept
+    void setPlotWidth(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"wid"}, Tag::Wid, v);
     }
 
-    void setHig(uint16_t v) noexcept
+    void setPlotHeight(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig, v);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Styled<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Styled<S>::onResponse(tag, response);
     }
 
     Waveform(Page& owner, const Literal& name, uint8_t id = 0)
@@ -306,16 +261,6 @@ public:
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::CornerRadius, v);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Linear<BGStyle::Color>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Linear<BGStyle::Color>::onResponse(tag, response);
-    }
-
     ProgressBar(Page& owner, const Literal& name, uint8_t id = 0)
         : Linear<BGStyle::Color>(owner, name, Component::Type::ProgressBar, id)
     {}
@@ -330,6 +275,7 @@ public:
         Ppic,
     };
 
+    //TODO подумать над setProgress()
     void setValue(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"val"}, Tag::Val, v);
@@ -343,17 +289,11 @@ public:
         attr_detail::assignNumeric(*this, Literal{"ppic"}, Tag::Ppic, v);
     }
 
+    using Drawable::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (bg.onResponse(tag, response))
             return;
-        Drawable::onResponse(tag, response);
-        (void)tag;
-        (void)response;
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Drawable::onResponse(tag, response);
     }
 
@@ -374,19 +314,15 @@ public:
     /** mcu: бегунок — поля в `cursor` */
     resources::Cursor cursor;
     /** mcu: bco1 — поля в `bg2` */
-    resources::Background2 bg2;
+    resources::Background<S, 1u> bg2;
 
+    using Linear<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (cursor.onResponse(tag, response))
             return;
         if (bg2.onResponse(tag, response))
             return;
-        Linear<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Linear<S>::onResponse(tag, response);
     }
 
@@ -422,32 +358,32 @@ public:
     /** mcu: формат подписи */
     attr::String<32> format;
 
-    void setPicUp(PicId v) noexcept
+    void setUpImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"up"}, Tag::Up, v);
     }
 
-    void setPicDown(PicId v) noexcept
+    void setDownImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"down"}, Tag::Down, v);
     }
 
-    void setPicLeft(PicId v) noexcept
+    void setLeftImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"left"}, Tag::Left, v);
     }
 
-    void setPco(nex::Color v) noexcept
+    void setScaleColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"pco"}, Tag::Pco, v);
     }
 
-    void setPco2(nex::Color v) noexcept
+    void setAccentColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
     }
 
-    void setHig(uint16_t v) noexcept
+    void setScaleHeight(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig, v);
     }
@@ -459,13 +395,7 @@ public:
     /** mcu: подпись vvs2 */
     attr::String<24> vvs2;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Styled<S>::onResponse(tag, response);
-        (void)tag;
-        (void)response;
-    }
-
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         switch (tag) {
@@ -528,7 +458,7 @@ public:
         attr_detail::assignNumeric(*this, Literal{"ycen"}, Tag::Ycen, false);
     }
 
-    void setPicUp(PicId v) noexcept
+    void setUpImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"up"}, Tag::Up, v);
     }
@@ -551,12 +481,12 @@ public:
     /** user: направление прокрутки списка */
     attr::Num<uint8_t> list_dir;
 
-    void setQty(uint16_t v) noexcept
+    void setRowCount(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"qty"}, Tag::Qty, v);
     }
 
-    void setVvs0(int16_t v) noexcept
+    void setListOffset(int16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"vvs0"}, Tag::Vvs0, v);
     }
@@ -571,22 +501,22 @@ public:
         attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
     }
 
-    void setPicDown(PicId v) noexcept
+    void setDownImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"down"}, Tag::Down, v);
     }
 
-    void setMode(uint8_t v) noexcept
+    void setListMode(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"mode"}, Tag::Mode, v);
     }
 
-    void setWid(uint16_t v) noexcept
+    void setDropDownWidth(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"wid"}, Tag::Wid, v);
     }
 
-    void setVvs1(int16_t v) noexcept
+    void setListOffset2(int16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"vvs1"}, Tag::Vvs1, v);
     }
@@ -657,16 +587,6 @@ public:
         attr_detail::assignNumeric(*this, Literal{"pw"}, Tag::Pw, false);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
-    }
-
     Text(Page& owner, const Literal& name, uint8_t id = 0)
         : TextComponent<S, TxtMaxL>(owner, name, Component::Type::Text, id)
     {}
@@ -696,12 +616,12 @@ public:
     /** user: направление прокрутки текста */
     attr::Num<uint8_t> dir;
 
-    void setDis(uint16_t v) noexcept
+    void setScrollStep(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
 
-    void setTim(uint32_t v) noexcept
+    void setScrollPeriod(uint32_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim, v);
     }
@@ -716,18 +636,15 @@ public:
         attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
     }
 
+    using TextComponent<S, TxtMaxL>::onResponse;
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Dir) {
             dir.applyResponse(response);
             return;
         }
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
+        Printable<S>::onResponse(tag, response);
     }
 
     ScrollText(Page& owner, const Literal& name, uint8_t id = 0)
@@ -753,17 +670,13 @@ public:
     /** user: состояние кнопки (нажато/отпущено) */
     attr::Num<uint32_t> val;
 
+    using ButtonLikeComponent<S, TxtMaxL>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        ButtonLikeComponent<S, TxtMaxL>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         ButtonLikeComponent<S, TxtMaxL>::onResponse(tag, response);
     }
 
@@ -780,19 +693,9 @@ public:
         Length = 163u,
     };
 
-    void setLength(uint8_t v) noexcept
+    void setDigitCount(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"length"}, Tag::Length, v);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Numeric<S, Keyboard>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Numeric<S, Keyboard>::onResponse(tag, response);
     }
 
     Number(Page& owner, const Literal& name, uint8_t id = 0)
@@ -806,15 +709,11 @@ public:
     /** mcu: vvs0/vvs1 — поля в `point` */
     resources::FloatPoint point;
 
+    using Numeric<S, Keyboard>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (point.onResponse(tag, response))
             return;
-        Numeric<S, Keyboard>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Numeric<S, Keyboard>::onResponse(tag, response);
     }
 
@@ -850,27 +749,27 @@ public:
         Txt,
     };
 
-    void setBco2(nex::Color v) noexcept
+    void setTrackColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"bco2"}, Tag::Bco2, v);
     }
 
-    void setPco2(nex::Color v) noexcept
+    void setOffColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
     }
 
-    void setPco1(nex::Color v) noexcept
+    void setOnColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"pco1"}, Tag::Pco1, v);
     }
 
-    void setFont(FontId v) noexcept
+    void setLabelFontId(FontId v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"font"}, Tag::Font, v);
     }
 
-    void setDis(uint16_t v) noexcept
+    void setLabelGap(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
@@ -878,18 +777,15 @@ public:
     /** mcu: подпись переключателя */
     attr::String<TxtMaxL> txt;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Selection<S>::onResponse(tag, response);
-    }
-
+    using Selection<S>::onResponse;
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         if (tag == Tag::Txt) {
             txt.applyResponse(response);
             return;
         }
-        Selection<S>::onResponse(tag, response);
+        Styled<S>::onResponse(tag, response);
     }
 
     ToggleSwitch(Page& owner, const Literal& name, uint8_t id = 0)

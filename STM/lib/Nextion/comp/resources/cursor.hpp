@@ -19,17 +19,17 @@ struct Cursor {
         : owner{ownerIn}
     {}
 
-    void setW(uint16_t v) noexcept
+    void setWidth(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"wid"}, Tag::W, v);
     }
 
-    void setH(uint16_t v) noexcept
+    void setHeight(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"hig"}, Tag::H, v);
     }
 
-    void setColor(nex::Color v) noexcept
+    void setThumbColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"pco"}, Tag::Color, v);
     }

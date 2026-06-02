@@ -69,39 +69,9 @@ struct ProgressBarBackground {
         : owner{ownerIn}
     {}
 
-    void setBpic(PicId v) noexcept
+    void setImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"bpic"}, Tag::Bpic, v);
-    }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
-};
-
-struct Background2 {
-    enum Tag : uint8_t {
-        Pic1 = 196u,
-        Picc1,
-    };
-
-    Component& owner;
-
-    explicit Background2(Component& ownerIn) noexcept
-        : owner{ownerIn}
-    {}
-
-    void setPic1(PicId v) noexcept
-    {
-        attr_detail::assignNumeric(owner, Literal{"pic1"}, Tag::Pic1, v);
-    }
-
-    void setPicc1(PicId v) noexcept
-    {
-        attr_detail::assignNumeric(owner, Literal{"picc1"}, Tag::Picc1, v);
     }
 
     bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept

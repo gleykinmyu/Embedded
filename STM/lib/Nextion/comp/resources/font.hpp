@@ -29,7 +29,7 @@ struct Font {
         attr_detail::assignNumeric(owner, Literal{"pco"}, Tag::Color, v);
     }
 
-    void setSpacing(uint8_t v) noexcept
+    void setCharSpacing(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"spax"}, Tag::Spacing, v);
     }

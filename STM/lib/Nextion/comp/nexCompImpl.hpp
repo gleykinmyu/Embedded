@@ -28,8 +28,8 @@
 #ifndef NEX_DRAWABLE_DRAG
 #define NEX_DRAWABLE_DRAG 1
 #endif
-#ifndef NEX_DRAWABLE_APH
-#define NEX_DRAWABLE_APH 1
+#ifndef NEX_DRAWABLE_OPACITY
+#define NEX_DRAWABLE_OPACITY 1
 #endif
 #ifndef NEX_DRAWABLE_EFFECT
 #define NEX_DRAWABLE_EFFECT 1
@@ -65,7 +65,7 @@ public:
     void touchSwitch(bool enabled) noexcept;
 
     /** NIS `click obj,0|1` — программное нажатие/отпускание. */
-    void click(TouchState state = TouchState::Press) noexcept;
+    void touch(TouchState state = TouchState::Press) noexcept;
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override;
     void onResponse(uint8_t tag, const msg::getString& response) override;
@@ -94,6 +94,7 @@ public:
     };
 
 #if NEX_DRAWABLE_DRAG
+
     void enableDrag() noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, true);
@@ -103,15 +104,17 @@ public:
     {
         attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, false);
     }
+
 #endif
-#if NEX_DRAWABLE_APH
-    void setAph(uint8_t v) noexcept
+#if NEX_DRAWABLE_OPACITY
+    void setOpacity(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"aph"}, Tag::Aph, v);
     }
 #endif
 #if NEX_DRAWABLE_EFFECT
-    void setEffect(uint8_t v) noexcept
+    //TODO сделать enum для effect. Переименовать в setTransition()
+    void setTransitionEffect(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"effect"}, Tag::Effect, v);
     }
@@ -126,7 +129,8 @@ public:
     void hide() noexcept;
 
     /** NIS `setlayer obj,above` — разместить над другим виджетом. */
-    void setLayer(const Drawable& above) noexcept;
+    //TODO сделать метод placeFront - разместить поверх ВСЕХ других виджетов
+    void placeAbove(const Drawable& above) noexcept;
 
     /** NIS `move obj,x0,y0,x1,y1,priority,timeMs` — анимация перемещения. */
     void move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept;
@@ -183,17 +187,13 @@ public:
     /** user: Slider — от ползунка; mcu: ProgressBar — уровень заливки */
     attr::Num<uint8_t> value;
 
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             value.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Styled<S>::onResponse(tag, response);
     }
 
@@ -211,15 +211,11 @@ public:
     /** mcu: шрифт (`font`, `pco`, `spax`) — поля внутри `font` */
     resources::Font font;
 
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (font.onResponse(tag, response))
             return;
-        Styled<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Styled<S>::onResponse(tag, response);
     }
 
@@ -265,7 +261,8 @@ public:
     attr::Num<int32_t> val;
     /** user: количество (RO, отражает состояние после действий на панели) */
     attr::NumRO<uint16_t> qty;
-    void setDis(uint16_t v) noexcept
+    //TODO проверить реальное назначение атрибута dis
+    void setCellSpacing(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
@@ -285,6 +282,7 @@ public:
     /** user: позиция/значение по Y */
     attr::Num<uint16_t> val_y;
 
+    //TODO посмотреть реальное назначение атрибутов bco2 и pco2
     void setBco2(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"bco2"}, Tag::Bco2, v);
@@ -331,7 +329,7 @@ public:
             txt.applyResponse(response);
             return;
         }
-        Printable<S>::onResponse(tag, response);
+        Styled<S>::onResponse(tag, response);
     }
 
 protected:
@@ -367,12 +365,14 @@ public:
     /** user: номер выбранной строки */
     attr::Num<uint8_t> ch;
 
-    void setDis(uint16_t v) noexcept
+    //TODO посмотреть реальное назначение атрибута dis
+    void setItemSpacing(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
     }
 
-    void setHig(uint16_t v) noexcept
+    //TODO посмотреть реальное назначение атрибута hig
+    void setRowHeight(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig, v);
     }
@@ -398,7 +398,7 @@ public:
             path.applyResponse(response);
             return;
         }
-        Printable<S>::onResponse(tag, response);
+        Styled<S>::onResponse(tag, response);
     }
 
 protected:
@@ -446,16 +446,6 @@ public:
         attr_detail::assignNumeric(*this, Literal{"xcen"}, Tag::Xcen, v);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Printable<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Printable<S>::onResponse(tag, response);
-    }
-
 protected:
     explicit Multiline(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Printable<S>(owner, objectName, componentType, id)
@@ -473,18 +463,15 @@ public:
     /** user: текст (ввод с клавиатуры у Text/Number); mcu: подпись у Button */
     attr::String<TxtMaxL> txt;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        Multiline<S>::onResponse(tag, response);
-    }
-
+    using Printable<S>::onResponse;
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         if (tag == Tag::Txt) {
             txt.applyResponse(response);
             return;
         }
-        Multiline<S>::onResponse(tag, response);
+        Styled<S>::onResponse(tag, response);
     }
 
 protected:
@@ -501,16 +488,13 @@ public:
     /** mcu: оформление нажатого состояния — поля внутри `pressed` */
     resources::Pressed<S> pressed;
 
+    using TextComponent<S, TxtMaxL>::onResponse;
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (pressed.onResponse(tag, response))
             return;
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
+        Printable<S>::onResponse(tag, response);
     }
 
 protected:
@@ -539,18 +523,14 @@ public:
         attr_detail::assignNumeric(*this, Literal{"format"}, Tag::Format, v);
     }
 
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        Multiline<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Multiline<S>::onResponse(tag, response);
+        Printable<S>::onResponse(tag, response);
     }
 
 protected:
@@ -572,7 +552,7 @@ public:
         Val,
     };
 
-    void setColor(nex::Color v) noexcept
+    void setMarkerColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, Literal{"pco"}, Tag::Pco, v);
     }
@@ -580,17 +560,13 @@ public:
     /** user: состояние выбора (checkbox/radio/toggle) */
     attr::Num<bool> val;
 
+    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
         Styled<S>::onResponse(tag, response);
     }
 

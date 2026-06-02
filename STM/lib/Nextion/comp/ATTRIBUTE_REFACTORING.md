@@ -82,11 +82,11 @@ assignNumeric(parent, attrName, tag, value);
 - [x] Удалён `nexAttrMcu.hpp`; MCU numeric → `assignNumeric` + только `set*`.
 - [x] Строки и RO не переводились на «только методы».
 - [x] Первая волна action-имён: `enable`, `bindKeyboard`, `enableDrag`, …
-- [x] XFloat: `resources::FloatPoint point` с `setLeft` / `setRight` (пока короткие имена).
+- [x] XFloat: `resources::FloatPoint point` с `setDigitsBeforePoint` / `setDigitsAfterPoint`.
 
 ---
 
-## Фаза A — Имена «обрывков NIS» (высокий приоритет)
+## Фаза A — Имена «обрывков NIS» (высокий приоритет) — [x]
 
 Одинаковые имена NIS в разных виджетах → **разные методы по смыслу UI**.
 
@@ -133,7 +133,7 @@ assignNumeric(parent, attrName, tag, value);
 
 ---
 
-## Фаза B — `resources::*` (средний приоритет)
+## Фаза B — `resources::*` (средний приоритет) — [x]
 
 Единый стиль: доменное имя + роль, не `setW` / `setColor` без контекста.
 
@@ -172,7 +172,7 @@ assignNumeric(parent, attrName, tag, value);
 
 ---
 
-## Фаза C — Drawable и визуал (низкий/средний приоритет)
+## Фаза C — Drawable и визуал (низкий/средний приоритет) — [x]
 
 | Сейчас | Предложение | Примечание |
 |--------|-------------|------------|
@@ -197,7 +197,7 @@ assignNumeric(parent, attrName, tag, value);
 
 ---
 
-## Фаза D — DataFile / FileBrowser (когда появятся листья)
+## Фаза D — DataFile / FileBrowser (когда появятся листья) — [x] (база DataFile)
 
 | Сейчас | Предложение |
 |--------|-------------|
@@ -206,9 +206,9 @@ assignNumeric(parent, attrName, tag, value);
 
 ---
 
-## Фаза E — Документация и дерево (поддержка)
+## Фаза E — Документация и дерево (поддержка) — [~]
 
-- [ ] Обновить ASCII-дерево в `nexComponentBase.hpp` под методы (`// setPeriod`, не `// tim`).
+- [x] Обновить ASCII-дерево в `nexComponentBase.hpp` под методы (`// setPeriod`, не `// tim`).
 - [ ] Легенда в `nexAttributes.hpp` синхронизировать с финальными соглашениями.
 - [ ] Краткая таблица «виджет → MCU API» в `examples/` или в этом файле (приложение).
 
@@ -282,11 +282,11 @@ assignNumeric(parent, attrName, tag, value);
 
 ## Чеклист перед закрытием всего плана
 
-- [ ] Все пункты фаз A–C отмечены или явно `[-]`
-- [ ] Examples обновлены
-- [ ] `ATTRIBUTE_REFACTORING.md` и дерево в `nexComponentBase.hpp` согласованы
-- [ ] Нет ссылок на `nexAttrMcu.hpp` / `McuNum` / `fetch*` для mcu-методов
+- [x] Все пункты фаз A–C отмечены или явно `[-]`
+- [x] Examples обновлены (старые имена не использовались)
+- [x] `ATTRIBUTE_REFACTORING.md` и дерево в `nexComponentBase.hpp` согласованы
+- [x] Нет ссылок на `nexAttrMcu.hpp` / `McuNum` / `fetch*` для mcu-методов
 
 ---
 
-*Последнее обновление плана: 2026-05-31.*
+*Последнее обновление плана: 2026-06-01.*

@@ -125,8 +125,9 @@ inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString
  *
  * У каждого поля виджета — комментарий категории:
  * - `user` — публичное поле `attr::Num` / `attr::String` (касание, ползунок, ввод с клавиатуры).
- * - `mcu` (числовой) — только `set…()` с `attr_detail::assignNumeric` (без чтения зеркала).
- *   `attr::String` и `attr::NumRO` не трогаем. `x`, `y` — поля `attr::Num`.
+ * - `mcu` (числовой) — метод `set<Role>()` / `enable…()` / `disable…()` через `assignNumeric` (без зеркала).
+ *   Имена по смыслу UI, не NIS (`setPeriod`, `font.setTextColor`, не `setTim` / `setPco`).
+ *   `attr::String` и `attr::NumRO` — поля; `x`, `y` — поля `attr::Num`.
  */
 namespace attr {
 

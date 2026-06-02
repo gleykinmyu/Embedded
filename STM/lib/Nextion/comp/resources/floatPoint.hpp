@@ -18,12 +18,12 @@ struct FloatPoint {
         : owner{ownerIn}
     {}
 
-    void setLeft(uint8_t v) noexcept
+    void setDigitsBeforePoint(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"vvs0"}, Tag::Left, v);
     }
 
-    void setRight(uint8_t v) noexcept
+    void setDigitsAfterPoint(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, Literal{"vvs1"}, Tag::Right, v);
     }

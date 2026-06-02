@@ -8,7 +8,7 @@ void TouchArea::touchSwitch(bool enabled) noexcept
     page.app.enqueue(Transaction{cmd::Component::tsw(name, enabled), page.ID, id()});
 }
 
-void TouchArea::click(TouchState state) noexcept
+void TouchArea::touch(TouchState state) noexcept
 {
     page.app.enqueue(Transaction{cmd::Component::click(name, state), page.ID, id()});
 }
@@ -63,7 +63,7 @@ void Drawable::hide() noexcept
     visible(false);
 }
 
-void Drawable::setLayer(const Drawable& above) noexcept
+void Drawable::placeAbove(const Drawable& above) noexcept
 {
     page.app.enqueue(Transaction{
         cmd::Component::setlayer(name, above.name),

@@ -180,7 +180,7 @@ namespace nex {
      *   PageComponent                          // effect; up; down; left; right; sta; bco(pic при sta≠no background)
      *   Component                              // type(RO), id(RO), vscope(RO); objname(RO) — если есть у типа
      *   │
-     *   ├── Timer                              // tim, en
+     *   ├── Timer                              // setPeriod; enable/disable
      *   ├── NumericVariable                    // val (sta=Number в HMI)
      *   ├── StringVariable                     // txt, txt_maxl (sta=String в HMI)
      *   ├── Audio                              // from(RO); vid; en; loop; tim; stim(RO)
@@ -210,7 +210,7 @@ namespace nex {
      *               │   ├── ProgressBar<Image>           // value; bg.bpic; ppic
      *               │   └── Slider<CROP, COLOR, IMAGE> // cursor; bg2; value (Linear)
      *               │
-     *               ├── Printable                   // {font; pco; spax} -> font.id; font.color; font.spacing
+     *               ├── Printable                   // font.setFontId; font.setTextColor; font.setCharSpacing
      *               │   ├── DataFile // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
      *               │   │   │                       // maxval_y; maxval_x; val_x; val_y; bco2; pco2
      *               │   │   │                       // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
@@ -219,7 +219,7 @@ namespace nex {
      *               │   │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
      *               │   │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
      *               │   │
-     *               │   ├── ListSelect              // path <path_m>; text<txt_maxl>, val; ch; dis; hig
+     *               │   ├── ListSelect              // path; val; ch; setItemSpacing; setRowHeight
      *               │   │   │
      *               │   │   ├── ComboBox       //  ycen; up; pco3; bco1; pco1; dir; qty; vvs0; bco2; pco2;
      *               │   │   │                  // down; mode; wid; vvs1; xcen
@@ -230,26 +230,26 @@ namespace nex {
      *               │       ├── TextComponent      // txt <txt_maxl>
      *               │       │   ├── SLText         // left; ch; val_y<maxval_y>; ycen = delete
      *               │       │   ├── Text           // key; pw
-     *               │       │   ├── ScrollText     // key; dir; dis; tim; en
+     *               │       │   ├── ScrollText     // key; dir; setScrollStep; setScrollPeriod; enableAutoScroll
      *               │       │   │
      *               │       │   └── ButtonLikeComponent // bco2(pic2,picc2); pco2
      *               │       │        ├── Button
      *               │       │        └── DualStateButton // val;
      *               │       │
      *               │       └── Numeric                 // key; val; format;
-     *               │           ├── Number           // length
-     *               │           └── XFloat           // point (left, right);
+     *               │           ├── Number           // setDigitCount
+     *               │           └── XFloat           // point.setDigitsBeforePoint / setDigitsAfterPoint
      *               │
      *               └── Selection<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
      *                   ├── Checkbox               // —
      *                   ├── Radio                  // —
-     *                   └── ToggleSwitch           // bco2; pco2; pco1(font color); font; dis; txt(txt_maxl=24)
+     *                   └── ToggleSwitch           // setTrackColor; setOffColor; setOnColor; setLabelFontId; setLabelGap; txt
      *
      * Пояснения:
      *
      * - Timer, NumericVariable, StringVariable, Audio, TouchCap, FileStream — прямые наследники Component (в панели нет x,y,w,h).
      * - TouchArea: всё с pos,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
-     * - Drawable: refresh/show/hide/setLayer/move — команды NIS на видимых виджетах.
+     * - Drawable: refresh/show/hide/placeAbove/move — команды NIS на видимых виджетах.
      *
      * - VisualBaseComponent: под Geometry — один узел (в NIS drag, aph, effect); потомки: картинки, Media, StaBco (QR,
      *   Waveform, Gauge, FontedSta), Selection; дельта drag/aph/effect не повторяется у детей.
