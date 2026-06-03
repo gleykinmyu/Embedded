@@ -10,8 +10,6 @@
 #include "../core/nexTypes.hpp"
 #include "nexAttributes.hpp"
 #include "resources/background.hpp"
-#include "resources/cursor.hpp"
-#include "resources/floatPoint.hpp"
 #include "resources/font.hpp"
 #include "resources/pressed.hpp"
 #include "nexComponentBase.hpp"

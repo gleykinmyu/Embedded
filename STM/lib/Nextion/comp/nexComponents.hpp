@@ -4,6 +4,8 @@
 #include "../core/nexTypes.hpp"
 #include "nexComponentBase.hpp"
 #include "nexCompImpl.hpp"
+#include "resources/cursor.hpp"
+#include "resources/floatPoint.hpp"
 
 namespace nex {
 namespace comp {
