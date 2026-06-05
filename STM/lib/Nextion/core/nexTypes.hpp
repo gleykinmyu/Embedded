@@ -130,12 +130,27 @@ enum class VAlign : uint8_t {
     Bottom = 2,
 };
 
-/** Привязка к экранной клавиатуре (`key` в NIS); задаётся в HMI, не зеркалируется в MCU. */
-enum class BindingKeyboard : uint8_t {
-    None       = 0,
-    FullQwerty = 1,
-    Numeric    = 2,
-    SpeedDial  = 3,
+/** Направление раскрытия списка ComboBox (NIS `dir`). */
+enum class ComboExpandDirection : uint8_t {
+    Up    = 0u,
+    Down  = 1u,
+    Left  = 2u,
+    Right = 3u,
+};
+
+/** Маркер выбранной строки ComboBox (NIS `mode`). */
+enum class ComboMarker : uint8_t {
+    None       = 0u,
+    Triangle   = 1u,
+    BgTriangle = 2u,
+};
+
+/** Направление прокрутки ScrollText (NIS `dir`). */
+enum class ScrollDirection : uint8_t {
+    LeftToRight = 0u,
+    RightToLeft = 1u,
+    UpToDown    = 2u,
+    DownToUp    = 3u,
 };
 
 /** Формат отображения числа (`format` в NIS): Decimal, Currency, Hex. */

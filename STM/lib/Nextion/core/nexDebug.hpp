@@ -46,3 +46,17 @@
 #else
 #  define NEX_DBG_TRACE_TX(...) ((void)0)
 #endif
+
+/** Проверка инварианта; активна при `NEX_DEBUG`, иначе no-op (как `assert` в release). */
+#if defined(NEX_DEBUG)
+#  define NEX_ASSERT(expr) \
+    do { \
+        if (!(expr)) { \
+            NEX_DBG("NEX_ASSERT: %s (%s:%u)\n", #expr, __FILE__, static_cast<unsigned>(__LINE__)); \
+            for (;;) { \
+            } \
+        } \
+    } while (0)
+#else
+#  define NEX_ASSERT(expr) ((void)0)
+#endif

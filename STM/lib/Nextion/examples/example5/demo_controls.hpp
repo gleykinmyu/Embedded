@@ -64,6 +64,25 @@ inline void demoStyled(W& w) noexcept
     demoBackground(w);
 }
 
+template<BGStyle S, uint8_t ChannelCount>
+inline void demoWfBackground(Waveform<S, ChannelCount>& w) noexcept
+{
+    if constexpr (S == BGStyle::Color) {
+        w.wfBackground.setColor(kFill);
+    } else if constexpr (S == BGStyle::Image) {
+        w.wfBackground.setImage(kPic);
+    } else if constexpr (S == BGStyle::CropImage) {
+        w.wfBackground.setCrop(kPic);
+    }
+}
+
+template<BGStyle S, uint8_t ChannelCount>
+inline void demoWaveformDrawable(Waveform<S, ChannelCount>& w) noexcept
+{
+    demoDrawable(w);
+    demoWfBackground(w);
+}
+
 inline void demoFont(Printable<BGStyle::Color>& w) noexcept
 {
     w.font.setId(1u);
@@ -75,7 +94,7 @@ inline void demoMultiline(Multiline<BGStyle::Color>& w) noexcept
 {
     demoFont(w);
     w.setLineSpacing(4u);
-    w.enableWordWrap();
+    w.setWordWrap(true);
     w.setVAlign(VAlign::Center);
     w.setHAlign(HAlign::Center);
 }
@@ -90,7 +109,7 @@ inline void demoPressed(ButtonLikeComponent<S, TxtMaxL>& w) noexcept
     } else if constexpr (S == BGStyle::CropImage) {
         w.pressed.bg.setCrop(detail::kPic);
     }
-    w.pressed.font.setPressedTextColor(Color::std::White);
+    w.pressed.font.setColor(Color::std::White);
 }
 
 } // namespace detail
@@ -102,14 +121,14 @@ inline void demoTimer(Timer& t) noexcept
     t.enable();
 }
 
-inline void demoNumericVariable(NumericVariable& v) noexcept
+inline void demoNumericVariable(NumericVar& v) noexcept
 {
     NEX_DBG("[ex5] NumericVariable\n");
     v.val = 12345;
 }
 
 template<uint16_t MaxL = 64u>
-inline void demoStringVariable(StringVariable<MaxL>& v) noexcept
+inline void demoStringVariable(StringVar<MaxL>& v) noexcept
 {
     NEX_DBG("[ex5] StringVariable\n");
     v.txt.set("MCU str");
@@ -127,7 +146,7 @@ inline void demoQRCode(QRCode& q) noexcept
     detail::demoStyled(q);
     q.setPco(detail::kMark);
     q.setScale(2u);
-    q.txt.set("https://nextion.tech");
+    q.setText("https://nextion.tech");
 }
 
 inline void demoPicture(Picture& p) noexcept
@@ -143,39 +162,38 @@ inline void demoCropPicture(CropPicture& c) noexcept
     c.setCrop(detail::kPic);
 }
 
-inline void demoWaveform(Waveform<>& w) noexcept
+inline void demoWaveform(Waveform<BGStyle::Color, 4>& w) noexcept
 {
     NEX_DBG("[ex5] Waveform\n");
-    detail::demoStyled(w);
-    w.setChannel(0u);
-    w.setPco0(Color::std::Red);
-    w.setPco1(Color::std::Green);
-    w.setPco2(Color::std::Blue);
-    w.setPco3(Color::std::White);
-    w.setGdc(0u);
-    w.setGdw(100u);
-    w.setGdh(50u);
-    w.setDis(0u);
-    w.setPlotWidth(200u);
-    w.setPlotHeight(80u);
+    detail::demoWaveformDrawable(w);
+    w.ch[0].setColor(Color::std::Red);
+    w.ch[1].setColor(Color::std::Green);
+    w.ch[2].setColor(Color::std::Blue);
+    w.ch[3].setColor(Color::std::White);
+    w.ch[0].add(128u);
+    w.wfBackground.setGridColor(0u);
+    w.wfBackground.setGridWidth(100u);
+    w.wfBackground.setGridHeight(50u);
+    w.setDataScale(100u);
 }
 
 inline void demoProgressBarColor(ProgressBar<BGStyle::Color>& p) noexcept
 {
     NEX_DBG("[ex5] ProgressBar Color\n");
-    detail::demoStyled(p);
+    detail::demoDrawable(p);
+    p.bg.setColor(detail::kFill);
     p.value = 60u;
-    p.setBarColor(Color::std::Green);
-    p.setCornerRadius(4u);
+    p.bar.setColor(Color::std::Green);
+    p.bar.setCornerRadius(4u);
 }
 
 inline void demoProgressBarImage(ProgressBar<BGStyle::Image>& p) noexcept
 {
     NEX_DBG("[ex5] ProgressBar Image\n");
     detail::demoDrawable(p);
-    p.setValue(40u);
+    p.value = 40u;
     p.bg.setImage(detail::kPic);
-    p.setPpic(detail::kPic);
+    p.bar.setImage(detail::kPic);
 }
 
 inline void demoSlider(Slider<>& s) noexcept
@@ -193,17 +211,16 @@ inline void demoGauge(Gauge<>& g) noexcept
 {
     NEX_DBG("[ex5] Gauge\n");
     detail::demoStyled(g);
-    g.setVal(75);
-    g.format.set("%d");
-    g.setUpImage(detail::kPic);
-    g.setDownImage(detail::kPic);
-    g.setLeftImage(detail::kPic);
-    g.setScaleColor(detail::kAccent);
-    g.setAccentColor(detail::kMark);
-    g.setScaleHeight(12u);
-    g.vvs0.set("min");
-    g.vvs1.set("mid");
-    g.vvs2.set("max");
+    g.setAngle(75);
+    g.center.setColor(detail::kMark);
+    g.center.setOffset(0u);
+    g.center.setDiameter(50u);
+    g.pointer.setColor(detail::kAccent);
+    g.pointer.setHeadLength(20);
+    g.pointer.setFootLength(8);
+    g.pointer.setHeadWidth(6u);
+    g.pointer.setBodyWidth(4u);
+    g.pointer.setFootWidth(10u);
 }
 
 inline void demoListSelect(ListSelect<>& ls) noexcept
@@ -212,31 +229,33 @@ inline void demoListSelect(ListSelect<>& ls) noexcept
     detail::demoFont(ls);
     ls.path.set("sd0:/list.txt");
     ls.val = 1;
-    ls.ch = 0u;
-    ls.setItemSpacing(2u);
-    ls.setRowHeight(24u);
+    ls.setCellSize(24u);
 }
 
 inline void demoComboBox(ComboBox<>& c) noexcept
 {
     NEX_DBG("[ex5] ComboBox\n");
-    demoListSelect(c);
-    c.enableVerticalCenter();
-    c.setUpImage(detail::kPic);
-    c.setPco3(Color::std::White);
-    c.setBco1(Color::std::Black);
-    c.setPco1(Color::std::Silver);
-    c.list_dir = 0u;
-    c.setRowCount(8u);
-    c.setListOffset(0);
-    c.setBco2(Color::std::Blue);
-    c.setPco2(Color::std::Yellow);
-    c.setDownImage(detail::kPic);
-    c.setListMode(0u);
-    c.setDropDownWidth(120u);
-    c.setListOffset2(0);
-    c.enableHorizontalCenter();
-    c.txt.set("Item 1");
+    detail::demoFont(c);
+    c.path.set("sd0:/list.txt");
+    c.val = 1;
+    c.setVAlign(VAlign::Center);
+    c.setHAlign(HAlign::Center);
+    c.border.setColor(detail::kAccent);
+    c.border.setWidth(2u);
+    c.arrow.show();
+    c.arrow.setColor(Color::std::White);
+    c.cells.setBgColor(Color::std::Black);
+    c.cells.setColor(Color::std::Silver);
+    c.cells.setSelBgColor(Color::std::Blue);
+    c.cells.setSelColor(Color::std::Yellow);
+    c.cells.setExpandDirection(ComboExpandDirection::Down);
+    c.cells.setExpandCount(8u);
+    c.cells.setSpacing(0);
+    c.cells.setCornerRadius(4u);
+    c.setCellSize(24u);
+    c.cells.setMarker(ComboMarker::Triangle);
+    c.cells.setMarkerSize(12u);
+    c.cells.setMarkerSpacing(0);
 }
 
 inline void demoTextComponent(TextComponent<>& t) noexcept
@@ -249,7 +268,6 @@ inline void demoText(Text<>& t) noexcept
 {
     NEX_DBG("[ex5] Text\n");
     demoTextComponent(t);
-    t.bindKeyboard();
     t.disablePassword();
 }
 
@@ -257,11 +275,10 @@ inline void demoScrollText(ScrollText<>& s) noexcept
 {
     NEX_DBG("[ex5] ScrollText\n");
     demoTextComponent(s);
-    s.bindKeyboard();
-    s.dir = 0u;
+    s.setScrollDirection(ScrollDirection::LeftToRight);
     s.setScrollStep(4u);
-    s.setScrollPeriod(200u);
-    s.enableAutoScroll();
+    s.setPeriod(200u);
+    s.enable();
 }
 
 inline void demoButton(Button<>& b, Drawable& layerRef) noexcept
@@ -286,7 +303,6 @@ inline void demoNumeric(Numeric<>& n) noexcept
     NEX_DBG("[ex5] Numeric\n");
     detail::demoMultiline(n);
     n.val = 42;
-    n.setFormat(NumFormat::Dec);
 }
 
 inline void demoNumber(Number<>& n) noexcept
@@ -294,14 +310,14 @@ inline void demoNumber(Number<>& n) noexcept
     NEX_DBG("[ex5] Number\n");
     demoNumeric(n);
     n.setDigitCount(4u);
+    n.setFormat(NumFormat::Dec);
 }
 
 inline void demoXFloat(XFloat<>& x) noexcept
 {
     NEX_DBG("[ex5] XFloat\n");
     demoNumeric(x);
-    x.point.setDigitsBeforePoint(3u);
-    x.point.setDigitsAfterPoint(2u);
+    x.setFormat(3u, 2u);
 }
 
 inline void demoSelection(Selection<>& s) noexcept
@@ -327,10 +343,10 @@ inline void demoToggleSwitch(ToggleSwitch<>& t) noexcept
 {
     NEX_DBG("[ex5] ToggleSwitch\n");
     demoSelection(t);
-    t.setTrackColor(Color::std::Gray);
-    t.setOffColor(Color::std::Silver);
-    t.setOnColor(Color::std::Green);
-    t.setLabelFontId(1u);
+    t.pressed.bg.setColor(Color::std::Gray);
+    t.pressed.setMarkerColor(Color::std::Silver);
+    t.font.setId(1u);
+    t.font.setColor(Color::std::Green);
     t.setLabelGap(4u);
     t.txt.set("ON");
 }

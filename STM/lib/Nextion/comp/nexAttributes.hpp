@@ -77,6 +77,17 @@ template<typename T>
     return static_cast<int32_t>(v);
 }
 
+/** Ограничить `v` диапазоном `[lo, hi]` (inclusive). */
+template<typename T>
+[[nodiscard]] constexpr T clamp(T v, T lo, T hi) noexcept
+{
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
+
 /** MCU: `assign` числового атрибута без зеркала (только исходящая команда). */
 template<typename T>
 inline void assignNumeric(const Component& parent, const Literal& attrName, uint8_t tag, T value) noexcept
@@ -84,6 +95,16 @@ inline void assignNumeric(const Component& parent, const Literal& attrName, uint
     const AttrRef target{parent.name, attrName};
     const cmd::assign::Numeric cmd(target, to_wire(value));
     parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(), tag});
+}
+
+/** MCU: `assign` строкового атрибута без зеркала (только исходящая команда). */
+inline void assignText(const Component& parent, const Literal& attrName, uint8_t tag, const char* text) noexcept
+{
+    const AttrRef target{parent.name, attrName};
+    const char* const p = text != nullptr ? text : "";
+    parent.page.app.enqueue(Transaction{
+        cmd::assign::Text(target, p, cmd::assign::Text::Op::Assign),
+        parent.page.ID, parent.id(), tag});
 }
 
 template<>
@@ -279,6 +300,8 @@ public:
         pushCmdAssignText(buf, cmd::assign::Text::Op::Assign);
     }
 
+    void clear() noexcept { set(""); }
+
     void subtract(uint32_t n) noexcept {
         if (n == 0u)
             return;
@@ -350,6 +373,8 @@ public:
         const char* const p = text != nullptr ? text : "";
         pushCmdAssignText(p, cmd::assign::Text::Op::Assign);
     }
+
+    void clear() const noexcept { set(""); }
 
     void append(const char* suffix) const noexcept {
         if (suffix == nullptr || *suffix == '\0')

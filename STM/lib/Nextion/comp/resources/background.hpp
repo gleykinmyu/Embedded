@@ -58,23 +58,6 @@ inline constexpr Literal cropName() noexcept
 
 } // namespace bg_detail
 
-struct ProgressBarBackground {
-    enum Tag : uint8_t {
-        Bpic = 193u,
-    };
-
-    Component& owner;
-
-    explicit ProgressBarBackground(Component& ownerIn) noexcept
-        : owner{ownerIn}
-    {}
-
-    void setImage(PicId v) noexcept
-    {
-        attr_detail::assignNumeric(owner, Literal{"bpic"}, Tag::Bpic, v);
-    }
-};
-
 template<BGStyle S, uint8_t index = 0u>
 struct Background;
 

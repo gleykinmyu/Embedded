@@ -2,7 +2,7 @@
 
 /**
  * Внутренняя иерархия C++-баз для виджетов Nextion.
- * Не подключать из прикладного кода — только через `nexComponents.hpp` / `nex.hpp`.
+ * Не подключать из прикладного кода — только через `nexComponents.hpp` / `nexExComponents.hpp` / `nex.hpp`.
  * Конструкторы protected: прямые экземпляры этих классов в HMI не создают.
  */
 
@@ -117,9 +117,6 @@ public:
     /** NIS `move obj,x0,y0,x1,y1,priority,timeMs` — анимация перемещения. */
     void move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override;
-    void onResponse(uint8_t tag, const msg::getString& response) override;
-
 protected:
     explicit Drawable(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : TouchArea(owner, objectName, componentType, id)
@@ -144,40 +141,12 @@ protected:
     {}
 };
 
-/** Линейные виджеты (ProgressBar, Slider): value. */
-template<BGStyle S = BGStyle::Color>
-class Linear : public Styled<S> {
-public:
-    enum Tag : uint8_t {
-        Val = 192u,
-    };
-
-    /** user: Slider — от ползунка; mcu: ProgressBar — уровень заливки */
-    attr::Num<uint8_t> value;
-
-    using Styled<S>::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (tag == Tag::Val) {
-            value.applyResponse(response);
-            return;
-        }
-        Styled<S>::onResponse(tag, response);
-    }
-
-protected:
-    explicit Linear(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Styled<S>(owner, objectName, componentType, id)
-        , value{*this, "val", Tag::Val}
-    {}
-};
-
-/** font; pco; spax — поля в `resources::Font font`. */
+/** pco; font; spax — поля в `resources::Font font`. */
 template<BGStyle S = BGStyle::Color>
 class Printable : public Styled<S> {
 public:
-    /** mcu: шрифт (`font`, `pco`, `spax`) — поля внутри `font` */
-    resources::Font font;
+    /** mcu: шрифт (`pco`, `font`, `spax`) — поля внутри `font` */
+    resources::Font<> font;
 
 protected:
     explicit Printable(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
@@ -186,155 +155,29 @@ protected:
     {}
 };
 
-/**
- * DataFile — поля таблицы/файлов (DataRecord, FileBrowser);
- * `txt`, `qty` — RO в NIS у FileBrowser / DataRecord.
- */
-template<BGStyle S = BGStyle::Color>
-class DataFile : public Printable<S> {
-public:
-    enum Tag : uint8_t {
-        Txt = 64u,
-        Left = 66u,
-        Ch,
-        Dir,
-        Val,
-        Qty,
-        Dis,
-        MaxvalY,
-        MaxvalX,
-        ValX,
-        ValY,
-        Bco2,
-        Pco2,
-    };
-
-    /** user: буфер/подпись ячейки (навигация по таблице) */
-    attr::String<256> txt;
-    /** user: смещение по горизонтали при прокрутке */
-    attr::Num<uint16_t> left;
-    /** user: индекс канала/строки */
-    attr::Num<uint8_t> ch;
-    /** user: направление прокрутки */
-    attr::Num<uint8_t> dir;
-    /** user: значение ячейки / выбор */
-    attr::Num<int32_t> val;
-    /** user: количество (RO, отражает состояние после действий на панели) */
-    attr::NumRO<uint16_t> qty;
-    //TODO проверить реальное назначение атрибута dis
-    void setCellSpacing(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
-    }
-
-    void setMaxvalY(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"maxval_y"}, Tag::MaxvalY, v);
-    }
-
-    void setMaxvalX(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"maxval_x"}, Tag::MaxvalX, v);
-    }
-
-    /** user: позиция/значение по X */
-    attr::Num<uint16_t> val_x;
-    /** user: позиция/значение по Y */
-    attr::Num<uint16_t> val_y;
-
-    //TODO посмотреть реальное назначение атрибутов bco2 и pco2
-    void setBco2(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"bco2"}, Tag::Bco2, v);
-    }
-
-    void setPco2(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        switch (tag) {
-        case Tag::Left:
-            left.applyResponse(response);
-            return;
-        case Tag::Ch:
-            ch.applyResponse(response);
-            return;
-        case Tag::Dir:
-            dir.applyResponse(response);
-            return;
-        case Tag::Val:
-            val.applyResponse(response);
-            return;
-        case Tag::Qty:
-            qty.applyResponse(response);
-            return;
-        case Tag::ValX:
-            val_x.applyResponse(response);
-            return;
-        case Tag::ValY:
-            val_y.applyResponse(response);
-            return;
-        default:
-            break;
-        }
-        Printable<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        if (tag == Tag::Txt) {
-            txt.applyResponse(response);
-            return;
-        }
-        Styled<S>::onResponse(tag, response);
-    }
-
-protected:
-    explicit DataFile(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Printable<S>(owner, objectName, componentType, id)
-        , txt{*this, "txt", Tag::Txt}
-        , left{*this, "left", Tag::Left}
-        , ch{*this, "ch", Tag::Ch}
-        , dir{*this, "dir", Tag::Dir}
-        , val{*this, "val", Tag::Val}
-        , qty{*this, "qty", Tag::Qty}
-        , val_x{*this, "val_x", Tag::ValX}
-        , val_y{*this, "val_y", Tag::ValY}
-    {}
-};
-
-/** path; val; ch; dis; hig — `path.maxl` = NIS `path_m`. */
+/** path; val; hig — `path.maxl` = NIS `path_m`. */
 template<BGStyle S = BGStyle::Color>
 class ListSelect : public Printable<S> {
 public:
     enum Tag : uint8_t {
         Path = 96u,
         Val = 98u,
-        Ch,
-        Dis,
-        Hig,
+        Hig = 101u,
     };
+
+    static constexpr uint8_t kCellSizeMin = 16u;
+    static constexpr uint8_t kCellSizeMax = 255u;
 
     /** mcu: путь к списку строк (файл/каталог на панели) */
     attr::String<512> path;
     /** user: выбранный элемент (индекс/значение) */
     attr::Num<int32_t> val;
-    /** user: номер выбранной строки */
-    attr::Num<uint8_t> ch;
 
-    //TODO посмотреть реальное назначение атрибута dis
-    void setItemSpacing(uint16_t v) noexcept
+    /** mcu: высота ячейки списка (NIS `hig`) */
+    void setCellSize(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
-    }
-
-    //TODO посмотреть реальное назначение атрибута hig
-    void setRowHeight(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig, v);
+        attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig,
+            attr_detail::clamp(v, kCellSizeMin, kCellSizeMax));
     }
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
@@ -343,13 +186,10 @@ public:
         case Tag::Val:
             val.applyResponse(response);
             return;
-        case Tag::Ch:
-            ch.applyResponse(response);
-            return;
         default:
             break;
         }
-        Printable<S>::onResponse(tag, response);
+        TouchArea::onResponse(tag, response);
     }
 
     void onResponse(uint8_t tag, const msg::getString& response) override
@@ -358,7 +198,7 @@ public:
             path.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
+        TouchArea::onResponse(tag, response);
     }
 
 protected:
@@ -366,7 +206,6 @@ protected:
         : Printable<S>(owner, objectName, componentType, id)
         , path{*this, "path", Tag::Path}
         , val{*this, "val", Tag::Val}
-        , ch{*this, "ch", Tag::Ch}
     {}
 };
 
@@ -386,14 +225,9 @@ public:
         attr_detail::assignNumeric(*this, Literal{"spay"}, Tag::LineSpacing, v);
     }
 
-    void enableWordWrap() noexcept
+    void setWordWrap(bool enabled) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"isbr"}, Tag::WordWrap, true);
-    }
-
-    void disableWordWrap() noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"isbr"}, Tag::WordWrap, false);
+        attr_detail::assignNumeric(*this, Literal{"isbr"}, Tag::WordWrap, enabled);
     }
 
     void setVAlign(VAlign v) noexcept
@@ -413,7 +247,7 @@ protected:
 };
 
 /** txt — `attr::String<TxtMaxL>` (`maxl` = compile-time). */
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 256u>
+template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
 class TextComponent : public Multiline<S> {
 public:
     enum Tag : uint8_t {
@@ -423,15 +257,18 @@ public:
     /** user: текст (ввод с клавиатуры у Text/Number); mcu: подпись у Button */
     attr::String<TxtMaxL> txt;
 
-    using Printable<S>::onResponse;
-    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
         if (tag == Tag::Txt) {
             txt.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
+        TouchArea::onResponse(tag, response);
+    }
+
+    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    {
+        TouchArea::onResponse(tag, response);
     }
 
 protected:
@@ -442,7 +279,7 @@ protected:
 };
 
 /** bco2/pic2/picc2; pco2 — `resources::Pressed pressed`. */
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 256u>
+template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
 class ButtonLikeComponent : public TextComponent<S, TxtMaxL> {
 public:
     /** mcu: оформление нажатого состояния — поля внутри `pressed` */
@@ -455,33 +292,24 @@ protected:
     {}
 };
 
-/** val, format — `Keyboard` = compile-time (`key` в NIS). */
-template<BGStyle S = BGStyle::Color, BindingKeyboard Keyboard = BindingKeyboard::None>
+/** val */
+template<BGStyle S = BGStyle::Color>
 class Numeric : public Multiline<S> {
 public:
-    static constexpr BindingKeyboard kKeyboard = Keyboard;
-
     enum Tag : uint8_t {
         Val = 161u,
-        Format,
     };
 
     /** user: число (ввод с экранной клавиатуры) */
     attr::Num<int32_t> val;
 
-    void setFormat(NumFormat v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"format"}, Tag::Format, v);
-    }
-
-    using Styled<S>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        Printable<S>::onResponse(tag, response);
+        TouchArea::onResponse(tag, response);
     }
 
 protected:
@@ -495,12 +323,12 @@ protected:
  * pco, val; фон — `bco` (Styled). В NIS у Checkbox/Radio нет отдельного `sta`/font;
  * `Style` задаётся шаблоном для единообразия с BG-веткой (по умолчанию Color).
  */
-template<BGStyle S = BGStyle::Color>
-class Selection : public Styled<S> {
+
+class Selection : public Styled<BGStyle::Color> {
 public:
     enum Tag : uint8_t {
-        Pco = 176u,
-        Val,
+        Pco = 48u,
+        Val = 177u,
     };
 
     void setMarkerColor(nex::Color v) noexcept
@@ -510,23 +338,213 @@ public:
 
     /** user: состояние выбора (checkbox/radio/toggle) */
     attr::Num<bool> val;
-
-    using Styled<S>::onResponse;
+ 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         if (tag == Tag::Val) {
             val.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
+        TouchArea::onResponse(tag, response);
     }
 
 protected:
     explicit Selection(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Styled<S>(owner, objectName, componentType, id)
+        : Styled<BGStyle::Color>(owner, objectName, componentType, id)
         , val{*this, "val", Tag::Val}
     {}
 };
+
+/** vid; en; loop; dis; tim; stim(RO); qty(RO) — Gmov, Video. */
+class MediaComponent : public Drawable {
+public:
+    enum Tag : uint8_t {
+        Vid = 24u,
+        En,
+        Loop,
+        Dis,
+        Tim,
+        Stim,
+        Qty,
+    };
+
+    void setVideoId(uint32_t v) noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"vid"}, Tag::Vid, v);
+    }
+
+    void enable() noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, true);
+    }
+
+    void disable() noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
+    }
+
+    void setLoop(bool on) noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"loop"}, Tag::Loop, on);
+    }
+
+    void setStep(uint16_t v) noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
+    }
+
+    void setPeriod(uint32_t v) noexcept
+    {
+        attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim, v);
+    }
+
+    /** user: позиция воспроизведения (RO) */
+    attr::NumRO<uint32_t> stim;
+    /** user: длительность / количество кадров (RO) */
+    attr::NumRO<uint32_t> qty;
+
+    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    {
+        switch (tag) {
+        case Tag::Stim:
+            stim.applyResponse(response);
+            return;
+        case Tag::Qty:
+            qty.applyResponse(response);
+            return;
+        default:
+            break;
+        }
+        TouchArea::onResponse(tag, response);
+    }
+
+protected:
+    explicit MediaComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+        : Drawable(owner, objectName, componentType, id)
+        , stim{*this, "stim", Tag::Stim}
+        , qty{*this, "qty", Tag::Qty}
+    {}
+};
+
+/**
+ * DataFile — поля таблицы/файлов (DataRecord, FileBrowser);
+ * `txt`, `qty` — RO в NIS у FileBrowser / DataRecord.
+ */
+ template<BGStyle S = BGStyle::Color>
+ class DataFile : public Printable<S> {
+ public:
+     enum Tag : uint8_t {
+         Txt = 64u,
+         Left = 66u,
+         Ch,
+         Dir,
+         Val,
+         Qty,
+         Dis,
+         MaxvalY,
+         MaxvalX,
+         ValX,
+         ValY,
+         Bco2,
+         Pco2,
+     };
+ 
+     /** user: буфер/подпись ячейки (навигация по таблице) */
+     attr::String<256> txt;
+     /** user: смещение по горизонтали при прокрутке */
+     attr::Num<uint16_t> left;
+     /** user: индекс канала/строки */
+     attr::Num<uint8_t> ch;
+     /** user: направление прокрутки */
+     attr::Num<uint8_t> dir;
+     /** user: значение ячейки / выбор */
+     attr::Num<int32_t> val;
+     /** user: количество (RO, отражает состояние после действий на панели) */
+     attr::NumRO<uint16_t> qty;
+     //TODO проверить реальное назначение атрибута dis
+     void setCellSpacing(uint16_t v) noexcept
+     {
+         attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
+     }
+ 
+     void setMaxvalY(uint16_t v) noexcept
+     {
+         attr_detail::assignNumeric(*this, Literal{"maxval_y"}, Tag::MaxvalY, v);
+     }
+ 
+     void setMaxvalX(uint16_t v) noexcept
+     {
+         attr_detail::assignNumeric(*this, Literal{"maxval_x"}, Tag::MaxvalX, v);
+     }
+ 
+     /** user: позиция/значение по X */
+     attr::Num<uint16_t> val_x;
+     /** user: позиция/значение по Y */
+     attr::Num<uint16_t> val_y;
+ 
+     //TODO посмотреть реальное назначение атрибутов bco2 и pco2
+     void setBco2(uint16_t v) noexcept
+     {
+         attr_detail::assignNumeric(*this, Literal{"bco2"}, Tag::Bco2, v);
+     }
+ 
+     void setPco2(uint16_t v) noexcept
+     {
+         attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
+     }
+ 
+     void onResponse(uint8_t tag, const msg::getNumeric& response) override
+     {
+         switch (tag) {
+         case Tag::Left:
+             left.applyResponse(response);
+             return;
+         case Tag::Ch:
+             ch.applyResponse(response);
+             return;
+         case Tag::Dir:
+             dir.applyResponse(response);
+             return;
+         case Tag::Val:
+             val.applyResponse(response);
+             return;
+         case Tag::Qty:
+             qty.applyResponse(response);
+             return;
+         case Tag::ValX:
+             val_x.applyResponse(response);
+             return;
+         case Tag::ValY:
+             val_y.applyResponse(response);
+             return;
+         default:
+             break;
+         }
+         Printable<S>::onResponse(tag, response);
+     }
+ 
+     void onResponse(uint8_t tag, const msg::getString& response) override
+     {
+         if (tag == Tag::Txt) {
+             txt.applyResponse(response);
+             return;
+         }
+         Styled<S>::onResponse(tag, response);
+     }
+ 
+ protected:
+     explicit DataFile(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+         : Printable<S>(owner, objectName, componentType, id)
+         , txt{*this, "txt", Tag::Txt}
+         , left{*this, "left", Tag::Left}
+         , ch{*this, "ch", Tag::Ch}
+         , dir{*this, "dir", Tag::Dir}
+         , val{*this, "val", Tag::Val}
+         , qty{*this, "qty", Tag::Qty}
+         , val_x{*this, "val_x", Tag::ValX}
+         , val_y{*this, "val_y", Tag::ValY}
+     {}
+ };
 
 } // namespace comp
 } // namespace nex

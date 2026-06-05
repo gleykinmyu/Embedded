@@ -49,4 +49,4 @@ pio run -e example5
 
 ## Не в библиотеке
 
-Audio, Video, Gmov, TouchCap, FileStream, FileBrowser, DataRecord, TextSelect, SLText, ExternalPicture, PageComponent — в `nexComponents.hpp` пока нет листьев; в example5 не включены.
+TouchCap (type 5), PageComponent (type 121) — листовых классов в `nexComponents.hpp` нет.

@@ -203,14 +203,12 @@ namespace nex {
      *               ├── CropPicture<CROP_IMAGE>
      *               │
      *               ├── Waveform                         // gdc; gdw; gdh; pco0…pco3; dis; wid; hig; ch
-     *               ├── Gauge                            // val; format; up; down; left; pco; pco2; hig; vvs0…vvs2
+     *               ├── Gauge                            // val; center; pointer
      *               │
-     *               ├── Linear                         // value
-     *               │   ├── ProgressBar<Color>           // barColor; cornerRadius
-     *               │   ├── ProgressBar<Image>           // value; bg.bpic; ppic
-     *               │   └── Slider<CROP, COLOR, IMAGE> // cursor; bg2; value (Linear)
+     *               ├── ProgressBar<S>               // value; bg (PbBackground); bar (PbBar)
+     *               ├── Slider<CROP, COLOR, IMAGE> // value; cursor; bg; bg2
      *               │
-     *               ├── Printable                   // font.setFontId; font.setTextColor; font.setCharSpacing
+     *               ├── Printable                   // font.setColor; font.setId; font.setCharSpacing
      *               │   ├── DataFile // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
      *               │   │   │                       // maxval_y; maxval_x; val_x; val_y; bco2; pco2
      *               │   │   │                       // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
@@ -219,31 +217,30 @@ namespace nex {
      *               │   │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
      *               │   │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
      *               │   │
-     *               │   ├── ListSelect              // path; val; ch; setItemSpacing; setRowHeight
+     *               │   ├── ListSelect              // path; val; setCellSize
      *               │   │   │
-     *               │   │   ├── ComboBox       //  ycen; up; pco3; bco1; pco1; dir; qty; vvs0; bco2; pco2;
-     *               │   │   │                  // down; mode; wid; vvs1; xcen
-     *               │   │   └── TextSelect     // pco2; pco1(line); txt(RO);
+     *               │   │   ├── ComboBox       // path; val; isOpened; ycen; xcen; border; arrow; cells
+     *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine; txt(RO)
      *               │   │
      *               │   └── Multiline                 // spay; isbr; ycen; xcen;
      *               │       │
      *               │       ├── TextComponent      // txt <txt_maxl>
-     *               │       │   ├── SLText         // left; ch; val_y<maxval_y>; ycen = delete
-     *               │       │   ├── Text           // key; pw
-     *               │       │   ├── ScrollText     // key; dir; setScrollStep; setScrollPeriod; enableAutoScroll
+     *               │       │   ├── SLText         // left; ch; val_y; maxval_y(RO); setVAlign=delete
+     *               │       │   ├── Text           // pw
+     *               │       │   ├── ScrollText     // setScrollDirection; setScrollStep; setScrollPeriod; enableAutoScroll
      *               │       │   │
      *               │       │   └── ButtonLikeComponent // bco2(pic2,picc2); pco2
      *               │       │        ├── Button
      *               │       │        └── DualStateButton // val;
      *               │       │
-     *               │       └── Numeric                 // key; val; format;
-     *               │           ├── Number           // setDigitCount
-     *               │           └── XFloat           // point.setDigitsBeforePoint / setDigitsAfterPoint
+     *               │       └── Numeric                 // val;
+     *               │           ├── Number           // setDigitCount; setFormat
+     *               │           └── XFloat           // setFormat
      *               │
      *               └── Selection<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
-     *                   ├── Checkbox               // —
-     *                   ├── Radio                  // —
-     *                   └── ToggleSwitch           // setTrackColor; setOffColor; setOnColor; setLabelFontId; setLabelGap; txt
+     *                   ├── Checkbox               // setMarkerColor
+     *                   ├── Radio                  // setMarkerColor
+     *                   └── ToggleSwitch           // pressed.bg; pressed.setMarkerColor; font; setLabelGap; txt
      *
      * Пояснения:
      *
@@ -271,7 +268,8 @@ namespace nex {
      * - Checkbox/Radio — Selection, не FontedSta (в enum нет sta и font); ToggleSwitch — Selection + дельта с font и txt (enum).
      *
      * - DataRecord: в enum дублируется val — сверять RO/RW с редактором; общие поля см. DataFile.
-     * - Классы C++ не для всех листьев — см. nexWidgets.hpp.
+     * - Классы C++ для всех листьев enum Type, кроме TouchCap (5) и PageComponent (121) —
+     *   `nexComponents.hpp`, расширения — `nexExComponents.hpp`.
      *
      * --- Архитектурное дерево (имена; атрибуты — сумма дельт от Component до листа) ---
      *

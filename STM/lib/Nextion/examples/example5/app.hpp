@@ -21,13 +21,13 @@ using namespace nex::comp;
 /** Все виджеты страницы ex5 (для runAllDemos). */
 struct Ex5Widgets {
     Timer& timer;
-    NumericVariable& nvar;
-    StringVariable<64>& svar;
+    NumericVar& nvar;
+    StringVar<64>& svar;
     Hotspot& hotspot;
     QRCode& qrcode;
     Picture& picture;
     CropPicture& crop_picture;
-    Waveform<>& waveform;
+    Waveform<BGStyle::Color, 4>& waveform;
     ProgressBar<BGStyle::Color>& pbar_color;
     ProgressBar<BGStyle::Image>& pbar_image;
     Slider<>& slider;
@@ -92,13 +92,13 @@ public:
 
     struct Ex5Page : PageImpl<kWidgetCount> {
         Timer timer;
-        NumericVariable nvar;
-        StringVariable<64> svar;
+        NumericVar nvar;
+        StringVar<64> svar;
         Hotspot hotspot;
         QRCode qrcode;
         Picture picture;
         CropPicture crop_picture;
-        Waveform<> waveform;
+        Waveform<BGStyle::Color, 4> waveform;
         ProgressBar<BGStyle::Color> pbar_color;
         ProgressBar<BGStyle::Image> pbar_image;
         Slider<> slider;

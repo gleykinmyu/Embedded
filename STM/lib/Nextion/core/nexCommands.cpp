@@ -536,6 +536,46 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
     return fail(Status::UnknownKind);
 }
 
+bool FileStream::serialize(TxFrame& tx) const noexcept {
+    _status = Status::OK;
+
+    if (_kind == Kind::Close) {
+        if (!NEX_CMD_PRINT_LIT(tx, "close") || !printSpace(tx))
+            return false;
+        return printLiteral(tx, _compName);
+    }
+
+    if (_kind == Kind::Read) {
+        if (!NEX_CMD_PRINT_LIT(tx, "read") || !printSpace(tx))
+            return false;
+        return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg1)
+            && printComma(tx) && printUint32(tx, _arg2);
+    }
+
+    if (_kind == Kind::Write) {
+        if (!NEX_CMD_PRINT_LIT(tx, "write") || !printSpace(tx))
+            return false;
+        return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg1);
+    }
+
+    if (_path == nullptr)
+        return fail(Status::NullPointer);
+
+    if (_kind == Kind::Open) {
+        if (!NEX_CMD_PRINT_LIT(tx, "open") || !printSpace(tx))
+            return false;
+        return printLiteral(tx, _compName) && printComma(tx) && printQuotedString(tx, _path);
+    }
+
+    if (_kind == Kind::Find) {
+        if (!NEX_CMD_PRINT_LIT(tx, "find") || !printSpace(tx))
+            return false;
+        return printLiteral(tx, _compName) && printComma(tx) && printQuotedString(tx, _path);
+    }
+
+    return fail(Status::UnknownKind);
+}
+
 namespace gui {
 
 bool ClearScreen::serialize(TxFrame& tx) const noexcept {

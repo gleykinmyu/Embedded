@@ -98,15 +98,5 @@ void Drawable::move(Point from, Point to, uint32_t priority, uint32_t timeMs) no
         page.ID, id()});
 }
 
-void Drawable::onResponse(uint8_t tag, const msg::getNumeric& response)
-{
-    TouchArea::onResponse(tag, response);
-}
-
-void Drawable::onResponse(uint8_t tag, const msg::getString& response)
-{
-    TouchArea::onResponse(tag, response);
-}
-
 } // namespace comp
 } // namespace nex

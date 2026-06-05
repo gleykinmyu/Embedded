@@ -24,7 +24,8 @@
  * | `nex::cmd`          | `Get`                  | `Command`              |
  * | `nex::cmd`          | `String`               | `Command`              |
  * | `nex::cmd`          | `Component`            | `Command`              |
- * | `nex::cmd`          | `Move`                 | `Command`              |
+     * | `nex::cmd`          | `FileStream`           | `Command`              |
+     * | `nex::cmd`          | `Move`                 | `Command`              |
  * | `nex::cmd`          | `WaveForm`             | `Command`              |
  * | `nex::cmd`          | `Eeprom`               | `Command`              |
  * | `nex::cmd`          | `Play`                 | `Command`              |
@@ -661,6 +662,54 @@ namespace assign {
             , _pathQuoted(pathQuoted)
             , _pathToQuoted(pathToQuoted)
             , _dstNumAttr(dstNumAttr) {}
+    };
+
+    /**
+     * Операции **FileStream**-компонента: `open`, `read`, `write`, `close`, `find` (NIS).
+     */
+    class FileStream final : public Command {
+    public:
+        enum class Kind : uint8_t {
+            Open,
+            Read,
+            Write,
+            Close,
+            Find,
+        };
+
+        static FileStream open(const Literal& compName, const char* path) noexcept {
+            return FileStream(Kind::Open, compName, path, 0u, 0u);
+        }
+        static FileStream read(const Literal& compName, uint32_t offset, uint32_t byteCount) noexcept {
+            return FileStream(Kind::Read, compName, nullptr, offset, byteCount);
+        }
+        static FileStream write(const Literal& compName, uint32_t byteCount) noexcept {
+            return FileStream(Kind::Write, compName, nullptr, byteCount, 0u);
+        }
+        static FileStream close(const Literal& compName) noexcept {
+            return FileStream(Kind::Close, compName, nullptr, 0u, 0u);
+        }
+        static FileStream find(const Literal& compName, const char* path) noexcept {
+            return FileStream(Kind::Find, compName, path, 0u, 0u);
+        }
+
+        bool serialize(TxFrame& tx) const noexcept override;
+        NEX_COMMAND_SLOT(FileStream)
+
+    private:
+        Kind _kind;
+        const Literal& _compName;
+        const char* _path;
+        uint32_t _arg1;
+        uint32_t _arg2;
+
+        FileStream(Kind kind, const Literal& compName, const char* path, uint32_t arg1, uint32_t arg2) noexcept
+            : _kind(kind)
+            , _compName(compName)
+            , _path(path)
+            , _arg1(arg1)
+            , _arg2(arg2)
+        {}
     };
 
 } // namespace cmd
