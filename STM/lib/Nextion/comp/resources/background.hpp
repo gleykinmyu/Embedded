@@ -73,13 +73,6 @@ struct ProgressBarBackground {
     {
         attr_detail::assignNumeric(owner, Literal{"bpic"}, Tag::Bpic, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 template<BGStyle S, uint8_t index = 0u>
@@ -102,13 +95,6 @@ struct Background<BGStyle::Color, index> {
     {
         attr_detail::assignNumeric(owner, bg_detail::colorName<index>(), Tag::Color, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 template<uint8_t index>
@@ -127,13 +113,6 @@ struct Background<BGStyle::Image, index> {
     void setImage(PicId v) noexcept
     {
         attr_detail::assignNumeric(owner, bg_detail::imageName<index>(), Tag::Image, v);
-    }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
     }
 };
 
@@ -154,13 +133,6 @@ struct Background<BGStyle::CropImage, index> {
     {
         attr_detail::assignNumeric(owner, bg_detail::cropName<index>(), Tag::Crop, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 template<uint8_t index>
@@ -168,13 +140,6 @@ struct Background<BGStyle::Transparent, index> {
     static constexpr BGStyle kStyle = BGStyle::Transparent;
 
     explicit Background(Component&) noexcept {}
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 } // namespace nex::resources

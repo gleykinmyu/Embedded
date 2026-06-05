@@ -33,13 +33,6 @@ struct Font {
     {
         attr_detail::assignNumeric(owner, Literal{"spax"}, Tag::Spacing, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 } // namespace nex::resources

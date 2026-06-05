@@ -33,13 +33,6 @@ struct Cursor {
     {
         attr_detail::assignNumeric(owner, Literal{"pco"}, Tag::Color, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 } // namespace nex::resources

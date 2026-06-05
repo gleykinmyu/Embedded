@@ -33,7 +33,7 @@ inline void demoDrawable(Drawable& w) noexcept
 {
     demoTouchArea(w);
 #if NEX_DRAWABLE_DRAG
-    w.enableDrag();
+    w.setDraggable(true);
 #endif
 #if NEX_DRAWABLE_OPACITY
     w.setOpacity(100u);

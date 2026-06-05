@@ -92,37 +92,21 @@ public:
     };
 
 #if NEX_DRAWABLE_DRAG
-
-    void enableDrag() noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, true);
-    }
-
-    void disableDrag() noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, false);
-    }
-
+    void setDraggable(bool enabled) noexcept;
 #endif
 #if NEX_DRAWABLE_OPACITY
-    void setOpacity(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"aph"}, Tag::Aph, v);
-    }
+    void setOpacity(uint8_t v) noexcept;
 #endif
 #if NEX_DRAWABLE_EFFECT
     //TODO сделать enum для effect. Переименовать в setTransition()
-    void setTransitionEffect(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, Literal{"effect"}, Tag::Effect, v);
-    }
+    void setTransitionEffect(uint8_t v) noexcept;
 #endif
 
     /** NIS `ref obj` — принудительная перерисовка. */
     void refresh() noexcept;
 
     /** NIS `vis obj,0|1` — показать/скрыть. */
-    void visible(bool on) noexcept;
+    void setVisible(bool on) noexcept;
     void show() noexcept;
     void hide() noexcept;
 
@@ -150,22 +134,8 @@ class Styled : public Drawable {
 public:
     static constexpr BGStyle kStyle = S;
 
-    static constexpr BGStyle style() noexcept { return S; }
-
     /** mcu: фон (`bco`/`pic`/`picc` по `S`) — поля внутри `bg` */
     resources::Background<S> bg;
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (bg.onResponse(tag, response))
-            return;
-        Drawable::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        Drawable::onResponse(tag, response);
-    }
 
 protected:
     explicit Styled(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
@@ -208,14 +178,6 @@ class Printable : public Styled<S> {
 public:
     /** mcu: шрифт (`font`, `pco`, `spax`) — поля внутри `font` */
     resources::Font font;
-
-    using Styled<S>::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (font.onResponse(tag, response))
-            return;
-        Styled<S>::onResponse(tag, response);
-    }
 
 protected:
     explicit Printable(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
@@ -485,15 +447,6 @@ class ButtonLikeComponent : public TextComponent<S, TxtMaxL> {
 public:
     /** mcu: оформление нажатого состояния — поля внутри `pressed` */
     resources::Pressed<S> pressed;
-
-    using TextComponent<S, TxtMaxL>::onResponse;
-    using Styled<S>::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (pressed.onResponse(tag, response))
-            return;
-        Printable<S>::onResponse(tag, response);
-    }
 
 protected:
     explicit ButtonLikeComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept

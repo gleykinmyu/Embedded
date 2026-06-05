@@ -19,13 +19,6 @@ struct PressedFont {
     {
         attr_detail::assignNumeric(owner, Literal{"pco2"}, Tag::Color, v);
     }
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        (void)tag;
-        (void)response;
-        return false;
-    }
 };
 
 template<BGStyle S>
@@ -37,13 +30,6 @@ struct Pressed {
         : bg{owner}
         , font{owner}
     {}
-
-    bool onResponse(uint8_t tag, const msg::getNumeric& response) noexcept
-    {
-        if (bg.onResponse(tag, response))
-            return true;
-        return font.onResponse(tag, response);
-    }
 };
 
 } // namespace nex::resources

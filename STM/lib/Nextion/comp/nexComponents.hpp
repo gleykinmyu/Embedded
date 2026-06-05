@@ -291,14 +291,6 @@ public:
         attr_detail::assignNumeric(*this, Literal{"ppic"}, Tag::Ppic, v);
     }
 
-    using Drawable::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (bg.onResponse(tag, response))
-            return;
-        Drawable::onResponse(tag, response);
-    }
-
     ProgressBar(Page& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::ProgressBar, id)
         , bg{*this}
@@ -317,16 +309,6 @@ public:
     resources::Cursor cursor;
     /** mcu: bco1 — поля в `bg2` */
     resources::Background<S, 1u> bg2;
-
-    using Linear<S>::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (cursor.onResponse(tag, response))
-            return;
-        if (bg2.onResponse(tag, response))
-            return;
-        Linear<S>::onResponse(tag, response);
-    }
 
     Slider(Page& owner, const Literal& name, uint8_t id = 0)
         : Linear<S>(owner, name, Component::Type::Slider, id)
@@ -710,14 +692,6 @@ class XFloat : public Numeric<S, Keyboard> {
 public:
     /** mcu: vvs0/vvs1 — поля в `point` */
     resources::FloatPoint point;
-
-    using Numeric<S, Keyboard>::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        if (point.onResponse(tag, response))
-            return;
-        Numeric<S, Keyboard>::onResponse(tag, response);
-    }
 
     XFloat(Page& owner, const Literal& name, uint8_t id = 0)
         : Numeric<S, Keyboard>(owner, name, Component::Type::XFloat, id)

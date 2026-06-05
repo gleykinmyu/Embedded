@@ -43,24 +43,45 @@ void TouchArea::onResponse(uint8_t tag, const msg::getString& response)
     Component::onResponse(tag, response);
 }
 
+#if NEX_DRAWABLE_DRAG
+void Drawable::setDraggable(bool enabled) noexcept
+{
+    attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, enabled);
+}
+#endif
+
+#if NEX_DRAWABLE_OPACITY
+void Drawable::setOpacity(uint8_t v) noexcept
+{
+    attr_detail::assignNumeric(*this, Literal{"aph"}, Tag::Aph, v);
+}
+#endif
+
+#if NEX_DRAWABLE_EFFECT
+void Drawable::setTransitionEffect(uint8_t v) noexcept
+{
+    attr_detail::assignNumeric(*this, Literal{"effect"}, Tag::Effect, v);
+}
+#endif
+
 void Drawable::refresh() noexcept
 {
     page.app.enqueue(Transaction{cmd::Component::refresh(name), page.ID, id()});
 }
 
-void Drawable::visible(bool on) noexcept
+void Drawable::setVisible(bool on) noexcept
 {
     page.app.enqueue(Transaction{cmd::Component::visible(name, on), page.ID, id()});
 }
 
 void Drawable::show() noexcept
 {
-    visible(true);
+    setVisible(true);
 }
 
 void Drawable::hide() noexcept
 {
-    visible(false);
+    setVisible(false);
 }
 
 void Drawable::placeAbove(const Drawable& above) noexcept
