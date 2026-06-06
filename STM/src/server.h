@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "impl/serial.hpp"
 #include "impl/sd_disk.hpp"
 #include "STMboard.h"
@@ -23,3 +24,6 @@ public:
 };
 
 extern CServerBoard board;
+
+/** HAL tick (мс) для `nex::Application` (`ClockMsFn`). */
+uint32_t boardClockMs() noexcept;

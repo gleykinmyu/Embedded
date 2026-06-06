@@ -17,18 +17,18 @@ void TouchArea::onResponse(uint8_t tag, const msg::getNumeric& response)
 {
     switch (tag) {
 #if NEX_TOUCH_AREA_POSITION
-    case TouchArea::Tag::X:
+    case static_cast<uint8_t>(attr::Id::X):
         x.applyResponse(response);
         return;
-    case TouchArea::Tag::Y:
+    case static_cast<uint8_t>(attr::Id::Y):
         y.applyResponse(response);
         return;
 #endif
 #if NEX_TOUCH_AREA_SIZE
-    case TouchArea::Tag::W:
+    case static_cast<uint8_t>(attr::Id::W):
         w.applyResponse(response);
         return;
-    case TouchArea::Tag::H:
+    case static_cast<uint8_t>(attr::Id::H):
         h.applyResponse(response);
         return;
 #endif
@@ -46,21 +46,21 @@ void TouchArea::onResponse(uint8_t tag, const msg::getString& response)
 #if NEX_DRAWABLE_DRAG
 void Drawable::setDraggable(bool enabled) noexcept
 {
-    attr_detail::assignNumeric(*this, Literal{"drag"}, Tag::Drag, enabled);
+    attr_detail::assignNumeric(*this, attr::Id::Drag, enabled);
 }
 #endif
 
 #if NEX_DRAWABLE_OPACITY
 void Drawable::setOpacity(uint8_t v) noexcept
 {
-    attr_detail::assignNumeric(*this, Literal{"aph"}, Tag::Aph, v);
+    attr_detail::assignNumeric(*this, attr::Id::Aph, v);
 }
 #endif
 
 #if NEX_DRAWABLE_EFFECT
 void Drawable::setTransitionEffect(uint8_t v) noexcept
 {
-    attr_detail::assignNumeric(*this, Literal{"effect"}, Tag::Effect, v);
+    attr_detail::assignNumeric(*this, attr::Id::Effect, v);
 }
 #endif
 

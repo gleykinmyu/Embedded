@@ -58,8 +58,8 @@ public:
     static constexpr uint16_t kScreenHeight = 1024;
     static constexpr uint8_t kPageId = 0u;
     static constexpr unsigned kButtonCount = 10u;
-    explicit TenButtonsCompiledApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight)
+    explicit TenButtonsCompiledApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
+        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
         , buttons_page(*this)
     {}
 

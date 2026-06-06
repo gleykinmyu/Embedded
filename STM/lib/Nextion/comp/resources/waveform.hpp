@@ -10,14 +10,14 @@ namespace nex::resources {
 
 namespace waveform_detail {
 
-inline constexpr Literal pcoName(uint8_t channel) noexcept
+inline constexpr attr::Id pcoId(uint8_t channel) noexcept
 {
     switch (channel) {
-    case 0u: return Literal{"pco0"};
-    case 1u: return Literal{"pco1"};
-    case 2u: return Literal{"pco2"};
-    case 3u: return Literal{"pco3"};
-    default: return Literal{"pco0"};
+    case 0u: return attr::Id::Pco0;
+    case 1u: return attr::Id::Pco1;
+    case 2u: return attr::Id::Pco2;
+    case 3u: return attr::Id::Pco3;
+    default: return attr::Id::Pco0;
     }
 }
 
@@ -29,20 +29,11 @@ struct WaveformChannels {
     static_assert(ChannelCount >= 1u && ChannelCount <= 4u,
         "nex::resources::WaveformChannels: ChannelCount must be 1..4");
 
-    enum Tag : uint8_t {
-        Count = 192u,
-        Pco0,
-        Pco1,
-        Pco2,
-        Pco3,
-    };
-
     class Channel {
     public:
         void setColor(nex::Color v) noexcept
         {
-            attr_detail::assignNumeric(_owner, waveform_detail::pcoName(_index),
-                static_cast<uint8_t>(Tag::Pco0 + _index), v);
+            attr_detail::assignNumeric(_owner, waveform_detail::pcoId(_index), v);
         }
 
         void add(uint8_t value) noexcept
@@ -77,7 +68,7 @@ struct WaveformChannels {
     explicit WaveformChannels(Component& ownerIn) noexcept
         : owner{ownerIn}
     {
-        attr_detail::assignNumeric(owner, Literal{"ch"}, Tag::Count, ChannelCount);
+        attr_detail::assignNumeric(owner, attr::Id::Ch, ChannelCount);
     }
 
     [[nodiscard]] Channel operator[](uint8_t index) noexcept
@@ -88,19 +79,12 @@ struct WaveformChannels {
 };
 
 /** Фон Waveform по `sta` (compile-time `S`); `Color` — с сеткой, остальные — как `Background`. */
-template<BGStyle S>
+template<BG S>
 struct WfBackground;
 
 template<>
-struct WfBackground<BGStyle::Color> {
-    enum Tag : uint8_t {
-        Color = bg_detail::tag<32u, 0>(),
-        Gdc,
-        Gdw,
-        Gdh,
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Color;
+struct WfBackground<BG::Color> {
+    static constexpr BG kStyle = BG::Color;
     Component& owner;
 
     explicit WfBackground(Component& ownerIn) noexcept
@@ -109,32 +93,28 @@ struct WfBackground<BGStyle::Color> {
 
     void setColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::colorName<0>(), Tag::Color, v);
+        attr_detail::assignNumeric(owner, bg_detail::colorId<0>(), v);
     }
 
     void setGridColor(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"gdc"}, Tag::Gdc, v);
+        attr_detail::assignNumeric(owner, attr::Id::Gdc, v);
     }
 
     void setGridWidth(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"gdw"}, Tag::Gdw, v);
+        attr_detail::assignNumeric(owner, attr::Id::Gdw, v);
     }
 
     void setGridHeight(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"gdh"}, Tag::Gdh, v);
+        attr_detail::assignNumeric(owner, attr::Id::Gdh, v);
     }
 };
 
 template<>
-struct WfBackground<BGStyle::Image> {
-    enum Tag : uint8_t {
-        Image = bg_detail::tag<33u, 0>(),
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Image;
+struct WfBackground<BG::Image> {
+    static constexpr BG kStyle = BG::Image;
     Component& owner;
 
     explicit WfBackground(Component& ownerIn) noexcept
@@ -143,17 +123,13 @@ struct WfBackground<BGStyle::Image> {
 
     void setImage(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::imageName<0>(), Tag::Image, v);
+        attr_detail::assignNumeric(owner, bg_detail::imageId<0>(), v);
     }
 };
 
 template<>
-struct WfBackground<BGStyle::CropImage> {
-    enum Tag : uint8_t {
-        Crop = bg_detail::tag<34u, 0>(),
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::CropImage;
+struct WfBackground<BG::CropImage> {
+    static constexpr BG kStyle = BG::CropImage;
     Component& owner;
 
     explicit WfBackground(Component& ownerIn) noexcept
@@ -162,13 +138,13 @@ struct WfBackground<BGStyle::CropImage> {
 
     void setCrop(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::cropName<0>(), Tag::Crop, v);
+        attr_detail::assignNumeric(owner, bg_detail::cropId<0>(), v);
     }
 };
 
 template<>
-struct WfBackground<BGStyle::Transparent> {
-    static constexpr BGStyle kStyle = BGStyle::Transparent;
+struct WfBackground<BG::Transparent> {
+    static constexpr BG kStyle = BG::Transparent;
 
     explicit WfBackground(Component&) noexcept {}
 };

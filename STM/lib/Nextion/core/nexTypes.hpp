@@ -106,7 +106,7 @@ constexpr bool operator!=(Color::std a, Color::std b) noexcept { return !(a == b
  * Атрибут `sta` (фон / заливка) в NIS для ветки BG: crop | color | image | transparent.
  * Коды 0…3 совместимы с xstr / типичным Attribute Pane для текстовых виджетов.
  */
-enum class BGStyle : uint8_t {
+enum class BG : uint8_t {
     CropImage    = 0,
     Color        = 1,
     Image        = 2,
@@ -114,7 +114,7 @@ enum class BGStyle : uint8_t {
 };
 
 /** Режим заливки фона в `xstr` (NIS); те же коды 0…3, что у `BGStyle`. */
-using FillMode = BGStyle;
+using BGStyle = BG;
 
 /** Горизонтальное выравнивание в `xstr` (NIS: xcenter, 0…2). */
 enum class HAlign : uint8_t {
@@ -151,6 +151,13 @@ enum class ScrollDirection : uint8_t {
     RightToLeft = 1u,
     UpToDown    = 2u,
     DownToUp    = 3u,
+};
+
+/** Индикатор прогресса SlidingText (NIS `left`). */
+enum class ShowProgressBar : uint8_t {
+    No            = 0u,
+    OperationTime = 1u,
+    Continuous    = 2u,
 };
 
 /** Формат отображения числа (`format` в NIS): Decimal, Currency, Hex. */
@@ -304,6 +311,9 @@ struct ScreenLayout {
         Literal& operator=(const Literal&) = delete;
         Literal& operator=(Literal&&) = delete; 
     };
+
+/** Пустая лексема (`len == 0`): `AttrRef` без компонента (`sys0`, …), невалидный `attr::Id`, … */
+inline constexpr Literal kEmptyLiteral{""};
 
 /**
  * Специальные пары `(page_id, comp_id)` в `Transaction` — вне таблицы страниц/компонентов.

@@ -14,7 +14,7 @@ void SysVarBase::get() noexcept {
 }
 
 AttrRef SysVarBase::target() const noexcept {
-    return AttrRef{kEmptyCompLexeme, name};
+    return AttrRef{kEmptyLiteral, name};
 }
 
 void SysVarBase::enqueueTransaction(const Command& cmd, Transaction::State state) const noexcept {
@@ -22,7 +22,7 @@ void SysVarBase::enqueueTransaction(const Command& cmd, Transaction::State state
 }
 
 void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
-    const AttrRef target{kEmptyCompLexeme, sysName};
+    const AttrRef target{kEmptyLiteral, sysName};
     app.enqueue(Transaction{cmd::assign::Numeric(target, value), Route::kSysVarPageId, Route::kSysVarCompId, 0u});
 }
 

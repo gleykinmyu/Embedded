@@ -11,7 +11,7 @@
 #include "server.h"
 #include "examples/example2/app.hpp"
 
-nex::examples::TenButtonsApp app(board.serial2);
+nex::examples::TenButtonsApp app(board.serial2, boardClockMs);
 
 int main(void)
 {
@@ -32,7 +32,7 @@ int main(void)
     {
         const uint32_t t0 = board.GetTick();
         while ((board.GetTick() - t0) < 2000u)
-            app.update(board.GetTick());
+            app.update();
     }
 
     const uint32_t boot = board.GetTick();
@@ -57,6 +57,6 @@ int main(void)
             last_blink_ms = now;
             board.led.Toggle();
         }
-        app.update(now);
+        app.update();
     }
 }

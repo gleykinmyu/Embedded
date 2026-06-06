@@ -44,8 +44,8 @@ public:
     bool tests_done = false;
     uint32_t tests_pass_mask = 0u;
 
-    explicit ErrorTestApp(BIF::IHardwareSerial& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight)
+    explicit ErrorTestApp(BIF::IHardwareSerial& stream, Application::ClockMsFn clockMs) noexcept
+        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
         , test_page(*this)
         , _link(stream)
     {}
@@ -108,7 +108,7 @@ public:
             phase_started_ms_ = now_ms;
 
         const uint32_t elapsed = now_ms - phase_started_ms_;
-        update(now_ms);
+        update();
 
         switch (phase_) {
         case Phase::BootWait:

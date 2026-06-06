@@ -15,7 +15,7 @@
 #include "nex.hpp"
 #include "examples/example1/app.hpp"
 
-nex::examples::TwoPageTouchDemoApp app(board.serial2);
+nex::examples::TwoPageTouchDemoApp app(board.serial2, boardClockMs);
 
 int main(void)
 {
@@ -37,6 +37,6 @@ int main(void)
             last_blink_ms = now;
             board.led.Toggle();
         }
-        app.update(now);
+        app.update();
     }
 }

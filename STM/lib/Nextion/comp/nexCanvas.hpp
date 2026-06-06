@@ -33,15 +33,15 @@ public:
     /** `xstr` в `region`: текст → шрифт/цвет/выравнивание → фон (по умолчанию прозрачный). */
     void text_in_region(Region region, const char* contentToken, FontId fontId = 1u,
         Color fg = Color::std::White, HAlign hAlign = HAlign::Center, VAlign vAlign = VAlign::Center,
-        Color bg = Color::std::Black, BGStyle fill = BGStyle::Transparent) const noexcept;
+        Color bg = Color::std::Black, BG fill = BG::Transparent) const noexcept;
     /** То же, с равномерным отступом `pad` со всех сторон. */
     void text_in_region(Region region, uint16_t pad, const char* contentToken, FontId fontId = 1u,
         Color fg = Color::std::White, HAlign hAlign = HAlign::Center, VAlign vAlign = VAlign::Center,
-        Color bg = Color::std::Black, BGStyle fill = BGStyle::Transparent) const noexcept;
+        Color bg = Color::std::Black, BG fill = BG::Transparent) const noexcept;
     /** `rect_bordered`/`rect_fill` + `text_in_region` в одном `region`. */
     void text_in_region_bordered(Region region, const char* contentToken, FontId fontId, Color fg, HAlign hAlign,
         VAlign vAlign, Color fill, Color border, uint16_t borderThickness,
-        BGStyle textFill = BGStyle::Color) const noexcept;
+        BG textFill = BG::Color) const noexcept;
 
     /** Прямоугольник: заливка `color`. */
     void rect_fill(Point upperLeft, Point lowerRightInclusive, Color color) const noexcept;

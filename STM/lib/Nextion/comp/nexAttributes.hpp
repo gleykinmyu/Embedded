@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../app/nexApplication.hpp"
+#include "nexAttrLexemes.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -90,21 +91,21 @@ template<typename T>
 
 /** MCU: `assign` числового атрибута без зеркала (только исходящая команда). */
 template<typename T>
-inline void assignNumeric(const Component& parent, const Literal& attrName, uint8_t tag, T value) noexcept
+inline void assignNumeric(const Component& parent, attr::Id id, T value) noexcept
 {
-    const AttrRef target{parent.name, attrName};
+    const AttrRef target{parent.name, attr::literal(id)};
     const cmd::assign::Numeric cmd(target, to_wire(value));
-    parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(), tag});
+    parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(), static_cast<uint8_t>(id)});
 }
 
 /** MCU: `assign` строкового атрибута без зеркала (только исходящая команда). */
-inline void assignText(const Component& parent, const Literal& attrName, uint8_t tag, const char* text) noexcept
+inline void assignText(const Component& parent, attr::Id id, const char* text) noexcept
 {
-    const AttrRef target{parent.name, attrName};
+    const AttrRef target{parent.name, attr::literal(id)};
     const char* const p = text != nullptr ? text : "";
     parent.page.app.enqueue(Transaction{
         cmd::assign::Text(target, p, cmd::assign::Text::Op::Assign),
-        parent.page.ID, parent.id(), tag});
+        parent.page.ID, parent.id(), static_cast<uint8_t>(id)});
 }
 
 template<>
@@ -152,15 +153,13 @@ inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString
  */
 namespace attr {
 
-/** Имя атрибута NIS (`txt`, `val`, …) и ссылка на родительский `Component`. */
+/** Идентификатор атрибута NIS (`txt`, `val`, …) и ссылка на родительский `Component`. */
 class Base {
 public:
-    const Literal name;
-    const uint8_t tag;
+    const Id id;
 
-    constexpr explicit Base(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : name(name)
-        , tag(tag)
+    constexpr explicit Base(const Component& parent, Id id) noexcept
+        : id(id)
         , _parent(parent)
     {}
 
@@ -171,7 +170,9 @@ public:
 
     virtual ~Base() = default;
 
-    [[nodiscard]] constexpr operator const Literal&() const noexcept { return name; }
+    [[nodiscard]] constexpr const Literal& name() const noexcept { return literal(id); }
+    [[nodiscard]] constexpr operator const Literal&() const noexcept { return name(); }
+    [[nodiscard]] constexpr uint8_t tag() const noexcept { return static_cast<uint8_t>(id); }
 
 protected:
     const Component& _parent;
@@ -181,7 +182,7 @@ protected:
 
     void enqueueTransaction(const Command& cmd,
         Transaction::State state = Transaction::State::AwaitingStatus) const noexcept {
-        _parent.page.app.enqueue(Transaction{cmd, _parent.page.ID, _parent.id(), tag, state});
+        _parent.page.app.enqueue(Transaction{cmd, _parent.page.ID, _parent.id(), tag(), state});
     }
 };
 
@@ -193,14 +194,9 @@ public:
         attr_detail::is_nex_numeric_storage_v<T>,
         "nex::attr::Num<T>: T — bool, целое 8/16/32 бит или nex::Color");
 
-    constexpr explicit Num(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Base(parent, name, tag)
+    constexpr explicit Num(const Component& parent, Id id) noexcept
+        : Base(parent, id)
         , _val{}
-    {}
-
-    constexpr Num(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
-        : Base(parent, name, tag)
-        , _val(initial)
     {}
 
     [[nodiscard]] constexpr operator T() const noexcept { return _val; }
@@ -211,14 +207,14 @@ public:
 
     Num& operator=(const T& v) noexcept {
         _val = v;
-        const AttrRef target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name() };
         const cmd::assign::Numeric cmd(target, attr_detail::to_wire(v));
         enqueueTransaction(cmd);
         return *this;
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name() };
         enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
     }
 
@@ -239,14 +235,9 @@ public:
         attr_detail::is_nex_numeric_storage_v<T>,
         "nex::attr::NumRO<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
 
-    constexpr explicit NumRO(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Base(parent, name, tag)
+    constexpr explicit NumRO(const Component& parent, Id id) noexcept
+        : Base(parent, id)
         , _val{}
-    {}
-
-    constexpr NumRO(const Component& parent, const Literal& name, const T& initial, uint8_t tag) noexcept
-        : Base(parent, name, tag)
-        , _val(initial)
     {}
 
     [[nodiscard]] constexpr operator T() const noexcept { return _val; }
@@ -256,7 +247,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name() };
         enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
     }
 
@@ -282,8 +273,8 @@ public:
 
     char buf[MaxL]{};
 
-    constexpr explicit String(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Base(parent, name, tag)
+    constexpr explicit String(const Component& parent, Id id) noexcept
+        : Base(parent, id)
     {}
 
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
@@ -318,7 +309,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name() };
         enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
     }
 
@@ -338,8 +329,8 @@ public:
 
     char buf[MaxL]{};
 
-    constexpr explicit StringRO(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Base(parent, name, tag)
+    constexpr explicit StringRO(const Component& parent, Id id) noexcept
+        : Base(parent, id)
     {}
 
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
@@ -349,7 +340,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name };
+        const AttrRef target{ _parent.name, name() };
         enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
     }
 
@@ -365,8 +356,8 @@ class String<0> : public Base {
 public:
     static constexpr uint8_t maxl = 0;
 
-    constexpr explicit String(const Component& parent, const Literal& name, uint8_t tag) noexcept
-        : Base(parent, name, tag)
+    constexpr explicit String(const Component& parent, Id id) noexcept
+        : Base(parent, id)
     {}
 
     void set(const char* text) const noexcept {

@@ -11,7 +11,7 @@
 #include "server.h"
 #include "examples/example3/app.hpp"
 
-nex::examples::TenButtonsCompiledApp app(board.serial2);
+nex::examples::TenButtonsCompiledApp app(board.serial2, boardClockMs);
 
 int main(void)
 {
@@ -32,7 +32,7 @@ int main(void)
     {
         const uint32_t t0 = board.GetTick();
         while ((board.GetTick() - t0) < 500u)
-            app.update(board.GetTick());
+            app.update();
     }
 
     NEX_DBG("[10btn-id] Ready for touch\n");
@@ -43,6 +43,6 @@ int main(void)
             last_blink_ms = now;
             board.led.Toggle();
         }
-        app.update(now);
+        app.update();
     }
 }

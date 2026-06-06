@@ -23,11 +23,16 @@ public:
     static constexpr uint8_t kSysVarRoutePageId = Route::kSysVarPageId;
     static constexpr uint8_t kSysVarRouteCompId = Route::kSysVarCompId;
 
-    explicit Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept;
+    using ClockMsFn = uint32_t (*)() noexcept;
+
+    explicit Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs) noexcept;
     virtual ~Application() = default;
 
     void enqueue(Transaction tx) noexcept;
-    virtual void update(uint32_t now_ms) noexcept;
+    virtual void update() noexcept;
+
+    /** Крутит `update()` пока сессия не простаивает; таймаут без прогресса — `kDefaultGetResponseTimeoutMs`. */
+    void pumpUntilIdle() noexcept;
 
     [[nodiscard]] const msg::Status& lastError() const noexcept { return _lastError; }
     [[nodiscard]] uint8_t lastErrorPage() const noexcept { return _lastErrorPage; }
@@ -96,6 +101,8 @@ private:
     void dispatchError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
     void dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept;
 
+    [[nodiscard]] uint32_t clockMs() const noexcept { return _clockMsFn(); }
+
     ScreenLayout _screen{};
     BIF::IByteStream& _stream;
     Gateway _gateway;
@@ -107,6 +114,7 @@ private:
 
     MISC::ObjStorage<Page, kMaxPages, uint8_t, 0> _pageStorage; //TODO Сделал изменяемым
     uint8_t _currentPageId = 0xFF;
+    ClockMsFn _clockMsFn;
 };
 
 } // namespace nex

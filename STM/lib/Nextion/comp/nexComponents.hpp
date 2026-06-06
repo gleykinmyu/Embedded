@@ -17,24 +17,19 @@ namespace comp {
 /** tim, en */
 class Timer : public Component {
 public:
-    enum Tag : uint8_t {
-        Tim = 192u,
-        En,
-    };
-
     void setPeriod(uint32_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim, v);
+        attr_detail::assignNumeric(*this, attr::Id::Tim, v);
     }
 
     void enable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, true);
+        attr_detail::assignNumeric(*this, attr::Id::En, true);
     }
 
     void disable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
+        attr_detail::assignNumeric(*this, attr::Id::En, false);
     }
 
     Timer(Page& owner, const Literal& name, uint8_t id = 0)
@@ -45,17 +40,13 @@ public:
 /** NIS `va` при sta=Number: `val`. Тот же `type`=52, что у StringVariable. */
 class NumericVar : public Component {
 public:
-    enum Tag : uint8_t {
-        Val = 192u,
-    };
-
     /** user: значение глобальной числовой переменной */
     attr::Num<int32_t> val;
 
     using Component::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::Val) {
+        if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
@@ -64,7 +55,7 @@ public:
 
     NumericVar(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id)
-        , val{*this, "val", Tag::Val}
+        , val{*this, attr::Id::Val}
     {}
 };
 
@@ -72,16 +63,12 @@ public:
 template<uint16_t TxtMaxL = 16u>
 class StringVar : public Component {
 public:
-    enum Tag : uint8_t {
-        Txt = 192u,
-    };
-
     /** user: значение глобальной строковой переменной */
     attr::String<TxtMaxL> txt;
 
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
-        if (tag == Tag::Txt) {
+        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
@@ -95,7 +82,7 @@ public:
 
     StringVar(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id)
-        , txt{*this, "txt", Tag::Txt}
+        , txt{*this, attr::Id::Txt}
     {}
 };
 
@@ -109,65 +96,51 @@ public:
 
 /** pco; dis; txt (данные QR) */
 
-class QRCode : public Styled<BGStyle::Color> {
+class QRCode : public Styled<BG::Color> {
 public:
-    enum Tag : uint8_t {
-        Pco = 192u,
-        Dis,
-        Txt,
-    };
-
     void setPenColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pco"}, Tag::Pco, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pco, v);
     }
 
     //TODO проверить реальное назначение атрибута dis
     void setDataSpacing(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
+        attr_detail::assignNumeric(*this, attr::Id::Dis, v);
     }
 
     void setText(const char* text) noexcept
     {
-        attr_detail::assignText(*this, Literal{"txt"}, Tag::Txt, text);
+        attr_detail::assignText(*this, attr::Id::Txt, text);
     }
 
     QRCode(Page& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BGStyle::Color>(owner, name, Component::Type::QRCode, id)
+        : Styled<BG::Color>(owner, name, Component::Type::QRCode, id)
     {}
 };
 
-class Picture : public Styled<BGStyle::Image> {
+class Picture : public Styled<BG::Image> {
 public:
     Picture(Page& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BGStyle::Image>(owner, name, Component::Type::Picture, id) {}
+        : Styled<BG::Image>(owner, name, Component::Type::Picture, id) {}
 };
 
-class CropPicture : public Styled<BGStyle::CropImage> {
+class CropPicture : public Styled<BG::CropImage> {
 public:
-    enum Tag : uint8_t {
-        Cpic = 192u,
-    };
-
     void setCrop(PicId v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"cpic"}, Tag::Cpic, v);
+        attr_detail::assignNumeric(*this, attr::Id::Cpic, v);
     }
 
     CropPicture(Page& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BGStyle::CropImage>(owner, name, Component::Type::CropPicture, id)
+        : Styled<BG::CropImage>(owner, name, Component::Type::CropPicture, id)
     {}
 };
 
-template<BGStyle S = BGStyle::Color, uint8_t ChannelCount = 1u>
+template<BG S = BG::Color, uint8_t ChannelCount = 1u>
 class Waveform : public Drawable {
 public:
-    static constexpr BGStyle kStyle = S;
-
-    enum Tag : uint8_t {
-        Dis = 196u,
-    };
+    static constexpr BG kStyle = S;
 
     /** mcu: фон (`bco`/`pic`/`picc`, `gdc`/`gdw`/`gdh` по `S`) — поля внутри `wfBackground` */
     resources::WfBackground<S> bg;
@@ -180,7 +153,7 @@ public:
 
     void setDataScale(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis,
+        attr_detail::assignNumeric(*this, attr::Id::Dis,
             attr_detail::clamp(v, kDataScaleMin, kDataScaleMax));
     }
 
@@ -191,17 +164,13 @@ public:
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class ProgressBar : public Drawable {
-    static_assert(S == BGStyle::Color || S == BGStyle::Image,
+    static_assert(S == BG::Color || S == BG::Image,
         "ProgressBar: only BGStyle::Color and BGStyle::Image are supported");
 
 public:
-    static constexpr BGStyle kStyle = S;
-
-    enum Tag : uint8_t {
-        Val = 192u,
-    };
+    static constexpr BG kStyle = S;
 
     /** mcu: уровень заливки */
     attr::Num<uint8_t> value;
@@ -214,7 +183,7 @@ public:
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::Val) {
+        if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             value.applyResponse(response);
             return;
         }
@@ -223,22 +192,18 @@ public:
 
     ProgressBar(Page& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::ProgressBar, id)
-        , value{*this, "val", Tag::Val}
+        , value{*this, attr::Id::Val}
         , bg{*this}
         , bar{*this}
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class Slider : public Styled<S> {
-    static_assert(S != BGStyle::Transparent,
+    static_assert(S != BG::Transparent,
         "Slider: BGStyle::Transparent is not supported");
 
 public:
-    enum Tag : uint8_t {
-        Val = 192u,
-    };
-
     /** user: положение ползунка */
     attr::Num<uint8_t> value;
 
@@ -249,7 +214,7 @@ public:
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::Val) {
+        if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             value.applyResponse(response);
             return;
         }
@@ -258,19 +223,15 @@ public:
 
     Slider(Page& owner, const Literal& name, uint8_t id = 0)
         : Styled<S>(owner, name, Component::Type::Slider, id)
-        , value{*this, "val", Tag::Val}
+        , value{*this, attr::Id::Val}
         , cursor{*this}
         , bg2{*this}
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class Gauge : public Styled<S> {
 public:
-    enum Tag : uint8_t {
-        Val = 192u,
-    };
-
     static constexpr uint16_t kAngleMin = 0;
     static constexpr uint16_t kAngleMax = 360;
 
@@ -282,7 +243,7 @@ public:
 
     void setAngle(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"val"}, Tag::Val,
+        attr_detail::assignNumeric(*this, attr::Id::Val,
             attr_detail::clamp(v, kAngleMin, kAngleMax));
     }
 
@@ -293,23 +254,17 @@ public:
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class ComboBox : public ListSelect<S> {
 public:
-    enum Tag : uint8_t {
-        IsOpened = 102u,
-        Ycen,
-        Xcen,
-    };
-
     void setVAlign(VAlign v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"ycen"}, Tag::Ycen, v);
+        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
     }
 
     void setHAlign(HAlign v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"xcen"}, Tag::Xcen, v);
+        attr_detail::assignNumeric(*this, attr::Id::Xcen, v);
     }
 
     /** mcu: рамка — поля внутри `border` */
@@ -326,7 +281,7 @@ public:
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::IsOpened) {
+        if (tag == static_cast<uint8_t>(attr::Id::Down)) {
             isOpened.applyResponse(response);
             return;
         }
@@ -338,33 +293,26 @@ public:
         , border{*this}
         , arrow{*this}
         , cells{*this}
-        , isOpened{*this, "down", Tag::IsOpened}
+        , isOpened{*this, attr::Id::Down}
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class TextSelect : public ListSelect<S> {
 public:
-    enum Tag : uint8_t {
-        Pco2 = 104u,
-        Pco1,
-        Dis,
-        Txt,
-    };
-
     void setSelColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pco2"}, Tag::Pco2, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pco2, v);
     }
 
     void setLineColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pco1"}, Tag::Pco1, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pco1, v);
     }
 
     void setSelectionLine(bool enabled) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, enabled);
+        attr_detail::assignNumeric(*this, attr::Id::Dis, enabled);
     }
 
     /** user: текст выбранной строки (RO) */
@@ -372,7 +320,7 @@ public:
 
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
-        if (tag == Tag::Txt) {
+        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             //txt.applyResponse(response);
             return;
         }
@@ -381,92 +329,87 @@ public:
 
     TextSelect(Page& owner, const Literal& name, uint8_t id = 0)
         : ListSelect<S>(owner, name, Component::Type::TextSelect, id)
-        //, txt{*this, "txt", Tag::Txt}
+        //, txt{*this, attr::Id::Txt}
     {}
 };
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
-class Text : public TextComponent<S, TxtMaxL> {
+template<BG S = BG::Color, uint16_t TxtMaxL = 16u>
+class Text : public Textual<S> {
 public:
-    enum Tag : uint8_t {
-        Pw = 129u,
-    };
+    /** user: текст (ввод с клавиатуры) */
+    attr::String<TxtMaxL> txt;
 
     void enablePassword() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pw"}, Tag::Pw, true);
+        attr_detail::assignNumeric(*this, attr::Id::Pw, true);
     }
 
     void disablePassword() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pw"}, Tag::Pw, false);
+        attr_detail::assignNumeric(*this, attr::Id::Pw, false);
+    }
+
+    void onResponse(uint8_t tag, const msg::getString& response) override
+    {
+        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
+            txt.applyResponse(response);
+            return;
+        }
+        TouchArea::onResponse(tag, response);
     }
 
     Text(Page& owner, const Literal& name, uint8_t id = 0)
-        : TextComponent<S, TxtMaxL>(owner, name, Component::Type::Text, id)
+        : Textual<S>(owner, name, Component::Type::Text, id)
+        , txt{*this, attr::Id::Txt}
     {}
 };
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 256u>
-class SLText : public TextComponent<S, TxtMaxL> {
+template<BG S = BG::Color, uint16_t TxtMaxL = 16u>
+class SlidingText : public Textual<S> {
 public:
-    enum Tag : uint8_t {
-        Left = 129u,
-        Ch,
-        ValY,
-        MaxvalY,
-    };
+    /** user: текст */
+    attr::String<TxtMaxL> txt;
 
     void setVAlign(VAlign) = delete;
 
-    /** user: смещение текста по горизонтали */
-    attr::Num<uint16_t> left;
-    /** user: канал / индекс строки */
-    attr::Num<uint8_t> ch;
+    void setShowProgressBar(ShowProgressBar v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Left, static_cast<uint8_t>(v));
+    }
+
     /** user: позиция прокрутки по Y */
     attr::Num<uint16_t> val_y;
-    /** user: максимум прокрутки по Y (RO) */
-    attr::NumRO<uint16_t> maxval_y;
+
+    void onResponse(uint8_t tag, const msg::getString& response) override
+    {
+        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
+            txt.applyResponse(response);
+            return;
+        }
+        TouchArea::onResponse(tag, response);
+    }
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        switch (tag) {
-        case Tag::Left:
-            left.applyResponse(response);
-            return;
-        case Tag::Ch:
-            ch.applyResponse(response);
-            return;
-        case Tag::ValY:
+        if (tag == static_cast<uint8_t>(attr::Id::ValY)) {
             val_y.applyResponse(response);
             return;
-        case Tag::MaxvalY:
-            maxval_y.applyResponse(response);
-            return;
-        default:
-            break;
         }
-        TextComponent<S, TxtMaxL>::onResponse(tag, response);
+        Textual<S>::onResponse(tag, response);
     }
 
-    SLText(Page& owner, const Literal& name, uint8_t id = 0)
-        : TextComponent<S, TxtMaxL>(owner, name, Component::Type::SLText, id)
-        , left{*this, "left", Tag::Left}
-        , ch{*this, "ch", Tag::Ch}
-        , val_y{*this, "val_y", Tag::ValY}
-        , maxval_y{*this, "maxval_y", Tag::MaxvalY}
+    SlidingText(Page& owner, const Literal& name, uint8_t id = 0)
+        : Textual<S>(owner, name, Component::Type::SlidingText, id)
+        , txt{*this, attr::Id::Txt}
+        , val_y{*this, attr::Id::ValY}
     {}
 };
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
-class ScrollText : public TextComponent<S, TxtMaxL> {
+template<BG S = BG::Color, uint16_t TxtMaxL = 16u>
+class ScrollText : public Textual<S> {
 public:
-    enum Tag : uint8_t {
-        Dir = 129u,
-        Dis,
-        Tim,
-        En,
-    };
+    /** user: текст */
+    attr::String<TxtMaxL> txt;
 
     static constexpr uint16_t kPeriodMin = 80u;
     static constexpr uint16_t kPeriodMax = 65535u;
@@ -475,85 +418,86 @@ public:
 
     void setScrollDirection(ScrollDirection v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dir"}, Tag::Dir, static_cast<uint8_t>(v));
+        attr_detail::assignNumeric(*this, attr::Id::Dir, static_cast<uint8_t>(v));
     }
 
     void setScrollStep(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis,
+        attr_detail::assignNumeric(*this, attr::Id::Dis,
             attr_detail::clamp(v, kScrollStepMin, kScrollStepMax));
     }
 
     void setPeriod(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim,
+        attr_detail::assignNumeric(*this, attr::Id::Tim,
             attr_detail::clamp(v, kPeriodMin, kPeriodMax));
     }
 
     void enable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, true);
+        attr_detail::assignNumeric(*this, attr::Id::En, true);
     }
 
     void disable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
+        attr_detail::assignNumeric(*this, attr::Id::En, false);
+    }
+
+    void onResponse(uint8_t tag, const msg::getString& response) override
+    {
+        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
+            txt.applyResponse(response);
+            return;
+        }
+        TouchArea::onResponse(tag, response);
     }
 
     ScrollText(Page& owner, const Literal& name, uint8_t id = 0)
-        : TextComponent<S, TxtMaxL>(owner, name, Component::Type::ScrollText, id)
+        : Textual<S>(owner, name, Component::Type::ScrollText, id)
+        , txt{*this, attr::Id::Txt}
     {}
 };
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
-class Button : public ButtonLikeComponent<S, TxtMaxL> {
+template<BG S = BG::Color>
+class Button : public ButtonBase<S> {
 public:
     Button(Page& owner, const Literal& name, uint8_t id = 0)
-        : ButtonLikeComponent<S, TxtMaxL>(owner, name, Component::Type::Button, id) {}
+        : ButtonBase<S>(owner, name, Component::Type::Button, id)
+    {}
 };
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 16u>
-class DualStateButton : public ButtonLikeComponent<S, TxtMaxL> {
+template<BG S = BG::Color>
+class DualStateButton : public ButtonBase<S> {
 public:
-    enum Tag : uint8_t {
-        Val = 148u,
-    };
-
     /** user: состояние кнопки (нажато/отпущено) */
     attr::Num<uint32_t> val;
 
-    using ButtonLikeComponent<S, TxtMaxL>::onResponse;
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::Val) {
+        if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        ButtonLikeComponent<S, TxtMaxL>::onResponse(tag, response);
+        ButtonBase<S>::onResponse(tag, response);
     }
 
     DualStateButton(Page& owner, const Literal& name, uint8_t id = 0)
-        : ButtonLikeComponent<S, TxtMaxL>(owner, name, Component::Type::DualStateButton, id)
-        , val{*this, "val", Tag::Val}
+        : ButtonBase<S>(owner, name, Component::Type::DualStateButton, id)
+        , val{*this, attr::Id::Val}
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class Number : public Numeric<S> {
 public:
-    enum Tag : uint8_t {
-        Length = 163u,
-        Format,
-    };
-
     void setDigitCount(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"length"}, Tag::Length, v);
+        attr_detail::assignNumeric(*this, attr::Id::Length, v);
     }
 
     void setFormat(NumFormat v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"format"}, Tag::Format, v);
+        attr_detail::assignNumeric(*this, attr::Id::Format, v);
     }
 
     Number(Page& owner, const Literal& name, uint8_t id = 0)
@@ -561,19 +505,14 @@ public:
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class XFloat : public Numeric<S> {
 public:
-    enum Tag : uint8_t {
-        FormatBefore = 163u,
-        FormatAfter,
-    };
-
     /** mcu: формат числа — знаки до и после точки (NIS `vvs0`, `vvs1`) */
     void setFormat(uint8_t digitsBeforePoint, uint8_t digitsAfterPoint) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"vvs0"}, Tag::FormatBefore, digitsBeforePoint);
-        attr_detail::assignNumeric(*this, Literal{"vvs1"}, Tag::FormatAfter, digitsAfterPoint);
+        attr_detail::assignNumeric(*this, attr::Id::Vvs0, digitsBeforePoint);
+        attr_detail::assignNumeric(*this, attr::Id::Vvs1, digitsAfterPoint);
     }
 
     XFloat(Page& owner, const Literal& name, uint8_t id = 0)
@@ -581,26 +520,9 @@ public:
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class DataRecord : public DataFile<S> {
 public:
-    enum Tag : uint8_t {
-        Path = 80u,
-        Lenth,
-        Maxval,
-        Length,
-        Format,
-        Mode,
-        Order,
-        Hig,
-        Gdc,
-        Gdw,
-        Gdh,
-        Bco1,
-        Pco1,
-        Xcen,
-    };
-
     /** mcu: путь к файлу данных */
     attr::String<512> path;
     /** user: длина файла (RO) */
@@ -610,69 +532,69 @@ public:
 
     void setRecordLength(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"length"}, Tag::Length, v);
+        attr_detail::assignNumeric(*this, attr::Id::Length, v);
     }
 
     void setFormat(NumFormat v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"format"}, Tag::Format, v);
+        attr_detail::assignNumeric(*this, attr::Id::Format, v);
     }
 
     void setMode(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"mode"}, Tag::Mode, v);
+        attr_detail::assignNumeric(*this, attr::Id::Mode, v);
     }
 
     void setOrder(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"order"}, Tag::Order, v);
+        attr_detail::assignNumeric(*this, attr::Id::Order, v);
     }
 
     void setCellSize(uint8_t v) noexcept
     {
         static constexpr uint8_t kMin = 16u;
         static constexpr uint8_t kMax = 255u;
-        attr_detail::assignNumeric(*this, Literal{"hig"}, Tag::Hig,
+        attr_detail::assignNumeric(*this, attr::Id::Hig,
             attr_detail::clamp(v, kMin, kMax));
     }
 
     void setGridColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"gdc"}, Tag::Gdc, v);
+        attr_detail::assignNumeric(*this, attr::Id::Gdc, v);
     }
 
     void setGridWidth(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"gdw"}, Tag::Gdw, v);
+        attr_detail::assignNumeric(*this, attr::Id::Gdw, v);
     }
 
     void setGridHeight(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"gdh"}, Tag::Gdh, v);
+        attr_detail::assignNumeric(*this, attr::Id::Gdh, v);
     }
 
     void setCellBgColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"bco1"}, Tag::Bco1, v);
+        attr_detail::assignNumeric(*this, attr::Id::Bco1, v);
     }
 
     void setCellColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pco1"}, Tag::Pco1, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pco1, v);
     }
 
     void setHAlign(HAlign v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"xcen"}, Tag::Xcen, v);
+        attr_detail::assignNumeric(*this, attr::Id::Xcen, v);
     }
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         switch (tag) {
-        case Tag::Lenth:
+        case static_cast<uint8_t>(attr::Id::Lenth):
             lenth.applyResponse(response);
             return;
-        case Tag::Maxval:
+        case static_cast<uint8_t>(attr::Id::Maxval):
             maxval.applyResponse(response);
             return;
         default:
@@ -683,7 +605,7 @@ public:
 
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
-        if (tag == Tag::Path) {
+        if (tag == static_cast<uint8_t>(attr::Id::Path)) {
             path.applyResponse(response);
             return;
         }
@@ -692,9 +614,9 @@ public:
 
     DataRecord(Page& owner, const Literal& name, uint8_t id = 0)
         : DataFile<S>(owner, name, Component::Type::DataRecord, id)
-        , path{*this, "path", Tag::Path}
-        , lenth{*this, "lenth", Tag::Lenth}
-        , maxval{*this, "maxval", Tag::Maxval}
+        , path{*this, attr::Id::Path}
+        , lenth{*this, attr::Id::Lenth}
+        , maxval{*this, attr::Id::Maxval}
     {}
 };
 
@@ -712,11 +634,6 @@ public:
 
 class ToggleSwitch : public Selection {
 public:
-    enum Tag : uint8_t {
-        Dis = 180u,
-        Txt,
-    };
-
     /** mcu: состояние «вкл» — `pressed.bg` → `bco2`, `pressed.setMarkerColor` → `pco2` */
     resources::PressedMarker pressed;
 
@@ -725,7 +642,7 @@ public:
 
     void setLabelGap(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"dis"}, Tag::Dis, v);
+        attr_detail::assignNumeric(*this, attr::Id::Dis, v);
     }
 
     /** mcu: подпись переключателя */
@@ -737,7 +654,7 @@ public:
         : Selection(owner, name, Component::Type::ToggleSwitch, id)
         , pressed{*this}
         , font{*this}
-        , txt{*this, "txt", Tag::Txt}
+        , txt{*this, attr::Id::Txt}
     {}
 };
 

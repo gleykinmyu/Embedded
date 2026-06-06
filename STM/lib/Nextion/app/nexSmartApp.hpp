@@ -16,7 +16,8 @@ namespace nex {
 
 class SmartApp : public Application {
 public:
-    explicit SmartApp(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height, idmap::Table& id_map_table) noexcept;
+    explicit SmartApp(BIF::IByteStream& stream, Rect screen, Application::ClockMsFn clockMs,
+        idmap::Table& id_map_table) noexcept;
 
     void startDiscover() noexcept;
 
@@ -31,7 +32,7 @@ public:
 
     void onPageChange(uint8_t page_id) noexcept override;
 
-    void update(uint32_t now_ms) noexcept override;
+    void update() noexcept override;
 
 protected:
     bool dispatchResponse(const Message& m, bool txIdle) noexcept override;

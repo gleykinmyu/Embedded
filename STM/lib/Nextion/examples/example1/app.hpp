@@ -61,8 +61,8 @@ class TwoPageTouchDemoApp : public Application {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
-    explicit TwoPageTouchDemoApp(BIF::IByteStream& stream) noexcept
-        : Application(stream, kScreenWidth, kScreenHeight)
+    explicit TwoPageTouchDemoApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
+        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
     {}
 
     static constexpr uint8_t kPage0Id = 0u;

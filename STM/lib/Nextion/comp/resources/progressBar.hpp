@@ -7,16 +7,12 @@
 namespace nex::resources {
 
 /** Фон ProgressBar: `bco` (Color) / `bpic` (Image). */
-template<BGStyle S>
+template<BG S>
 struct PbBackground;
 
 template<>
-struct PbBackground<BGStyle::Color> {
-    enum Tag : uint8_t {
-        Color = 48u,
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Color;
+struct PbBackground<BG::Color> {
+    static constexpr BG kStyle = BG::Color;
     Component& owner;
 
     explicit PbBackground(Component& ownerIn) noexcept
@@ -25,17 +21,13 @@ struct PbBackground<BGStyle::Color> {
 
     void setColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"bco"}, Tag::Color, v);
+        attr_detail::assignNumeric(owner, attr::Id::Bco, v);
     }
 };
 
 template<>
-struct PbBackground<BGStyle::Image> {
-    enum Tag : uint8_t {
-        Image = 49u,
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Image;
+struct PbBackground<BG::Image> {
+    static constexpr BG kStyle = BG::Image;
     Component& owner;
 
     explicit PbBackground(Component& ownerIn) noexcept
@@ -44,22 +36,17 @@ struct PbBackground<BGStyle::Image> {
 
     void setImage(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"bpic"}, Tag::Image, v);
+        attr_detail::assignNumeric(owner, attr::Id::Bpic, v);
     }
 };
 
 /** Заливка ProgressBar: `pco`/`dis` (Color) / `ppic` (Image). */
-template<BGStyle S>
+template<BG S>
 struct PbBar;
 
 template<>
-struct PbBar<BGStyle::Color> {
-    enum Tag : uint8_t {
-        Color = 56u,
-        CornerRadius,
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Color;
+struct PbBar<BG::Color> {
+    static constexpr BG kStyle = BG::Color;
     Component& owner;
 
     explicit PbBar(Component& ownerIn) noexcept
@@ -68,22 +55,18 @@ struct PbBar<BGStyle::Color> {
 
     void setColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"pco"}, Tag::Color, v);
+        attr_detail::assignNumeric(owner, attr::Id::Pco, v);
     }
 
     void setCornerRadius(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"dis"}, Tag::CornerRadius, v);
+        attr_detail::assignNumeric(owner, attr::Id::Dis, v);
     }
 };
 
 template<>
-struct PbBar<BGStyle::Image> {
-    enum Tag : uint8_t {
-        Image = 57u,
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Image;
+struct PbBar<BG::Image> {
+    static constexpr BG kStyle = BG::Image;
     Component& owner;
 
     explicit PbBar(Component& ownerIn) noexcept
@@ -92,7 +75,7 @@ struct PbBar<BGStyle::Image> {
 
     void setImage(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, Literal{"ppic"}, Tag::Image, v);
+        attr_detail::assignNumeric(owner, attr::Id::Ppic, v);
     }
 };
 

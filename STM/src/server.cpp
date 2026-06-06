@@ -3,6 +3,11 @@
 
 CServerBoard board;
 
+uint32_t boardClockMs() noexcept
+{
+    return board.GetTick();
+}
+
 namespace {
 
 bool serial1TxHealthy() noexcept

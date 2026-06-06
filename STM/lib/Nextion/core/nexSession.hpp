@@ -95,6 +95,7 @@ public:
 
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] bool isFull() const noexcept;
+    [[nodiscard]] std::size_t count() const noexcept { return count_; }
     [[nodiscard]] bool push(Transaction tr) noexcept;
     [[nodiscard]] const Transaction* peek() const noexcept;
     void pop() noexcept;
@@ -177,6 +178,7 @@ public:
 
     [[nodiscard]] bool isIdle() const noexcept { return _active.isIdle(); }
     [[nodiscard]] bool hasQueued() const noexcept { return !_queue.isEmpty(); }
+    [[nodiscard]] std::size_t queuedCount() const noexcept { return _queue.count(); }
 
     [[nodiscard]] const Transaction& active() const noexcept { return _active; }
 

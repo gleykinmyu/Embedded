@@ -27,14 +27,14 @@ int main(void)
     board.led.Off();
     uint32_t last_blink_ms = 0;
 
-    nex::examples::ErrorTestApp app(board.serial2);
+    nex::examples::ErrorTestApp app(board.serial2, boardClockMs);
     
     app.restartScreen();
 
     {
         const uint32_t t0 = board.GetTick();
         while ((board.GetTick() - t0) < 500u)
-            app.update(board.GetTick());
+            app.update();
     }
 
     app.beginTests();
@@ -48,6 +48,6 @@ int main(void)
         if (app.tests_running)
             app.tickTests(now);
         else
-            app.update(now);
+            app.update();
     }
 }

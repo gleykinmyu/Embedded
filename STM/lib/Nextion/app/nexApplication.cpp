@@ -2,9 +2,11 @@
 
 #include <variant>
 
+#include "../core/nexDebug.hpp"
+
 namespace nex {
 
-Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height) noexcept
+Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -19,10 +21,13 @@ Application::Application(BIF::IByteStream& stream, uint16_t screen_width, uint16
         SysVar<uint8_t>(*this, "pio2", SysVarTag::Pio2), SysVar<uint8_t>(*this, "pio3", SysVarTag::Pio3),
         SysVar<uint8_t>(*this, "pio4", SysVarTag::Pio4), SysVar<uint8_t>(*this, "pio5", SysVarTag::Pio5),
         SysVar<uint8_t>(*this, "pio6", SysVarTag::Pio6), SysVar<uint8_t>(*this, "pio7", SysVarTag::Pio7)}
-    , _screen(screen_width, screen_height)
+    , _screen(screen.w, screen.h)
     , _stream(stream)
     , _gateway(stream)
-{}
+    , _clockMsFn(clockMs)
+{
+    NEX_ASSERT(clockMs != nullptr);
+}
 
 void Application::onTimeout(const Transaction& active) noexcept {
     dispatchError(appErrorFrom(Session::Status::Timeout), active.page_id, active.comp_id);
@@ -53,12 +58,48 @@ void Application::registerPage(Page& page) noexcept {
 }
 
 void Application::enqueue(Transaction tx) noexcept {
-    if (_session.tryEnqueue(tx))
-        return;
-    dispatchError(appErrorFrom(_session.getStatus()), tx.page_id, tx.comp_id);
+    constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
+    uint32_t stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+
+    for (;;) {
+        if (_session.tryEnqueue(tx))
+            return;
+
+        const Session::Status st = _session.getStatus();
+        if (st != Session::Status::QueueFull) {
+            dispatchError(appErrorFrom(st), tx.page_id, tx.comp_id);
+            return;
+        }
+
+        const std::size_t queued_before = _session.queuedCount();
+        update();
+        if (_session.queuedCount() < queued_before || !_session.isIdle())
+            stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+
+        if ((clockMs() - stall_deadline) >= kMsHalfModulus)
+            break;
+    }
+
+    dispatchError(appErrorFrom(Session::Status::QueueFull), tx.page_id, tx.comp_id);
 }
 
-void Application::update(uint32_t now_ms) noexcept {
+void Application::pumpUntilIdle() noexcept {
+    constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
+    uint32_t stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+
+    while (!_session.isIdle() || _session.hasQueued()) {
+        const std::size_t queued_before = _session.queuedCount();
+        update();
+        if (_session.queuedCount() < queued_before || !_session.isIdle())
+            stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+        if ((clockMs() - stall_deadline) >= kMsHalfModulus)
+            break;
+    }
+}
+
+void Application::update() noexcept {
+    const uint32_t now_ms = clockMs();
+
     if (!_session.begin(_gateway)) {
         if (_session.getStatus() == Session::Status::PushFailed) {
             abortSessionFault();

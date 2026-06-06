@@ -8,15 +8,6 @@ namespace comp {
 /** from(RO); vid; en; loop; tim; stim(RO) */
 class Audio : public Component {
 public:
-    enum Tag : uint8_t {
-        From = 192u,
-        Vid,
-        En,
-        Loop,
-        Tim,
-        Stim,
-    };
-
     /** user: источник (RO) */
     attr::NumRO<uint8_t> from;
     /** mcu: путь к ресурсу (при external) */
@@ -24,22 +15,22 @@ public:
 
     void enable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, true);
+        attr_detail::assignNumeric(*this, attr::Id::En, true);
     }
 
     void disable() noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"en"}, Tag::En, false);
+        attr_detail::assignNumeric(*this, attr::Id::En, false);
     }
 
     void setLoop(bool on) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"loop"}, Tag::Loop, on);
+        attr_detail::assignNumeric(*this, attr::Id::Loop, on);
     }
 
     void setPeriod(uint32_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"tim"}, Tag::Tim, v);
+        attr_detail::assignNumeric(*this, attr::Id::Tim, v);
     }
 
     /** user: позиция воспроизведения (RO) */
@@ -48,10 +39,10 @@ public:
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         switch (tag) {
-        case Tag::From:
+        case static_cast<uint8_t>(attr::Id::From):
             from.applyResponse(response);
             return;
-        case Tag::Stim:
+        case static_cast<uint8_t>(attr::Id::Stim):
             stim.applyResponse(response);
             return;
         default:
@@ -62,21 +53,15 @@ public:
 
     Audio(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Audio, id)
-        , from{*this, "from", Tag::From}
-        , vid{*this, "vid", Tag::Vid}
-        , stim{*this, "stim", Tag::Stim}
+        , from{*this, attr::Id::From}
+        , vid{*this, attr::Id::Vid}
+        , stim{*this, attr::Id::Stim}
     {}
 };
 
 /** val; qty(RO); en(RO); open/read/write/close/find */
 class FileStream : public Component {
 public:
-    enum Tag : uint8_t {
-        Val = 192u,
-        Qty,
-        En,
-    };
-
     /** user: буфер / смещение / результат операции */
     attr::Num<int32_t> val;
     /** user: количество прочитанных/записанных байт (RO) */
@@ -112,13 +97,13 @@ public:
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         switch (tag) {
-        case Tag::Val:
+        case static_cast<uint8_t>(attr::Id::Val):
             val.applyResponse(response);
             return;
-        case Tag::Qty:
+        case static_cast<uint8_t>(attr::Id::Qty):
             qty.applyResponse(response);
             return;
-        case Tag::En:
+        case static_cast<uint8_t>(attr::Id::En):
             en.applyResponse(response);
             return;
         default:
@@ -129,25 +114,21 @@ public:
 
     FileStream(Page& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::FileStream, id)
-        , val{*this, "val", Tag::Val}
-        , qty{*this, "qty", Tag::Qty}
-        , en{*this, "en", Tag::En}
+        , val{*this, attr::Id::Val}
+        , qty{*this, attr::Id::Qty}
+        , en{*this, attr::Id::En}
     {}
 };
 
 /** path */
 class ExternalPicture : public Drawable {
 public:
-    enum Tag : uint8_t {
-        Path = 192u,
-    };
-
     /** mcu: путь к файлу изображения на панели */
     attr::String<512> path;
 
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
-        if (tag == Tag::Path) {
+        if (tag == static_cast<uint8_t>(attr::Id::Path)) {
             path.applyResponse(response);
             return;
         }
@@ -156,7 +137,7 @@ public:
 
     ExternalPicture(Page& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::ExternalPicture, id)
-        , path{*this, "path", Tag::Path}
+        , path{*this, attr::Id::Path}
     {}
 };
 
@@ -168,21 +149,17 @@ public:
 
 class Video : public MediaComponent {
 public:
-    enum Tag : uint8_t {
-        From = 32u,
-    };
-
     /** user: источник (RO) */
     attr::NumRO<uint8_t> from;
 
     void setPath(const char* path) noexcept
     {
-        attr_detail::assignText(*this, Literal{"vid"}, MediaComponent::Tag::Vid, path);
+        attr_detail::assignText(*this, attr::Id::Vid, path);
     }
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
-        if (tag == Tag::From) {
+        if (tag == static_cast<uint8_t>(attr::Id::From)) {
             from.applyResponse(response);
             return;
         }
@@ -191,32 +168,21 @@ public:
 
     Video(Page& owner, const Literal& name, uint8_t id = 0)
         : MediaComponent(owner, name, Component::Type::Video, id)
-        , from{*this, "from", Tag::From}
+        , from{*this, attr::Id::From}
     {}
 };
 
-template<BGStyle S = BGStyle::Color>
+template<BG S = BG::Color>
 class FileBrowser : public DataFile<S> {
 public:
-    enum Tag : uint8_t {
-        Filter = 80u,
-        Spay,
-        Psta,
-        Pic1,
-        Pic2,
-        Vvs2,
-        Buffsize,
-        Fwarning,
-    };
-
     void setFilter(const char* pattern) noexcept
     {
-        attr_detail::assignText(*this, Literal{"filter"}, Tag::Filter, pattern);
+        attr_detail::assignText(*this, attr::Id::Filter, pattern);
     }
 
     void setLineSpacing(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"spay"}, Tag::Spay, v);
+        attr_detail::assignNumeric(*this, attr::Id::Spay, v);
     }
 
     /** user: состояние панели (RO) */
@@ -224,17 +190,17 @@ public:
 
     void setIcon1(PicId v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pic1"}, Tag::Pic1, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pic1, v);
     }
 
     void setIcon2(PicId v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"pic2"}, Tag::Pic2, v);
+        attr_detail::assignNumeric(*this, attr::Id::Pic2, v);
     }
 
     void setItemSpacing(int16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, Literal{"vvs2"}, Tag::Vvs2, v);
+        attr_detail::assignNumeric(*this, attr::Id::Vvs2, v);
     }
 
     /** user: размер буфера (RO) */
@@ -245,13 +211,13 @@ public:
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
     {
         switch (tag) {
-        case Tag::Psta:
+        case static_cast<uint8_t>(attr::Id::Psta):
             psta.applyResponse(response);
             return;
-        case Tag::Buffsize:
+        case static_cast<uint8_t>(attr::Id::Buffsize):
             buffsize.applyResponse(response);
             return;
-        case Tag::Fwarning:
+        case static_cast<uint8_t>(attr::Id::Fwarning):
             fwarning.applyResponse(response);
             return;
         default:
@@ -262,9 +228,9 @@ public:
 
     FileBrowser(Page& owner, const Literal& name, uint8_t id = 0)
         : DataFile<S>(owner, name, Component::Type::FileBrowser, id)
-        , psta{*this, "psta", Tag::Psta}
-        , buffsize{*this, "buffsize", Tag::Buffsize}
-        , fwarning{*this, "fwarning", Tag::Fwarning}
+        , psta{*this, attr::Id::Psta}
+        , buffsize{*this, attr::Id::Buffsize}
+        , fwarning{*this, attr::Id::Fwarning}
     {}
 };
 

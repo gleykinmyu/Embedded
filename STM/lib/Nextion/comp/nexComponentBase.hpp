@@ -93,7 +93,7 @@ namespace nex {
             XFloat          = 59, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), key, font, bco (pic, picc), pco, xcen, ycen, val, vvs0, vvs1, isbr, spax, spay, x, y, w, h
             ExternalPicture = 60, //type, id, objname, vscope, drag, aph, effect, path, x, y, w, h
             ComboBox        = 61, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco, pco, xcen, ycen, spax, dis, txt, txt_maxl, up, pco3(color of arrow), bco1(cell bg color), pco1(font color), path, path_m(RO), dir, qty, vvs0, val, bco2(select bg color), pco2(select font color), hig, down, mode, wid, vvs1, ch, x, y, w, h
-            SLText          = 62, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco, pco, xcen, left, ch, txt, txt_maxl, isbr, spax, spay, maxval_y, val_y, x, y, w, h
+            SlidingText     = 62, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), font, bco, pco, xcen, left, ch, txt, txt_maxl, isbr, spax, spay, maxval_y, val_y, x, y, w, h
             FileStream      = 63, //type, id, objname, vscope, val, qty(RO), en(RO), method: open, read, write, close, find
             FileBrowser     = 65, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco, pco, pco2, bco2, left, ch, dir, filter, val, txt(RO), qty(RO), dis, spax, spay, maxval_y, maxval_x, val_x, val_y, psta(RO), pic1, pic2, vvs2, buffsize(RO), fwarning(RO), x, y, w, h
             DataRecord      = 66, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), font, bco (pic, picc), pco, xcen, path, lenth(RO), maxval(RO), val(RO), length, format, dir, mode, dis, order, qty(RO), spax, hig, left, gdc, gdw, gdh, bco1, pco1, bco2, pco2, val, txt(RO), ch, maxval_y, val_y, maxval_x, val_x,  y, w, h 
@@ -165,121 +165,78 @@ namespace nex {
 
     /*
      * ---------------------------------------------------------------------------
-     * Дерево наследования C++ (план по enum Type — строки комментариев у значений enum = эталон атрибутов NIS).
-     * Листья и impl-базы — `namespace nex::comp`; `Page` и `Component` — `namespace nex`.
-     * Узел: только дельта к непосредственному родителю (без повторения type, id, vscope, objname и полей предков).
-     * RO — как в enum; у PageComponent в редакторе нет objname.
+     * Дерево наследования C++ (соответствует `nexCompImpl.hpp` + листья в `nexComponents.hpp` / `nexExComponents.hpp`).
+     * `Page`, `Component` — `namespace nex`; базы и листья виджетов — `namespace nex::comp`.
+     * У узла — только дельта к родителю. Комментарии у `enum Type` выше — эталон атрибутов NIS.
      *
-     * Ветки без font в enum вынесены отдельно от ветки с font:
-     *   StaBcoComponent — в базе sta (режимы по типу), bco; без font. Атрибут pco как «цвет шрифта» (глифы) не на этом узле.
-     *   FontedStaComponent — дельта + font; здесь же единый базовый `pco` (цвет шрифта NIS). У потомков FontedSta в дельтах
-     *   `pco` не повторяем; оставляем только отличные от базового имена: pco1, pco2, pco3, … (отдельные атрибуты в панели).
-     *   Под StaBco (без FontedSta): QR, Waveform, Gauge — в enum нет font; у листьев свои дельты (в т.ч. pco0…3, pco(ppic) — не смешивать с pco шрифта).
-     *   Selection — у Checkbox/Radio в enum нет sta и font; у ToggleSwitch есть font (см. enum), sta нет.
-     *
-     *   PageComponent                          // effect; up; down; left; right; sta; bco(pic при sta≠no background)
-     *   Component                              // type(RO), id(RO), vscope(RO); objname(RO) — если есть у типа
+     *   PageComponent (121)                    // нет C++-листа
+     *   Component                              // type(RO), id(RO), vscope(RO); objname(RO) где есть
      *   │
      *   ├── Timer                              // setPeriod; enable/disable
-     *   ├── NumericVariable                    // val (sta=Number в HMI)
-     *   ├── StringVariable                     // txt, txt_maxl (sta=String в HMI)
-     *   ├── Audio                              // from(RO); vid; en; loop; tim; stim(RO)
-     *   ├── TouchCap                           // val(RO)
-     *   ├── FileStream                         // val; qty(RO); en(RO); open, read, write, close, find
+     *   ├── NumericVar                         // val (`type`=52, sta=Number)
+     *   ├── StringVar<TxtMaxL>                 // txt (`type`=52, sta=String)
+     *   ├── Audio                              // nexExComponents: from(RO); vid; en; loop; tim; stim(RO)
+     *   ├── TouchCap (5)                       // нет C++-листа
+     *   ├── FileStream                         // nexExComponents: val; qty(RO); en(RO); open/read/write/close/find
      *   │
-     *   └── TouchArea                          // pos (x,y), w, h — компоненты с прямоугольником на странице
-     *       ├── Hotspot                        // —
+     *   └── TouchArea                          // x, y, w, h; touchSwitch; click
+     *       ├── Hotspot
      *       │
-     *       └── Drawable                         // drag, aph, effect
-     *           ├── ExternalPicture            // path
-     *           ├── MediaComponent             // vid; en; loop; dis; tim; stim(RO); qty(RO)
-     *           │   ├── Gmov                   // —
-     *           │   └── Video                  // from(RO); vid(path) при from=external
+     *       └── Drawable                         // drag, aph, effect; refresh; show/hide; placeAbove; move
+     *           ├── ExternalPicture            // nexExComponents: path
+     *           ├── MediaComponent             // setVideoId; en; loop; dis; tim; stim(RO); qty(RO)
+     *           │   ├── Gmov
+     *           │   └── Video                  // from(RO); vid
      *           │
-     *           └── Styled<STYLE = CROP, COLOR, IMAGE, TRANSPARENT>  //templated structure bg: bg.color / bg.image / bg.cropimage / bg
+     *           ├── Waveform<S, ChN>           // bg (WfBackground); ch[].setColor/add/addt; setDataScale
+     *           ├── ProgressBar<S>             // value; bg (PbBackground); bar (PbBar)  [S = Color | Image]
+     *           │
+     *           └── Styled<S>                  // bg (Background<S>) — compile-time sta
+     *               ├── QRCode                 // setPenColor; setDataSpacing; setText
+     *               ├── Picture<Image>
+     *               ├── CropPicture<CropImage> // setCrop
+     *               ├── Gauge                  // setAngle; center; pointer
+     *               ├── Slider<S>              // value; cursor; bg; bg2
      *               │
-     *               ├── QRCode<COLOR>          // pco; dis; txt; txt_maxl
-     *               ├── Picture<IMAGE>
-     *               ├── CropPicture<CROP_IMAGE>
-     *               │
-     *               ├── Waveform                         // gdc; gdw; gdh; pco0…pco3; dis; wid; hig; ch
-     *               ├── Gauge                            // val; center; pointer
-     *               │
-     *               ├── ProgressBar<S>               // value; bg (PbBackground); bar (PbBar)
-     *               ├── Slider<CROP, COLOR, IMAGE> // value; cursor; bg; bg2
-     *               │
-     *               ├── Printable                   // font.setColor; font.setId; font.setCharSpacing
-     *               │   ├── DataFile // txt; txt_maxl; left; ch; dir; val; txt(RO); qty(RO); dis;
-     *               │   │   │                       // maxval_y; maxval_x; val_x; val_y; bco2; pco2
-     *               │   │   │                       // (таблица/файлы — буфер txt как у Textual, ветка не через TextualComponent)
-     *               │   │   │
-     *               │   │   ├── DataRecord       //  path; lenth(RO); maxval(RO); val(RO); length; format; mode;
-     *               │   │   │                    // order; hig; gdc; gdw; gdh; bco1; pco1; xcen
-     *               │   │   └── FileBrowser      // spay; filter; pco2; psta(RO); pic1; pic2; vvs2; buffsize(RO); fwarning(RO);
+     *               ├── Printable<S>           // font (FontColor → FontId → Font)
+     *               │   ├── DataFile           // txt; left; ch; dir; val; qty(RO); setCellSpacing; …
+     *               │   │   ├── DataRecord     // path; lenth(RO); maxval(RO); setRecordLength; setFormat; …
+     *               │   │   └── FileBrowser    // nexExComponents: filter; spay; pic1; pic2; …
      *               │   │
-     *               │   ├── ListSelect              // path; val; setCellSize
-     *               │   │   │
-     *               │   │   ├── ComboBox       // path; val; isOpened; ycen; xcen; border; arrow; cells
-     *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine; txt(RO)
+     *               │   ├── ListSelect         // path; val; setCellSize
+     *               │   │   ├── ComboBox       // border; arrow; cells; isOpened; setVAlign; setHAlign
+     *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine
      *               │   │
-     *               │   └── Multiline                 // spay; isbr; ycen; xcen;
-     *               │       │
-     *               │       ├── TextComponent      // txt <txt_maxl>
-     *               │       │   ├── SLText         // left; ch; val_y; maxval_y(RO); setVAlign=delete
-     *               │       │   ├── Text           // pw
-     *               │       │   ├── ScrollText     // setScrollDirection; setScrollStep; setScrollPeriod; enableAutoScroll
-     *               │       │   │
-     *               │       │   └── ButtonLikeComponent // bco2(pic2,picc2); pco2
-     *               │       │        ├── Button
-     *               │       │        └── DualStateButton // val;
-     *               │       │
-     *               │       └── Numeric                 // val;
-     *               │           ├── Number           // setDigitCount; setFormat
-     *               │           └── XFloat           // setFormat
+     *               │   └── Multiline          // setLineSpacing; setWordWrap; setVAlign; setHAlign
+     *               │       ├── Textual        // setText
+     *               │       │   ├── SlidingText // txt; setShowProgressBar; val_y; setVAlign=delete
+     *               │       │   ├── Text       // txt; enablePassword/disablePassword
+     *               │       │   ├── ScrollText // txt; setScrollDirection; setScrollStep; setPeriod; enable/disable
+     *               │       │   └── ButtonBase  // pressed (Pressed<S>)
+     *               │       │       ├── Button
+     *               │       │       └── DualStateButton  // val
+     *               │       └── Numeric        // val
+     *               │           ├── Number     // setDigitCount; setFormat
+     *               │           └── XFloat     // setFormat(before, after)
      *               │
-     *               └── Selection<COLOR>  // pco; val — в enum у Checkbox/Radio нет sta и font
-     *                   ├── Checkbox               // setMarkerColor
-     *                   ├── Radio                  // setMarkerColor
-     *                   └── ToggleSwitch           // pressed.bg; pressed.setMarkerColor; font; setLabelGap; txt
+     *               └── Selection              // setMarkerColor; val; bg
+     *                   ├── Checkbox
+     *                   ├── Radio
+     *                   └── ToggleSwitch       // pressed (PressedMarker); font (FontId<1>); setLabelGap; txt
      *
      * Пояснения:
      *
-     * - Timer, NumericVariable, StringVariable, Audio, TouchCap, FileStream — прямые наследники Component (в панели нет x,y,w,h).
-     * - TouchArea: всё с pos,w,h; первый лист — Hotspot (только геометрия); PageComponent — без drag/aph/effect.
-     * - Drawable: refresh/show/hide/placeAbove/move — команды NIS на видимых виджетах.
+     * - Без геометрии (прямые потомки Component): Timer, NumericVar, StringVar, Audio, FileStream.
+     * - Waveform и ProgressBar — Drawable, не Styled: фон через `resources::WfBackground` / `PbBackground`, не `Background<S>`.
+     * - Шрифт: `Printable::font` — `resources::Font`; у ToggleSwitch подпись — `FontId<1>` (pco1); нажатое — `Pressed` / `PressedMarker`.
+     * - `pco` / `pco1` / `pco2` в NIS — разные роли; не смешивать с `pco0…3` каналов Waveform.
+     * - ComboBox vs TextSelect: общая база ListSelect (path, val, hig); дельта — раскрывающийся список vs подсветка строки.
+     * - Листья без C++: TouchCap (5), PageComponent (121). Остальное — `nexComponents.hpp` + `nexExComponents.hpp`.
      *
-     * - VisualBaseComponent: под Geometry — один узел (в NIS drag, aph, effect); потомки: картинки, Media, StaBco (QR,
-     *   Waveform, Gauge, FontedSta), Selection; дельта drag/aph/effect не повторяется у детей.
-     * - Picture / CropPicture / ExternalPicture — не StaBco (набор атрибутов в enum другой). QR — под StaBco, sta none|has,
-     *   не путать с растром; обязательный txt как данные кода, pic условно.
-     *
-     * - ListSelectComponent: ComboBox и TextSelect — выбор из строк path, val, ch, dis, spax, hig; различие в листьях
-     *   (раскрывающийся список vs строка с подсветкой выбора, pco* / txt(RO) у TextSelect).
-     *
-     * - FontedStaComponent: единственное место в ветке для базового `pco` (цвет шрифта); у потомков в дельтах не дублируется,
-     *   кроме отдельных имён pco1, pco2, pco3 в NIS (другие роли, не «ещё раз pco»).
-     * - DataFile: прямой потомок FontedSta (рядом с Textual, не внутри него); txt/txt_maxl + общие поля
-     *   скролла/ячеек для DataRecord и FileBrowser; DataRecord — path и график; FileBrowser — filter, spay, pic*, предупреждения.
-     *
-     * - SLText — прямой потомок Textual (не MultilineText); в NIS без атрибута key; xcen, left, ch, maxval_y, val_y, isbr, spax, spay.
-     * - MultilineTextComponent: spax; spay; isbr; xcen; ycen — общее для Text, ScrollText, ButtonLike;
-     *   у Number/XFloat spay остаётся в дельте листа под NumericText.
-     *
-     * - Checkbox/Radio — Selection, не FontedSta (в enum нет sta и font); ToggleSwitch — Selection + дельта с font и txt (enum).
-     *
-     * - DataRecord: в enum дублируется val — сверять RO/RW с редактором; общие поля см. DataFile.
-     * - Классы C++ для всех листьев enum Type, кроме TouchCap (5) и PageComponent (121) —
-     *   `nexComponents.hpp`, расширения — `nexExComponents.hpp`.
-     *
-     * --- Архитектурное дерево (имена; атрибуты — сумма дельт от Component до листа) ---
-     *
-     * object → timer | numericvariable | stringvariable | audio | touchcap | filestream
-     *
-     *       → geometry (x,y,w,h) → hotspot | page | visual_base (drag, aph, effect)
-     *
-     *       → visual_base → picture | croppicture | externalpicture | media
-     *                   → sta_bco ( qrcode | drawable_colored | fonted_sta → DataFile…; textual…; NumericText… )
-     *                   → selection (checkbox | radio | toggleswitch)
+     * resources (поля внутри виджетов, не узлы наследования):
+     *   Background<S,i>  Pressed<S>  PressedMarker  FontColor/FontId/Font
+     *   ComboBorder/Arrow/Cells  PbBackground/PbBar  WfBackground/WaveformChannels
+     *   GaugeCenter/Pointer  Cursor
      */
 
 } // namespace nex

@@ -8,66 +8,53 @@ namespace nex::resources {
 
 namespace bg_detail {
 
-inline constexpr uint8_t kTagStride = 56u;
-
-template<uint8_t baseTag, uint8_t index>
-inline constexpr uint8_t tag() noexcept
-{
-    static_assert(index <= 2u, "nex::resources::Background: index must be 0..2");
-    return static_cast<uint8_t>(baseTag + index * kTagStride);
-}
-
 template<uint8_t index>
-inline constexpr Literal colorName() noexcept
+inline constexpr attr::Id colorId() noexcept
 {
     if constexpr (index == 0u)
-        return Literal{"bco"};
+        return attr::Id::Bco;
     else if constexpr (index == 1u)
-        return Literal{"bco1"};
+        return attr::Id::Bco1;
     else if constexpr (index == 2u)
-        return Literal{"bco2"};
+        return attr::Id::Bco2;
     else
         static_assert(index <= 2u, "nex::resources::Background: index must be 0..2");
 }
 
 template<uint8_t index>
-inline constexpr Literal imageName() noexcept
+inline constexpr attr::Id imageId() noexcept
 {
     if constexpr (index == 0u)
-        return Literal{"pic"};
+        return attr::Id::Pic;
     else if constexpr (index == 1u)
-        return Literal{"pic1"};
+        return attr::Id::Pic1;
     else if constexpr (index == 2u)
-        return Literal{"pic2"};
+        return attr::Id::Pic2;
     else
         static_assert(index <= 2u, "nex::resources::Background: index must be 0..2");
 }
 
 template<uint8_t index>
-inline constexpr Literal cropName() noexcept
+inline constexpr attr::Id cropId() noexcept
 {
     if constexpr (index == 0u)
-        return Literal{"picc"};
+        return attr::Id::Picc;
     else if constexpr (index == 1u)
-        return Literal{"picc1"};
+        return attr::Id::Picc1;
     else if constexpr (index == 2u)
-        return Literal{"picc2"};
+        return attr::Id::Picc2;
     else
         static_assert(index <= 2u, "nex::resources::Background: index must be 0..2");
 }
 
 } // namespace bg_detail
 
-template<BGStyle S, uint8_t index = 0u>
+template<BG S, uint8_t index = 0u>
 struct Background;
 
 template<uint8_t index>
-struct Background<BGStyle::Color, index> {
-    enum Tag : uint8_t {
-        Color = bg_detail::tag<32u, index>(),
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Color;
+struct Background<BG::Color, index> {
+    static constexpr BG kStyle = BG::Color;
     Component& owner;
 
     explicit Background(Component& ownerIn) noexcept
@@ -76,17 +63,13 @@ struct Background<BGStyle::Color, index> {
 
     void setColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::colorName<index>(), Tag::Color, v);
+        attr_detail::assignNumeric(owner, bg_detail::colorId<index>(), v);
     }
 };
 
 template<uint8_t index>
-struct Background<BGStyle::Image, index> {
-    enum Tag : uint8_t {
-        Image = bg_detail::tag<33u, index>(),
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::Image;
+struct Background<BG::Image, index> {
+    static constexpr BG kStyle = BG::Image;
     Component& owner;
 
     explicit Background(Component& ownerIn) noexcept
@@ -95,17 +78,13 @@ struct Background<BGStyle::Image, index> {
 
     void setImage(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::imageName<index>(), Tag::Image, v);
+        attr_detail::assignNumeric(owner, bg_detail::imageId<index>(), v);
     }
 };
 
 template<uint8_t index>
-struct Background<BGStyle::CropImage, index> {
-    enum Tag : uint8_t {
-        Crop = bg_detail::tag<34u, index>(),
-    };
-
-    static constexpr BGStyle kStyle = BGStyle::CropImage;
+struct Background<BG::CropImage, index> {
+    static constexpr BG kStyle = BG::CropImage;
     Component& owner;
 
     explicit Background(Component& ownerIn) noexcept
@@ -114,13 +93,13 @@ struct Background<BGStyle::CropImage, index> {
 
     void setCrop(PicId v) noexcept
     {
-        attr_detail::assignNumeric(owner, bg_detail::cropName<index>(), Tag::Crop, v);
+        attr_detail::assignNumeric(owner, bg_detail::cropId<index>(), v);
     }
 };
 
 template<uint8_t index>
-struct Background<BGStyle::Transparent, index> {
-    static constexpr BGStyle kStyle = BGStyle::Transparent;
+struct Background<BG::Transparent, index> {
+    static constexpr BG kStyle = BG::Transparent;
 
     explicit Background(Component&) noexcept {}
 };

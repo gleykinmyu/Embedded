@@ -111,7 +111,7 @@ void AppCanvas::picture_draw(const Point dst, const uint32_t w, const uint32_t h
 }
 
 void AppCanvas::text_in_region(const Region region, const char* contentToken, const FontId fontId, const Color fg,
-    const HAlign hAlign, const VAlign vAlign, const Color bg, const BGStyle fill) const noexcept {
+    const HAlign hAlign, const VAlign vAlign, const Color bg, const BG fill) const noexcept {
     if (contentToken == nullptr || contentToken[0] == '\0')
         return;
     if (region.size.w == 0u || region.size.h == 0u)
@@ -122,7 +122,7 @@ void AppCanvas::text_in_region(const Region region, const char* contentToken, co
 
 void AppCanvas::text_in_region(const Region region, const uint16_t pad, const char* contentToken,
     const FontId fontId, const Color fg, const HAlign hAlign, const VAlign vAlign, const Color bg,
-    const BGStyle fill) const noexcept {
+    const BG fill) const noexcept {
     if (region.size.w <= 2u * pad || region.size.h <= 2u * pad)
         return;
     const Region inset(Point(static_cast<uint16_t>(region.ul.x + pad), static_cast<uint16_t>(region.ul.y + pad)),
@@ -132,7 +132,7 @@ void AppCanvas::text_in_region(const Region region, const uint16_t pad, const ch
 
 void AppCanvas::text_in_region_bordered(const Region region, const char* const contentToken, const FontId fontId,
     const Color fg, const HAlign hAlign, const VAlign vAlign, const Color fill, const Color border,
-    const uint16_t borderThickness, const BGStyle textFill) const noexcept {
+    const uint16_t borderThickness, const BG textFill) const noexcept {
     if (region.size.w == 0u || region.size.h == 0u)
         return;
     if (borderThickness > 0u)
@@ -302,7 +302,7 @@ void Canvas::Button::draw(const AppCanvas& cs, const bool pressed) const noexcep
     const uint16_t borderTh = (!pressed && _borderThickness > 0u) ? _borderThickness : 0u;
     if (_label != nullptr) {
         cs.text_in_region_bordered(_region, _label, _font.fontId(), Color::std::White, HAlign::Center, VAlign::Center,
-            fill, _borderColor, borderTh, BGStyle::Color);
+            fill, _borderColor, borderTh, BG::Color);
     } else if (borderTh > 0u) {
         cs.rect_bordered(_region, fill, _borderColor, borderTh);
     } else {

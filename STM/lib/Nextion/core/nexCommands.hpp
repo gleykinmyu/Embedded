@@ -43,14 +43,8 @@
 namespace nex {
 
 /**
- * Пустая лексема компонента для `AttrRef`: при `comp.len == 0` в кадр идёт только `attr`
- * (`sys0`, `p0.t0.val`, …).
- */
-inline constexpr Literal kEmptyCompLexeme{""};
-
-/**
  * Ссылка на атрибут NIS: `comp` (объект / путь без точки до атрибута) и `attr` (`txt`, `val`, …).
- * Если `comp.len == 0`, в кадр выводится только `attr` как вся левая часть.
+ * Если `comp.len == 0` (`kEmptyLiteral`), в кадр выводится только `attr` как вся левая часть (`sys0`, `p0.t0.val`, …).
  * Объекты `Literal` для `comp` и `attr` должны жить дольше, чем хранящий `AttrRef`.
  */
 struct AttrRef {
@@ -782,7 +776,7 @@ namespace gui {
     class TextInRegion final : public Command {
     public:
         TextInRegion(Region region, FontId fontId, Color fg, Color bg, HAlign hAlign, VAlign vAlign,
-            BGStyle fill, const char* contentToken) noexcept
+            BG fill, const char* contentToken) noexcept
             : _region(region)
             , _fontId(fontId)
             , _fg(fg)
@@ -802,7 +796,7 @@ namespace gui {
         Color _bg;
         HAlign _hAlign;
         VAlign _vAlign;
-        BGStyle _fill;
+        BG _fill;
         const char* _contentToken;
     };
 

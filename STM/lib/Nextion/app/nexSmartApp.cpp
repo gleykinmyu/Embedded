@@ -18,9 +18,9 @@ inline constexpr Literal kAttrId{"id"};
 
 } // namespace
 
-SmartApp::SmartApp(BIF::IByteStream& stream, uint16_t screen_width, uint16_t screen_height,
+SmartApp::SmartApp(BIF::IByteStream& stream, Rect screen, Application::ClockMsFn clockMs,
     idmap::Table& id_map_table) noexcept
-    : Application(stream, screen_width, screen_height)
+    : Application(stream, screen, clockMs)
     , _table(id_map_table)
 {}
 
@@ -91,14 +91,15 @@ void SmartApp::applyFromTable() noexcept {
     }
 }
 
-void SmartApp::update(uint32_t now_ms) noexcept {
+void SmartApp::update() noexcept {
+    const uint32_t now_ms = clockMs();
     if (_mode == IdMapMode::Discover) {
         if (_phase == DiscoverPhase::Idle)
             discoverBegin();
         if (_phase != DiscoverPhase::Done && _phase != DiscoverPhase::Failed)
             discoverTick(now_ms);
     }
-    Application::update(now_ms);
+    Application::update();
 }
 
 void SmartApp::discoverArm() noexcept {

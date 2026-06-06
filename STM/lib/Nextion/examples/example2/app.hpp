@@ -67,8 +67,8 @@ public:
 
     idmap::TableStorage<kIdMapRecordCount> id_map_storage;
 
-    explicit TenButtonsApp(BIF::IByteStream& stream) noexcept
-        : SmartApp(stream, kScreenWidth, kScreenHeight, id_map_storage.table)
+    explicit TenButtonsApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
+        : SmartApp(stream, {kScreenWidth, kScreenHeight}, clockMs, id_map_storage.table)
         , page0(*this)
         , page1(*this)
     {}
@@ -154,7 +154,7 @@ public:
         if (id_map_poll_done)
             return false;
 
-        update(now_ms);
+        update();
 
         return !id_map_poll_done;
     }

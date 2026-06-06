@@ -1,8 +1,12 @@
 #pragma once
 
 /**
- * MCU API demo (setters, enable/disable, attr::) for each ex5 leaf widget.
- * Called from page onLoad after UART is ready.
+ * MCU API demo for each leaf widget in nexComponents.hpp (no ExComponents).
+ *
+ * Два режима:
+ * - `runAllDemos` — одноразовая настройка (цвета, геометрия, шрифты, enable).
+ * - `tickLiveDemos` — периодические обновления значений (Waveform.add, ProgressBar.val,
+ *   Gauge.setAngle, Slider.val, …). ScrollText и Timer после enable крутятся на панели сами.
  */
 
 #include <cstdint>
@@ -12,6 +16,16 @@
 namespace nex::examples::ex5 {
 
 using namespace nex::comp;
+
+/** Вызывается перед demo* каждого виджета (example5: ожидание Enter на debug UART). */
+using BeforeComponentDemoFn = void (*)() noexcept;
+inline BeforeComponentDemoFn beforeEachComponentDemo = nullptr;
+
+inline void waitBeforeComponentDemo() noexcept
+{
+    if (beforeEachComponentDemo != nullptr)
+        beforeEachComponentDemo();
+}
 
 namespace detail {
 
@@ -45,14 +59,14 @@ inline void demoDrawable(Drawable& w) noexcept
     w.refresh();
 }
 
-template<BGStyle S>
+template<BG S>
 inline void demoBackground(Styled<S>& w) noexcept
 {
-    if constexpr (S == BGStyle::Color) {
+    if constexpr (S == BG::Color) {
         w.bg.setColor(kFill);
-    } else if constexpr (S == BGStyle::Image) {
+    } else if constexpr (S == BG::Image) {
         w.bg.setImage(kPic);
-    } else if constexpr (S == BGStyle::CropImage) {
+    } else if constexpr (S == BG::CropImage) {
         w.bg.setCrop(kPic);
     }
 }
@@ -64,33 +78,33 @@ inline void demoStyled(W& w) noexcept
     demoBackground(w);
 }
 
-template<BGStyle S, uint8_t ChannelCount>
+template<BG S, uint8_t ChannelCount>
 inline void demoWfBackground(Waveform<S, ChannelCount>& w) noexcept
 {
-    if constexpr (S == BGStyle::Color) {
-        w.wfBackground.setColor(kFill);
-    } else if constexpr (S == BGStyle::Image) {
-        w.wfBackground.setImage(kPic);
-    } else if constexpr (S == BGStyle::CropImage) {
-        w.wfBackground.setCrop(kPic);
+    if constexpr (S == BG::Color) {
+        w.bg.setColor(kFill);
+    } else if constexpr (S == BG::Image) {
+        w.bg.setImage(kPic);
+    } else if constexpr (S == BG::CropImage) {
+        w.bg.setCrop(kPic);
     }
 }
 
-template<BGStyle S, uint8_t ChannelCount>
+template<BG S, uint8_t ChannelCount>
 inline void demoWaveformDrawable(Waveform<S, ChannelCount>& w) noexcept
 {
     demoDrawable(w);
     demoWfBackground(w);
 }
 
-inline void demoFont(Printable<BGStyle::Color>& w) noexcept
+inline void demoFont(Printable<BG::Color>& w) noexcept
 {
     w.font.setId(1u);
     w.font.setColor(kAccent);
     w.font.setCharSpacing(2u);
 }
 
-inline void demoMultiline(Multiline<BGStyle::Color>& w) noexcept
+inline void demoMultiline(Multiline<BG::Color>& w) noexcept
 {
     demoFont(w);
     w.setLineSpacing(4u);
@@ -99,15 +113,15 @@ inline void demoMultiline(Multiline<BGStyle::Color>& w) noexcept
     w.setHAlign(HAlign::Center);
 }
 
-template<BGStyle S = BGStyle::Color, uint16_t TxtMaxL = 256u>
-inline void demoPressed(ButtonLikeComponent<S, TxtMaxL>& w) noexcept
+template<BG S = BG::Color>
+inline void demoPressed(ButtonBase<S>& w) noexcept
 {
-    if constexpr (S == BGStyle::Color) {
+    if constexpr (S == BG::Color) {
         w.pressed.bg.setColor(Color::std::Maroon);
-    } else if constexpr (S == BGStyle::Image) {
-        w.pressed.bg.setImage(detail::kPic);
-    } else if constexpr (S == BGStyle::CropImage) {
-        w.pressed.bg.setCrop(detail::kPic);
+    } else if constexpr (S == BG::Image) {
+        w.pressed.bg.setImage(kPic);
+    } else if constexpr (S == BG::CropImage) {
+        w.pressed.bg.setCrop(kPic);
     }
     w.pressed.font.setColor(Color::std::White);
 }
@@ -116,102 +130,101 @@ inline void demoPressed(ButtonLikeComponent<S, TxtMaxL>& w) noexcept
 
 inline void demoTimer(Timer& t) noexcept
 {
-    NEX_DBG("[ex5] Timer\n");
+    NEX_DBG("[ex5a] Timer (тикает на панели после enable)\n");
     t.setPeriod(500u);
     t.enable();
 }
 
 inline void demoNumericVariable(NumericVar& v) noexcept
 {
-    NEX_DBG("[ex5] NumericVariable\n");
+    NEX_DBG("[ex5a] NumericVariable\n");
     v.val = 12345;
 }
 
 template<uint16_t MaxL = 64u>
 inline void demoStringVariable(StringVar<MaxL>& v) noexcept
 {
-    NEX_DBG("[ex5] StringVariable\n");
+    NEX_DBG("[ex5a] StringVariable\n");
     v.txt.set("MCU str");
 }
 
 inline void demoHotspot(Hotspot& h) noexcept
 {
-    NEX_DBG("[ex5] Hotspot\n");
+    NEX_DBG("[ex5a] Hotspot\n");
     detail::demoTouchArea(h);
 }
 
 inline void demoQRCode(QRCode& q) noexcept
 {
-    NEX_DBG("[ex5] QRCode\n");
+    NEX_DBG("[ex5a] QRCode\n");
     detail::demoStyled(q);
-    q.setPco(detail::kMark);
-    q.setScale(2u);
+    q.setPenColor(detail::kMark);
+    q.setDataSpacing(2u);
     q.setText("https://nextion.tech");
 }
 
 inline void demoPicture(Picture& p) noexcept
 {
-    NEX_DBG("[ex5] Picture\n");
+    NEX_DBG("[ex5a] Picture\n");
     detail::demoStyled(p);
 }
 
 inline void demoCropPicture(CropPicture& c) noexcept
 {
-    NEX_DBG("[ex5] CropPicture\n");
+    NEX_DBG("[ex5a] CropPicture\n");
     detail::demoStyled(c);
     c.setCrop(detail::kPic);
 }
 
-inline void demoWaveform(Waveform<BGStyle::Color, 4>& w) noexcept
+inline void demoWaveform(Waveform<BG::Color, 4>& w) noexcept
 {
-    NEX_DBG("[ex5] Waveform\n");
+    NEX_DBG("[ex5a] Waveform (setup; поток — tickLiveDemos)\n");
     detail::demoWaveformDrawable(w);
     w.ch[0].setColor(Color::std::Red);
     w.ch[1].setColor(Color::std::Green);
     w.ch[2].setColor(Color::std::Blue);
     w.ch[3].setColor(Color::std::White);
-    w.ch[0].add(128u);
-    w.wfBackground.setGridColor(0u);
-    w.wfBackground.setGridWidth(100u);
-    w.wfBackground.setGridHeight(50u);
+    w.bg.setGridColor(0u);
+    w.bg.setGridWidth(100u);
+    w.bg.setGridHeight(50u);
     w.setDataScale(100u);
 }
 
-inline void demoProgressBarColor(ProgressBar<BGStyle::Color>& p) noexcept
+inline void demoProgressBarColor(ProgressBar<BG::Color>& p) noexcept
 {
-    NEX_DBG("[ex5] ProgressBar Color\n");
+    NEX_DBG("[ex5b] ProgressBar Color (setup; val — tickLiveDemos)\n");
     detail::demoDrawable(p);
     p.bg.setColor(detail::kFill);
-    p.value = 60u;
+    p.value = 0u;
     p.bar.setColor(Color::std::Green);
     p.bar.setCornerRadius(4u);
 }
 
-inline void demoProgressBarImage(ProgressBar<BGStyle::Image>& p) noexcept
+inline void demoProgressBarImage(ProgressBar<BG::Image>& p) noexcept
 {
-    NEX_DBG("[ex5] ProgressBar Image\n");
+    NEX_DBG("[ex5b] ProgressBar Image (setup; val — tickLiveDemos)\n");
     detail::demoDrawable(p);
-    p.value = 40u;
+    p.value = 0u;
     p.bg.setImage(detail::kPic);
     p.bar.setImage(detail::kPic);
 }
 
 inline void demoSlider(Slider<>& s) noexcept
 {
-    NEX_DBG("[ex5] Slider\n");
+    NEX_DBG("[ex5b] Slider (setup; val — tickLiveDemos)\n");
     detail::demoStyled(s);
-    s.value = 50u;
+    s.value = 0u;
     s.cursor.setWidth(20u);
     s.cursor.setHeight(30u);
-    s.cursor.setThumbColor(detail::kAccent);
+    s.cursor.setColor(detail::kAccent);
     s.bg2.setColor(Color::std::Gray);
 }
 
 inline void demoGauge(Gauge<>& g) noexcept
 {
-    NEX_DBG("[ex5] Gauge\n");
+    NEX_DBG("[ex5b] Gauge (setup; angle — tickLiveDemos)\n");
     detail::demoStyled(g);
-    g.setAngle(75);
+    g.setAngle(0);
     g.center.setColor(detail::kMark);
     g.center.setOffset(0u);
     g.center.setDiameter(50u);
@@ -223,18 +236,9 @@ inline void demoGauge(Gauge<>& g) noexcept
     g.pointer.setFootWidth(10u);
 }
 
-inline void demoListSelect(ListSelect<>& ls) noexcept
-{
-    NEX_DBG("[ex5] ListSelect (ComboBox base)\n");
-    detail::demoFont(ls);
-    ls.path.set("sd0:/list.txt");
-    ls.val = 1;
-    ls.setCellSize(24u);
-}
-
 inline void demoComboBox(ComboBox<>& c) noexcept
 {
-    NEX_DBG("[ex5] ComboBox\n");
+    NEX_DBG("[ex5b] ComboBox\n");
     detail::demoFont(c);
     c.path.set("sd0:/list.txt");
     c.val = 1;
@@ -258,56 +262,81 @@ inline void demoComboBox(ComboBox<>& c) noexcept
     c.cells.setMarkerSpacing(0);
 }
 
-inline void demoTextComponent(TextComponent<>& t) noexcept
+inline void demoTextSelect(TextSelect<>& t) noexcept
+{
+    NEX_DBG("[ex5b] TextSelect\n");
+    detail::demoFont(t);
+    t.path.set("sd0:/list.txt");
+    t.val = 1;
+    t.setCellSize(24u);
+    t.setSelColor(Color::std::Yellow);
+    t.setLineColor(Color::std::Cyan);
+    t.setSelectionLine(true);
+}
+
+inline void demoDataRecord(DataRecord<>& d) noexcept
+{
+    NEX_DBG("[ex5b] DataRecord\n");
+    detail::demoFont(d);
+    d.path.set("sd0:/data.csv");
+    d.setRecordLength(64u);
+    d.setFormat(NumFormat::Dec);
+    d.setMode(0u);
+    d.setOrder(0u);
+    d.setCellSize(24u);
+    d.setGridColor(Color::std::Gray);
+    d.setGridWidth(10u);
+    d.setGridHeight(20u);
+    d.setCellBgColor(Color::std::Black);
+    d.setCellColor(Color::std::Silver);
+    d.setHAlign(HAlign::Center);
+    d.left = 0u;
+    d.ch = 0u;
+    d.val = 0;
+}
+
+inline void demoTextual(Textual<>& t) noexcept
 {
     detail::demoMultiline(t);
-    t.txt.set("Hello Text");
+    t.setText("Hello Text");
 }
 
 inline void demoText(Text<>& t) noexcept
 {
-    NEX_DBG("[ex5] Text\n");
-    demoTextComponent(t);
+    NEX_DBG("[ex5c] Text\n");
+    demoTextual(t);
     t.disablePassword();
+}
+
+inline void demoSlidingText(SlidingText<>& s) noexcept
+{
+    NEX_DBG("[ex5c] SlidingText\n");
+    demoTextual(s);
+    s.setShowProgressBar(nex::ShowProgressBar::OperationTime);
+    s.val_y = 0u;
 }
 
 inline void demoScrollText(ScrollText<>& s) noexcept
 {
-    NEX_DBG("[ex5] ScrollText\n");
-    demoTextComponent(s);
+    NEX_DBG("[ex5c] ScrollText (прокрутка на панели после enable)\n");
+    demoTextual(s);
+    s.setText("Scrolling marquee text — driven by panel timer");
     s.setScrollDirection(ScrollDirection::LeftToRight);
     s.setScrollStep(4u);
     s.setPeriod(200u);
     s.enable();
 }
 
-inline void demoButton(Button<>& b, Drawable& layerRef) noexcept
-{
-    NEX_DBG("[ex5] Button\n");
-    demoTextComponent(b);
-    detail::demoPressed(b);
-    b.placeAbove(layerRef);
-    b.move(Point{0, 0}, Point{4, 4}, 0u, 0u);
-}
-
-inline void demoDualStateButton(DualStateButton<>& d) noexcept
-{
-    NEX_DBG("[ex5] DualStateButton\n");
-    demoTextComponent(d);
-    detail::demoPressed(d);
-    d.val = 1u;
-}
-
 inline void demoNumeric(Numeric<>& n) noexcept
 {
-    NEX_DBG("[ex5] Numeric\n");
+    NEX_DBG("[ex5c] Numeric\n");
     detail::demoMultiline(n);
     n.val = 42;
 }
 
 inline void demoNumber(Number<>& n) noexcept
 {
-    NEX_DBG("[ex5] Number\n");
+    NEX_DBG("[ex5c] Number\n");
     demoNumeric(n);
     n.setDigitCount(4u);
     n.setFormat(NumFormat::Dec);
@@ -315,33 +344,50 @@ inline void demoNumber(Number<>& n) noexcept
 
 inline void demoXFloat(XFloat<>& x) noexcept
 {
-    NEX_DBG("[ex5] XFloat\n");
+    NEX_DBG("[ex5c] XFloat\n");
     demoNumeric(x);
     x.setFormat(3u, 2u);
 }
 
-inline void demoSelection(Selection<>& s) noexcept
+inline void demoSelection(Selection& s) noexcept
 {
     detail::demoStyled(s);
     s.setMarkerColor(detail::kMark);
     s.val = true;
 }
 
-inline void demoCheckbox(Checkbox<>& c) noexcept
+inline void demoButton(Button<>& b, Drawable& layerRef) noexcept
 {
-    NEX_DBG("[ex5] Checkbox\n");
+    NEX_DBG("[ex5d] Button\n");
+    demoTextual(b);
+    detail::demoPressed(b);
+    b.placeAbove(layerRef);
+    b.move(Point{0, 0}, Point{4, 4}, 0u, 0u);
+}
+
+inline void demoDualStateButton(DualStateButton<>& d) noexcept
+{
+    NEX_DBG("[ex5d] DualStateButton\n");
+    demoTextual(d);
+    detail::demoPressed(d);
+    d.val = 1u;
+}
+
+inline void demoCheckbox(Checkbox& c) noexcept
+{
+    NEX_DBG("[ex5d] Checkbox\n");
     demoSelection(c);
 }
 
-inline void demoRadio(Radio<>& r) noexcept
+inline void demoRadio(Radio& r) noexcept
 {
-    NEX_DBG("[ex5] Radio\n");
+    NEX_DBG("[ex5d] Radio\n");
     demoSelection(r);
 }
 
-inline void demoToggleSwitch(ToggleSwitch<>& t) noexcept
+inline void demoToggleSwitch(ToggleSwitch& t) noexcept
 {
-    NEX_DBG("[ex5] ToggleSwitch\n");
+    NEX_DBG("[ex5d] ToggleSwitch\n");
     demoSelection(t);
     t.pressed.bg.setColor(Color::std::Gray);
     t.pressed.setMarkerColor(Color::std::Silver);
@@ -349,6 +395,165 @@ inline void demoToggleSwitch(ToggleSwitch<>& t) noexcept
     t.font.setColor(Color::std::Green);
     t.setLabelGap(4u);
     t.txt.set("ON");
+}
+
+struct PageAWidgets {
+    Timer& timer;
+    NumericVar& nvar;
+    StringVar<64>& svar;
+    Hotspot& hotspot;
+    QRCode& qrcode;
+    Picture& picture;
+    CropPicture& crop_picture;
+    Waveform<BG::Color, 4>& waveform;
+};
+
+struct PageBWidgets {
+    ProgressBar<BG::Color>& pbar_color;
+    ProgressBar<BG::Image>& pbar_image;
+    Slider<>& slider;
+    Gauge<>& gauge;
+    ComboBox<>& combo;
+    TextSelect<>& text_select;
+    DataRecord<>& data_record;
+};
+
+struct PageCWidgets {
+    Text<>& text;
+    SlidingText<>& sltext;
+    ScrollText<>& scroll_text;
+    Number<>& number;
+    XFloat<>& xfloat;
+};
+
+struct PageDWidgets {
+    Button<>& button;
+    DualStateButton<>& dual_button;
+    Checkbox& checkbox;
+    Radio& radio;
+    ToggleSwitch& toggle;
+};
+
+inline void runPageADemos(PageAWidgets& w) noexcept
+{
+    waitBeforeComponentDemo();
+    demoTimer(w.timer);
+    waitBeforeComponentDemo();
+    demoNumericVariable(w.nvar);
+    waitBeforeComponentDemo();
+    demoStringVariable(w.svar);
+    waitBeforeComponentDemo();
+    demoHotspot(w.hotspot);
+    waitBeforeComponentDemo();
+    demoQRCode(w.qrcode);
+    waitBeforeComponentDemo();
+    demoPicture(w.picture);
+    waitBeforeComponentDemo();
+    demoCropPicture(w.crop_picture);
+    waitBeforeComponentDemo();
+    demoWaveform(w.waveform);
+}
+
+inline void runPageBDemos(PageBWidgets& w) noexcept
+{
+    waitBeforeComponentDemo();
+    demoProgressBarColor(w.pbar_color);
+    waitBeforeComponentDemo();
+    demoProgressBarImage(w.pbar_image);
+    waitBeforeComponentDemo();
+    demoSlider(w.slider);
+    waitBeforeComponentDemo();
+    demoGauge(w.gauge);
+    waitBeforeComponentDemo();
+    demoComboBox(w.combo);
+    waitBeforeComponentDemo();
+    demoTextSelect(w.text_select);
+    waitBeforeComponentDemo();
+    demoDataRecord(w.data_record);
+}
+
+inline void runPageCDemos(PageCWidgets& w) noexcept
+{
+    waitBeforeComponentDemo();
+    demoText(w.text);
+    waitBeforeComponentDemo();
+    demoSlidingText(w.sltext);
+    waitBeforeComponentDemo();
+    demoScrollText(w.scroll_text);
+    waitBeforeComponentDemo();
+    demoNumber(w.number);
+    waitBeforeComponentDemo();
+    demoXFloat(w.xfloat);
+}
+
+inline void runPageDDemos(PageDWidgets& w) noexcept
+{
+    waitBeforeComponentDemo();
+    demoButton(w.button, w.button);
+    waitBeforeComponentDemo();
+    demoDualStateButton(w.dual_button);
+    waitBeforeComponentDemo();
+    demoCheckbox(w.checkbox);
+    waitBeforeComponentDemo();
+    demoRadio(w.radio);
+    waitBeforeComponentDemo();
+    demoToggleSwitch(w.toggle);
+}
+
+inline void runAllDemos(PageAWidgets& a, PageBWidgets& b, PageCWidgets& c, PageDWidgets& d) noexcept
+{
+    NEX_DBG("[ex5] === attribute demo start ===\n");
+    runPageADemos(a);
+    runPageBDemos(b);
+    runPageCDemos(c);
+    runPageDDemos(d);
+    NEX_DBG("[ex5] === attribute demo enqueued ===\n");
+}
+
+/** Состояние периодического демо (вызывать из main loop после runAllDemos). */
+struct LiveDemoState {
+    uint32_t last_ms = 0;
+    uint8_t phase = 0;
+};
+
+inline constexpr uint32_t kLiveDemoPeriodMs = 400u;
+
+/** Обновление виджетов, чьё поведение раскрывается со временем. */
+inline void tickLiveDemos(LiveDemoState& st, uint32_t now_ms, PageAWidgets& a, PageBWidgets& b,
+    PageCWidgets& c) noexcept
+{
+    if (st.last_ms != 0u && (now_ms - st.last_ms) < kLiveDemoPeriodMs)
+        return;
+    st.last_ms = now_ms;
+
+    const uint8_t t = st.phase;
+    ++st.phase;
+
+    // Waveform: поток сэмплов (осциллограф «едет» только от повторных add).
+    const uint8_t wave0 = static_cast<uint8_t>(128 + static_cast<int8_t>(t - 128));
+    const uint8_t wave1 = static_cast<uint8_t>(255u - wave0);
+    a.waveform.ch[0].add(wave0);
+    if ((t & 1u) == 0u)
+        a.waveform.ch[1].add(wave1);
+
+    // ProgressBar: заливка 0↔100.
+    const uint8_t level = static_cast<uint8_t>((static_cast<uint16_t>(t) * 100u) / 255u);
+    b.pbar_color.value = level;
+    b.pbar_image.value = static_cast<uint8_t>(100u - level);
+
+    // Gauge / Slider: то же «живое» значение.
+    b.gauge.setAngle(static_cast<uint16_t>((static_cast<uint16_t>(t) * 360u) / 255u));
+    b.slider.value = level;
+
+    // Переменные и числовые поля — зеркало фазы.
+    a.nvar.val = static_cast<int32_t>(t);
+    c.number.val = static_cast<int32_t>(t);
+    c.xfloat.val = static_cast<int32_t>(t);
+
+    // SlidingText / DataRecord: сдвиг «окна» по данным.
+    c.sltext.val_y = static_cast<uint16_t>(t);
+    b.data_record.left = static_cast<uint16_t>(t);
+    b.data_record.val = static_cast<int32_t>(t);
 }
 
 } // namespace nex::examples::ex5

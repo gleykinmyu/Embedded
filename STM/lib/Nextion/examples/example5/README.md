@@ -1,38 +1,81 @@
-# Example 5 — все конечные виджеты
+# Example 5 — все листья nexComponents.hpp
 
-Одна страница HMI (`id=0`, имя `ex5`) с **22** компонентами — по одному на каждый листовой класс из `nexComponents.hpp`.
+Четыре страницы HMI с **25** виджетами — по одному на каждый листовой класс из `nexComponents.hpp` (без `nexExComponents.hpp`).
 
-При старте (и при `onLoad` страницы `ex5`) MCU один раз вызывает `AllComponentsDemoApp::runAttributeDemoOnce()` → `ex5::runAllDemos()` (`demo_controls.hpp`): для каждого виджета — все доступные `set*` / `enable*` / `attr::` (зеркало `user`).
+После `restartScreen` MCU выставляет `bkcmd=Always` (`enableBkcmdAlways()`): панель отвечает статусом на **каждую** команду — ошибки атрибутов видны в `onError` / UART.
+
+Затем один раз `runAttributeDemoOnce()` → `runAllDemos()`: настройка цветов, геометрии, шрифтов, `enable`.
+
+В main loop — `tickLiveDemos()` каждые ~400 ms: потоковые виджеты, у которых поведение раскрывается со временем:
+
+| Виджет | Статическая настройка | Живое обновление |
+|--------|----------------------|------------------|
+| **Waveform** | каналы, сетка, `dis` (масштаб) | `ch[].add()` — осциллограмма «едет» |
+| **ProgressBar** | фон, bar, скругление | `value` 0↔100 |
+| **Gauge** | center, pointer | `setAngle()` 0…360° |
+| **Slider** | cursor, bg2 | `value` следует за фазой |
+| **Timer** | `setPeriod`, `enable` | тикает на панели |
+| **ScrollText** | dir/dis/tim, `enable` | прокрутка на панели |
+| **NumericVar / Number / XFloat** | формат, шрифт | `val` зеркалит фазу |
+| **SlidingText / DataRecord** | path, сетка | `val_y` / `val` |
+
+## Страницы
+
+| id | имя | виджетов | назначение |
+|----|-----|----------|------------|
+| 0 | `ex5a` | 8 | Timer, переменные, hotspot, QR, картинки, waveform |
+| 1 | `ex5b` | 7 | Progress bar, slider, gauge, ComboBox, TextSelect, DataRecord |
+| 2 | `ex5c` | 5 | Text, SlidingText, ScrollText, Number, XFloat |
+| 3 | `ex5d` | 5 | Button, DualStateButton, Checkbox, Radio, ToggleSwitch |
 
 ## Objname на панели
 
-| objname | Класс C++ | Тип в Nextion Editor |
-|---------|-----------|----------------------|
-| `timer0` | `Timer` | Timer |
-| `nvar0` | `NumericVariable` | Variable, sta=Number |
-| `svar0` | `StringVariable` | Variable, sta=String |
-| `hot0` | `Hotspot` | Hotspot |
-| `qr0` | `QRCode` | QRCode |
-| `pic0` | `Picture` | Picture |
-| `crop0` | `CropPicture` | Crop Picture |
-| `wave0` | `Waveform` | Waveform |
-| `pbar0` | `ProgressBar<Color>` | Progress bar, sta=color |
-| `pbari0` | `ProgressBar<Image>` | Progress bar, sta=image |
-| `slid0` | `Slider` | Slider |
-| `gauge0` | `Gauge` | Gauge |
-| `combo0` | `ComboBox` | ComboBox |
-| `text0` | `Text` | Text |
-| `stext0` | `ScrollText` | Scroll text |
-| `btn0` | `Button` | Button |
-| `dual0` | `DualStateButton` | Dual-state button |
-| `num0` | `Number` | Number |
-| `xf0` | `XFloat` | XFloat |
-| `chk0` | `Checkbox` | Checkbox |
-| `rad0` | `Radio` | Radio |
-| `tsw0` | `ToggleSwitch` | Toggle switch |
+### ex5a (id=0)
 
-Разместите виджеты без перекрытия критичных зон (достаточно минимальных размеров).  
-**Touch:** у интерактивных — *Send Component ID*; id на панели 1…22 (авторегистрация в прошивке).
+| objname | Класс C++ |
+|---------|-----------|
+| `timer0` | `Timer` |
+| `nvar0` | `NumericVar` |
+| `svar0` | `StringVar` |
+| `hot0` | `Hotspot` |
+| `qr0` | `QRCode` |
+| `pic0` | `Picture` |
+| `crop0` | `CropPicture` |
+| `wave0` | `Waveform` |
+
+### ex5b (id=1)
+
+| objname | Класс C++ |
+|---------|-----------|
+| `pbar0` | `ProgressBar<Color>` |
+| `pbari0` | `ProgressBar<Image>` |
+| `slid0` | `Slider` |
+| `gauge0` | `Gauge` |
+| `combo0` | `ComboBox` |
+| `tsel0` | `TextSelect` |
+| `drec0` | `DataRecord` |
+
+### ex5c (id=2)
+
+| objname | Класс C++ |
+|---------|-----------|
+| `text0` | `Text` |
+| `slt0` | `SlidingText` |
+| `stext0` | `ScrollText` |
+| `num0` | `Number` |
+| `xf0` | `XFloat` |
+
+### ex5d (id=3)
+
+| objname | Класс C++ |
+|---------|-----------|
+| `btn0` | `Button` |
+| `dual0` | `DualStateButton` |
+| `chk0` | `Checkbox` |
+| `rad0` | `Radio` |
+| `tsw0` | `ToggleSwitch` |
+
+Разместите виджеты без сильного перекрытия. **Touch:** у интерактивных — *Send Component ID*; id на панели 1…N в пределах страницы.
 
 ## Сборка и запуск
 
@@ -40,13 +83,13 @@
 pio run -e example5
 ```
 
-Страница в HMI: **id=0**, имя **`ex5`**. После `rest` прошивка ждёт 3 с и ставит команды в очередь (см. отладочный UART при `-DNEX_DEBUG`).
+После `rest` прошивка ждёт 3 с и ставит команды в очередь (см. отладочный UART при `-DNEX_DEBUG`).
 
 ## Код
 
-- `app.hpp` — страница и `AllComponentsDemoApp`
-- `demo_controls.hpp` — `demoTimer`, `demoButton`, … по одному на виджет
+- `app.hpp` — 4 страницы и `AllComponentsDemoApp`
+- `demo_controls.hpp` — `runPageADemos` … `runPageDDemos`
 
-## Не в библиотеке
+## Не в примере
 
-TouchCap (type 5), PageComponent (type 121) — листовых классов в `nexComponents.hpp` нет.
+Классы из `nexExComponents.hpp` (Audio, Video, FileBrowser, …) и типы без C++-листьев: TouchCap (5), PageComponent (121).
