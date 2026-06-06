@@ -4,9 +4,10 @@
  * MCU API demo for each leaf widget in nexComponents.hpp (no ExComponents).
  *
  * Два режима:
- * - `runAllDemos` — одноразовая настройка (цвета, геометрия, шрифты, enable).
- * - `tickLiveDemos` — периодические обновления значений (Waveform.add, ProgressBar.val,
- *   Gauge.setAngle, Slider.val, …). ScrollText и Timer после enable крутятся на панели сами.
+ * - `runAllDemos` — одноразовая настройка (цвета, геометрия, шрифты, enable);
+ *   перед каждой страницей — `switchPage` + `pumpUntilIdle`.
+ * - `tickLiveDemos` — живые обновления **только на текущей** странице (A→B→C);
+ *   `advanceLivePage` — Enter на debug UART, переход к следующей.
  */
 
 #include <cstdint>
@@ -16,6 +17,12 @@
 namespace nex::examples::ex5 {
 
 using namespace nex::comp;
+
+/** Id страниц HMI (совпадают с `PageImpl` в app.hpp). */
+inline constexpr uint8_t kPageAId = 0u;
+inline constexpr uint8_t kPageBId = 1u;
+inline constexpr uint8_t kPageCId = 2u;
+inline constexpr uint8_t kPageDId = 3u;
 
 /** Вызывается перед demo* каждого виджета (example5: ожидание Enter на debug UART). */
 using BeforeComponentDemoFn = void (*)() noexcept;
@@ -166,13 +173,14 @@ inline void demoQRCode(QRCode& q) noexcept
 inline void demoPicture(Picture& p) noexcept
 {
     NEX_DBG("[ex5a] Picture\n");
-    detail::demoStyled(p);
+    detail::demoDrawable(p);
+    p.setImage(detail::kPic);
 }
 
 inline void demoCropPicture(CropPicture& c) noexcept
 {
     NEX_DBG("[ex5a] CropPicture\n");
-    detail::demoStyled(c);
+    detail::demoDrawable(c);
     c.setCrop(detail::kPic);
 }
 
@@ -311,6 +319,7 @@ inline void demoText(Text<>& t) noexcept
 inline void demoSlidingText(SlidingText<>& s) noexcept
 {
     NEX_DBG("[ex5c] SlidingText\n");
+    // TODO: demoTextual → demoMultiline вызывает setVAlign(ycen); у SlidingText атрибута нет — отдельный demo без ycen.
     demoTextual(s);
     s.setShowProgressBar(nex::ShowProgressBar::OperationTime);
     s.val_y = 0u;
@@ -468,8 +477,8 @@ inline void runPageBDemos(PageBWidgets& w) noexcept
     demoComboBox(w.combo);
     waitBeforeComponentDemo();
     demoTextSelect(w.text_select);
-    waitBeforeComponentDemo();
-    demoDataRecord(w.data_record);
+    //waitBeforeComponentDemo();
+    //demoDataRecord(w.data_record);
 }
 
 inline void runPageCDemos(PageCWidgets& w) noexcept
@@ -500,27 +509,119 @@ inline void runPageDDemos(PageDWidgets& w) noexcept
     demoToggleSwitch(w.toggle);
 }
 
-inline void runAllDemos(PageAWidgets& a, PageBWidgets& b, PageCWidgets& c, PageDWidgets& d) noexcept
+inline void runAllDemos(Application& app, PageAWidgets& a, PageBWidgets& b, PageCWidgets& c,
+    PageDWidgets& d) noexcept
 {
     NEX_DBG("[ex5] === attribute demo start ===\n");
+
+    app.switchPage(kPageAId);
+    app.pumpUntilIdle();
     runPageADemos(a);
+    app.pumpUntilIdle();
+
+    waitBeforeComponentDemo();
+    app.switchPage(kPageBId);
+    app.pumpUntilIdle();
     runPageBDemos(b);
+    app.pumpUntilIdle();
+
+    waitBeforeComponentDemo();
+    app.switchPage(kPageCId);
+    app.pumpUntilIdle();
     runPageCDemos(c);
+    app.pumpUntilIdle();
+
+    waitBeforeComponentDemo();
+    app.switchPage(kPageDId);
+    app.pumpUntilIdle();
     runPageDDemos(d);
+    app.pumpUntilIdle();
+
+    waitBeforeComponentDemo();
+    app.switchPage(kPageAId);
+    app.pumpUntilIdle();
+
     NEX_DBG("[ex5] === attribute demo enqueued ===\n");
 }
 
-/** Состояние периодического демо (вызывать из main loop после runAllDemos). */
+/** Состояние периодического live-demo (после `runAllDemos`). */
 struct LiveDemoState {
     uint32_t last_ms = 0;
     uint8_t phase = 0;
+    /** 0=ex5a, 1=ex5b, 2=ex5c — страницы с живым обновлением. */
+    uint8_t live_page = 0;
 };
+
+inline constexpr uint8_t kLivePageCount = 3u;
 
 inline constexpr uint32_t kLiveDemoPeriodMs = 400u;
 
-/** Обновление виджетов, чьё поведение раскрывается со временем. */
-inline void tickLiveDemos(LiveDemoState& st, uint32_t now_ms, PageAWidgets& a, PageBWidgets& b,
-    PageCWidgets& c) noexcept
+[[nodiscard]] inline uint8_t pageIdForLiveSlot(uint8_t live_page) noexcept
+{
+    switch (live_page % kLivePageCount) {
+    default:
+    case 0u: return kPageAId;
+    case 1u: return kPageBId;
+    case 2u: return kPageCId;
+    }
+}
+
+[[nodiscard]] inline const char* livePageName(uint8_t live_page) noexcept
+{
+    switch (live_page % kLivePageCount) {
+    default:
+    case 0u: return "ex5a";
+    case 1u: return "ex5b";
+    case 2u: return "ex5c";
+    }
+}
+
+inline void logLivePagePrompt(uint8_t live_page) noexcept
+{
+    NEX_DBG("[ex5] live demo: %s — Enter — следующая страница (reboot — сброс MCU)\n",
+        livePageName(live_page));
+}
+
+/** Enter в main loop: следующая live-страница (A→B→C→A…). */
+inline void advanceLivePage(Application& app, LiveDemoState& st) noexcept
+{
+    st.live_page = static_cast<uint8_t>((st.live_page + 1u) % kLivePageCount);
+    st.phase = 0;
+    st.last_ms = 0;
+    app.switchPage(pageIdForLiveSlot(st.live_page));
+    logLivePagePrompt(st.live_page);
+}
+
+inline void tickLivePageA(PageAWidgets& a, uint8_t t) noexcept
+{
+    const uint8_t wave0 = static_cast<uint8_t>(128 + static_cast<int8_t>(t - 128));
+    const uint8_t wave1 = static_cast<uint8_t>(255u - wave0);
+    if ((t & 1u) == 0u)
+        a.waveform.ch[0].add(wave0);
+    else
+        a.waveform.ch[1].add(wave1);
+    a.nvar.val = static_cast<int32_t>(t);
+}
+
+inline void tickLivePageB(PageBWidgets& b, uint8_t t) noexcept
+{
+    const uint8_t level = static_cast<uint8_t>((static_cast<uint16_t>(t) * 100u) / 255u);
+    b.pbar_color.value = level;
+    b.pbar_image.value = static_cast<uint8_t>(100u - level);
+    b.gauge.setAngle(static_cast<uint16_t>((static_cast<uint16_t>(t) * 360u) / 255u));
+    b.slider.value = level;
+}
+
+inline void tickLivePageC(PageCWidgets& c, uint8_t t) noexcept
+{
+    c.number.val = static_cast<int32_t>(t);
+    c.xfloat.val = static_cast<int32_t>(t);
+    c.sltext.val_y = static_cast<uint16_t>(t);
+}
+
+/** Обновление виджетов на **текущей** live-странице (`st.live_page`). */
+inline void tickLiveDemos(Application& app, LiveDemoState& st, uint32_t now_ms, PageAWidgets& a,
+    PageBWidgets& b, PageCWidgets& c) noexcept
 {
     if (st.last_ms != 0u && (now_ms - st.last_ms) < kLiveDemoPeriodMs)
         return;
@@ -529,31 +630,17 @@ inline void tickLiveDemos(LiveDemoState& st, uint32_t now_ms, PageAWidgets& a, P
     const uint8_t t = st.phase;
     ++st.phase;
 
-    // Waveform: поток сэмплов (осциллограф «едет» только от повторных add).
-    const uint8_t wave0 = static_cast<uint8_t>(128 + static_cast<int8_t>(t - 128));
-    const uint8_t wave1 = static_cast<uint8_t>(255u - wave0);
-    a.waveform.ch[0].add(wave0);
-    if ((t & 1u) == 0u)
-        a.waveform.ch[1].add(wave1);
-
-    // ProgressBar: заливка 0↔100.
-    const uint8_t level = static_cast<uint8_t>((static_cast<uint16_t>(t) * 100u) / 255u);
-    b.pbar_color.value = level;
-    b.pbar_image.value = static_cast<uint8_t>(100u - level);
-
-    // Gauge / Slider: то же «живое» значение.
-    b.gauge.setAngle(static_cast<uint16_t>((static_cast<uint16_t>(t) * 360u) / 255u));
-    b.slider.value = level;
-
-    // Переменные и числовые поля — зеркало фазы.
-    a.nvar.val = static_cast<int32_t>(t);
-    c.number.val = static_cast<int32_t>(t);
-    c.xfloat.val = static_cast<int32_t>(t);
-
-    // SlidingText / DataRecord: сдвиг «окна» по данным.
-    c.sltext.val_y = static_cast<uint16_t>(t);
-    b.data_record.left = static_cast<uint16_t>(t);
-    b.data_record.val = static_cast<int32_t>(t);
+    switch (st.live_page % kLivePageCount) {
+    case 0u:
+        tickLivePageA(a, t);
+        break;
+    case 1u:
+        tickLivePageB(b, t);
+        break;
+    default:
+        tickLivePageC(c, t);
+        break;
+    }
 }
 
 } // namespace nex::examples::ex5

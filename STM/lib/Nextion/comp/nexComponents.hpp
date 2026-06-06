@@ -119,21 +119,29 @@ public:
     {}
 };
 
-class Picture : public Styled<BG::Image> {
+/** NIS type 112: `pic`, без `sta` как у Styled. */
+class Picture : public Drawable {
 public:
+    void setImage(PicId v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Pic, v);
+    }
+
     Picture(Page& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BG::Image>(owner, name, Component::Type::Picture, id) {}
+        : Drawable(owner, name, Component::Type::Picture, id)
+    {}
 };
 
-class CropPicture : public Styled<BG::CropImage> {
+/** NIS type 113: `picc` (fullscreen source), без `sta` как у Styled. */
+class CropPicture : public Drawable {
 public:
     void setCrop(PicId v) noexcept
     {
-        attr_detail::assignNumeric(*this, attr::Id::Cpic, v);
+        attr_detail::assignNumeric(*this, attr::Id::Picc, v);
     }
 
     CropPicture(Page& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BG::CropImage>(owner, name, Component::Type::CropPicture, id)
+        : Drawable(owner, name, Component::Type::CropPicture, id)
     {}
 };
 
@@ -370,6 +378,8 @@ public:
     /** user: текст */
     attr::String<TxtMaxL> txt;
 
+    // TODO: в HMI Editor у SlidingText (type 62) нет `ycen` / vertical align — не вызывать setVAlign
+    // даже через Multiline& / Textual& (delete не перекрывает базовый setter по ссылке на базу).
     void setVAlign(VAlign) = delete;
 
     void setShowProgressBar(ShowProgressBar v) noexcept
@@ -492,7 +502,7 @@ class Number : public Numeric<S> {
 public:
     void setDigitCount(uint8_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, attr::Id::Length, v);
+        attr_detail::assignNumeric(*this, attr::Id::Lenth, v);
     }
 
     void setFormat(NumFormat v) noexcept

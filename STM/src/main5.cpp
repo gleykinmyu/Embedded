@@ -33,7 +33,9 @@ void pollSerial1Console() noexcept
 {
     switch (g_console.poll([]() noexcept { app.update(); })) {
     case dbg::ConsoleEvent::None:
+        break;
     case dbg::ConsoleEvent::Enter:
+        app.advanceLiveDemoPage();
         break;
     case dbg::ConsoleEvent::Reboot:
         NEX_DBG("[console] reboot\n");

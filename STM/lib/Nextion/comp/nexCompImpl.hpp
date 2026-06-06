@@ -201,6 +201,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Isbr, enabled);
     }
 
+    // TODO: `ycen` есть не у всех наследников Multiline (SlidingText type 62 — без VAlign в Editor).
     void setVAlign(VAlign v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Ycen, v);

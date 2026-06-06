@@ -179,16 +179,18 @@ public:
             page_d.radio,
             page_d.toggle,
         };
-        NEX_DBG("[ex5] === attribute demo start ===\n");
-        ex5::runPageADemos(wa);
-        pumpUntilIdle();
-        ex5::runPageBDemos(wb);
-        pumpUntilIdle();
-        ex5::runPageCDemos(wc);
-        pumpUntilIdle();
-        ex5::runPageDDemos(wd);
-        pumpUntilIdle();
-        NEX_DBG("[ex5] === attribute demo enqueued ===\n");
+        ex5::runAllDemos(*this, wa, wb, wc, wd);
+        bkcmd = BkCmd::OnFailure;
+        NEX_DBG("[ex5] bkcmd=OnFailure (live demo)\n");
+        ex5::logLivePagePrompt(_live.live_page);
+    }
+
+    /** Enter на debug UART — следующая live-страница (A→B→C→A). */
+    void advanceLiveDemoPage() noexcept
+    {
+        if (!_demo_done)
+            return;
+        ex5::advanceLivePage(*this, _live);
     }
 
     /** Периодическое обновление Waveform, ProgressBar, Gauge и др. — из main loop. */
@@ -223,7 +225,7 @@ public:
             page_c.number,
             page_c.xfloat,
         };
-        ex5::tickLiveDemos(_live, now_ms, wa, wb, wc);
+        ex5::tickLiveDemos(*this, _live, now_ms, wa, wb, wc);
     }
 
     void onPageChange(uint8_t page_id) noexcept override

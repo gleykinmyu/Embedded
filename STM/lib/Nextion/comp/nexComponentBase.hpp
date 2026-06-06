@@ -103,7 +103,7 @@ namespace nex {
             ProgressBar     = 106, //type, id, objname, vscope, drag, aph, effect, sta (color, image), val, dis (only when sta=color), bco (bpic), pco (ppic), x, y, w, h
             Hotspot         = 109, //type, id, objname, vscope, pos(x,y), w, h
             Picture         = 112, //type, id, objname, vscope, drag, aph, effect, pic, x, y, w, h
-            CropPicture     = 113, //type, id, objname, vscope, drag, aph, effect, cpic, x, y, w, h
+            CropPicture     = 113, //type, id, objname, vscope, drag, aph, effect, picc, x, y, w, h
             Text            = 116, //type, id, objname, vscope, drag, aph, effect, sta (cropimage, color, image, transparent), key, font, bco (pic, picc), pco, xcen, ycen, pw, txt, txt_maxl, isbr,spax, spay, x, y, w, h
             PageComponent   = 121, //type, id, vscope, effect, up, down, left, right, sta(no background, color, image), bco(pic) - when sta != no background, x, y, w, h
             Gauge           = 122, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), bco(picc, pic) - when sta != transparent, val, format, up, down, left, pco, pco2, hig, vvs0, vvs1, vvs2, x, y, w, h
@@ -190,11 +190,11 @@ namespace nex {
      *           │
      *           ├── Waveform<S, ChN>           // bg (WfBackground); ch[].setColor/add/addt; setDataScale
      *           ├── ProgressBar<S>             // value; bg (PbBackground); bar (PbBar)  [S = Color | Image]
+     *           ├── Picture                    // pic (Drawable, не Styled)
+     *           ├── CropPicture                // picc (Drawable, не Styled)
      *           │
      *           └── Styled<S>                  // bg (Background<S>) — compile-time sta
      *               ├── QRCode                 // setPenColor; setDataSpacing; setText
-     *               ├── Picture<Image>
-     *               ├── CropPicture<CropImage> // setCrop
      *               ├── Gauge                  // setAngle; center; pointer
      *               ├── Slider<S>              // value; cursor; bg; bg2
      *               │

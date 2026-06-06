@@ -6,7 +6,7 @@
 
 namespace nex::resources {
 
-/** Центр Gauge: `pco1`, `left`, `hig`. */
+/** Центр Gauge: `pco2`, `left`, `hig` (NIS type 122). */
 struct GaugeCenter {
     static constexpr uint8_t kDiameterMin = 0u;
     static constexpr uint8_t kDiameterMax = 100u;
@@ -19,7 +19,7 @@ struct GaugeCenter {
 
     void setColor(nex::Color v) noexcept
     {
-        attr_detail::assignNumeric(owner, attr::Id::Pco1, v);
+        attr_detail::assignNumeric(owner, attr::Id::Pco2, v);
     }
 
     void setOffset(uint8_t v) noexcept
