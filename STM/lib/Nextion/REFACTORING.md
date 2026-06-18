@@ -6,6 +6,8 @@
 **Как идти:** с **глубины кода** (`core/` → `comp/` → `app/`) — см. «Bottom-up порядок».  
 **Сейчас в приоритете:** Фаза 0 (демо/API) → **NEX-R106** (Session/UART) → очередь → Components → Transparent.
 
+**Handoff сессии R106:** [R106_HANDOFF.md](R106_HANDOFF.md) — что сделано, архитектура, следующие шаги, перенос на другой ПК.
+
 ---
 
 ## Карта фаз
@@ -58,7 +60,7 @@ flowchart LR
 | **Application** | `app/nexApplication.*`, `nexApplicationAddons.cpp` | UART-цикл; `enqueue`/`update`/`dispatchResponse`; `_lastError*` |
 | **SmartApp / IdMap** | `app/nexSmartApp.*`, `idmap/nexIdMap.*` | Discover + Flash; `applyFromTable`; не transport layer |
 | **Ошибки** | `app/nexErrors.hpp` | `makeAppError`, `formatStatusMessage`, `printStatusError`; recovery inline в `nexApplication.cpp` |
-| **Session** | `core/nexSession.*` | Очередь 64×128 B; `begin`/`transmit`/`pollTimeout`/`end` |
+| **Session** | `core/nexSession.*` | `Transaction::Kind`, `awaiting_status` wire-mask; `_active` копия (→ убрать, см. handoff) |
 | **Gateway** | `core/nexGateway.*` | RX/TX framer; `isTxIdle` |
 | **Commands** | `core/nexCommands.*` | NIS-слой; `NEX_DBG_TRACE_TX` |
 | **Components** | `nexComponents.hpp` + **`nexExComponents.hpp`** | База в `nexCompImpl.hpp`; Ex: Audio, FileStream, MediaComponent, DataFile, DataRecord, FileBrowser… |
@@ -100,8 +102,8 @@ flowchart LR
 
 | Severity | ID | Суть |
 |----------|-----|------|
-| **Critical** | R106 | Status routing: byte без pid/cid на проводе; **маски групп cmd/attr** + plausibility; orphan → `(0,0)` |
-| **High** | R106d | `pollTimeout`: только `Always` vs «всё остальное»; нужны 4 режима `BkCmd` |
+| **Critical** | R106 | Wire-маска `awaiting_status` + correlate; PR-1 skeleton ✓, PR-2 masks + ex6/ex4 |
+| **High** | R106d | `sessionWaitMask` vs `statusCorrelateMask` + `bkcmdAllowedStatus` — частично в PR-1 |
 | **High** | R301 | `AwaitingTransparentTx` / `AwaitingRawDataRx` без timeout и `dispatchResponse` → **зависание очереди** |
 | **High** | R210 | `Multiline::setVAlign` → `ycen` на SlidingText (type 62) → **0x1A** в example5 |
 | **Medium** | R305 | `idmap::Table::upsert` принимает `panel_id=0xFF`, `applyFromTable` пропускает |
@@ -147,11 +149,11 @@ flowchart LR
 - [-] **NEX-R106c** — `PushFailed`: не `pop()` head — **отменено**
   - `PushFailed` ≈ `SerializeFailed` / битая команда; повтор бессмысленен, pop head — правильно
 
-- [ ] **NEX-R106** — Wire-маска `Transaction::awaiting_status` (`AwaitingStatus`, bit = wire code 0x00…0x24)
-  - PR-1 ✓ skeleton: `SendCommand`, `nexStatusMask.hpp`, `statusCorrelatesWithTransaction`, `sessionWaitMask` / `statusCorrelateMask`
-  - PR-2: `Command::defaultAwaitingStatus()`, пресеты, example6 без `isDataRecordFileNoise`
-  - correlated → route tx; иначе → `(0,0)`; не завершать session чужим кодом
-  - **Файлы:** `core/nexStatusMask.hpp`, `app/nexApplication.cpp`, `core/nexSession.hpp`
+- [~] **NEX-R106** — Wire-маска `Transaction::awaiting_status` (`AwaitingStatus`, bit = wire 0x00…0x24)
+  - **PR-1 ✓ (skeleton):** `Kind::Command|Get*|Transparent*`, `nexStatusMask.hpp`, correlate, `EmptyCommand`, orphan `onError(0,0)`
+  - **PR-2:** `Command::defaultAwaitingStatus()`, пресеты, example6 без `isDataRecordFileNoise`
+  - **PR-1b:** убрать `_active` — `active()` → queue head (см. [R106_HANDOFF.md](R106_HANDOFF.md))
+  - **Файлы:** `core/nexStatusMask.hpp`, `nexSession.*`, `nexApplication.cpp`, `nexCommands.*`
   - **Сложность:** M
 
 - [ ] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → orphan
@@ -386,7 +388,8 @@ flowchart LR
 |------|-----|--------|-------------|
 | 2026-06-01 | R0d, R209 | done | Аудит кода; REFACTORING sync; ExComponents move; example5 без DataRecord |
 | 2026-06-01 | R106a–c | cancelled | RX order / txIdle / PushFailed pop — не баги после разбора протокола |
-| 2026-06-01 | R106 | planned | Status masks + bkcmd modes + NoAwaiting — example6/example5 |
+| 2026-06-01 | R106 PR-1 | in progress | Kind, wire mask, bkcmd split, EmptyCommand, handoff doc |
+| 2026-06-01 | R106 | planned | PR-2 masks, drop `_active`, R106f example4, ex6 cleanup |
 | 2026-05-27 | NEX-R403 | done | nexDebug.hpp, NEX_DBG / NEX_IDMAP_DEBUG / NEX_TRACE_TX |
 | 2026-05-27 | NEX-R003…R010, R102 | done | clearErrors, retry, IdMap poll fixes |
 | 2026-05-27 | rename | done | IdMap → `idmap/nexIdMap.*`, Discover → `SmartApp` |
