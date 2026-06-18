@@ -1,8 +1,8 @@
 # Example 5 — все листья nexComponents.hpp
 
-Четыре страницы HMI с **25** виджетами — по одному на каждый листовой класс из `nexComponents.hpp` (без `nexExComponents.hpp`).
+Четыре страницы HMI с **24** виджетами — по одному на каждый листовой класс из `nexComponents.hpp` (без `nexExComponents.hpp`).
 
-После `restartScreen` MCU выставляет `bkcmd=Always` (`enableBkcmdAlways()`): панель отвечает статусом на **каждую** команду — ошибки атрибутов видны в `onError` / UART.
+После `restartScreen` MCU выставляет `bkcmd=Always` (`enableBkcmdAlways()`) **только на время static demo** — ACK на каждую команду, ошибки атрибутов в `onError` / UART. После `runAllDemos` — `bkcmd=OnFailure` для live loop.
 
 Затем один раз `runAttributeDemoOnce()` → `runAllDemos()`: настройка цветов, геометрии, шрифтов, `enable`.
 
@@ -17,14 +17,14 @@
 | **Timer** | `setPeriod`, `enable` | тикает на панели |
 | **ScrollText** | dir/dis/tim, `enable` | прокрутка на панели |
 | **NumericVar / Number / XFloat** | формат, шрифт | `val` зеркалит фазу |
-| **SlidingText / DataRecord** | path, сетка | `val_y` / `val` |
+| **SlidingText** | `txt`, `setShowProgressBar` (`left`) | `val_y` |
 
 ## Страницы
 
 | id | имя | виджетов | назначение |
 |----|-----|----------|------------|
 | 0 | `ex5a` | 8 | Timer, переменные, hotspot, QR, картинки, waveform |
-| 1 | `ex5b` | 7 | Progress bar, slider, gauge, ComboBox, TextSelect, DataRecord |
+| 1 | `ex5b` | 6 | Progress bar, slider, gauge, ComboBox, TextSelect |
 | 2 | `ex5c` | 5 | Text, SlidingText, ScrollText, Number, XFloat |
 | 3 | `ex5d` | 5 | Button, DualStateButton, Checkbox, Radio, ToggleSwitch |
 
@@ -53,7 +53,6 @@
 | `gauge0` | `Gauge` |
 | `combo0` | `ComboBox` |
 | `tsel0` | `TextSelect` |
-| `drec0` | `DataRecord` |
 
 ### ex5c (id=2)
 
@@ -92,4 +91,4 @@ pio run -e example5
 
 ## Не в примере
 
-Классы из `nexExComponents.hpp` (Audio, Video, FileBrowser, …) и типы без C++-листьев: TouchCap (5), PageComponent (121).
+Классы из `nexExComponents.hpp` (Audio, Video, DataRecord, FileBrowser, …) и типы без C++-листьев: TouchCap (5), PageComponent (121).

@@ -378,8 +378,7 @@ public:
     /** user: текст */
     attr::String<TxtMaxL> txt;
 
-    // TODO: в HMI Editor у SlidingText (type 62) нет `ycen` / vertical align — не вызывать setVAlign
-    // даже через Multiline& / Textual& (delete не перекрывает базовый setter по ссылке на базу).
+    // NIS type 62: нет `ycen` — запрет assign через SlidingText&.
     void setVAlign(VAlign) = delete;
 
     void setShowProgressBar(ShowProgressBar v) noexcept
@@ -527,106 +526,6 @@ public:
 
     XFloat(Page& owner, const Literal& name, uint8_t id = 0)
         : Numeric<S>(owner, name, Component::Type::XFloat, id)
-    {}
-};
-
-template<BG S = BG::Color>
-class DataRecord : public DataFile<S> {
-public:
-    /** mcu: путь к файлу данных */
-    attr::String<512> path;
-    /** user: длина файла (RO) */
-    attr::NumRO<uint32_t> lenth;
-    /** user: максимальное значение (RO) */
-    attr::NumRO<int32_t> maxval;
-
-    void setRecordLength(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Length, v);
-    }
-
-    void setFormat(NumFormat v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Format, v);
-    }
-
-    void setMode(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Mode, v);
-    }
-
-    void setOrder(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Order, v);
-    }
-
-    void setCellSize(uint8_t v) noexcept
-    {
-        static constexpr uint8_t kMin = 16u;
-        static constexpr uint8_t kMax = 255u;
-        attr_detail::assignNumeric(*this, attr::Id::Hig,
-            attr_detail::clamp(v, kMin, kMax));
-    }
-
-    void setGridColor(nex::Color v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Gdc, v);
-    }
-
-    void setGridWidth(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Gdw, v);
-    }
-
-    void setGridHeight(uint8_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Gdh, v);
-    }
-
-    void setCellBgColor(nex::Color v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Bco1, v);
-    }
-
-    void setCellColor(nex::Color v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Pco1, v);
-    }
-
-    void setHAlign(HAlign v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Xcen, v);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
-    {
-        switch (tag) {
-        case static_cast<uint8_t>(attr::Id::Lenth):
-            lenth.applyResponse(response);
-            return;
-        case static_cast<uint8_t>(attr::Id::Maxval):
-            maxval.applyResponse(response);
-            return;
-        default:
-            break;
-        }
-        DataFile<S>::onResponse(tag, response);
-    }
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        if (tag == static_cast<uint8_t>(attr::Id::Path)) {
-            path.applyResponse(response);
-            return;
-        }
-        DataFile<S>::onResponse(tag, response);
-    }
-
-    DataRecord(Page& owner, const Literal& name, uint8_t id = 0)
-        : DataFile<S>(owner, name, Component::Type::DataRecord, id)
-        , path{*this, attr::Id::Path}
-        , lenth{*this, attr::Id::Lenth}
-        , maxval{*this, attr::Id::Maxval}
     {}
 };
 

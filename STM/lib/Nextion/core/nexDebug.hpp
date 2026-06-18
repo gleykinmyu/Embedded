@@ -7,6 +7,8 @@
  *
  * Флаги компилятора (`build_flags = -D...`):
  *   NEX_DEBUG       — включить все подсистемы ниже
+ *   NEX_LOG_TICKS   — `[Nex %010u]` в `printStatusError` (нужен `NEX_DEBUG`)
+ *   NEX_NO_LOG_TICKS — отключить тики при `NEX_DEBUG`
  *   NEX_IDMAP_DEBUG — Discover / CompIdMap (`[IdMap]`)
  *   NEX_TRACE_TX    — дамп исходящих NIS-кадров (`misc::printTxPayloadLine`)
  *   NEX_CID_DEBUG   — устаревшее имя; то же, что NEX_IDMAP_DEBUG
@@ -22,6 +24,9 @@
 #  endif
 #  if !defined(NEX_TRACE_TX)
 #    define NEX_TRACE_TX 1
+#  endif
+#  if !defined(NEX_NO_LOG_TICKS)
+#    define NEX_LOG_TICKS 1
 #  endif
 #endif
 

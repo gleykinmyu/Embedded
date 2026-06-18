@@ -10,6 +10,8 @@ uint32_t boardClockMs() noexcept
 
 namespace {
 
+bool g_serial1_log_enabled = true;
+
 bool serial1TxHealthy() noexcept
 {
     switch (board.serial1.getStatus()) {
@@ -24,6 +26,11 @@ bool serial1TxHealthy() noexcept
 
 } // namespace
 
+void setSerial1LogEnabled(bool enabled) noexcept
+{
+    g_serial1_log_enabled = enabled;
+}
+
 extern "C" int _write(int file, char *ptr, int len) {
     (void)file;
 
@@ -33,6 +40,8 @@ extern "C" int _write(int file, char *ptr, int len) {
         errno = EINVAL;
         return -1;
     }
+    if (!g_serial1_log_enabled)
+        return len;
     if (!board.serial1.isOpen()) {
         errno = EIO;
         return -1;

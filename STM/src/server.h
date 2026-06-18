@@ -27,3 +27,6 @@ extern CServerBoard board;
 
 /** HAL tick (мс) для `nex::Application` (`ClockMsFn`). */
 uint32_t boardClockMs() noexcept;
+
+/** Включить/выключить вывод `printf` на serial1 (не блокирует UART при off). */
+void setSerial1LogEnabled(bool enabled) noexcept;

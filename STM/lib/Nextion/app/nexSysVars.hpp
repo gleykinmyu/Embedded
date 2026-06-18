@@ -96,8 +96,8 @@ protected:
 
     [[nodiscard]] AttrRef target() const noexcept;
 
-    void enqueueTransaction(const Command& cmd,
-        Transaction::State state = Transaction::State::AwaitingStatus) const noexcept;
+    void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
+        AwaitingStatus awaiting_status = kAwaitingAllPanel) const noexcept;
 };
 
 /** `sysN=…` через маршрут `Route::kSysVar*` (общий helper для facades / canvas / addons). */

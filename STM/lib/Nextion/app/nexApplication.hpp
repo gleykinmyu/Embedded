@@ -38,6 +38,9 @@ public:
     [[nodiscard]] uint8_t lastErrorPage() const noexcept { return _lastErrorPage; }
     [[nodiscard]] uint8_t lastErrorComp() const noexcept { return _lastErrorComp; }
 
+    /** Текущее время (тот же источник, что у Session timeout). */
+    [[nodiscard]] uint32_t nowMs() const noexcept { return _clockMsFn(); }
+
     void clearErrors() noexcept;
 
     virtual void onTouch(const msg::evTouch& e);
@@ -52,6 +55,13 @@ public:
 
     /** Статус с панели (NIS) или фоновое событие. */
     virtual void onError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
+
+    /** После успешного `Session::begin` — длина NIS-payload до `0xFF×3`. */
+    virtual void onTxSerialized(uint16_t payload_bytes, const Transaction& tx) noexcept
+    {
+        (void)payload_bytes;
+        (void)tx;
+    }
 
     void restartScreen() noexcept;
     void switchPage(uint8_t pageId) noexcept;
@@ -100,8 +110,6 @@ private:
 
     void dispatchError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
     void dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept;
-
-    [[nodiscard]] uint32_t clockMs() const noexcept { return _clockMsFn(); }
 
     ScreenLayout _screen{};
     BIF::IByteStream& _stream;

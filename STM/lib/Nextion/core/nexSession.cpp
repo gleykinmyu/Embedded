@@ -69,6 +69,48 @@ void TransactionQueue::clear() noexcept {
 
 } // namespace detail
 
+Transaction::Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag, Kind kind,
+    AwaitingStatus awaiting_status) noexcept
+    : kind(kind)
+    , page_id(page_id)
+    , comp_id(comp_id)
+    , tag(tag)
+    , awaiting_status(awaiting_status)
+    , _command(&cmd)
+{}
+
+bool Transaction::isEmpty() const noexcept {
+    return _command == nullptr;
+}
+
+const Command& Transaction::command() const noexcept {
+    if (_command == nullptr)
+        return kEmptyCommand();
+    return *_command;
+}
+
+bool Transaction::emplace(void* storage, std::size_t maxBytes, std::size_t maxAlign) noexcept {
+    if (isEmpty())
+        return false;
+    if (!_command->emplaceIn(storage, maxBytes, maxAlign))
+        return false;
+    _command = static_cast<const Command*>(storage);
+    return true;
+}
+
+AwaitingStatus Transaction::sessionWaitMask(BkCmd bkcmd) const noexcept {
+    switch (bkcmd) {
+    case BkCmd::Off:
+    case BkCmd::OnFailure:
+        return kAwaitingNone;
+    case BkCmd::OnSuccess:
+        return awaiting_status & kAwaitingSuccessOnly;
+    case BkCmd::Always:
+        return awaiting_status;
+    }
+    return kAwaitingNone;
+}
+
 namespace {
 
 Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
@@ -87,7 +129,7 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
 } // namespace
 
 const Transaction* Session::faultingTransaction() const noexcept {
-    if (!_active.isIdle())
+    if (!_active.isEmpty())
         return &_active;
     return _queue.peek();
 }
@@ -151,24 +193,21 @@ bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms
     if (!gateway.isTxIdle() || isIdle())
         return false;
 
-    switch (_active.state) {
-    case Transaction::State::AwaitingTransparentTx:
-    case Transaction::State::AwaitingRawDataRx:
+    switch (_active.kind) {
+    case Transaction::Kind::TransparentTx:
+    case Transaction::Kind::RawDataRx:
         return false;
 
-    case Transaction::State::AwaitingStatus:
-        if (bkcmd != BkCmd::Always) {
+    case Transaction::Kind::Command:
+        if (_active.sessionWaitMask(bkcmd) == kAwaitingNone) {
             _status = Status::Complete;
             return true;
         }
         break;
 
-    case Transaction::State::AwaitingNumericGet:
-    case Transaction::State::AwaitingStringGet:
+    case Transaction::Kind::GetNumeric:
+    case Transaction::Kind::GetString:
         break;
-
-    case Transaction::State::Idle:
-        return false;
     }
 
     if (!_responseDeadlineActive) {
@@ -188,6 +227,19 @@ void Session::resetActive() noexcept {
     _active = {};
     if (_status == Status::Active)
         _status = Status::Idle;
+}
+
+AwaitingStatus Transaction::statusCorrelateMask(BkCmd bkcmd) const noexcept {
+    return awaiting_status & bkcmdAllowedStatus(bkcmd);
+}
+
+bool Transaction::statusCorrelatesWithTransaction(const msg::Status& status, BkCmd bkcmd) const noexcept {
+    if (status.status == msg::Status::Code::AppError
+        || status.status == msg::Status::Code::Unrecognized_Header)
+        return false;
+    if (isBkcmdIndependentStatus(status.status))
+        return false;
+    return statusInMask(status.status, statusCorrelateMask(bkcmd));
 }
 
 } // namespace nex

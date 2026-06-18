@@ -853,4 +853,14 @@ namespace gui {
 } // namespace gui
 } // namespace cmd
 
+/** Placeholder: `serialize` → 0 bytes → `Gateway::EmptyPayload`. Для `Transaction::isEmpty()`. */
+class EmptyCommand final : public Command {
+public:
+    bool serialize(TxFrame& tx) const noexcept override;
+    bool emplaceIn(void* storage, std::size_t maxBytes, std::size_t maxAlign) const noexcept override;
+    void destroyIn(void* storage) const noexcept override;
+};
+
+[[nodiscard]] const EmptyCommand& kEmptyCommand() noexcept;
+
 } // namespace nex

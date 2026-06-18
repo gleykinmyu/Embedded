@@ -91,6 +91,9 @@ public:
     bool receive(Message& out);
     bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 
+    /** Байт полезной нагрузки последнего успешного `pushCommand` (без `0xFF×3`). */
+    [[nodiscard]] uint16_t lastSerializedPayloadBytes() const noexcept { return _last_serialized_payload; }
+
 private:
     void recoverStreamRxOverFlow() noexcept;
     void onStreamReadFault(BIF::IByteStream::Status streamSt) noexcept;
@@ -99,6 +102,7 @@ private:
     RxFramer _rxFramer;
     TxFramer _txFramer;
     Status _status = Status::OK;
+    uint16_t _last_serialized_payload = 0u;
 };
 
 inline const char* cstr(Gateway::Status s) noexcept {

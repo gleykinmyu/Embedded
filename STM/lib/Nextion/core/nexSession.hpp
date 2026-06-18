@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include "nexCommands.hpp"
+#include "nexMessages.hpp"
+#include "nexStatusMask.hpp"
 #include "nexTypes.hpp"
 
 namespace nex {
@@ -17,53 +19,39 @@ namespace nex {
 class Gateway;
 
 struct Transaction {
-    enum class State : uint8_t {
-        Idle,
-        AwaitingStatus,
-        AwaitingNumericGet,
-        AwaitingStringGet,
-        AwaitingTransparentTx,
-        AwaitingRawDataRx,
+    enum class Kind : uint8_t {
+        Command,
+        GetNumeric,
+        GetString,
+        TransparentTx,
+        RawDataRx,
     };
 
-    State state = State::Idle;
+    Kind kind = Kind::Command;
     uint8_t page_id = 0u;
     uint8_t comp_id = 0u;
     uint8_t tag = 0u;
+    /** Panel status (wire), принимаемые как ответ этой tx; `kAwaitingNone` = NoAwaiting. */
+    AwaitingStatus awaiting_status = kAwaitingAllPanel;
 
     Transaction() noexcept = default;
 
-    constexpr Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag = 0u,
-        State state = State::AwaitingStatus) noexcept
-        : state(state)
-        , page_id(page_id)
-        , comp_id(comp_id)
-        , tag(tag)
-        , _command(&cmd)
-    {}
+    Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag = 0u,
+        Kind kind = Kind::Command,
+        AwaitingStatus awaiting_status = kAwaitingAllPanel) noexcept;
 
-    [[nodiscard]] constexpr bool isIdle() const noexcept { return state == State::Idle; }
+    [[nodiscard]] bool isEmpty() const noexcept;
 
-    [[nodiscard]] constexpr bool isResponse() const noexcept {
-        return state == State::AwaitingNumericGet || state == State::AwaitingStringGet
-            || state == State::AwaitingStatus;
-    }
+    [[nodiscard]] const Command& command() const noexcept;
 
-    [[nodiscard]] constexpr bool isStatusResponse() const noexcept { return state == State::AwaitingStatus; }
+    [[nodiscard]] bool emplace(void* storage, std::size_t maxBytes, std::size_t maxAlign) noexcept;
 
-    [[nodiscard]] inline bool isEmpty() const noexcept { return _command == nullptr; }
+    /** Маска, по которой session ждёт panel-status после TX (NIS §6.13, pollTimeout). */
+    [[nodiscard]] AwaitingStatus sessionWaitMask(BkCmd bkcmd) const noexcept;
 
-    [[nodiscard]] inline const Command& command() const noexcept { return *_command; }
-    [[nodiscard]] inline Command& command() noexcept { return *const_cast<Command*>(_command); }
-
-    [[nodiscard]] inline bool emplace(void* storage, std::size_t maxBytes, std::size_t maxAlign) noexcept {
-        if (isEmpty())
-            return false;
-        if (!_command->emplaceIn(storage, maxBytes, maxAlign))
-            return false;
-        _command = static_cast<const Command*>(storage);
-        return true;
-    }
+    /** Маска correlate: tx × то, что панель может прислать при текущем bkcmd. */
+    [[nodiscard]] AwaitingStatus statusCorrelateMask(BkCmd bkcmd) const noexcept;
+    [[nodiscard]] bool statusCorrelatesWithTransaction(const msg::Status& msg, BkCmd bkcmd) const noexcept;
 
 private:
     const Command* _command = nullptr;
@@ -123,7 +111,7 @@ private:
 
 class Session {
 public:
-    using State = Transaction::State;
+    using Kind = Transaction::Kind;
 
     enum class Status : uint8_t {
         Idle = 0,
@@ -176,7 +164,7 @@ public:
         _queue.clearError();
     }
 
-    [[nodiscard]] bool isIdle() const noexcept { return _active.isIdle(); }
+    [[nodiscard]] bool isIdle() const noexcept { return _active.isEmpty(); }
     [[nodiscard]] bool hasQueued() const noexcept { return !_queue.isEmpty(); }
     [[nodiscard]] std::size_t queuedCount() const noexcept { return _queue.count(); }
 

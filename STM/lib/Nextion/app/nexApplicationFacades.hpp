@@ -15,7 +15,7 @@ class AppEeprom {
 public:
     void write(const AttrRef& variableOrConstant, uint32_t eepromStart) const noexcept;
     void read(const AttrRef& destVariable, uint32_t eepromStart) const noexcept;
-    /** `wept` / `rept`: преамбула + transparent (`Transaction::State::AwaitingTransparentTx` / `AwaitingRawDataRx`). */
+    /** `wept` / `rept`: преамбула + transparent (`Transaction::Kind::TransparentTx` / `RawDataRx`). */
     void write_t(uint32_t eepromStart, const uint8_t* buffer, uint32_t byteCount) const noexcept;
     void read_t(uint32_t eepromStart, uint8_t* buffer, uint32_t byteCount) const noexcept;
 
@@ -33,9 +33,9 @@ public:
     void file_rename(const char* pathFromQuoted, const char* pathToQuoted) const noexcept;
     void file_find(const char* pathQuoted, const AttrRef& dstNumAttr) const noexcept;
     void file_create(const char* pathQuoted, uint32_t reservedSize) const noexcept;
-    /** `rdfile`: преамбула + приём transparent (`Transaction::State::AwaitingRawDataRx`). */
+    /** `rdfile`: преамбула + приём transparent (`Transaction::Kind::RawDataRx`). */
     void file_read_t(const char* pathQuoted, uint32_t offset, uint8_t* buffer, uint32_t byteCount, uint32_t crcOption) const noexcept;
-    /** `twfile`: преамбула + передача transparent (`Transaction::State::AwaitingTransparentTx`). */
+    /** `twfile`: преамбула + передача transparent (`Transaction::Kind::TransparentTx`). */
     void file_write_t(const char* pathQuoted, const uint8_t* buffer, uint32_t byteCount) const noexcept;
 
     void dir_remove(const char* pathQuoted) const noexcept;

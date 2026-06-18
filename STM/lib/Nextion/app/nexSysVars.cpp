@@ -10,15 +10,17 @@ SysVarBase::SysVarBase(Application& app, const Literal& sysName, uint8_t routeTa
 {}
 
 void SysVarBase::get() noexcept {
-    enqueueTransaction(cmd::Get::numeric(target()), Transaction::State::AwaitingNumericGet);
+    enqueueTransaction(cmd::Get::numeric(target()), Transaction::Kind::GetNumeric);
 }
 
 AttrRef SysVarBase::target() const noexcept {
     return AttrRef{kEmptyLiteral, name};
 }
 
-void SysVarBase::enqueueTransaction(const Command& cmd, Transaction::State state) const noexcept {
-    _app.enqueue(Transaction{cmd, Route::kSysVarPageId, Route::kSysVarCompId, tag, state});
+void SysVarBase::enqueueTransaction(
+    const Command& cmd, Transaction::Kind kind, AwaitingStatus awaiting_status) const noexcept {
+    _app.enqueue(
+        Transaction{cmd, Route::kSysVarPageId, Route::kSysVarCompId, tag, kind, awaiting_status});
 }
 
 void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {

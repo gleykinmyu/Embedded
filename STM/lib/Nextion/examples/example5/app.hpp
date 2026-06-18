@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * Пример 5: все листья nexComponents.hpp (без ExComponents) на 4 страницах HMI.
+ * Пример 5: все листья nexComponents.hpp на 4 страницах HMI.
  *
  * Страницы: ex5a (0), ex5b (1), ex5c (2), ex5d (3) — objname в README.md.
  * Touch: Send Component ID (0x65). `bkcmd=Always` — ACK на каждую команду.
@@ -60,25 +60,23 @@ public:
         void onExit() override { NEX_DBG("[ex5a] page onExit\n"); }
     };
 
-    /** Страница 1 — progress, slider, gauge, списки, data record (7 виджетов). */
-    struct PageB : PageImpl<7> {
+    /** Страница 1 — progress, slider, gauge, списки (6 виджетов). */
+    struct PageB : PageImpl<6> {
         ProgressBar<BG::Color> pbar_color;
         ProgressBar<BG::Image> pbar_image;
         Slider<> slider;
         Gauge<> gauge;
         ComboBox<> combo;
         TextSelect<> text_select;
-        DataRecord<> data_record;
 
         PageB(AllComponentsDemoApp& app) noexcept
-            : PageImpl<7>(app, "ex5b", 1u)
+            : PageImpl<6>(app, "ex5b", 1u)
             , pbar_color(*this, "pbar0")
             , pbar_image(*this, "pbari0")
             , slider(*this, "slid0")
             , gauge(*this, "gauge0")
             , combo(*this, "combo0")
             , text_select(*this, "tsel0")
-            , data_record(*this, "drec0")
         {}
 
         void onLoad() override { NEX_DBG("[ex5b] page onLoad\n"); }
@@ -163,7 +161,6 @@ public:
             page_b.gauge,
             page_b.combo,
             page_b.text_select,
-            page_b.data_record,
         };
         ex5::PageCWidgets wc{
             page_c.text,
@@ -216,7 +213,6 @@ public:
             page_b.gauge,
             page_b.combo,
             page_b.text_select,
-            page_b.data_record,
         };
         ex5::PageCWidgets wc{
             page_c.text,

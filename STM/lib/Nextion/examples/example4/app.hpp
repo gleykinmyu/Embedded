@@ -135,7 +135,7 @@ public:
         case Phase::NisInvalidVar:
             if (!phase_once_) {
                 phase_once_ = true;
-                enqueue(Transaction{cmd::Get::numeric(kBadAttr), kPageId, 1u, 0u, Transaction::State::AwaitingNumericGet});
+                enqueue(Transaction{cmd::Get::numeric(kBadAttr), kPageId, 1u, 0u, Transaction::Kind::GetNumeric});
             }
             if (elapsed >= 800u) {
                 markTest(2u, stats.nis_panel > 0u);
@@ -147,7 +147,7 @@ public:
         case Phase::NisInvalidComp:
             if (!phase_once_) {
                 phase_once_ = true;
-                enqueue(Transaction{cmd::Get::numeric(kGhostComp), kPageId, 1u, 0u, Transaction::State::AwaitingNumericGet});
+                enqueue(Transaction{cmd::Get::numeric(kGhostComp), kPageId, 1u, 0u, Transaction::Kind::GetNumeric});
             }
             if (elapsed >= 800u) {
                 markTest(3u, stats.nis_panel >= 2u);
@@ -163,7 +163,7 @@ public:
                 queue_enqueued_ = 0u;
                 for (unsigned i = 0u; i < 65u; ++i) {
                     const uint32_t before = stats.total;
-                    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::State::AwaitingStatus});
+                    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command});
                     ++queue_enqueued_;
                     if (stats.total > before)
                         break;
@@ -194,7 +194,7 @@ public:
         case Phase::TimeoutPrep:
             if (!phase_once_) {
                 phase_once_ = true;
-                enqueue(Transaction{cmd::Get::numeric(kValidAttr), kPageId, 1u, 0u, Transaction::State::AwaitingNumericGet});
+                enqueue(Transaction{cmd::Get::numeric(kValidAttr), kPageId, 1u, 0u, Transaction::Kind::GetNumeric});
             }
             if (elapsed >= 120u) {
                 metric_at_phase_ = stats.app_session;
@@ -220,7 +220,7 @@ public:
                 phase_once_ = true;
                 metric_at_phase_ = stats.app_gateway + stats.app_stream;
                 _link.close();
-                enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::State::AwaitingStatus});
+                enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command});
             }
             if (elapsed >= 200u) {
                 markTest(6u, (stats.app_gateway + stats.app_stream) > metric_at_phase_);

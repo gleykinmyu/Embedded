@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdarg>
 #include <cstdio>
 #include "../core/nexCommands.hpp"
 #include "../core/nexDebug.hpp"
@@ -11,6 +12,44 @@
 #include "../../Interfaces/obj_registry.hpp"
 
 namespace nex {
+
+namespace detail {
+
+using NexLogTickFn = uint32_t (*)() noexcept;
+
+inline NexLogTickFn g_nexLogTickFn = nullptr;
+
+inline void setNexLogTickFn(NexLogTickFn fn) noexcept {
+    g_nexLogTickFn = fn;
+}
+
+#if defined(NEX_LOG_TICKS) && defined(NEX_DEBUG)
+/** Ширина поля тиков в `[Nex %010u]` — префикс всегда 16 символов. */
+inline constexpr unsigned kNexLogTickWidth = 10u;
+
+inline void nexLogPrefix() noexcept {
+    const unsigned long tick = g_nexLogTickFn != nullptr ? static_cast<unsigned long>(g_nexLogTickFn()) : 0ul;
+    std::printf("[Nex %0*lu] ", static_cast<int>(kNexLogTickWidth), tick);
+}
+
+inline void nexLogPrint(const char* fmt, ...) noexcept {
+    va_list args;
+    va_start(args, fmt);
+    nexLogPrefix();
+    std::vprintf(fmt, args);
+    va_end(args);
+}
+#elif defined(NEX_DEBUG)
+inline void nexLogPrint(const char* fmt, ...) noexcept {
+    va_list args;
+    va_start(args, fmt);
+    std::printf("[Nex] ");
+    std::vprintf(fmt, args);
+    va_end(args);
+}
+#endif
+
+} // namespace detail
 
 /** Источник MCU-ошибки в `msg::Status::AppError` (`tag_1`). */
 enum class AppErrorReporter : uint8_t {
@@ -124,16 +163,16 @@ inline void printStatusError(const msg::Status& st, uint8_t page_id, uint8_t com
         const AppErrorReporter reporter = appErrorReporter(st);
         const uint16_t detail = appErrorDetail(st);
         if ((detail >> 8) != 0u && reporter == AppErrorReporter::Session) {
-            NEX_DBG("[Nextion] onError AppError %s %s gw=%s page=%u comp=%u\n", cstr(reporter),
+            detail::nexLogPrint("onError AppError %s %s gw=%s page=%u comp=%u\n", cstr(reporter),
                 appErrorDetailCstr(reporter, detail), cstr(static_cast<Gateway::Status>(detail >> 8)),
                 static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id));
         } else {
-            NEX_DBG("[Nextion] onError AppError %s %s page=%u comp=%u\n", cstr(reporter),
+            detail::nexLogPrint("onError AppError %s %s page=%u comp=%u\n", cstr(reporter),
                 appErrorDetailCstr(reporter, detail), static_cast<unsigned>(page_id),
                 static_cast<unsigned>(comp_id));
         }
     } else {
-        NEX_DBG("[Nextion] onError %s (0x%02X) tag_1=%u tag_2=%u page=%u comp=%u\n", cstr(st.status),
+        detail::nexLogPrint("onError %s (0x%02X) tag_1=%u tag_2=%u page=%u comp=%u\n", cstr(st.status),
             static_cast<unsigned>(static_cast<uint8_t>(st.status)), static_cast<unsigned>(st.tag_1),
             static_cast<unsigned>(st.tag_2), static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id));
     }

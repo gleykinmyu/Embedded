@@ -44,6 +44,16 @@ namespace nex {
             [[nodiscard]] constexpr bool isOK() const noexcept { return status == Code::Success; }
         };
 
+        [[nodiscard]] constexpr bool operator==(const Status& a, const Status& b) noexcept
+        {
+            return a.status == b.status && a.tag_1 == b.tag_1 && a.tag_2 == b.tag_2;
+        }
+
+        [[nodiscard]] constexpr bool operator!=(const Status& a, const Status& b) noexcept
+        {
+            return !(a == b);
+        }
+
         /** Ответ с числом (заголовок **0x71**, например после `get` числового атрибута). */
         struct getNumeric {
             constexpr static uint8_t Header = 0x71;

@@ -696,6 +696,27 @@ bool Circle::serialize(TxFrame& tx) const noexcept {
 
 } // namespace cmd
 
+bool EmptyCommand::serialize(TxFrame& tx) const noexcept {
+    tx.length = 0u;
+    return true;
+}
+
+bool EmptyCommand::emplaceIn(void* storage, std::size_t maxBytes, std::size_t maxAlign) const noexcept {
+    (void)storage;
+    (void)maxBytes;
+    (void)maxAlign;
+    return fail(Status::InvalidFields);
+}
+
+void EmptyCommand::destroyIn(void* storage) const noexcept {
+    (void)storage;
+}
+
+const EmptyCommand& kEmptyCommand() noexcept {
+    static const EmptyCommand instance{};
+    return instance;
+}
+
 } // namespace nex
 
 #undef NEX_CMD_PRINT_LIT

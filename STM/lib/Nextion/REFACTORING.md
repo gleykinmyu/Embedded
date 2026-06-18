@@ -3,7 +3,33 @@
 Живой backlog для поэтапного улучшения библиотеки `lib/Nextion`.
 Отмечайте выполненное: `[x]`, в работе: `[~]`, отменено: `[-]`.
 
-**Как идти:** с **глубины кода** (`core/` → `comp/` → `app/`) — см. раздел «Bottom-up порядок» ниже. Фазы 2–4 — после закрытия базового слоя.
+**Как идти:** с **глубины кода** (`core/` → `comp/` → `app/`) — см. «Bottom-up порядок».  
+**Сейчас в приоритете:** Фаза 0 (демо/API) → **NEX-R106** (Session/UART) → очередь → Components → Transparent.
+
+---
+
+## Карта фаз
+
+| Фаза | Фокус | Ключевые ID |
+|------|--------|-------------|
+| **0** | Quick wins, демо, docs | NEX-R0a…R0e |
+| **1** | Session / UART (критично) | **NEX-R106** |
+| **2** | Очередь, timeout, UART policy | NEX-R101…R105, R102b |
+| **3** | Components / attr API | NEX-R210…R217 |
+| **4** | Application architecture | NEX-R201…R206 |
+| **5** | Transparent / raw, IdMap | NEX-R301…R302, R303…R305 |
+| **6** | Тесты, примеры, infra | NEX-R401…R405, R011, R012 |
+| **—** | Закрытые quick wins (история) | NEX-R001…R010, R403 |
+
+```mermaid
+flowchart LR
+    P0[Фаза 0 demo/docs] --> P1[NEX-R106 Session]
+    P1 --> P2[Очередь R101-R105]
+    P1 --> P5[Transparent R301]
+    P3[Components R210] --> P6[Тесты R401]
+    P1 --> P4[IdMap R305]
+    P4 --> P6
+```
 
 ---
 
@@ -12,287 +38,321 @@
 | Слой | Модули | Пункты backlog |
 |------|--------|----------------|
 | **0. Типы и протокол** | `nexTypes.hpp`, `nexProtocol.hpp` | NEX-R002 ✓ |
-| **1. Ошибки и политики** | `app/error/*` | NEX-R102 ✓, NEX-R103 ~ |
-| **2. Session / Gateway** | `nexSession.*`, `nexGateway.*` | NEX-R104, NEX-R101 |
-| **3. Commands / Messages** | `nexCommands.*`, `nexMessages.hpp` | NEX-R403 |
-| **4. SysVar helpers** | `nexSysVars.*` | NEX-R009 ✓ |
-| **5. Components** | `comp/*` | NEX-R204 (friend) |
-| **6. Application / CompIdMap** | `app/*` | NEX-R001…R010, R201… |
-| **7. Examples / tests** | `examples/`, host tests | NEX-R011, NEX-R401 |
+| **1. Session / Gateway** | `nexSession.*`, `nexGateway.*` | **NEX-R106**, R104, R105 |
+| **2. Commands / Messages** | `nexCommands.*`, `nexMessages.hpp` | R403 ✓ |
+| **3. Ошибки** | `app/nexErrors.hpp` | R008, R103 ~ |
+| **4. SysVar helpers** | `nexSysVars.*` | R009 ✓, R216 |
+| **5. Components** | `nexComponents.hpp`, `nexExComponents.hpp`, `nexCompImpl.*` | R210…R217 |
+| **6. Application / SmartApp** | `nexApplication.*`, `nexSmartApp.*`, facades | R101, R201…R206 |
+| **7. IdMap** | `idmap/nexIdMap.*` | R303…R305 |
+| **8. Examples / tests** | `examples/`, host tests | R011, R401, example4/5 |
 
-**Следующие шаги (слой 2):** NEX-R104 (очередь Session), NEX-R105 (timeout), NEX-R103 (ByteStreamPolicy).
-
----
-
-## Модель ошибок (`app/error/nexErrors.hpp`)
-
-Три оси + процедуры (не смешивать «слой» и «объект»).
-
-| Роль | Что это | В коде |
-|------|---------|--------|
-| **Транспортный слой** | ByteStream → Gateway → Session | `ErrorReporter::Stream/Gateway/Session` |
-| **Панель** | Nextion, NIS-ответы | `msg::Status`; `dispatchError` без recovery |
-| **Домен** | `MISC::ObjRegistry` (Page, Component) | `ErrorReporter::Domain` + `MISC::RegStatus` |
-| **Операция** | Сценарий Application | `AppOperation` / `AppStatus` → `tag_1` |
-| **Процедура** | CompIdMap Discover и т.п. | `AppProcedure`; не reporter |
-
-**CompIdMap — не слой.** Режим `Discover` = `AppProcedure::CompIdMapDiscover` при старте: ставит транзакции с маршрутом `Route::kCompIdMapPoll*` (0xFE/0xFE), использует Session/Gateway. Сбой → `pollFail` / `onCompIdMapComplete(false)`; таймаут сессии на 0xFE **не** эскалируется в `AppStatus::SessionTimeout` (NEX-R007). Reporter по-прежнему Session/Gateway/Panel, если нужен разбор UART.
-
-### Матрица путей (фактический код)
-
-| Источник сбоя | Reporter / канал | Operation (`AppStatus`) | Subject |
-|---------------|-------------------|-------------------------|---------|
-| `tryEnqueue` false | Session (+ Command при emplace) | `EnqueueRejected` | `Transaction` / route из `tx` |
-| `Session::begin` / activate | Session (`NotIdle`, `QueueEmpty`, …) | `SessionActivateFailed` | — |
-| `Session::begin` push fail | Session `PushFailed` + Gateway/Command | `GatewayPushFailed` | active `Transaction` |
-| `Session::transmit` fail | Session `TransmitFailed` + Stream/Gateway | `GatewayTransmitFailed` | active `Transaction` |
-| RX tail в `update` | Stream или Gateway | `GatewayReceiveFailed` | active `Transaction` |
-| `Session::checkResponseTimeout` (не 0xFE) | Session `ResponseTimedOut` | `SessionTimeout` | active `Transaction` |
-| timeout (0xFE) | — → CompIdMap | — | `pollFail` |
-| `registerPage` / `registerComponent` | Domain | `Page/ComponentRegisterFailed` | Page / Component |
-| `dispatchResponse` NIS Status | Panel (`msg::Status`) | — | route транзакции |
-| `dispatchEvent` Status | Panel | — | (0,0) глобальный |
-| CompIdMap `pollFail` | — (debug reason) | — | `onCompIdMapComplete(false)` |
-
-`Command::Status` в wire: reporter **Command**, но слой-инициатор — Session или Gateway.
+**Следующие шаги:** NEX-R0a (SlidingText demo) → **NEX-R106** → NEX-R105 + NEX-R101.
 
 ---
 
-## Сводка по модулям
+## Сводка по модулям (актуально)
 
 | Модуль | Файлы | Состояние |
 |--------|-------|-----------|
-| **Application** | `app/nexApplication.*`, `app/error/*`, `nexApplicationAddons.cpp` | Рабочий UART-цикл; ошибки в `AppErrorHandler` |
-| **CompIdMap** (`Application::idMap`) | `app/nexCompIdMap.*` | Процедура Discover при старте; не transport layer (см. модель ошибок) |
-| **Ошибки** | `app/error/nexErrors.hpp`, `app/error/nexAppErrorHandler.*` | Политики очереди; link-down частично; TODO QueueFull, BitError |
-| **Session** | `core/nexSession.*` | Очередь 64×128 B; hardcoded capacity |
-| **Gateway** | `core/nexGateway.*` | RX/TX framer стабильны |
-| **Commands** | `core/nexCommands.*` | Большой NIS-слой; утилита debug TX |
-| **Components** | `comp/*` | Page/Component registry; много `friend` |
-| **Facades** | `app/nexApplicationFacades.*` | ep/fs/audio/sleep/touch; transparent API — заглушки |
-| **Examples** | `examples/example{1,2,3}/` | Нет примера Flash/NXCI; example3 — минимальный |
+| **Application** | `app/nexApplication.*`, `nexApplicationAddons.cpp` | UART-цикл; `enqueue`/`update`/`dispatchResponse`; `_lastError*` |
+| **SmartApp / IdMap** | `app/nexSmartApp.*`, `idmap/nexIdMap.*` | Discover + Flash; `applyFromTable`; не transport layer |
+| **Ошибки** | `app/nexErrors.hpp` | `makeAppError`, `formatStatusMessage`, `printStatusError`; recovery inline в `nexApplication.cpp` |
+| **Session** | `core/nexSession.*` | Очередь 64×128 B; `begin`/`transmit`/`pollTimeout`/`end` |
+| **Gateway** | `core/nexGateway.*` | RX/TX framer; `isTxIdle` |
+| **Commands** | `core/nexCommands.*` | NIS-слой; `NEX_DBG_TRACE_TX` |
+| **Components** | `nexComponents.hpp` + **`nexExComponents.hpp`** | База в `nexCompImpl.hpp`; Ex: Audio, FileStream, MediaComponent, DataFile, DataRecord, FileBrowser… |
+| **Facades** | `nexApplicationFacades.*` | ep/fs/audio/sleep/touch; **`_*_t` — заглушки** (NEX-R301) |
+| **Examples** | `example1…5` | example4 — стенд Session/ошибок; example5 — все листья `nexComponents` (24 виджета) |
+
+**Include:** `nex.hpp` → только `nexComponents.hpp`. ExComponents: `#include "comp/nexExComponents.hpp"` отдельно.
 
 ---
 
-## Фаза 1 — Quick wins (низкий риск, высокая польза)
+## Модель ошибок (`app/nexErrors.hpp`)
 
-- [x] **NEX-R001** — Публичный `Application::idMap` (`CompIdMap`)
-  - **Что:** `CompIdMap idMap`; `loadFromBuffer`, `applyFromTable`, `table()` на `idMap`.
-  - **Файлы:** `nexApplication.hpp`, `nexCompIdMap.*`.
+| Роль | Что это | В коде |
+|------|---------|--------|
+| **Транспорт** | ByteStream → Gateway → Session | `AppErrorReporter::Stream/Gateway/Session` |
+| **Панель** | NIS-ответы | `msg::Status`; `Application::dispatchError` → `onError` |
+| **Домен** | Page/Component registry | `AppErrorReporter::Register` + `MISC::RegStatus` |
+| **Процедура** | IdMap Discover | `SmartApp`; маршрут `Route::kCompIdMapPoll*` (0xFE/0xFE) |
+
+**IdMap Discover — не transport layer.** Таймаут на 0xFE/0xFE не дублирует `SessionTimeout` в UI (NEX-R007 ✓). `pollFail` → `onCompIdMapComplete(false)`.
+
+### Матрица путей (фактический код)
+
+| Источник сбоя | Reporter | Subject |
+|---------------|----------|---------|
+| `tryEnqueue` false (не QueueFull) | Session | `Transaction` route |
+| `tryEnqueue` false (QueueFull) | Session | spin в `enqueue()` → timeout → `QueueFull` |
+| `Session::begin` push fail | Session `PushFailed` | serialize fail → **pop head** (битая команда, retry бессмысленен) |
+| `Session::transmit` fail | Session `TransmitFailed` | active tx |
+| `pollTimeout` | Session `ResponseTimedOut` | active tx |
+| RX / Gateway | Gateway / Stream | `(0,0)` или active tx |
+| `dispatchResponse` NIS Status | Panel | route транзакции |
+| `dispatchEvent` Status | Panel | **orphan `(0,0)`** |
+| `registerPage` / `registerComponent` | Register | Page / Component |
+
+---
+
+## Аудит 2026-06 — известные проблемы
+
+| Severity | ID | Суть |
+|----------|-----|------|
+| **Critical** | R106 | Status routing: byte без pid/cid на проводе; **маски групп cmd/attr** + plausibility; orphan → `(0,0)` |
+| **High** | R106d | `pollTimeout`: только `Always` vs «всё остальное»; нужны 4 режима `BkCmd` |
+| **High** | R301 | `AwaitingTransparentTx` / `AwaitingRawDataRx` без timeout и `dispatchResponse` → **зависание очереди** |
+| **High** | R210 | `Multiline::setVAlign` → `ycen` на SlidingText (type 62) → **0x1A** в example5 |
+| **Medium** | R305 | `idmap::Table::upsert` принимает `panel_id=0xFF`, `applyFromTable` пропускает |
+| **Medium** | R102b | `pumpUntilIdle()` выходит по stall-timeout, очередь может быть не пуста |
+| **Medium** | R217 | `attr::Num` / `SysVar`: mirror до успешного enqueue |
+| **Low** | R0b | `kAttrId{"id"}` в `nexSmartApp.cpp` дублирует `nexAttrLexemes.hpp` |
+
+---
+
+## Фаза 0 — Quick wins (демо, docs, мелочи)
+
+- [x] **NEX-R0a** — `demoSlidingText` без `setVAlign` / `ycen`
+  - **Файлы:** `examples/example5/demo_controls.hpp`, `SlidingText::setVAlign = delete`
   - **Сложность:** S
 
-### API и CompIdMap
-
-- [ ] **NEX-R001b** — Пример Flash-режима (см. NEX-R011)
-
-- [x] **NEX-R002** — Единый источник констант спец-маршрутов
-  - **Что:** `enum class ReservedRoute` или `namespace Route` в `core/nexTypes.hpp`: SysVar `0xFF/0xFF`, Cid `0xFE/0xFE`.
-  - **Зачем:** сейчас дубли `kSysVarRoute*`, `kCidRoute*`, `Cid::kRoute*`.
-  - **Файлы:** `nexTypes.hpp`, `nexApplication.hpp`, `nexCompId.hpp`, call sites.
+- [x] **NEX-R0b** — Discover: `kAttrId` → `attr::literal(attr::Id::Id)`
+  - **Файлы:** `app/nexSmartApp.cpp`, include `nexAttrLexemes.hpp`
   - **Сложность:** S
 
-- [x] **NEX-R003** — Отключить IdMap debug по умолчанию
-  - **Что:** `kCompIdMapPollDebug` только при `-DNEX_IDMAP_DEBUG` (см. `NEX_DBG_IDMAP` в `nexDebug.hpp`).
-  - **Файлы:** `nexCompIdMap.cpp`.
+- [-] **NEX-R0c** — `dispatchError`: не вызывать `onError` для `Success` — **отменено** (`bkcmd=Always` только для отладки, шум OK)
+
+- [x] **NEX-R0d** — Синхронизация этого файла с реальной структурой кода
   - **Сложность:** S
 
-- [x] **NEX-R004** — Убрать `static` из `CompIdMap::pollTick` (SwitchPage)
-  - **Что:** `switch_page_last_log_ms` / `switch_page_last_sendme_ms` в `CompIdMapPoll`.
-  - **Файлы:** `nexCompIdMap.hpp`, `nexCompIdMap.cpp`.
+- [x] **NEX-R0e** — README example5: SlidingText (`txt`/`val_y`, не `path`); bkcmd static vs live
+  - **Файлы:** `examples/example5/README.md`
   - **Сложность:** S
 
-### Ошибки и уведомления
+---
 
-- [x] **NEX-R005** — удалён `showErrorBox` (используйте `dispatchError` + `msgBox.show` / `showError`)
-  - **Что:** deprecated-метод не должен дублировать запись `_lastError*` в обход `dispatchError`.
-  - **Файлы:** `nexApplication.hpp` (inline → cpp или делегирование).
-  - **Сложность:** S
+## Фаза 1 — Session / UART (критично, NEX-R106)
 
-- [x] **NEX-R006** — `clearErrors()` сбрасывает `_lastError*`
-  - **Что:** добавить сброс `_lastError`, `_lastErrorPage`, `_lastErrorComp` (сейчас только `_lastStatus` + subsystems).
-  - **Файлы:** `nexAppErrorHandler.*`.
-  - **Сложность:** S
+**Зависимости:** корректная семантика `bkcmd`, маршрутизация panel-status, fire-and-forget vs `Always`.
 
-- [x] **NEX-R007** — Не дублировать `onError` при CompIdMap SessionTimeout
-  - **Что:** если маршрут `0xFE/0xFE` и `pollFail` уже вызван — не слать второй `AppError SessionTimeout` (или сделать опциональным).
-  - **Файлы:** `nexApplication.cpp` (`checkSessionTimeout`).
-  - **Сложность:** S
+- [-] **NEX-R106a** — Порядок в `update()`: `receive()` **до** `pollTimeout` — **отменено**
+  - Ответ на команду **не приходит в том же тике**, что завершение TX; перестановка не меняет поведение
+  - **Файлы:** `app/nexApplication.cpp`
 
-- [ ] **NEX-R008** — Вынести форматирование ошибок из заголовка
-  - **Что:** `formatStatusMessage`, `printStatusError`, `applicationStatusCstr` → `app/nexErrorFormat.cpp`.
-  - **Зачем:** уменьшить `nexApplication.hpp`, убрать `<cstdio>` из публичного заголовка.
-  - **Файлы:** новый `nexErrorFormat.{hpp,cpp}`, `nexApplication.hpp`, `library.json` srcFilter.
+- [-] **NEX-R106b** — Ослабить gate `txIdle` в `dispatchResponse` — **отменено**
+  - Панель не шлёт status по текущей serial-команде, пока кадр не принят целиком; gate корректен
+  - Фоновые кадры — через `dispatchEvent`, не active session
+
+- [-] **NEX-R106c** — `PushFailed`: не `pop()` head — **отменено**
+  - `PushFailed` ≈ `SerializeFailed` / битая команда; повтор бессмысленен, pop head — правильно
+
+- [ ] **NEX-R106** — Wire-маска `Transaction::awaiting_status` (`AwaitingStatus`, bit = wire code 0x00…0x24)
+  - PR-1 ✓ skeleton: `SendCommand`, `nexStatusMask.hpp`, `statusCorrelatesWithTransaction`, `sessionWaitMask` / `statusCorrelateMask`
+  - PR-2: `Command::defaultAwaitingStatus()`, пресеты, example6 без `isDataRecordFileNoise`
+  - correlated → route tx; иначе → `(0,0)`; не завершать session чужим кодом
+  - **Файлы:** `core/nexStatusMask.hpp`, `app/nexApplication.cpp`, `core/nexSession.hpp`
   - **Сложность:** M
 
-### Дублирование кода
+- [ ] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → orphan
+  - **Файлы:** `core/nexSession.hpp`, `core/nexSession.cpp`
+  - **Сложность:** S (частично в PR-1)
 
-- [x] **NEX-R009** — Общий helper `enqueueSysVarNumericAssign`
-  - **Что:** одна функция вместо 3 копий в `nexApplicationAddons.cpp`, `nexApplicationFacades.cpp`, `nexCanvas.cpp`.
-  - **Куда:** `app/nexSysVars.cpp` или `app/nexEnqueueHelpers.cpp` (internal header).
+- [ ] **NEX-R106e** — NoAwaiting через `awaiting_status = kAwaitingNone` (не отдельный `State`)
+  - default bulk assign → `kAwaitingNone`; `bkcmd` Off/OnFailure обнуляет маску в session
+  - **Файлы:** `comp/nexAttributes.hpp`, attr enqueue defaults
   - **Сложность:** S
 
-- [x] **NEX-R010** — Убрать debug-логи IdMap из `nexApplication.cpp`
-  - **Что:** `std::printf` в `checkSessionTimeout` / `dispatchResponse` за `#ifdef NEX_CID_DEBUG` или удалить (логи уже в `nexCompId.cpp`).
-  - **Файлы:** `nexApplication.cpp`.
+- [ ] **NEX-R106f** — Регрессия example4: OnFailure + invalid attr → `(page, comp)` через last-tx + маска, не orphan `(0,0)`
+  - **Файлы:** `examples/example4/app.hpp`
   - **Сложность:** S
-
-### Примеры и документация
-
-- [ ] **NEX-R011** — Пример Flash-режима (NXCI)
-  - **Что:** `example4` или расширение `example2`: Discover → `cidTableEncode` → «EEPROM» буфер → reboot → `loadFromBuffer`.
-  - **Файлы:** `examples/`, `platformio.ini`.
-  - **Сложность:** M
-
-- [ ] **NEX-R012** — Краткий README библиотеки
-  - **Что:** режимы Cid, цикл `update`, обработка ошибок, минимальный sketch.
-  - **Файлы:** `lib/Nextion/README.md`.
-  - **Сложность:** S
+  - **Зависит от:** NEX-R106
 
 ---
 
 ## Фаза 2 — Надёжность очереди и UART
 
-### QueueFull и retry (существующие TODO)
-
 - [ ] **NEX-R101** — Буфер отложенных транзакций при `QueueFull`
-  - **Что:** не терять `Transaction` при `tryEnqueue` false; повтор после `sessionEnd` / освобождения слота.
-  - **TODO:** `nexApplication.hpp:50`, `nexAppErrorHandler.cpp` (`handleEnqueueFailure`).
-  - **Файлы:** `nexApplication.cpp`, `nexAppErrorHandler.*`, возможно `Session`.
+  - **Что:** не терять `Transaction`; повтор после освобождения слота
+  - **Файлы:** `app/nexApplication.cpp`, возможно `Session`
   - **Сложность:** L
-  - **Зависит от:** —
+  - **Зависит от:** NEX-R106
 
-- [x] **NEX-R102** — Лимит повторов `ResetActive` на голову очереди
-  - **Что:** счётчик на active tx; после N неудач — `DropHead` или новый `Application::Status`.
-  - **TODO:** `nexAppErrorHandler.cpp` (`applyQueueRecovery`), `nexErrors.hpp`.
+- [x] **NEX-R102** — Лимит повторов на голову очереди (исторический пункт; логика в `enqueue` spin)
+  - **Файлы:** `app/nexApplication.cpp`
   - **Сложность:** M
-  - **Зависит от:** —
+
+- [ ] **NEX-R102b** — `pumpUntilIdle()` → `bool` «реально idle» или явный timeout-результат
+  - **Файлы:** `app/nexApplication.hpp`, `nexApplication.cpp`
+  - **Сложность:** S
 
 - [~] **NEX-R103** — Политики UART (`ByteStreamPolicy`)
-  - **Что:**
-    - `Disconnected` → режим link-down (`Application::isLinkDown()`, halt TX/enqueue) — **частично в `AppErrorHandler`**.
-    - `BitError` / `FrameError` → flush RX, optional re-init baud, retry с лимитом — **ещё TODO**.
-  - **TODO:** `nexErrors.hpp:142–149`, `nexAppErrorHandler.cpp` (`handleGatewayStreamFailure`).
-  - **Файлы:** `nexErrors.hpp`, `nexAppErrorHandler.*`, `nexApplication.hpp`.
+  - **Что:** `Disconnected` → link-down; `BitError`/`FrameError` → flush RX, retry с лимитом
+  - **Файлы:** `app/nexErrors.hpp`, `app/nexApplication.cpp`
   - **Сложность:** L
 
-- [ ] **NEX-R104** — Настраиваемый размер очереди Session
-  - **Что:** `TransactionQueue::kCapacity` / `kMaxObjectSize` — template param или constexpr в `Application`.
-  - **Зачем:** embedded-проекты с разным RAM budget.
-  - **Файлы:** `nexSession.hpp`, `nexSession.cpp`.
+- [ ] **NEX-R104** — Настраиваемый размер очереди Session (`kCapacity`, `kMaxObjectSize`)
+  - **Файлы:** `core/nexSession.hpp`
   - **Сложность:** M
 
 - [ ] **NEX-R105** — Настраиваемый `kDefaultGetResponseTimeoutMs`
-  - **Что:** параметр конструктора `Application` или setter.
-  - **Файлы:** `nexApplication.hpp`, `nexApplication.cpp`.
+  - **Файлы:** `app/nexApplication.hpp`, `nexApplication.cpp`
   - **Сложность:** S
 
 ---
 
-## Фаза 3 — Связность и архитектура Application
+## Фаза 3 — Components / attr API
 
-### Развязка Cid ↔ Application
+См. также `comp/ATTRIBUTE_REFACTORING.md`.
 
-- [ ] **NEX-R201** — `CidHost` вместо `friend` + прямого доступа к `_pageCount`, `_session`
-  - **Что:** тонкий фасад с методами `pageCount()`, `currentPageId()`, `sessionIdle()`, `hasQueued()`, `enqueue()`, `switchPage()`, `requestCurrentPage()`.
-  - **Файлы:** `nexCompId.*`, `nexApplication.hpp`.
+### ExComponents (структура)
+
+- [x] **NEX-R209a** — Перенос `DataFile`, `DataRecord`, `MediaComponent` в `nexExComponents.hpp`
+- [x] **NEX-R209b** — example5: только `nexComponents` (24 виджета); DataRecord убран из demo
+
+### API и NIS
+
+- [ ] **NEX-R210** — `setVAlign` только у типов с NIS `ycen` (не на `Multiline` базе)
+  - **Файлы:** `comp/nexCompImpl.hpp`, `nexComponents.hpp`
   - **Сложность:** M
 
-- [x] **NEX-R202** — Выделить `AppErrorHandler`
-  - **Что:** `notifyAppError`, `finalizeAppFailure`, `applyQueueRecovery`, `_lastStatus`, `_lastError*`, `handle*Failure`; виртуальные `*FailurePolicy` остаются на `Application`.
-  - **Файлы:** `app/error/*` (заменяет `nexApplicationErrors.cpp`).
+- [ ] **NEX-R211** — `SlidingText`: опционально `ch`, `maxval_y` по NIS type 62
+  - **Сложность:** S
+
+- [ ] **NEX-R212** — `TextSelect::onResponse(Txt)` — восстановить или удалить мёртвый код
+  - **Файлы:** `comp/nexComponents.hpp`
+  - **Сложность:** S
+
+- [ ] **NEX-R213** — `onResponse` chain: Text/SlidingText/ScrollText → `Printable`, не `TouchArea`
+  - **Сложность:** S
+
+- [ ] **NEX-R214** — Waveform `add`: политика Idle vs `bkcmd=OnFailure` (документ + example5 live)
+  - **Файлы:** `comp/resources/waveform.hpp`, example5
+  - **Сложность:** S
+
+- [ ] **NEX-R215** — Waveform `addt`: буфер TX + NEX-R301, иначе пометить experimental / delete
+  - **Файлы:** `comp/resources/waveform.hpp`
+  - **Сложность:** M / XL
+
+- [ ] **NEX-R216** — Общий `nexWireTypes.hpp` для `nexSysVars` + `nexAttributes`
   - **Сложность:** M
 
-- [x] **NEX-R203** — Единый `AppFailure` + `AppErrorHandler::handle` + `queuePolicy`
-  - **Что:** `AppFailure` + `handle()`, `defaultQueuePolicy(ErrorDetail)`, builders в `app/error/nexAppErrorHandler.cpp`; `queuePolicy(const AppFailure&)`.
-  - **Файлы:** `app/error/*`, `nexApplication.*`.
+- [ ] **NEX-R217** — Mirror attr/SysVar после успешного enqueue (или rollback)
+  - **Файлы:** `comp/nexAttributes.hpp`, `app/nexSysVars.hpp`
+  - **Сложность:** M
 
-- [x] **NEX-R203a** — `AppFailure`: recovery/clear внутри handler (шаг A)
-  - **Что:** из struct убраны `FailureRecovery` и флаги `clear_*`; `recoveryModeFor(operation)` + `clearLayerErrors(operation)` в `nexAppErrorHandler.cpp`.
-  - **Далее (шаг B):** `handleTransport` / `notifyApp`, `queuePolicy(ErrorDetail)`.
+- [ ] **NEX-R218** — ExComponents: проверить NIS `dis`/`bco2`/`pco2` на `DataFile` (TODO в коде)
+  - **Файлы:** `comp/nexExComponents.hpp`
+  - **Сложность:** S
 
-- [x] **NEX-R203b** — `Session`: `begin` / `transmit` / `end`, fault в `update`
-  - **Что:** UART-шаги в `Session` (`Gateway&`); `Session::Status` + `hasFaultStatus()`; `Application::processSessionFaults()` / `finishSession()`; коды `PushFailed`, `TransmitFailed`, `ResponseTimedOut`.
-  - **Файлы:** `core/nexSession.*`, `app/nexApplication.*`.
+---
+
+## Фаза 4 — Application architecture
+
+- [ ] **NEX-R201** — `SmartAppHost` / narrow API вместо `friend` + `_session`
+  - **Файлы:** `app/nexSmartApp.*`, `app/nexApplication.hpp`
+  - **Сложность:** M
 
 - [ ] **NEX-R204** — Свести `friend class` к минимуму
-  - **Аудит:** `Application` ↔ `Cid`, `Page`, `MsgBox`; `Page` ↔ `Application`, `Cid`; facades ↔ `Application`.
-  - **Цель:** публичные narrow API вместо friend там, где возможно.
+  - **Аудит:** `Application` ↔ `SmartApp`, `Page`, `MsgBox`
   - **Сложность:** L
 
-### dispatch и маршрутизация
-
-- [ ] **NEX-R205** — Таблица маршрутов вместо if-цепочек в `dispatchResponse`
-  - **Что:** helper `isCidRoute(tx)`, `isSysVarRoute(tx)` + единый switch по `Transaction::State`.
-  - **Файлы:** `nexApplication.cpp`.
+- [ ] **NEX-R205** — Таблица маршрутов в `dispatchResponse`
+  - **Файлы:** `app/nexApplication.cpp`
   - **Сложность:** M
 
-- [ ] **NEX-R206** — `lastStatus()` для NIS-ошибок
-  - **Что:** при `dispatchError` с панельным `msg::Status` — опционально маппить в `Application::Status` или документировать, что `lastStatus` только для AppError.
-  - **Сложность:** S (док) / M (код)
+- [ ] **NEX-R206** — Документировать `lastError()` vs NIS Status vs AppError
+  - **Сложность:** S
+
+- [ ] **NEX-R008** — `formatStatusMessage` / `printStatusError` → `.cpp`
+  - **Файлы:** новый `app/nexErrorFormat.cpp`, `library.json`
+  - **Сложность:** M
+
+- [ ] **NEX-R307** — Optional: split `NexRuntime` / `NexApp`
+  - **Сложность:** XL
+
+### Исторические (логика слита в Application + nexErrors)
+
+- [x] **NEX-R202** — ~~AppErrorHandler~~ → inline в `nexApplication.cpp` + `nexErrors.hpp`
+- [x] **NEX-R203** — ~~AppFailure struct~~ → `makeAppError` + `dispatchError`
+- [x] **NEX-R203b** — Session `begin`/`transmit`/`end` в `nexSession.*` ✓
 
 ---
 
-## Фаза 4 — Незавершённые фичи и крупные дыры
+## Фаза 5 — Transparent / raw и IdMap
 
-### Transparent / raw data (критичный пробел)
+### Transparent (критично при использовании `_t` API)
 
-- [ ] **NEX-R301** — Реализовать `AwaitingTransparentTx` / `AwaitingRawDataRx` в `dispatchResponse`
-  - **Что:** сейчас состояния объявлены и используются в `AppEeprom::write_t/read_t`, `AppFileSystem::file_*_t`, но **нет обработки** в `Application::dispatchResponse` — только `AwaitingNumericGet`, `AwaitingStringGet`, `AwaitingStatus`.
-  - **Нужно:** интеграция с `Gateway::writeTransparentRaw`, `evTransparent`, приём raw bytes, колбэки в facades.
-  - **Файлы:** `nexApplication.cpp`, `nexGateway.*`, `nexApplicationFacades.*`.
+- [ ] **NEX-R301** — `AwaitingTransparentTx` / `AwaitingRawDataRx` в `dispatchResponse` + timeout
+  - **Файлы:** `app/nexApplication.cpp`, `core/nexGateway.*`, `nexApplicationFacades.*`
   - **Сложность:** XL
-  - **Приоритет:** высокий, если используются ep/fs `_t` API
+  - **Блокирует:** `ep.write_t`, `fs.file_*_t`, `waveform.addt`
 
-- [ ] **NEX-R302** — Параметры `buffer` в `write_t` / `read_t` не используются
-  - **Что:** `(void)buffer` в facades — заглушки; связано с NEX-R301.
+- [ ] **NEX-R302** — Использовать `buffer` в `write_t` / `read_t`
   - **Сложность:** XL (вместе с R301)
 
-### Cid — производительность и UX
+**До R301:** не вызывать `*_t` / `addt` из prod; в заголовках — `@experimental`.
 
-- [ ] **NEX-R303** — Индекс `(page_id, name)` для `applyFromTable` / `CidTable::find`
-  - **Что:** при `count > ~32` линейный поиск по всем страницам дорогой.
+### IdMap / SmartApp
+
+- [ ] **NEX-R303** — Индекс `(page_id, compiled_id)` в `idmap::Table::find`
   - **Сложность:** M
 
-- [ ] **NEX-R304** — Прогресс Discover для UI
-  - **Что:** `Cid::pollProgress()` — `(done, total)` слотов; использовать в `onCidPollComplete` / экране загрузки.
+- [ ] **NEX-R304** — Прогресс Discover `(done, total)` для UI boot
+  - **Файлы:** `app/nexSmartApp.*`
   - **Сложность:** M
 
-- [ ] **NEX-R305** — Валидация `panel_id` после опроса
-  - **Что:** отклонять `0xFF`, `kPageCompId`, дубликаты на одной странице с понятным `pollFail`.
+- [ ] **NEX-R305** — Валидация `panel_id`: отклонять `0`, `0xFF`, `kPageCompId`, дубликаты на странице
+  - **Файлы:** `idmap/nexIdMap.cpp`, `app/nexSmartApp.cpp`
   - **Сложность:** S
 
-### Application — размер класса
-
-- [x] **NEX-R306** — Удалить deprecated `showErrorBox`
-  - **После:** миграция примеров на `msgBox.showError`.
+- [ ] **NEX-R305b** — `idMapLoadFromBuffer()`: сброс `_phase` Discover
   - **Сложность:** S
 
-- [ ] **NEX-R307** — Optional: разделить `NexRuntime` / `NexApp`
-  - **Что:** UART/session/gateway vs pages/UI/facades — только при существенном росте кодовой базы.
-  - **Сложность:** XL
+- [ ] **NEX-R305c** — Discover: обход `ObjRegistry::next()` вместо scan id `1…255`
+  - **Сложность:** M
+
+- [ ] **NEX-R011** — Пример Flash: Discover → encode → reboot → `idMapLoadFromBuffer`
+  - **Файлы:** `examples/`, `platformio.ini`
+  - **Сложность:** M
 
 ---
 
-## Фаза 5 — Качество, тесты, инфраструктура
+## Фаза 6 — Тесты и инфраструктура
 
-- [ ] **NEX-R401** — Host unit-тесты (PlatformIO native / Catch2)
-  - **Кандидаты:** `CidTable` encode/decode, `defaultQueuePolicy`, `RxFramer`, `TranslateMessage`, `Session` queue.
+- [ ] **NEX-R401** — Host unit-тесты (PlatformIO native)
+  - **Кандидаты:** `idmap::Table` encode/decode, `RxFramer`, `TranslateMessage`, `Session` queue
   - **Сложность:** L
 
-- [ ] **NEX-R402** — Mock `IByteStream` для тестов Application
+- [ ] **NEX-R402** — Mock `IByteStream`
+  - **Зависит от:** R401
   - **Сложность:** M
-  - **Зависит от:** NEX-R401
 
-- [x] **NEX-R403** — Единый макрос/флаг debug: `NEX_DEBUG`, `NEX_CID_DEBUG`, `NEX_TRACE_TX`
-  - **Что:** `core/nexDebug.hpp` — `NEX_DBG`, `NEX_DBG_IDMAP`, `NEX_DBG_TRACE_TX`; `-DNEX_DEBUG` включает IdMap + TX trace.
-  - **Файлы:** `nexCommands.cpp`, `nexCompIdMap.cpp`, `nexApplication.hpp`, примеры, `main*.cpp`.
-  - **Сложность:** S
+- [x] **NEX-R403** — `NEX_DEBUG`, `NEX_IDMAP_DEBUG`, `NEX_TRACE_TX` в `nexDebug.hpp` ✓
 
 - [ ] **NEX-R404** — Проверка `library.json` srcFilter после новых `.cpp`
   - **Сложность:** S
 
-- [ ] **NEX-R405** — Согласовать стиль комментариев (RU/EN) в заголовках модулей
+- [ ] **NEX-R405** — Стиль комментариев RU/EN в заголовках
   - **Сложность:** S (косметика)
+
+- [ ] **NEX-R012** — README библиотеки (`lib/Nextion/README.md`)
+  - **Сложность:** S
+
+---
+
+## Закрытые пункты (история, Фаза «legacy quick wins»)
+
+- [x] **NEX-R001** — IdMap: `SmartApp` + `idmap::Table` (`loadFromBuffer`, `applyFromTable`)
+- [ ] **NEX-R001b** — Пример Flash (→ NEX-R011)
+- [x] **NEX-R002** — `namespace Route` в `nexTypes.hpp`
+- [x] **NEX-R003** — IdMap debug только при `NEX_IDMAP_DEBUG`
+- [x] **NEX-R004** — Убрать static из poll state (→ поля в SmartApp)
+- [x] **NEX-R005** / **NEX-R306** — удалён `showErrorBox`
+- [x] **NEX-R006** — `clearErrors()` сбрасывает `_lastError*`
+- [x] **NEX-R007** — Нет двойного `onError` на Discover timeout 0xFE
+- [x] **NEX-R009** — `enqueueSysVarNumericAssign` в `nexSysVars.cpp`
+- [x] **NEX-R010** — Debug IdMap убран из `nexApplication.cpp`
 
 ---
 
@@ -302,19 +362,21 @@
 |---------|-----------------|
 | Не вызывать `setId()` в `onPollResponse` | swap в `_registry` ломает tag=slot |
 | Страницы `0..N-1` подряд для Discover | упрощает машину опроса |
-| `QueuePolicy::NotifyOptional` + `notifyOptional()` | шум NotIdle/QueueEmpty в debug |
 | `msg::Status` + `AppError` в одном `onError` | единая точка UI |
-| `friend` для регистрации Page/Component | ctor регистрирует страницу до return |
+| `friend` для регистрации Page/Component | ctor регистрирует до return |
+| example5 static demo: `bkcmd=Always`; live: `bkcmd=OnFailure` | attr-ошибки vs streaming `add` |
+| `nexComponents` vs `nexExComponents` | example5 покрывает только базовые листья |
 
 ---
 
-## Рекомендуемый порядок первых 5 PR (bottom-up)
+## Рекомендуемый порядок PR
 
-1. ~~**NEX-R002** + **NEX-R009**~~ — `Route` в `nexTypes`, helper в `nexSysVars` ✓  
-2. ~~**NEX-R006** + **NEX-R102**~~ — `clearErrors`, retry-лимит ✓  
-3. **NEX-R104** + **NEX-R105** — настраиваемая очередь и timeout Session  
-4. **NEX-R103** — ByteStreamPolicy / link-down  
-5. ~~**NEX-R003** + **NEX-R004** + **NEX-R005** + **NEX-R007** + **NEX-R010**~~ — CompIdMap / ошибки quick wins ✓
+1. **PR-1 (Фаза 0):** NEX-R0a + R0b + R0c + R0e  
+2. **PR-2 (Фаза 1):** NEX-R106 (masks) + R106d + R106e (+ R106f в example4)  
+3. **PR-3 (Фаза 3):** NEX-R210 (Multiline / VAlign)  
+4. **PR-4 (Фаза 2):** NEX-R105 + R101 + R102b  
+5. **PR-5 (Фаза 5):** NEX-R305 + NEX-R011 (Flash example)  
+6. **PR-6 (отдельная ветка):** NEX-R301 Transparent (XL)
 
 ---
 
@@ -322,7 +384,10 @@
 
 | Дата | ID | Статус | Комментарий |
 |------|-----|--------|-------------|
-| 2026-05-27 | NEX-R403 | done | nexDebug.hpp, NEX_DBG / NEX_DBG_IDMAP / NEX_DBG_TRACE_TX |
-| 2026-05-27 | NEX-R003…R010, R102 | done | clearErrors, retry limit, IdMap poll fixes |
-| 2026-05-27 | rename | done | `Cid` → `CompIdMap`, `Application::idMap`, `nexCompIdMap.*` |
-| 2026-05-27 | — | создан | Первичный аудит `lib/Nextion` (34 файла) |
+| 2026-06-01 | R0d, R209 | done | Аудит кода; REFACTORING sync; ExComponents move; example5 без DataRecord |
+| 2026-06-01 | R106a–c | cancelled | RX order / txIdle / PushFailed pop — не баги после разбора протокола |
+| 2026-06-01 | R106 | planned | Status masks + bkcmd modes + NoAwaiting — example6/example5 |
+| 2026-05-27 | NEX-R403 | done | nexDebug.hpp, NEX_DBG / NEX_IDMAP_DEBUG / NEX_TRACE_TX |
+| 2026-05-27 | NEX-R003…R010, R102 | done | clearErrors, retry, IdMap poll fixes |
+| 2026-05-27 | rename | done | IdMap → `idmap/nexIdMap.*`, Discover → `SmartApp` |
+| 2026-05-27 | — | создан | Первичный аудит `lib/Nextion` |

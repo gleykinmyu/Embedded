@@ -1,4 +1,5 @@
 #include "nexApplication.hpp"
+#include "../core/nexStatusMask.hpp"
 
 #include <variant>
 
@@ -27,6 +28,9 @@ Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockM
     , _clockMsFn(clockMs)
 {
     NEX_ASSERT(clockMs != nullptr);
+#if defined(NEX_LOG_TICKS)
+    detail::setNexLogTickFn(clockMs);
+#endif
 }
 
 void Application::onTimeout(const Transaction& active) noexcept {
@@ -59,7 +63,7 @@ void Application::registerPage(Page& page) noexcept {
 
 void Application::enqueue(Transaction tx) noexcept {
     constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-    uint32_t stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+    uint32_t stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
 
     for (;;) {
         if (_session.tryEnqueue(tx))
@@ -74,9 +78,9 @@ void Application::enqueue(Transaction tx) noexcept {
         const std::size_t queued_before = _session.queuedCount();
         update();
         if (_session.queuedCount() < queued_before || !_session.isIdle())
-            stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+            stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
 
-        if ((clockMs() - stall_deadline) >= kMsHalfModulus)
+        if ((nowMs() - stall_deadline) >= kMsHalfModulus)
             break;
     }
 
@@ -85,26 +89,26 @@ void Application::enqueue(Transaction tx) noexcept {
 
 void Application::pumpUntilIdle() noexcept {
     constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-    uint32_t stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
+    uint32_t stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
 
     while (!_session.isIdle() || _session.hasQueued()) {
         const std::size_t queued_before = _session.queuedCount();
         update();
         if (_session.queuedCount() < queued_before || !_session.isIdle())
-            stall_deadline = clockMs() + kDefaultGetResponseTimeoutMs;
-        if ((clockMs() - stall_deadline) >= kMsHalfModulus)
+            stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
+        if ((nowMs() - stall_deadline) >= kMsHalfModulus)
             break;
     }
 }
 
 void Application::update() noexcept {
-    const uint32_t now_ms = clockMs();
+    const uint32_t now_ms = nowMs();
 
-    if (!_session.begin(_gateway)) {
-        if (_session.getStatus() == Session::Status::PushFailed) {
-            abortSessionFault();
-            _session.end(false);
-        }
+    if (_session.begin(_gateway)) {
+        onTxSerialized(_gateway.lastSerializedPayloadBytes(), _session.active());
+    } else if (_session.getStatus() == Session::Status::PushFailed) {
+        abortSessionFault();
+        _session.end(false);
     }
 
     if (!_session.transmit(_gateway)) {
@@ -136,16 +140,8 @@ void Application::update() noexcept {
         _lastError = msg::Status{};
 }
 
-namespace {
-
-bool statusSame(const msg::Status& a, const msg::Status& b) noexcept {
-    return a.status == b.status && a.tag_1 == b.tag_1 && a.tag_2 == b.tag_2;
-}
-
-} // namespace
-
 void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
-    if (_lastError.status != msg::Status::Code::Success && statusSame(status, _lastError)
+    if (_lastError.status != msg::Status::Code::Success && status == _lastError
         && page_id == _lastErrorPage && comp_id == _lastErrorComp)
         return;
 
@@ -165,9 +161,13 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
 
     const Transaction& active = _session.active();
 
-    switch (active.state) {
-    case Transaction::State::AwaitingNumericGet: {
+    switch (active.kind) {
+    case Transaction::Kind::GetNumeric: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
+            if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+                dispatchError(*st, 0u, 0u);
+                return true;
+            }
             dispatchError(*st, active.page_id, active.comp_id);
             _session.end(false);
             return true;
@@ -184,8 +184,12 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         return false;
     }
 
-    case Transaction::State::AwaitingStringGet: {
+    case Transaction::Kind::GetString: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
+            if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+                dispatchError(*st, 0u, 0u);
+                return true;
+            }
             dispatchError(*st, active.page_id, active.comp_id);
             _session.end(false);
             return true;
@@ -199,10 +203,15 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         return false;
     }
 
-    case Transaction::State::AwaitingStatus: {
+    case Transaction::Kind::Command: {
         const auto* const st = std::get_if<msg::Status>(&m);
         if (st == nullptr)
             return false;
+
+        if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+            dispatchError(*st, 0u, 0u);
+            return true;
+        }
 
         dispatchError(*st, active.page_id, active.comp_id);
         if (!st->isOK()) {
@@ -213,7 +222,6 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         return true;
     }
 
-    case Transaction::State::Idle:
     default:
         return false;
     }

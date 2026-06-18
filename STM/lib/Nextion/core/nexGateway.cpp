@@ -304,6 +304,7 @@ bool Gateway::pushCommand(const Command& cmd) {
         return false;
     }
 
+    _last_serialized_payload = _txFramer.frame.length;
     clearError();
     return true;
 }

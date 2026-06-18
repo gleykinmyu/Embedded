@@ -63,7 +63,6 @@ private:
     void discoverOnPageChanged(uint8_t page_id) noexcept;
 
     [[nodiscard]] bool discoverCanProbe() const noexcept;
-    [[nodiscard]] static uint8_t discoverPageIdForIndex(uint8_t page_index) noexcept;
     [[nodiscard]] uint8_t discoverComponentCount(uint8_t page_index) noexcept;
     [[nodiscard]] bool discoverHasComponent(uint8_t page_index, uint8_t compiled_id) noexcept;
 

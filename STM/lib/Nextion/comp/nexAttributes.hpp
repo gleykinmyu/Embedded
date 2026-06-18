@@ -180,9 +180,10 @@ protected:
     void pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept;
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
-    void enqueueTransaction(const Command& cmd,
-        Transaction::State state = Transaction::State::AwaitingStatus) const noexcept {
-        _parent.page.app.enqueue(Transaction{cmd, _parent.page.ID, _parent.id(), tag(), state});
+    void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
+        AwaitingStatus awaiting_status = kAwaitingAllPanel) const noexcept {
+        _parent.page.app.enqueue(
+            Transaction{cmd, _parent.page.ID, _parent.id(), tag(), kind, awaiting_status});
     }
 };
 
@@ -215,7 +216,7 @@ public:
 
     void get() noexcept {
         const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
+        enqueueTransaction(cmd::Get::numeric(target), Transaction::Kind::GetNumeric);
     }
 
     Num(const Num&) = delete;
@@ -248,7 +249,7 @@ public:
 
     void get() noexcept {
         const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::numeric(target), Transaction::State::AwaitingNumericGet);
+        enqueueTransaction(cmd::Get::numeric(target), Transaction::Kind::GetNumeric);
     }
 
     NumRO(const NumRO&) = delete;
@@ -310,7 +311,7 @@ public:
 
     void get() noexcept {
         const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
+        enqueueTransaction(cmd::Get::string(target), Transaction::Kind::GetString);
     }
 
     String(const String&) = delete;
@@ -341,7 +342,7 @@ public:
 
     void get() noexcept {
         const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::string(target), Transaction::State::AwaitingStringGet);
+        enqueueTransaction(cmd::Get::string(target), Transaction::Kind::GetString);
     }
 
     StringRO(const StringRO&) = delete;

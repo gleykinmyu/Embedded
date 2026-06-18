@@ -184,7 +184,7 @@ namespace nex {
      *       │
      *       └── Drawable                         // drag, aph, effect; refresh; show/hide; placeAbove; move
      *           ├── ExternalPicture            // nexExComponents: path
-     *           ├── MediaComponent             // setVideoId; en; loop; dis; tim; stim(RO); qty(RO)
+     *           ├── MediaComponent             // nexExComponents: setVideoId; en; loop; dis; tim; stim(RO); qty(RO)
      *           │   ├── Gmov
      *           │   └── Video                  // from(RO); vid
      *           │
@@ -199,10 +199,9 @@ namespace nex {
      *               ├── Slider<S>              // value; cursor; bg; bg2
      *               │
      *               ├── Printable<S>           // font (FontColor → FontId → Font)
-     *               │   ├── DataFile           // txt; left; ch; dir; val; qty(RO); setCellSpacing; …
-     *               │   │   ├── DataRecord     // path; lenth(RO); maxval(RO); setRecordLength; setFormat; …
+     *               │   ├── DataFile           // nexExComponents: txt; left; ch; dir; val; qty(RO); setCellSpacing; …
+     *               │   │   ├── DataRecord     // nexExComponents: path; lenth(RO); maxval(RO); setRecordLength; …
      *               │   │   └── FileBrowser    // nexExComponents: filter; spay; pic1; pic2; …
-     *               │   │
      *               │   ├── ListSelect         // path; val; setCellSize
      *               │   │   ├── ComboBox       // border; arrow; cells; isOpened; setVAlign; setHAlign
      *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine

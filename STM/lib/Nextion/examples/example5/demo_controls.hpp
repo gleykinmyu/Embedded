@@ -120,6 +120,15 @@ inline void demoMultiline(Multiline<BG::Color>& w) noexcept
     w.setHAlign(HAlign::Center);
 }
 
+/** Multiline без `ycen` (SlidingText type 62). */
+inline void demoMultilineNoVAlign(Multiline<BG::Color>& w) noexcept
+{
+    demoFont(w);
+    w.setLineSpacing(4u);
+    w.setWordWrap(true);
+    w.setHAlign(HAlign::Center);
+}
+
 template<BG S = BG::Color>
 inline void demoPressed(ButtonBase<S>& w) noexcept
 {
@@ -282,27 +291,6 @@ inline void demoTextSelect(TextSelect<>& t) noexcept
     t.setSelectionLine(true);
 }
 
-inline void demoDataRecord(DataRecord<>& d) noexcept
-{
-    NEX_DBG("[ex5b] DataRecord\n");
-    detail::demoFont(d);
-    d.path.set("sd0:/data.csv");
-    d.setRecordLength(64u);
-    d.setFormat(NumFormat::Dec);
-    d.setMode(0u);
-    d.setOrder(0u);
-    d.setCellSize(24u);
-    d.setGridColor(Color::std::Gray);
-    d.setGridWidth(10u);
-    d.setGridHeight(20u);
-    d.setCellBgColor(Color::std::Black);
-    d.setCellColor(Color::std::Silver);
-    d.setHAlign(HAlign::Center);
-    d.left = 0u;
-    d.ch = 0u;
-    d.val = 0;
-}
-
 inline void demoTextual(Textual<>& t) noexcept
 {
     detail::demoMultiline(t);
@@ -319,8 +307,8 @@ inline void demoText(Text<>& t) noexcept
 inline void demoSlidingText(SlidingText<>& s) noexcept
 {
     NEX_DBG("[ex5c] SlidingText\n");
-    // TODO: demoTextual → demoMultiline вызывает setVAlign(ycen); у SlidingText атрибута нет — отдельный demo без ycen.
-    demoTextual(s);
+    detail::demoMultilineNoVAlign(s);
+    s.setText("Sliding text sample");
     s.setShowProgressBar(nex::ShowProgressBar::OperationTime);
     s.val_y = 0u;
 }
@@ -424,7 +412,6 @@ struct PageBWidgets {
     Gauge<>& gauge;
     ComboBox<>& combo;
     TextSelect<>& text_select;
-    DataRecord<>& data_record;
 };
 
 struct PageCWidgets {
@@ -477,8 +464,6 @@ inline void runPageBDemos(PageBWidgets& w) noexcept
     demoComboBox(w.combo);
     waitBeforeComponentDemo();
     demoTextSelect(w.text_select);
-    //waitBeforeComponentDemo();
-    //demoDataRecord(w.data_record);
 }
 
 inline void runPageCDemos(PageCWidgets& w) noexcept

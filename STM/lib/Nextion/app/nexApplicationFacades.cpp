@@ -57,12 +57,12 @@ void AppEeprom::read(const AttrRef& destVariable, uint32_t eepromStart) const no
 void AppEeprom::write_t(uint32_t eepromStart, const uint8_t* buffer, uint32_t byteCount) const noexcept {
     (void)buffer;
     _app.enqueue(
-        Transaction{cmd::Eeprom::writeT(eepromStart, byteCount), 0u, 0u, 0u, Transaction::State::AwaitingTransparentTx});
+        Transaction{cmd::Eeprom::writeT(eepromStart, byteCount), 0u, 0u, 0u, Transaction::Kind::TransparentTx});
 }
 
 void AppEeprom::read_t(uint32_t eepromStart, uint8_t* buffer, uint32_t byteCount) const noexcept {
     (void)buffer;
-    _app.enqueue(Transaction{cmd::Eeprom::readT(eepromStart, byteCount), 0u, 0u, 0u, Transaction::State::AwaitingRawDataRx});
+    _app.enqueue(Transaction{cmd::Eeprom::readT(eepromStart, byteCount), 0u, 0u, 0u, Transaction::Kind::RawDataRx});
 }
 
 // --- AppFileSystem ----------------------------------------------------------
@@ -89,12 +89,12 @@ void AppFileSystem::file_read_t(const char* pathQuoted, uint32_t offset, uint8_t
     uint32_t crcOption) const noexcept {
     (void)buffer;
     _app.enqueue(
-        Transaction{cmd::File::read(pathQuoted, offset, byteCount, crcOption), 0u, 0u, 0u, Transaction::State::AwaitingRawDataRx});
+        Transaction{cmd::File::read(pathQuoted, offset, byteCount, crcOption), 0u, 0u, 0u, Transaction::Kind::RawDataRx});
 }
 
 void AppFileSystem::file_write_t(const char* pathQuoted, const uint8_t* buffer, uint32_t byteCount) const noexcept {
     (void)buffer;
-    _app.enqueue(Transaction{cmd::File::writeT(pathQuoted, byteCount), 0u, 0u, 0u, Transaction::State::AwaitingTransparentTx});
+    _app.enqueue(Transaction{cmd::File::writeT(pathQuoted, byteCount), 0u, 0u, 0u, Transaction::Kind::TransparentTx});
 }
 
 void AppFileSystem::dir_remove(const char* pathQuoted) const noexcept {

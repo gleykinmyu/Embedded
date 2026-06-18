@@ -2,6 +2,7 @@
 
 #include <variant>
 
+#include "../comp/nexAttrLexemes.hpp"
 #include "../core/nexCommands.hpp"
 #include "../core/nexDebug.hpp"
 
@@ -10,11 +11,8 @@ namespace nex {
 namespace {
 
 static constexpr uint8_t kPollTagBase = 0u;
-static constexpr uint8_t kRoutePageId = Route::kCompIdMapPollPageId;
-static constexpr uint8_t kRouteCompId = Route::kCompIdMapPollCompId;
 static constexpr uint32_t kPageSwitchTimeoutMs = 1000u;
 static constexpr uint32_t kSwitchPageResendMs = 500u;
-inline constexpr Literal kAttrId{"id"};
 
 } // namespace
 
@@ -92,7 +90,7 @@ void SmartApp::applyFromTable() noexcept {
 }
 
 void SmartApp::update() noexcept {
-    const uint32_t now_ms = clockMs();
+    const uint32_t now_ms = nowMs();
     if (_mode == IdMapMode::Discover) {
         if (_phase == DiscoverPhase::Idle)
             discoverBegin();
@@ -142,8 +140,7 @@ void SmartApp::discoverTick(uint32_t now_ms) noexcept {
         if (_deadline_ms == 0u)
             _deadline_ms = now_ms + kPageSwitchTimeoutMs;
 
-        const uint8_t want_page = discoverPageIdForIndex(_page_index);
-        if (currentPageId() == want_page) {
+        if (currentPageId() == _page_index) {
             _deadline_ms = 0u;
             discoverAdvanceCompId();
             return;
@@ -188,9 +185,9 @@ void SmartApp::discoverEnqueueGetId(uint8_t compiled_id) noexcept {
         return;
 
     _phase = DiscoverPhase::GetId;
-    const AttrRef target{c->name, kAttrId};
-    enqueue(Transaction{cmd::Get::numeric(target), kRoutePageId, kRouteCompId,
-        static_cast<uint8_t>(kPollTagBase + compiled_id), Transaction::State::AwaitingNumericGet});
+    const AttrRef target{c->name, attr::literal(attr::Id::Id)};
+    enqueue(Transaction{cmd::Get::numeric(target), Route::kCompIdMapPollPageId, Route::kCompIdMapPollCompId,
+        static_cast<uint8_t>(kPollTagBase + compiled_id), Transaction::Kind::GetNumeric});
 }
 
 void SmartApp::discoverAdvanceCompId() noexcept {
@@ -238,8 +235,7 @@ void SmartApp::discoverOnPollResponse(uint8_t compiled_id, uint8_t panel_id) noe
         return;
     }
 
-    const uint8_t page_id = discoverPageIdForIndex(_page_index);
-    if (!_table.upsert(page_id, compiled_id, panel_id)) {
+    if (!_table.upsert(_page_index, compiled_id, panel_id)) {
         discoverFail("table upsert failed");
         return;
     }
@@ -250,17 +246,13 @@ void SmartApp::discoverOnPollResponse(uint8_t compiled_id, uint8_t panel_id) noe
 void SmartApp::discoverOnPageChanged(uint8_t page_id) noexcept {
     if (_phase != DiscoverPhase::SwitchPage)
         return;
-    if (page_id != discoverPageIdForIndex(_page_index))
+    if (page_id != _page_index)
         return;
     discoverAdvanceCompId();
 }
 
 bool SmartApp::discoverCanProbe() const noexcept {
     return _session.isIdle() && !_session.hasQueued();
-}
-
-uint8_t SmartApp::discoverPageIdForIndex(uint8_t page_index) noexcept {
-    return page_index;
 }
 
 uint8_t SmartApp::discoverComponentCount(uint8_t page_index) noexcept {
@@ -280,7 +272,7 @@ bool SmartApp::discoverHasComponent(uint8_t page_index, uint8_t compiled_id) noe
 bool SmartApp::dispatchResponse(const Message& m, bool txIdle) noexcept {
     if (txIdle && !_session.isIdle()) {
         const Transaction& active = _session.active();
-        if (active.state == Transaction::State::AwaitingNumericGet && Route::isCompIdMapPoll(active.page_id, active.comp_id)) 
+        if (active.kind == Transaction::Kind::GetNumeric && Route::isCompIdMapPoll(active.page_id, active.comp_id))
         {
             if (const auto* st = std::get_if<msg::Status>(&m)) {
                 dispatchError(*st, active.page_id, active.comp_id);
