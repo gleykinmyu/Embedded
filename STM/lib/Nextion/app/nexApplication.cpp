@@ -1,4 +1,5 @@
 #include "nexApplication.hpp"
+#include "../core/nexTimeout.hpp"
 #include "../core/nexStatusMask.hpp"
 
 #include <variant>
@@ -7,7 +8,8 @@
 
 namespace nex {
 
-Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs) noexcept
+Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs,
+    uint32_t timeout_ms) noexcept
     : ep(*this)
     , fs(*this)
     , cs(*this)
@@ -26,6 +28,7 @@ Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockM
     , _stream(stream)
     , _gateway(stream)
     , _clockMsFn(clockMs)
+    , _timeoutMs(timeout_ms)
 {
     NEX_ASSERT(clockMs != nullptr);
 #if defined(NEX_LOG_TICKS)
@@ -38,7 +41,7 @@ void Application::onTimeout(const Transaction& active) noexcept {
 }
 
 void Application::abortSessionFault() noexcept {
-    if (const Transaction* const tx = _session.faultingTransaction())
+    if (const Transaction* const tx = _session.current())
         dispatchError(appErrorFrom(_session.getStatus(), _gateway.getStatus()), tx->page_id, tx->comp_id);
 }
 
@@ -62,11 +65,11 @@ void Application::registerPage(Page& page) noexcept {
 }
 
 void Application::enqueue(Transaction tx) noexcept {
-    constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-    uint32_t stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
+    MsTimer stall;
+    stall.start(nowMs(), _timeoutMs);
 
     for (;;) {
-        if (_session.tryEnqueue(tx))
+        if (_session.enqueue(tx))
             return;
 
         const Session::Status st = _session.getStatus();
@@ -77,10 +80,10 @@ void Application::enqueue(Transaction tx) noexcept {
 
         const std::size_t queued_before = _session.queuedCount();
         update();
-        if (_session.queuedCount() < queued_before || !_session.isIdle())
-            stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
+        if (_session.queuedCount() < queued_before || _session.isActive())
+            stall.start(nowMs(), _timeoutMs);
 
-        if ((nowMs() - stall_deadline) >= kMsHalfModulus)
+        if (stall.timedOut(nowMs()))
             break;
     }
 
@@ -88,15 +91,15 @@ void Application::enqueue(Transaction tx) noexcept {
 }
 
 void Application::pumpUntilIdle() noexcept {
-    constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-    uint32_t stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
+    MsTimer stall;
+    stall.start(nowMs(), _timeoutMs);
 
-    while (!_session.isIdle() || _session.hasQueued()) {
+    while (_session.isActive() || _session.hasQueued()) {
         const std::size_t queued_before = _session.queuedCount();
         update();
-        if (_session.queuedCount() < queued_before || !_session.isIdle())
-            stall_deadline = nowMs() + kDefaultGetResponseTimeoutMs;
-        if ((nowMs() - stall_deadline) >= kMsHalfModulus)
+        if (_session.queuedCount() < queued_before || _session.isActive())
+            stall.start(nowMs(), _timeoutMs);
+        if (stall.timedOut(nowMs()))
             break;
     }
 }
@@ -104,9 +107,7 @@ void Application::pumpUntilIdle() noexcept {
 void Application::update() noexcept {
     const uint32_t now_ms = nowMs();
 
-    if (_session.begin(_gateway)) {
-        onTxSerialized(_gateway.lastSerializedPayloadBytes(), _session.active());
-    } else if (_session.getStatus() == Session::Status::PushFailed) {
+    if (!_session.begin(_gateway) && _session.getStatus() == Session::Status::PushFailed) {
         abortSessionFault();
         _session.end(false);
     }
@@ -116,10 +117,11 @@ void Application::update() noexcept {
         _session.end(false);
     }
 
-    if (_session.pollTimeout(_gateway, now_ms, kDefaultGetResponseTimeoutMs, bkcmd)) {
+    if (_session.pollTimeout(_gateway, now_ms, _timeoutMs, bkcmd)) {
         const Session::Status st = _session.getStatus();
         if (st == Session::Status::Timeout) {
-            onTimeout(_session.active());
+            if (const Transaction* tx = _session.current())
+                onTimeout(*tx);
             _session.end(false);
         } else if (st == Session::Status::Complete)
             _session.end(true);
@@ -156,28 +158,30 @@ void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint
 }
 
 bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
-    if (!txIdle || _session.isIdle())
+    if (!txIdle || !_session.isActive())
         return false;
 
-    const Transaction& active = _session.active();
+    const Transaction* const active = _session.current();
+    if (active == nullptr)
+        return false;
 
-    switch (active.kind) {
+    switch (active->kind) {
     case Transaction::Kind::GetNumeric: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
-            if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+            if (!active->correlatesWith(*st, bkcmd)) {
                 dispatchError(*st, 0u, 0u);
                 return true;
             }
-            dispatchError(*st, active.page_id, active.comp_id);
+            dispatchError(*st, active->page_id, active->comp_id);
             _session.end(false);
             return true;
         }
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-            if (Route::isSysVar(active.page_id, active.comp_id)) {
-                dispatchSysVarResponse(active.tag, *nr);
-                onSysResponse(active.tag, *nr);
-            } else if (Component* const c = getComponent(active.page_id, active.comp_id))
-                c->onResponse(active.tag, *nr);
+            if (Route::isSysVar(active->page_id, active->comp_id)) {
+                dispatchSysVarResponse(active->tag, *nr);
+                onSysResponse(active->tag, *nr);
+            } else if (Component* const c = getComponent(active->page_id, active->comp_id))
+                c->onResponse(active->tag, *nr);
             _session.end(true);
             return true;
         }
@@ -186,17 +190,17 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
 
     case Transaction::Kind::GetString: {
         if (const auto* st = std::get_if<msg::Status>(&m)) {
-            if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+            if (!active->correlatesWith(*st, bkcmd)) {
                 dispatchError(*st, 0u, 0u);
                 return true;
             }
-            dispatchError(*st, active.page_id, active.comp_id);
+            dispatchError(*st, active->page_id, active->comp_id);
             _session.end(false);
             return true;
         }
         if (const auto* sr = std::get_if<msg::getString>(&m)) {
-            if (Component* const c = getComponent(active.page_id, active.comp_id))
-                c->onResponse(active.tag, *sr);
+            if (Component* const c = getComponent(active->page_id, active->comp_id))
+                c->onResponse(active->tag, *sr);
             _session.end(true);
             return true;
         }
@@ -208,12 +212,12 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         if (st == nullptr)
             return false;
 
-        if (!active.statusCorrelatesWithTransaction(*st, bkcmd)) {
+        if (!active->correlatesWith(*st, bkcmd)) {
             dispatchError(*st, 0u, 0u);
             return true;
         }
 
-        dispatchError(*st, active.page_id, active.comp_id);
+        dispatchError(*st, active->page_id, active->comp_id);
         if (!st->isOK()) {
             _session.end(false);
             return true;

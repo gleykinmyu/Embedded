@@ -18,7 +18,7 @@ AttrRef SysVarBase::target() const noexcept {
 }
 
 void SysVarBase::enqueueTransaction(
-    const Command& cmd, Transaction::Kind kind, AwaitingStatus awaiting_status) const noexcept {
+    const Command& cmd, Transaction::Kind kind, msg::Status::Mask awaiting_status) const noexcept {
     _app.enqueue(
         Transaction{cmd, Route::kSysVarPageId, Route::kSysVarCompId, tag, kind, awaiting_status});
 }

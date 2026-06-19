@@ -181,7 +181,7 @@ protected:
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
-        AwaitingStatus awaiting_status = kAwaitingAllPanel) const noexcept {
+        msg::Status::Mask awaiting_status = msg::kAwaitingDefault) const noexcept {
         _parent.page.app.enqueue(
             Transaction{cmd, _parent.page.ID, _parent.id(), tag(), kind, awaiting_status});
     }

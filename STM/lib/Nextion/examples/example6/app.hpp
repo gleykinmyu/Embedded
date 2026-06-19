@@ -180,25 +180,21 @@ public:
         _cmd_page = expect_page;
         _cmd_comp = expect_comp;
         _last_rx_status = 0u;
-        _measured_tx_payload = 0u;
 
         NEX_DBG("[ex6-tx] t=%010lu p%u c%u  %s (expect p%u c%u)\n", static_cast<unsigned long>(nowMs()),
             static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id), label,
             static_cast<unsigned>(expect_page), static_cast<unsigned>(expect_comp));
 
-        _capture_tx_len = true;
         const uint32_t t0 = nowMs();
         fn();
         const bool ok = waitForPanelSuccess(kWaitSuccessTimeoutMs);
-        _capture_tx_len = false;
         const uint32_t dt = ok ? (_response_tick - t0) : (nowMs() - t0);
         const uint8_t rx_status = ok ? static_cast<uint8_t>(msg::Status::Code::Success) : _last_rx_status;
 
-        rec.add(label, page_id, comp_id, dt, ok ? 1u : 0u, rx_status, _measured_tx_payload);
+        rec.add(label, page_id, comp_id, dt, ok ? 1u : 0u, rx_status);
 
-        NEX_DBG("[ex6] %4lu ms  tx=%3uB  p%u c%u  %s  %s\n", static_cast<unsigned long>(dt),
-            static_cast<unsigned>(_measured_tx_payload), static_cast<unsigned>(page_id),
-            static_cast<unsigned>(comp_id), label, ok ? "Success" : "TIMEOUT");
+        NEX_DBG("[ex6] %4lu ms  p%u c%u  %s  %s\n", static_cast<unsigned long>(dt),
+            static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id), label, ok ? "Success" : "TIMEOUT");
 
         if (!ok)
             NEX_DBG("[ex6]   (no matched Success within %lu ms, last rx 0x%02X)\n",
@@ -219,13 +215,6 @@ public:
     {
         /** `switchPage` enqueue: маршрут tx p0 c0; ACK панели — тоже p0 c0. */
         measureOne(rec, "switchPage", page_id, 0u, 0u, 0u, [&]() noexcept { switchPage(page_id); });
-    }
-
-    void onTxSerialized(uint16_t payload_bytes, const Transaction& tx) noexcept override
-    {
-        (void)tx;
-        if (_capture_tx_len)
-            _measured_tx_payload = payload_bytes;
     }
 
     void onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept override
@@ -256,10 +245,10 @@ public:
         if (isAppError(status))
             return;
 
-        if (isDataRecordFileNoise(status))
+        if (!responseMatchesExpected(page_id, comp_id))
             return;
 
-        if (!responseMatchesExpected(page_id, comp_id))
+        if (status.status != msg::Status::Code::Success)
             return;
 
         _panel_done = true;
@@ -272,18 +261,6 @@ public:
     [[nodiscard]] bool responseMatchesExpected(uint8_t page_id, uint8_t comp_id) const noexcept
     {
         return page_id == _cmd_page && comp_id == _cmd_comp;
-    }
-
-    /** DataRecord на HMI шлёт file/IO ошибки при `switchPage` — не завершаем замер. */
-    [[nodiscard]] static bool isDataRecordFileNoise(const msg::Status& status) noexcept
-    {
-        switch (status.status) {
-        case msg::Status::Code::Invalid_FileOperation:
-        case msg::Status::Code::Failed_IO_Operation:
-            return true;
-        default:
-            return false;
-        }
     }
 
     void runLatencyBenchOnce() noexcept
@@ -343,8 +320,6 @@ private:
     uint8_t _cmd_page = 0u;
     uint8_t _cmd_comp = 0u;
     uint8_t _last_rx_status = 0u;
-    bool _capture_tx_len = false;
-    uint16_t _measured_tx_payload = 0u;
 };
 
 namespace ex6 {

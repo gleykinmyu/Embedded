@@ -49,7 +49,7 @@ flowchart LR
 | **7. IdMap** | `idmap/nexIdMap.*` | R303…R305 |
 | **8. Examples / tests** | `examples/`, host tests | R011, R401, example4/5 |
 
-**Следующие шаги:** NEX-R0a (SlidingText demo) → **NEX-R106** → NEX-R105 + NEX-R101.
+**Следующие шаги:** NEX-R106 ✓ → **NEX-R101** → NEX-R102b / R210…
 
 ---
 
@@ -60,7 +60,7 @@ flowchart LR
 | **Application** | `app/nexApplication.*`, `nexApplicationAddons.cpp` | UART-цикл; `enqueue`/`update`/`dispatchResponse`; `_lastError*` |
 | **SmartApp / IdMap** | `app/nexSmartApp.*`, `idmap/nexIdMap.*` | Discover + Flash; `applyFromTable`; не transport layer |
 | **Ошибки** | `app/nexErrors.hpp` | `makeAppError`, `formatStatusMessage`, `printStatusError`; recovery inline в `nexApplication.cpp` |
-| **Session** | `core/nexSession.*` | `Transaction::Kind`, `awaiting_status` wire-mask; `_active` копия (→ убрать, см. handoff) |
+| **Session** | `core/nexSession.*` | `Transaction::Kind`, `awaiting_status` wire-mask; `_active` убран ✓ |
 | **Gateway** | `core/nexGateway.*` | RX/TX framer; `isTxIdle` |
 | **Commands** | `core/nexCommands.*` | NIS-слой; `NEX_DBG_TRACE_TX` |
 | **Components** | `nexComponents.hpp` + **`nexExComponents.hpp`** | База в `nexCompImpl.hpp`; Ex: Audio, FileStream, MediaComponent, DataFile, DataRecord, FileBrowser… |
@@ -102,8 +102,8 @@ flowchart LR
 
 | Severity | ID | Суть |
 |----------|-----|------|
-| **Critical** | R106 | Wire-маска `awaiting_status` + correlate; PR-1 skeleton ✓, PR-2 masks + ex6/ex4 |
-| **High** | R106d | `sessionWaitMask` vs `statusCorrelateMask` + `bkcmdAllowedStatus` — частично в PR-1 |
+| **Critical** | R106 | Wire-маска `awaiting_status` + correlate ✓ |
+| **High** | R106d | `sessionWaitMask` vs `statusCorrelateMask` ✓ |
 | **High** | R301 | `AwaitingTransparentTx` / `AwaitingRawDataRx` без timeout и `dispatchResponse` → **зависание очереди** |
 | **High** | R210 | `Multiline::setVAlign` → `ycen` на SlidingText (type 62) → **0x1A** в example5 |
 | **Medium** | R305 | `idmap::Table::upsert` принимает `panel_id=0xFF`, `applyFromTable` пропускает |
@@ -149,23 +149,22 @@ flowchart LR
 - [-] **NEX-R106c** — `PushFailed`: не `pop()` head — **отменено**
   - `PushFailed` ≈ `SerializeFailed` / битая команда; повтор бессмысленен, pop head — правильно
 
-- [~] **NEX-R106** — Wire-маска `Transaction::awaiting_status` (`AwaitingStatus`, bit = wire 0x00…0x24)
-  - **PR-1 ✓ (skeleton):** `Kind::Command|Get*|Transparent*`, `nexStatusMask.hpp`, correlate, `EmptyCommand`, orphan `onError(0,0)`
-  - **PR-2:** `Command::defaultAwaitingStatus()`, пресеты, example6 без `isDataRecordFileNoise`
-  - **PR-1b:** убрать `_active` — `active()` → queue head (см. [R106_HANDOFF.md](R106_HANDOFF.md))
+- [x] **NEX-R106** — Wire-маска `Transaction::awaiting_status` (`AwaitingStatus`, bit = wire 0x00…0x24)
+  - **PR-1 ✓**, **PR-1b ✓**, **PR-2 ✓**, **R106d ✓**, **R106e ✓**
+  - **Отложено:** R106f (`lastTx` / LastCompleted)
   - **Файлы:** `core/nexStatusMask.hpp`, `nexSession.*`, `nexApplication.cpp`, `nexCommands.*`
   - **Сложность:** M
 
-- [ ] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → orphan
-  - **Файлы:** `core/nexSession.hpp`, `core/nexSession.cpp`
-  - **Сложность:** S (частично в PR-1)
-
-- [ ] **NEX-R106e** — NoAwaiting через `awaiting_status = kAwaitingNone` (не отдельный `State`)
-  - default bulk assign → `kAwaitingNone`; `bkcmd` Off/OnFailure обнуляет маску в session
-  - **Файлы:** `comp/nexAttributes.hpp`, attr enqueue defaults
+- [x] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → orphan
+  - **Файлы:** `core/nexSession.hpp`, `core/nexSession.cpp`, `core/nexStatusMask.hpp`
   - **Сложность:** S
 
-- [ ] **NEX-R106f** — Регрессия example4: OnFailure + invalid attr → `(page, comp)` через last-tx + маска, не orphan `(0,0)`
+- [x] **NEX-R106e** — NoAwaiting через `awaiting_status = kAwaitingNone` (не отдельный `State`)
+  - default bulk assign → `kAwaitingNone` через `Command::defaultAwaitingStatus()`; `bkcmd` Off/OnFailure обнуляет маску в session
+  - **Файлы:** `comp/nexAttributes.hpp`, `core/nexCommands.hpp`
+  - **Сложность:** S
+
+- [-] **NEX-R106f** — Регрессия example4: OnFailure + invalid attr → `(page, comp)` через last-tx + маска, не orphan `(0,0)` — **отложено**
   - **Файлы:** `examples/example4/app.hpp`
   - **Сложность:** S
   - **Зависит от:** NEX-R106
@@ -197,7 +196,8 @@ flowchart LR
   - **Файлы:** `core/nexSession.hpp`
   - **Сложность:** M
 
-- [ ] **NEX-R105** — Настраиваемый `kDefaultGetResponseTimeoutMs`
+- [x] **NEX-R105** — Настраиваемый `kDefaultGetResponseTimeoutMs`
+  - ctor-параметр + `setGetResponseTimeoutMs()` / `getResponseTimeoutMs()`
   - **Файлы:** `app/nexApplication.hpp`, `nexApplication.cpp`
   - **Сложность:** S
 
@@ -374,7 +374,7 @@ flowchart LR
 ## Рекомендуемый порядок PR
 
 1. **PR-1 (Фаза 0):** NEX-R0a + R0b + R0c + R0e  
-2. **PR-2 (Фаза 1):** NEX-R106 (masks) + R106d + R106e (+ R106f в example4)  
+2. **PR-2 (Фаза 1):** NEX-R106 (masks) + R106d + R106e ~~(+ R106f)~~ отложено  
 3. **PR-3 (Фаза 3):** NEX-R210 (Multiline / VAlign)  
 4. **PR-4 (Фаза 2):** NEX-R105 + R101 + R102b  
 5. **PR-5 (Фаза 5):** NEX-R305 + NEX-R011 (Flash example)  
@@ -388,8 +388,9 @@ flowchart LR
 |------|-----|--------|-------------|
 | 2026-06-01 | R0d, R209 | done | Аудит кода; REFACTORING sync; ExComponents move; example5 без DataRecord |
 | 2026-06-01 | R106a–c | cancelled | RX order / txIdle / PushFailed pop — не баги после разбора протокола |
+| 2026-06-18 | R106d, R105 | done | маски задокументированы; timeout настраиваемый |
 | 2026-06-01 | R106 PR-1 | in progress | Kind, wire mask, bkcmd split, EmptyCommand, handoff doc |
-| 2026-06-01 | R106 | planned | PR-2 masks, drop `_active`, R106f example4, ex6 cleanup |
+| 2026-06-18 | R106f | deferred | lastTx / LastCompleted — не в приоритете |
 | 2026-05-27 | NEX-R403 | done | nexDebug.hpp, NEX_DBG / NEX_IDMAP_DEBUG / NEX_TRACE_TX |
 | 2026-05-27 | NEX-R003…R010, R102 | done | clearErrors, retry, IdMap poll fixes |
 | 2026-05-27 | rename | done | IdMap → `idmap/nexIdMap.*`, Discover → `SmartApp` |

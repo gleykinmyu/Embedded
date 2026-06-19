@@ -19,8 +19,6 @@ struct BenchResult {
     unsigned got_success = 0u;
     /** 0 — таймаут; 0x01 — Success; иначе код panel-статуса при FAIL. */
     uint8_t rx_status = 0u;
-    /** NIS payload (байт до `0xFF×3`); 0 если не захвачен. */
-    uint16_t tx_payload = 0u;
 };
 
 class LatencyRecorder {
@@ -28,11 +26,11 @@ public:
     static constexpr unsigned kMaxResults = 128u;
 
     void add(const char* label, uint8_t page_id, uint8_t comp_id, uint32_t ms, unsigned got_success,
-        uint8_t rx_status = 0u, uint16_t tx_payload = 0u) noexcept
+        uint8_t rx_status = 0u) noexcept
     {
         if (_count >= kMaxResults)
             return;
-        _results[_count++] = BenchResult{label, page_id, comp_id, ms, got_success, rx_status, tx_payload};
+        _results[_count++] = BenchResult{label, page_id, comp_id, ms, got_success, rx_status};
     }
 
     void printSummary() const noexcept
@@ -71,18 +69,16 @@ public:
         for (unsigned i = 0u; i < _count; ++i) {
             const BenchResult& r = sorted[i];
             if (r.got_success) {
-                NEX_DBG("[ex6] %4lu ms  tx=%3uB  p%u c%u  OK  %s\n", static_cast<unsigned long>(r.ms),
-                    static_cast<unsigned>(r.tx_payload), static_cast<unsigned>(r.page_id),
-                    static_cast<unsigned>(r.comp_id), r.label);
-            } else if (r.rx_status != 0u) {
-                NEX_DBG("[ex6] %4lu ms  tx=%3uB  p%u c%u  FAIL  %s  (rx 0x%02X)\n",
-                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.tx_payload),
-                    static_cast<unsigned>(r.page_id), static_cast<unsigned>(r.comp_id), r.label,
-                    static_cast<unsigned>(r.rx_status));
-            } else {
-                NEX_DBG("[ex6] %4lu ms  tx=%3uB  p%u c%u  FAIL  %s  (timeout)\n",
-                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.tx_payload),
+                NEX_DBG("[ex6] %4lu ms  p%u c%u  OK  %s\n", static_cast<unsigned long>(r.ms),
                     static_cast<unsigned>(r.page_id), static_cast<unsigned>(r.comp_id), r.label);
+            } else if (r.rx_status != 0u) {
+                NEX_DBG("[ex6] %4lu ms  p%u c%u  FAIL  %s  (rx 0x%02X)\n",
+                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page_id),
+                    static_cast<unsigned>(r.comp_id), r.label, static_cast<unsigned>(r.rx_status));
+            } else {
+                NEX_DBG("[ex6] %4lu ms  p%u c%u  FAIL  %s  (timeout)\n",
+                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page_id),
+                    static_cast<unsigned>(r.comp_id), r.label);
             }
         }
         NEX_DBG("[ex6] === end summary ===\n\n");

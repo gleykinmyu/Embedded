@@ -11,6 +11,9 @@ namespace nex {
          * Ответ **status** — результат выполнения инструкции (байт кода 0x00…0x24 из протокола Nextion).
          */
         struct Status {
+            /** Битовая маска кодов panel status (0x00…0x24); бит @a n = `1ull << code`. */
+            using Mask = uint64_t;
+
             enum class Code : uint8_t {
                 Invalid_Instruction = 0x00,
                 Success        = 0x01,
@@ -42,6 +45,17 @@ namespace nex {
             uint16_t tag_2 = 0u;
 
             [[nodiscard]] constexpr bool isOK() const noexcept { return status == Code::Success; }
+
+            [[nodiscard]] static constexpr Mask maskBit(Code code) noexcept {
+                return 1ull << static_cast<uint8_t>(code);
+            }
+
+            /** Есть ли код `status` в битовой маске. */
+            [[nodiscard]] constexpr bool codeInMask(Mask mask) const noexcept {
+                if (mask == 0ull)
+                    return false;
+                return (mask & maskBit(status)) != 0ull;
+            }
         };
 
         [[nodiscard]] constexpr bool operator==(const Status& a, const Status& b) noexcept

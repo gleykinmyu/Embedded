@@ -11,6 +11,7 @@
 
 #include "nexApplication.hpp"
 #include "../idmap/nexIdMap.hpp"
+#include "../core/nexTimeout.hpp"
 
 namespace nex {
 
@@ -72,7 +73,7 @@ private:
     uint8_t _page_index = 0u;
     uint8_t _scan_id = 1u;
     uint8_t _polled = 0u;
-    uint32_t _deadline_ms = 0u;
+    MsTimer _switchPageTimeout{};
     uint32_t _switch_page_last_sendme_ms = 0u;
 };
 

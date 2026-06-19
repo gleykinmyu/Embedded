@@ -4,6 +4,7 @@
 
 #include "../comp/nexAttrLexemes.hpp"
 #include "../core/nexCommands.hpp"
+#include "../core/nexTimeout.hpp"
 #include "../core/nexDebug.hpp"
 
 namespace nex {
@@ -105,7 +106,7 @@ void SmartApp::discoverArm() noexcept {
     _page_index = 0u;
     _scan_id = kFirstCompId;
     _polled = 0u;
-    _deadline_ms = 0u;
+    _switchPageTimeout.stop();
     _switch_page_last_sendme_ms = 0u;
 }
 
@@ -114,7 +115,7 @@ void SmartApp::discoverBegin() noexcept {
     _page_index = 0u;
     _scan_id = kFirstCompId;
     _polled = 0u;
-    _deadline_ms = 0u;
+    _switchPageTimeout.stop();
     _switch_page_last_sendme_ms = 0u;
 
     if (pageCount() == 0u) {
@@ -137,11 +138,10 @@ void SmartApp::discoverTick(uint32_t now_ms) noexcept {
         return;
 
     case DiscoverPhase::SwitchPage: {
-        if (_deadline_ms == 0u)
-            _deadline_ms = now_ms + kPageSwitchTimeoutMs;
+        _switchPageTimeout.startOnce(now_ms, kPageSwitchTimeoutMs);
 
         if (currentPageId() == _page_index) {
-            _deadline_ms = 0u;
+            _switchPageTimeout.stop();
             discoverAdvanceCompId();
             return;
         }
@@ -153,7 +153,7 @@ void SmartApp::discoverTick(uint32_t now_ms) noexcept {
             _switch_page_last_sendme_ms = now_ms;
         }
 
-        if (now_ms >= _deadline_ms)
+        if (_switchPageTimeout.timedOut(now_ms))
             discoverFail("SwitchPage timeout");
         return;
     }
@@ -220,7 +220,7 @@ void SmartApp::discoverNextPage() noexcept {
     _scan_id = kFirstCompId;
     _polled = 0u;
     _phase = DiscoverPhase::SwitchPage;
-    _deadline_ms = 0u;
+    _switchPageTimeout.stop();
     _switch_page_last_sendme_ms = 0u;
     NEX_DBG_IDMAP("[IdMap] pollNextPage -> switchPage(%u)\n", static_cast<unsigned>(_page_index));
     switchPage(_page_index);
@@ -252,7 +252,7 @@ void SmartApp::discoverOnPageChanged(uint8_t page_id) noexcept {
 }
 
 bool SmartApp::discoverCanProbe() const noexcept {
-    return _session.isIdle() && !_session.hasQueued();
+    return !_session.isActive() && !_session.hasQueued();
 }
 
 uint8_t SmartApp::discoverComponentCount(uint8_t page_index) noexcept {
@@ -270,18 +270,19 @@ bool SmartApp::discoverHasComponent(uint8_t page_index, uint8_t compiled_id) noe
 }
 
 bool SmartApp::dispatchResponse(const Message& m, bool txIdle) noexcept {
-    if (txIdle && !_session.isIdle()) {
-        const Transaction& active = _session.active();
-        if (active.kind == Transaction::Kind::GetNumeric && Route::isCompIdMapPoll(active.page_id, active.comp_id))
+    if (txIdle && _session.isActive()) {
+        const Transaction* const active = _session.current();
+        if (active != nullptr && active->kind == Transaction::Kind::GetNumeric
+            && Route::isCompIdMapPoll(active->page_id, active->comp_id))
         {
             if (const auto* st = std::get_if<msg::Status>(&m)) {
-                dispatchError(*st, active.page_id, active.comp_id);
+                dispatchError(*st, active->page_id, active->comp_id);
                 discoverFail("poll status");
                 _session.end(false);
                 return true;
             }
             if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-                discoverOnPollResponse(active.tag, static_cast<uint8_t>(nr->value & 0xFFu));
+                discoverOnPollResponse(active->tag, static_cast<uint8_t>(nr->value & 0xFFu));
                 _session.end(true);
                 return true;
             }

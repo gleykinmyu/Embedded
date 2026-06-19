@@ -16,7 +16,7 @@
 namespace nex {
 
 static constexpr unsigned kMaxPages = 16u; //TODO сделать настраиваемым
-static constexpr uint32_t kDefaultGetResponseTimeoutMs = 500u; //TODO сделать настраиваемым
+static constexpr uint32_t kDefaultTimeoutMs = 500u;
 
 class Application {
 public:
@@ -25,14 +25,18 @@ public:
 
     using ClockMsFn = uint32_t (*)() noexcept;
 
-    explicit Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs) noexcept;
+    explicit Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs,
+        uint32_t timeout_ms = kDefaultTimeoutMs) noexcept;
     virtual ~Application() = default;
 
     void enqueue(Transaction tx) noexcept;
     virtual void update() noexcept;
 
-    /** Крутит `update()` пока сессия не простаивает; таймаут без прогресса — `kDefaultGetResponseTimeoutMs`. */
+    /** Крутит `update()` пока сессия не простаивает; таймаут без прогресса — `getTimeout()`. */
     void pumpUntilIdle() noexcept;
+
+    void setTimeout(uint32_t ms) noexcept { _timeoutMs = ms; }
+    [[nodiscard]] uint32_t getTimeout() const noexcept { return _timeoutMs; }
 
     [[nodiscard]] const msg::Status& lastError() const noexcept { return _lastError; }
     [[nodiscard]] uint8_t lastErrorPage() const noexcept { return _lastErrorPage; }
@@ -55,13 +59,6 @@ public:
 
     /** Статус с панели (NIS) или фоновое событие. */
     virtual void onError(const msg::Status& status, uint8_t page_id = 0u, uint8_t comp_id = 0u) noexcept;
-
-    /** После успешного `Session::begin` — длина NIS-payload до `0xFF×3`. */
-    virtual void onTxSerialized(uint16_t payload_bytes, const Transaction& tx) noexcept
-    {
-        (void)payload_bytes;
-        (void)tx;
-    }
 
     void restartScreen() noexcept;
     void switchPage(uint8_t pageId) noexcept;
@@ -123,6 +120,7 @@ private:
     MISC::ObjStorage<Page, kMaxPages, uint8_t, 0> _pageStorage; //TODO Сделал изменяемым
     uint8_t _currentPageId = 0xFF;
     ClockMsFn _clockMsFn;
+    uint32_t _timeoutMs = kDefaultTimeoutMs;
 };
 
 } // namespace nex

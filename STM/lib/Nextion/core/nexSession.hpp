@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "nexCommands.hpp"
+#include "nexTimeout.hpp"
 #include "nexMessages.hpp"
 #include "nexStatusMask.hpp"
 #include "nexTypes.hpp"
@@ -31,14 +32,14 @@ struct Transaction {
     uint8_t page_id = 0u;
     uint8_t comp_id = 0u;
     uint8_t tag = 0u;
-    /** Panel status (wire), принимаемые как ответ этой tx; `kAwaitingNone` = NoAwaiting. */
-    AwaitingStatus awaiting_status = kAwaitingAllPanel;
+    /** Panel status, принимаемые как ответ этой tx; `msg::kAwaitingNone` = NoAwaiting. */
+    msg::Status::Mask awaiting_status = msg::kAwaitingDefault;
 
     Transaction() noexcept = default;
 
     Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag = 0u,
         Kind kind = Kind::Command,
-        AwaitingStatus awaiting_status = kAwaitingAllPanel) noexcept;
+        msg::Status::Mask awaiting_status = msg::kAwaitingDefault) noexcept;
 
     [[nodiscard]] bool isEmpty() const noexcept;
 
@@ -46,12 +47,13 @@ struct Transaction {
 
     [[nodiscard]] bool emplace(void* storage, std::size_t maxBytes, std::size_t maxAlign) noexcept;
 
-    /** Маска, по которой session ждёт panel-status после TX (NIS §6.13, pollTimeout). */
-    [[nodiscard]] AwaitingStatus sessionWaitMask(BkCmd bkcmd) const noexcept;
+    /** Маска, по которой session ждёт panel-status после TX (NIS §6.13, `pollTimeout`).
+     *  Не совпадает с `routeMask`: Off/OnFailure → `msg::kAwaitingNone` (Complete на txIdle). */
+    [[nodiscard]] msg::Status::Mask sessionWaitMask(BkCmd bkcmd) const noexcept;
 
-    /** Маска correlate: tx × то, что панель может прислать при текущем bkcmd. */
-    [[nodiscard]] AwaitingStatus statusCorrelateMask(BkCmd bkcmd) const noexcept;
-    [[nodiscard]] bool statusCorrelatesWithTransaction(const msg::Status& msg, BkCmd bkcmd) const noexcept;
+    /** Маска plausibility для route status к активной tx: `awaiting_status` × `msg::bkcmdAllowedStatus`.
+     *  Может включать fail-биты при OnFailure, пока session ещё Active (до txIdle). */
+    [[nodiscard]] bool correlatesWith(const msg::Status& msg, BkCmd bkcmd) const noexcept;
 
 private:
     const Command* _command = nullptr;
@@ -131,7 +133,7 @@ public:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
-    [[nodiscard]] bool tryEnqueue(Transaction tx) noexcept;
+    [[nodiscard]] bool enqueue(Transaction tx) noexcept;
 
     /**
      * Активировать голову очереди: `pushCommand` в Gateway.
@@ -141,7 +143,7 @@ public:
 
     /**
      * Продолжить TX активной транзакции (`Gateway::transmit`).
-     * @return false — `TransmitFailed`; при `isIdle()` — true (нечего слать).
+     * @return false — `TransmitFailed`; при `!isActive()` — true (нечего слать).
      */
     [[nodiscard]] bool transmit(Gateway& gateway) noexcept;
 
@@ -164,22 +166,16 @@ public:
         _queue.clearError();
     }
 
-    [[nodiscard]] bool isIdle() const noexcept { return _active.isEmpty(); }
-    [[nodiscard]] bool hasQueued() const noexcept { return !_queue.isEmpty(); }
-    [[nodiscard]] std::size_t queuedCount() const noexcept { return _queue.count(); }
-
-    [[nodiscard]] const Transaction& active() const noexcept { return _active; }
-
-    /** `Active`, иначе голова очереди (например `PushFailed` до активации). */
-    [[nodiscard]] const Transaction* faultingTransaction() const noexcept;
+    [[nodiscard]] inline bool isActive() const noexcept { return _status == Status::Active; }
+    [[nodiscard]] inline bool hasQueued() const noexcept { return !_queue.isEmpty(); }
+    [[nodiscard]] inline std::size_t queuedCount() const noexcept { return _queue.count(); }
+    [[nodiscard]] inline const Transaction* current() const noexcept { return _queue.peek(); }
 
 private:
     detail::TransactionQueue _queue;
-    Transaction _active{};
     Status _status = Status::Idle;
     
-    bool _responseDeadlineActive = false;
-    uint32_t _responseDeadlineMs = 0u;
+    MsTimer _responseTimer{};
 };
 
 inline const char* cstr(Session::Status s) noexcept {
@@ -192,8 +188,8 @@ inline const char* cstr(Session::Status s) noexcept {
     case Session::Status::PushFailed: return "PushFailed";
     case Session::Status::TransmitFailed: return "TransmitFailed";
     case Session::Status::ReceiveFailed: return "ReceiveFailed";
-    case Session::Status::Timeout: return "ResponseTimedOut";
-    case Session::Status::Complete: return "ResponseComplete";
+    case Session::Status::Timeout: return "TimedOut";
+    case Session::Status::Complete: return "Complete";
     default: return "?";
     }
 }

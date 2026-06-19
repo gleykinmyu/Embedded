@@ -70,7 +70,7 @@ void TransactionQueue::clear() noexcept {
 } // namespace detail
 
 Transaction::Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag, Kind kind,
-    AwaitingStatus awaiting_status) noexcept
+    msg::Status::Mask awaiting_status) noexcept
     : kind(kind)
     , page_id(page_id)
     , comp_id(comp_id)
@@ -98,17 +98,18 @@ bool Transaction::emplace(void* storage, std::size_t maxBytes, std::size_t maxAl
     return true;
 }
 
-AwaitingStatus Transaction::sessionWaitMask(BkCmd bkcmd) const noexcept {
+msg::Status::Mask Transaction::sessionWaitMask(BkCmd bkcmd) const noexcept {
+    // Блокировка очереди: что ждём в pollTimeout после txIdle (не correlate).
     switch (bkcmd) {
     case BkCmd::Off:
     case BkCmd::OnFailure:
-        return kAwaitingNone;
+        return msg::kAwaitingNone;
     case BkCmd::OnSuccess:
-        return awaiting_status & kAwaitingSuccessOnly;
+        return awaiting_status & msg::kAwaitingSuccessOnly;
     case BkCmd::Always:
         return awaiting_status;
     }
-    return kAwaitingNone;
+    return msg::kAwaitingNone;
 }
 
 namespace {
@@ -128,13 +129,9 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
 
 } // namespace
 
-const Transaction* Session::faultingTransaction() const noexcept {
-    if (!_active.isEmpty())
-        return &_active;
-    return _queue.peek();
-}
-
-bool Session::tryEnqueue(Transaction tx) noexcept {
+bool Session::enqueue(Transaction tx) noexcept {
+    if (tx.awaiting_status == msg::kAwaitingDefault)
+        tx.awaiting_status = tx.command().defaultAwaitingStatus();
     if (_queue.push(tx)) {
         if (_status != Status::Active)
             _status = Status::Idle;
@@ -145,7 +142,7 @@ bool Session::tryEnqueue(Transaction tx) noexcept {
 }
 
 bool Session::begin(Gateway& gateway) noexcept {
-    if (!hasQueued() || !isIdle() || !gateway.isTxIdle())
+    if (!hasQueued() || isActive() || !gateway.isTxIdle())
         return false;
 
     const Transaction* const queued = _queue.peek();
@@ -156,14 +153,13 @@ bool Session::begin(Gateway& gateway) noexcept {
         return false;
     }
 
-    _active = *queued;
     clearTimeout();
     _status = Status::Active;
     return true;
 }
 
 bool Session::transmit(Gateway& gateway) noexcept {
-    if (isIdle())
+    if (!isActive())
         return true;
 
     if (!gateway.transmit()) {
@@ -175,31 +171,33 @@ bool Session::transmit(Gateway& gateway) noexcept {
 
 void Session::end(bool success) noexcept {
     clearTimeout();
-    _active = {};
     _queue.pop();
     if (success)
         clearError();
 }
 
 bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms, BkCmd bkcmd) noexcept {
-    if (_responseDeadlineActive && !isIdle()) {
-        constexpr uint32_t kMsHalfModulus = UINT32_C(1) << 31;
-        if ((now_ms - _responseDeadlineMs) < kMsHalfModulus) {
+    if (_responseTimer.isRunning() && isActive()) {
+        if (_responseTimer.timedOut(now_ms)) {
             _status = Status::Timeout;
             return true;
         }
     }
 
-    if (!gateway.isTxIdle() || isIdle())
+    if (!gateway.isTxIdle() || !isActive())
         return false;
 
-    switch (_active.kind) {
+    const Transaction* const tx = current();
+    if (tx == nullptr)
+        return false;
+
+    switch (tx->kind) {
     case Transaction::Kind::TransparentTx:
     case Transaction::Kind::RawDataRx:
         return false;
 
     case Transaction::Kind::Command:
-        if (_active.sessionWaitMask(bkcmd) == kAwaitingNone) {
+        if (tx->sessionWaitMask(bkcmd) == msg::kAwaitingNone) {
             _status = Status::Complete;
             return true;
         }
@@ -210,36 +208,28 @@ bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms
         break;
     }
 
-    if (!_responseDeadlineActive) {
-        _responseDeadlineMs = now_ms + timeout_ms;
-        _responseDeadlineActive = true;
-    }
+    _responseTimer.startOnce(now_ms, timeout_ms);
     return false;
 }
 
 void Session::clearTimeout() noexcept {
-    _responseDeadlineActive = false;
-    _responseDeadlineMs = 0u;
+    _responseTimer.stop();
 }
 
 void Session::resetActive() noexcept {
     clearTimeout();
-    _active = {};
     if (_status == Status::Active)
         _status = Status::Idle;
 }
 
-AwaitingStatus Transaction::statusCorrelateMask(BkCmd bkcmd) const noexcept {
-    return awaiting_status & bkcmdAllowedStatus(bkcmd);
-}
+bool Transaction::correlatesWith(const msg::Status& msg, BkCmd bkcmd) const noexcept {
+    using Code = msg::Status::Code;
+    if (msg.status == Code::AppError 
+        || msg.status == Code::Unrecognized_Header
+        || msg.status == Code::Serial_Overflow)
+        return false;
 
-bool Transaction::statusCorrelatesWithTransaction(const msg::Status& status, BkCmd bkcmd) const noexcept {
-    if (status.status == msg::Status::Code::AppError
-        || status.status == msg::Status::Code::Unrecognized_Header)
-        return false;
-    if (isBkcmdIndependentStatus(status.status))
-        return false;
-    return statusInMask(status.status, statusCorrelateMask(bkcmd));
+    return msg.codeInMask(awaiting_status & msg::bkcmdAllowedStatus(bkcmd));
 }
 
 } // namespace nex

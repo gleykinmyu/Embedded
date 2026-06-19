@@ -48,10 +48,10 @@
 
 | Файл | Изменения |
 |------|-----------|
-| `core/nexStatusMask.hpp` | `AwaitingStatus` (`uint64_t`, bit = wire code), `kAwaitingAllPanel`, `kAwaitingNone`, `bkcmdAllowedStatus()` |
-| `core/nexSession.hpp` | `Transaction::Kind`, поле `awaiting_status`, методы mask/correlate в `.cpp` |
+| `core/nexStatusMask.hpp` | `kAwaitingDefault`, `kAwaitingPageCommand`, `bkcmdAllowedStatus()` |
+| `core/nexSession.hpp` | `Transaction::Kind`, поле `awaiting_status`, методы mask/correlate в `.cpp`; без `_active` |
 | `core/nexSession.cpp` | Реализация `Transaction::*`; correlate в dispatch path |
-| `core/nexCommands.hpp/cpp` | `EmptyCommand`, `kEmptyCommand()` — serialize → 0 bytes → Gateway `EmptyPayload` |
+| `core/nexCommands.hpp/cpp` | `defaultAwaitingStatus()`; assign→`kAwaitingNone`, Page→`kAwaitingPageCommand`; `EmptyCommand` |
 | `app/nexApplication.cpp` | `statusCorrelates…`: uncorrelated → `dispatchError(0,0)`, `return true` (session не трогаем) |
 | `comp/nexAttributes.hpp`, `app/nexSysVars.*` | `Kind` вместо `State::Awaiting*` |
 | `examples/example4/app.hpp` | `Transaction::Kind::Command` / `GetNumeric` |
@@ -70,24 +70,22 @@
 ### `Transaction` lifecycle
 
 ```
-enqueue(Transaction{ cmd temp, route, kind, mask })  // by value
+enqueue(Transaction{ cmd temp, route, kind, mask })  // by value; mask=kAwaitingDefault → из Command
   → push → emplace(cmd → Slot::storage)
   → _command указывает на storage
 
 begin → pushCommand(queued->command())
-  → _active = *queued   // ⚠ дубль, см. «следующие шаги»
+  → _status = Active   // active() = *_queue.peek()
 ```
 
-- `isEmpty()` = `_command == nullptr` (нет `Kind::Idle`).
-- `command()` при null → `kEmptyCommand()`.
-- Удалены неиспользуемые `isCommand()` / `expectsReply()`.
-- Удалён non-const `Command& command()`.
+- `isIdle()` = `_status != Active`.
+- `active()` = `*_queue.peek()` (precondition: `!isIdle()`).
 
 ### Поведение correlate (текущее)
 
 - Default `awaiting_status = kAwaitingAllPanel` → пока почти всё correlated (как до R106).
 - Фоновый status при active session: `onError(0,0)`, session ждёт дальше.
-- example6: локальные `isDataRecordFileNoise` / `responseMatchesExpected` **ещё не** заменены библиотечной маской.
+- example6: `kAwaitingPageCommand` на `switchPage`; bench ждёт только `Success` (без `isDataRecordFileNoise`).
 
 ### Example6 / bench (ранее в сессии)
 
@@ -100,22 +98,21 @@ begin → pushCommand(queued->command())
 
 | Тема | Решение |
 |------|---------|
-| `_active` копия в Session | Убрать: `active()` → `*_queue.peek()` при `Status::Active`; `isIdle()` → `_status != Active` |
-| `active()` при idle | **Precondition:** вызывать только при `!isIdle()`; альтернатива — `tryActive()` → `const Transaction*` |
-| `Command::defaultAwaitingStatus()` | Per-class mask при enqueue (PR-2) |
-| `switchPage` mask | `awaiting_status` без FileIo (`0x06`) — убрать `isDataRecordFileNoise` в ex6 |
-| `last tx` для orphan OnFailure | R106f, example4 |
-| `kAwaitingDefault` sentinel | «взять из Command» — не реализовано |
+| `_active` копия в Session | ✓ убрано |
+| `Command::defaultAwaitingStatus()` | ✓ assign/page |
+| `kAwaitingDefault` sentinel | ✓ resolve в `tryEnqueue` |
 
 ---
 
 ## Следующие шаги (порядок)
 
-1. **Session без `_active`** — `active()` = ref на `slots_[head].data`; `end()` только `pop()`.
-2. **PR-2 masks** — `Command::defaultAwaitingStatus()`, пресеты (assign/page/file/get); default assign → `kAwaitingNone` (R106e).
-3. **example6** — маска на `switchPage` вместо `isDataRecordFileNoise`.
-4. **R106f** — `LastCompleted` + orphan fail → `(page, comp)` при OnFailure.
-5. **Сборка** — `pio run -e example6` / `example4` на целевой машине (в sandbox CI не гоняли).
+1. ~~**Session без `_active`**~~ ✓
+2. ~~**PR-2 masks**~~ ✓ (assign/page; file/get — базовый `kAwaitingAllPanel`)
+3. ~~**example6**~~ ✓ (`kAwaitingPageCommand` + Success-only wait)
+4. ~~**R106f**~~ — **отложено**
+5. ~~**R106d**~~ ✓
+6. ~~**R105**~~ ✓ — `getResponseTimeoutMs` / ctor
+7. **Следующий:** NEX-R101 (буфер при QueueFull) или PR-3 NEX-R210
 
 ---
 
@@ -134,8 +131,8 @@ AwaitingStatus statusCorrelateMask(BkCmd) const;
 bool statusCorrelatesWithTransaction(const msg::Status&, BkCmd) const;
 
 // Session
-bool isIdle() const;              // _active.isEmpty() сейчас
-const Transaction& active() const;  // _active сейчас
+bool isIdle() const;              // _status != Active
+const Transaction& active() const;  // *_queue.peek(), только при Active
 const Transaction* faultingTransaction() const;
 
 // Masks (nexStatusMask.hpp)
@@ -165,4 +162,5 @@ lib/Nextion/examples/example6/app.hpp
 
 | Дата | Событие |
 |------|---------|
+| 2026-06-18 | PR-1b + PR-2: `_active` убран, masks, ex6 |
 | 2026-06-01 | Создан handoff после сессии R106: Kind, wire mask, bkcmd split, EmptyCommand, correlate orphan |
