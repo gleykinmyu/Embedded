@@ -30,7 +30,7 @@ struct GaugeCenter {
     void setDiameter(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Hig,
-            attr_detail::clamp(v, kDiameterMin, kDiameterMax));
+            clamp(v, kDiameterMin, kDiameterMax));
     }
 };
 
@@ -63,19 +63,19 @@ struct GaugePointer {
     void setHeadWidth(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Vvs0,
-            attr_detail::clamp(v, kWidthMin, kWidthMax));
+            clamp(v, kWidthMin, kWidthMax));
     }
 
     void setBodyWidth(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Vvs1,
-            attr_detail::clamp(v, kWidthMin, kWidthMax));
+            clamp(v, kWidthMin, kWidthMax));
     }
 
     void setFootWidth(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Vvs2,
-            attr_detail::clamp(v, kWidthMin, kWidthMax));
+            clamp(v, kWidthMin, kWidthMax));
     }
 };
 

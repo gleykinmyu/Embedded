@@ -5,97 +5,20 @@
 
 #include <cstdint>
 #include <cstring>
-#include <type_traits>
 
 namespace nex {
 
 namespace attr_detail {
-
-template<typename T>
-struct is_color_storage : std::false_type {};
-
-template<>
-struct is_color_storage<Color> : std::true_type {};
-
-template<typename T>
-struct is_halign_storage : std::false_type {};
-
-template<>
-struct is_halign_storage<HAlign> : std::true_type {};
-
-template<typename T>
-struct is_valign_storage : std::false_type {};
-
-template<>
-struct is_valign_storage<VAlign> : std::true_type {};
-
-template<typename T>
-struct is_number_format_storage : std::false_type {};
-
-template<>
-struct is_number_format_storage<NumFormat> : std::true_type {};
-
-template<typename T>
-inline constexpr bool is_nex_numeric_storage_v = std::disjunction_v<
-    std::is_convertible<T, bool>,
-    std::is_convertible<T, int8_t>,
-    std::is_convertible<T, uint8_t>,
-    std::is_convertible<T, int16_t>,
-    std::is_convertible<T, uint16_t>,
-    std::is_convertible<T, int32_t>,
-    is_color_storage<T>,
-    is_halign_storage<T>,
-    is_valign_storage<T>,
-    is_number_format_storage<T>>;
-
-template<typename T>
-[[nodiscard]] constexpr T from_wire(int32_t wire) noexcept {
-    return static_cast<T>(wire);
-}
-
-template<>
-[[nodiscard]] constexpr Color from_wire<Color>(int32_t wire) noexcept {
-    return Color(static_cast<uint16_t>(wire));
-}
-
-template<>
-[[nodiscard]] constexpr HAlign from_wire<HAlign>(int32_t wire) noexcept {
-    return static_cast<HAlign>(wire);
-}
-
-template<>
-[[nodiscard]] constexpr VAlign from_wire<VAlign>(int32_t wire) noexcept {
-    return static_cast<VAlign>(wire);
-}
-
-template<>
-[[nodiscard]] constexpr NumFormat from_wire<NumFormat>(int32_t wire) noexcept {
-    return static_cast<NumFormat>(wire);
-}
-
-template<typename T>
-[[nodiscard]] constexpr int32_t to_wire(const T& v) noexcept {
-    return static_cast<int32_t>(v);
-}
-
-/** Ограничить `v` диапазоном `[lo, hi]` (inclusive). */
-template<typename T>
-[[nodiscard]] constexpr T clamp(T v, T lo, T hi) noexcept
-{
-    if (v < lo)
-        return lo;
-    if (v > hi)
-        return hi;
-    return v;
-}
 
 /** MCU: `assign` числового атрибута без зеркала (только исходящая команда). */
 template<typename T>
 inline void assignNumeric(const Component& parent, attr::Id id, T value) noexcept
 {
     const AttrRef target{parent.name, attr::literal(id)};
-    const cmd::assign::Numeric cmd(target, to_wire(value));
-    parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(), static_cast<uint8_t>(id)});
+    const cmd::assign::Numeric cmd(target, wire::toWire(value));
+    parent.page.app.enqueue(
+        Transaction{cmd, parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command,
+            msg::kAwaitingNone});
 }
 
 /** MCU: `assign` строкового атрибута без зеркала (только исходящая команда). */
@@ -105,27 +28,7 @@ inline void assignText(const Component& parent, attr::Id id, const char* text) n
     const char* const p = text != nullptr ? text : "";
     parent.page.app.enqueue(Transaction{
         cmd::assign::Text(target, p, cmd::assign::Text::Op::Assign),
-        parent.page.ID, parent.id(), static_cast<uint8_t>(id)});
-}
-
-template<>
-[[nodiscard]] constexpr int32_t to_wire(const Color& v) noexcept {
-    return static_cast<int32_t>(v.raw);
-}
-
-template<>
-[[nodiscard]] constexpr int32_t to_wire(const HAlign& v) noexcept {
-    return static_cast<int32_t>(static_cast<uint8_t>(v));
-}
-
-template<>
-[[nodiscard]] constexpr int32_t to_wire(const VAlign& v) noexcept {
-    return static_cast<int32_t>(static_cast<uint8_t>(v));
-}
-
-template<>
-[[nodiscard]] constexpr int32_t to_wire(const NumFormat& v) noexcept {
-    return static_cast<int32_t>(static_cast<uint8_t>(v));
+        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
@@ -181,7 +84,7 @@ protected:
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
-        msg::Status::Mask awaiting_status = msg::kAwaitingDefault) const noexcept {
+        msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel) const noexcept {
         _parent.page.app.enqueue(
             Transaction{cmd, _parent.page.ID, _parent.id(), tag(), kind, awaiting_status});
     }
@@ -192,8 +95,8 @@ template<typename T>
 class Num : public Base {
 public:
     static_assert(
-        attr_detail::is_nex_numeric_storage_v<T>,
-        "nex::attr::Num<T>: T — bool, целое 8/16/32 бит или nex::Color");
+        wire::is_attr_numeric_v<T>,
+        "nex::attr::Num<T>: T — bool, целое 8/16/32 бит, nex::Color или enum class : uint8_t");
 
     constexpr explicit Num(const Component& parent, Id id) noexcept
         : Base(parent, id)
@@ -203,14 +106,14 @@ public:
     [[nodiscard]] constexpr operator T() const noexcept { return _val; }
 
     void applyResponse(const msg::getNumeric& response) noexcept {
-        _val = attr_detail::from_wire<T>(response.value);
+        _val = wire::fromWire<T>(response.value);
     }
 
     Num& operator=(const T& v) noexcept {
         _val = v;
         const AttrRef target{ _parent.name, name() };
-        const cmd::assign::Numeric cmd(target, attr_detail::to_wire(v));
-        enqueueTransaction(cmd);
+        const cmd::assign::Numeric cmd(target, wire::toWire(v));
+        enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
         return *this;
     }
 
@@ -233,8 +136,8 @@ template<typename T>
 class NumRO : public Base {
 public:
     static_assert(
-        attr_detail::is_nex_numeric_storage_v<T>,
-        "nex::attr::NumRO<T>: T должен быть приводим к bool, целому 8 / 16 бит или int32_t");
+        wire::is_attr_numeric_v<T>,
+        "nex::attr::NumRO<T>: T — bool, целое 8/16/32 бит, nex::Color или enum class : uint8_t");
 
     constexpr explicit NumRO(const Component& parent, Id id) noexcept
         : Base(parent, id)
@@ -244,7 +147,7 @@ public:
     [[nodiscard]] constexpr operator T() const noexcept { return _val; }
 
     void applyResponse(const msg::getNumeric& response) noexcept {
-        _val = attr_detail::from_wire<T>(response.value);
+        _val = wire::fromWire<T>(response.value);
     }
 
     void get() noexcept {

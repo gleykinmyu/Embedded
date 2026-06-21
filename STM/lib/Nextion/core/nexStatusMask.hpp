@@ -19,7 +19,6 @@ namespace nex {
 namespace msg {
 
 constexpr Status::Mask kAwaitingNone = 0ull;
-constexpr Status::Mask kAwaitingDefault = ~0ull;
 
 /** NIS §7 п.23 — Serial Buffer Overflow, не зависит от bkcmd. */
 constexpr Status::Mask kAwaitingBkcmdIndependent = Status::maskBit(Status::Code::Serial_Overflow);

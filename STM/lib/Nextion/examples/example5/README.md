@@ -2,15 +2,15 @@
 
 Четыре страницы HMI с **24** виджетами — по одному на каждый листовой класс из `nexComponents.hpp` (без `nexExComponents.hpp`).
 
-После `restartScreen` MCU выставляет `bkcmd=Always` (`enableBkcmdAlways()`) **только на время static demo** — ACK на каждую команду, ошибки атрибутов в `onError` / UART. После `runAllDemos` — `bkcmd=OnFailure` для live loop.
+После `restartScreen` MCU выставляет `bkcmd=Always` (`enableBkcmdAlways()`) **только на время static demo** — ACK на каждую команду, ошибки атрибутов в `onError` / UART. После `runAllDemos` — `bkcmd=OnFailure` для live loop (waveform `add` — NoAwaiting, см. R214).
 
 Затем один раз `runAttributeDemoOnce()` → `runAllDemos()`: настройка цветов, геометрии, шрифтов, `enable`.
 
-В main loop — `tickLiveDemos()` каждые ~400 ms: потоковые виджеты, у которых поведение раскрывается со временем:
+В main loop — `tickLiveDemos()` каждые ~400 ms:
 
 | Виджет | Статическая настройка | Живое обновление |
 |--------|----------------------|------------------|
-| **Waveform** | каналы, сетка, `dis` (масштаб) | `ch[].add()` — осциллограмма «едет» |
+| **Waveform** | каналы, сетка, `dis` (масштаб) | `ch[].add()` — NoAwaiting; `bkcmd=OnFailure`; probe 0x12 на первом тике ex5a |
 | **ProgressBar** | фон, bar, скругление | `value` 0↔100 |
 | **Gauge** | center, pointer | `setAngle()` 0…360° |
 | **Slider** | cursor, bg2 | `value` следует за фазой |

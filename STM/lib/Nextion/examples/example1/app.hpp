@@ -209,13 +209,13 @@ private:
 
         cs.clear_screen(black);
 
-        const uint16_t x = static_cast<uint16_t>(20u + (step % 10u) * 14u);
-        const uint16_t y = static_cast<uint16_t>(40u + (step % 8u) * 11u);
+        const Coord x = static_cast<Coord>(20u + (step % 10u) * 14u);
+        const Coord y = static_cast<Coord>(40u + (step % 8u) * 11u);
 
         if ((step & 1u) == 0u)
-            cs.rect_fill(Point{x, y}, Point{static_cast<uint16_t>(x + 70u), static_cast<uint16_t>(y + 45u)}, accent);
+            cs.rect_fill(Point{x, y}, Point{static_cast<Coord>(x + 70u), static_cast<Coord>(y + 45u)}, accent);
         else
-            cs.circle_filled(Point{static_cast<uint16_t>(x + 35u), static_cast<uint16_t>(y + 25u)}, 28u, accent);
+            cs.circle_filled(Point{static_cast<Coord>(x + 35u), static_cast<Coord>(y + 25u)}, 28u, accent);
 
         std::snprintf(_draw_demo_text, sizeof(_draw_demo_text), "demo %u", static_cast<unsigned>(step));
         cs.text_in_region(Region(Point{8u, 300u}, Rect{400u, 50u}), _draw_demo_text, 1u, Color::std::White,

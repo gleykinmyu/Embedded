@@ -204,17 +204,17 @@ namespace nex {
      *               │   │   └── FileBrowser    // nexExComponents: filter; spay; pic1; pic2; …
      *               │   ├── ListSelect         // path; val; setCellSize
      *               │   │   ├── ComboBox       // border; arrow; cells; isOpened; setVAlign; setHAlign
-     *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine
+     *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine; path/val (без txt mirror)
      *               │   │
-     *               │   └── Multiline          // setLineSpacing; setWordWrap; setVAlign; setHAlign
+     *               │   └── Multiline          // setLineSpacing; setWordWrap; setHAlign
      *               │       ├── Textual        // setText
-     *               │       │   ├── SlidingText // txt; setShowProgressBar; val_y; setVAlign=delete
-     *               │       │   ├── Text       // txt; enablePassword/disablePassword
-     *               │       │   ├── ScrollText // txt; setScrollDirection; setScrollStep; setPeriod; enable/disable
-     *               │       │   └── ButtonBase  // pressed (Pressed<S>)
+     *               │       │   ├── SlidingText // txt; setShowProgressBar; val_y; setVAlign=delete; (ch/maxval_y — не в API)
+     *               │       │   ├── Text       // setVAlign; txt; enablePassword/disablePassword
+     *               │       │   ├── ScrollText // setVAlign; txt; setScrollDirection; setScrollStep; setPeriod; enable/disable
+     *               │       │   └── ButtonBase  // setVAlign; pressed (Pressed<S>)
      *               │       │       ├── Button
      *               │       │       └── DualStateButton  // val
-     *               │       └── Numeric        // val
+     *               │       └── Numeric        // setVAlign; val
      *               │           ├── Number     // setDigitCount; setFormat
      *               │           └── XFloat     // setFormat(before, after)
      *               │

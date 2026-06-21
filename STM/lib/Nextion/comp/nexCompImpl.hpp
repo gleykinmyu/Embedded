@@ -41,9 +41,9 @@ class TouchArea : public Component {
 public:
 #if NEX_TOUCH_AREA_POSITION
     /** mcu: позиция X */
-    attr::Num<uint16_t> x;
+    attr::Num<Coord> x;
     /** mcu: позиция Y */
-    attr::Num<uint16_t> y;
+    attr::Num<Coord> y;
 #endif
 #if NEX_TOUCH_AREA_SIZE
     /** mcu: ширина (RO в ответе get) */
@@ -158,7 +158,7 @@ public:
     void setCellSize(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Hig,
-            attr_detail::clamp(v, kCellSizeMin, kCellSizeMax));
+            clamp(v, kCellSizeMin, kCellSizeMax));
     }
 
     void onResponse(uint8_t tag, const msg::getNumeric& response) override
@@ -187,7 +187,7 @@ protected:
     {}
 };
 
-/** lineSpacing; wordWrap; vAlign; hAlign */
+/** lineSpacing; wordWrap; hAlign */
 template<BG S = BG::Color>
 class Multiline : public Printable<S> {
 public:
@@ -199,12 +199,6 @@ public:
     void setWordWrap(bool enabled) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Isbr, enabled);
-    }
-
-    // TODO: `ycen` есть не у всех наследников Multiline (SlidingText type 62 — без VAlign в Editor).
-    void setVAlign(VAlign v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
     }
 
     void setHAlign(HAlign v) noexcept
@@ -242,6 +236,11 @@ protected:
 template<BG S = BG::Color>
 class ButtonBase : public Textual<S> {
 public:
+    void setVAlign(VAlign v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
+    }
+
     /** mcu: оформление нажатого состояния — поля внутри `pressed` */
     resources::Pressed<S> pressed;
 
@@ -256,6 +255,11 @@ protected:
 template<BG S = BG::Color>
 class Numeric : public Multiline<S> {
 public:
+    void setVAlign(VAlign v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
+    }
+
     /** user: число (ввод с экранной клавиатуры) */
     attr::Num<int32_t> val;
 

@@ -23,7 +23,14 @@ inline constexpr attr::Id pcoId(uint8_t channel) noexcept
 
 } // namespace waveform_detail
 
-/** Каналы Waveform (`ch` 1…4 в NIS): `ch[i].setColor` / `add` / `addt`. */
+/** Каналы Waveform (`ch` 1…4 в NIS): `ch[i].setColor` / `add` / `addt`.
+ *
+ * **`add` / streaming:** `awaiting_status = msg::kAwaitingNone` — сессия закрывается на `txIdle`,
+ * очередь не блокируется ожиданием panel-status. Рекомендуемый **`bkcmd=OnFailure`**: панель шлёт
+ * fail-байты (0x12 channel, 0x24 overflow) без Success ACK на каждый сэмпл. **`bkcmd=Always`**
+ * даёт шум Success на потоке. При `kAwaitingNone` fail-status uncorrelated → `onError(0,0)` (маршрут
+ * last-tx — NEX-R106f). См. example5 live probe.
+ */
 template<uint8_t ChannelCount>
 struct WaveformChannels {
     static_assert(ChannelCount >= 1u && ChannelCount <= 4u,
@@ -36,14 +43,15 @@ struct WaveformChannels {
             attr_detail::assignNumeric(_owner, waveform_detail::pcoId(_index), v);
         }
 
+        /** Один сэмпл канала; NoAwaiting — для high-frequency streaming. */
         void add(uint8_t value) noexcept
         {
             _owner.page.app.enqueue(Transaction{
                 cmd::WaveForm::add(_owner.id(), _index, value),
-                _owner.page.ID, _owner.id()});
+                _owner.page.ID, _owner.id(), 0u, Transaction::Kind::Command, msg::kAwaitingNone});
         }
 
-        //TODO добавить сохранение буфера передачи
+        /** @experimental NEX-R215 — преамбула без TX payload; не для prod. */
         void addt(uint32_t byteCount) noexcept
         {
             _owner.page.app.enqueue(Transaction{

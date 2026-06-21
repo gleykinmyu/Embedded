@@ -46,6 +46,8 @@ namespace nex {
 
             [[nodiscard]] constexpr bool isOK() const noexcept { return status == Code::Success; }
 
+            [[nodiscard]] constexpr bool isAppError() const noexcept { return status == Code::AppError; }
+
             [[nodiscard]] static constexpr Mask maskBit(Code code) noexcept {
                 return 1ull << static_cast<uint8_t>(code);
             }

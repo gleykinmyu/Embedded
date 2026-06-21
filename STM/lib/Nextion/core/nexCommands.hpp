@@ -4,7 +4,6 @@
 #include <cstring>
 #include <new>
 #include "nexProtocol.hpp"
-#include "nexStatusMask.hpp"
 #include "nexTypes.hpp"
 
 /**
@@ -98,11 +97,6 @@ struct AttrRef {
         virtual bool emplaceIn(void* storage, std::size_t maxBytes, std::size_t maxAlign) const noexcept = 0;
         virtual void destroyIn(void* storage) const noexcept = 0;
 
-        /** Маска panel-status по умолчанию для `Transaction` с `msg::kAwaitingDefault`. */
-        [[nodiscard]] virtual msg::Status::Mask defaultAwaitingStatus() const noexcept {
-            return msg::kAwaitingAllPanel;
-        }
-
     protected:
         mutable Status _status = Status::OK;
 
@@ -190,7 +184,6 @@ namespace assign {
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Text)
-        [[nodiscard]] msg::Status::Mask defaultAwaitingStatus() const noexcept override { return msg::kAwaitingNone; }
 
     private:
         AttrRef _target;
@@ -206,7 +199,6 @@ namespace assign {
         TextSubtract(const AttrRef& target, uint32_t n) noexcept : _target(target), _n(n) {}
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(TextSubtract)
-        [[nodiscard]] msg::Status::Mask defaultAwaitingStatus() const noexcept override { return msg::kAwaitingNone; }
 
     private:
         AttrRef _target;
@@ -229,7 +221,6 @@ namespace assign {
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Numeric)
-        [[nodiscard]] msg::Status::Mask defaultAwaitingStatus() const noexcept override { return msg::kAwaitingNone; }
 
     private:
         AttrRef _target;
@@ -283,9 +274,6 @@ namespace assign {
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Page)
-        [[nodiscard]] msg::Status::Mask defaultAwaitingStatus() const noexcept override {
-            return msg::kAwaitingPageCommand;
-        }
 
     private:
         Kind _kind;

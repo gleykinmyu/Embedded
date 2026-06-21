@@ -243,7 +243,7 @@ public:
     /** user: буфер/подпись ячейки (навигация по таблице) */
     attr::String<256> txt;
     /** user: смещение по горизонтали при прокрутке */
-    attr::Num<uint16_t> left;
+    attr::Num<Coord> left;
     /** user: индекс канала/строки */
     attr::Num<uint8_t> ch;
     /** user: направление прокрутки */
@@ -269,9 +269,9 @@ public:
     }
 
     /** user: позиция/значение по X */
-    attr::Num<uint16_t> val_x;
+    attr::Num<Coord> val_x;
     /** user: позиция/значение по Y */
-    attr::Num<uint16_t> val_y;
+    attr::Num<Coord> val_y;
 
     //TODO посмотреть реальное назначение атрибутов bco2 и pco2
     void setBco2(uint16_t v) noexcept
@@ -372,7 +372,7 @@ public:
         static constexpr uint8_t kMin = 16u;
         static constexpr uint8_t kMax = 255u;
         attr_detail::assignNumeric(*this, attr::Id::Hig,
-            attr_detail::clamp(v, kMin, kMax));
+            clamp(v, kMin, kMax));
     }
 
     void setGridColor(nex::Color v) noexcept

@@ -33,13 +33,13 @@ struct Transaction {
     uint8_t comp_id = 0u;
     uint8_t tag = 0u;
     /** Panel status, принимаемые как ответ этой tx; `msg::kAwaitingNone` = NoAwaiting. */
-    msg::Status::Mask awaiting_status = msg::kAwaitingDefault;
+    msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel;
 
     Transaction() noexcept = default;
 
     Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag = 0u,
         Kind kind = Kind::Command,
-        msg::Status::Mask awaiting_status = msg::kAwaitingDefault) noexcept;
+        msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel) noexcept;
 
     [[nodiscard]] bool isEmpty() const noexcept;
 

@@ -69,11 +69,11 @@ public:
 namespace Canvas {
 
 /** Два угла (порядок не важен) → верхний левый и нижний правый (включительно). */
-void normalizeRect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, Point& upperLeft,
+void normalizeRect(Coord x0, Coord y0, Coord x1, Coord y1, Point& upperLeft,
     Point& lowerRightInclusive) noexcept;
 
 /** Два угла → `Region` (`ul` + `size`). */
-[[nodiscard]] Region region(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) noexcept;
+[[nodiscard]] Region region(Coord x0, Coord y0, Coord x1, Coord y1) noexcept;
 
 /** Точка `p` внутри `region` (включительно по границе); при нулевом размере — false. */
 [[nodiscard]] bool contains(Region region, Point p) noexcept;

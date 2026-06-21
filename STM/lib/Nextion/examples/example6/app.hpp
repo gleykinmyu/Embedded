@@ -148,7 +148,8 @@ public:
     /** `pumpUntilIdle` + крутим RX, чтобы сбросить осиротевшие ACK. */
     void drainPanelAcks() noexcept
     {
-        pumpUntilIdle();
+        if (!pumpUntilIdle())
+            NEX_DBG("[ex6] pumpUntilIdle: timeout (session not idle)\n");
         const uint32_t t0 = nowMs();
         while ((nowMs() - t0) < kAckDrainMs)
             update();
@@ -221,8 +222,8 @@ public:
     {
         Application::onError(status, page_id, comp_id);
 
-        if (isAppError(status)) {
-            const AppErrorReporter reporter = appErrorReporter(status);
+        if (status.isAppError()) {
+            const AppError reporter = appErrorReporter(status);
             NEX_DBG("[ex6-rx] t=%010lu AppError %s %s p%u c%u\n", static_cast<unsigned long>(nowMs()),
                 cstr(reporter), appErrorDetailCstr(reporter, appErrorDetail(status)),
                 static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id));
@@ -242,7 +243,7 @@ public:
         if (!_await_panel)
             return;
 
-        if (isAppError(status))
+        if (status.isAppError())
             return;
 
         if (!responseMatchesExpected(page_id, comp_id))
@@ -422,7 +423,8 @@ inline void runLatencyBench(LatencyBenchApp& app, LatencyRecorder& rec, ex5::Pag
     detail::benchPageC(app, rec, c);
     detail::benchPageD(app, rec, d);
 
-    app.pumpUntilIdle();
+    if (!app.pumpUntilIdle())
+        NEX_DBG("[ex6] pumpUntilIdle: timeout after bench\n");
 }
 
 } // namespace ex6

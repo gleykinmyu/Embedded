@@ -163,7 +163,7 @@ public:
                 queue_enqueued_ = 0u;
                 for (unsigned i = 0u; i < 65u; ++i) {
                     const uint32_t before = stats.total;
-                    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command});
+                    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
                     ++queue_enqueued_;
                     if (stats.total > before)
                         break;
@@ -220,7 +220,7 @@ public:
                 phase_once_ = true;
                 metric_at_phase_ = stats.app_gateway + stats.app_stream;
                 _link.close();
-                enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command});
+                enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
             }
             if (elapsed >= 200u) {
                 markTest(6u, (stats.app_gateway + stats.app_stream) > metric_at_phase_);
@@ -325,13 +325,13 @@ private:
     void recordError(const msg::Status& status) noexcept
     {
         ++stats.total;
-        if (isAppError(status)) {
+        if (status.isAppError()) {
             switch (appErrorReporter(status)) {
-            case AppErrorReporter::Register: ++stats.register_err; break;
-            case AppErrorReporter::Command: ++stats.app_command; break;
-            case AppErrorReporter::Session: ++stats.app_session; break;
-            case AppErrorReporter::Gateway: ++stats.app_gateway; break;
-            case AppErrorReporter::Stream: ++stats.app_stream; break;
+            case AppError::Register: ++stats.register_err; break;
+            case AppError::Command: ++stats.app_command; break;
+            case AppError::Session: ++stats.app_session; break;
+            case AppError::Gateway: ++stats.app_gateway; break;
+            case AppError::Stream: ++stats.app_stream; break;
             default: break;
             }
             return;

@@ -32,8 +32,9 @@ public:
     void enqueue(Transaction tx) noexcept;
     virtual void update() noexcept;
 
-    /** Крутит `update()` пока сессия не простаивает; таймаут без прогресса — `getTimeout()`. */
-    void pumpUntilIdle() noexcept;
+    /** Крутит `update()` пока session idle (`!isActive() && !hasQueued()`).
+     *  @return `true` — idle; `false` — stall-timeout без прогресса очереди (`getTimeout()`). */
+    [[nodiscard]] bool pumpUntilIdle() noexcept;
 
     void setTimeout(uint32_t ms) noexcept { _timeoutMs = ms; }
     [[nodiscard]] uint32_t getTimeout() const noexcept { return _timeoutMs; }

@@ -162,7 +162,7 @@ public:
     void setDataScale(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Dis,
-            attr_detail::clamp(v, kDataScaleMin, kDataScaleMax));
+            clamp(v, kDataScaleMin, kDataScaleMax));
     }
 
     Waveform(Page& owner, const Literal& name, uint8_t id = 0)
@@ -252,7 +252,7 @@ public:
     void setAngle(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Val,
-            attr_detail::clamp(v, kAngleMin, kAngleMax));
+            clamp(v, kAngleMin, kAngleMax));
     }
 
     Gauge(Page& owner, const Literal& name, uint8_t id = 0)
@@ -323,27 +323,21 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Dis, enabled);
     }
 
-    /** user: текст выбранной строки (RO) */
-    //attr::StringRO<256> txt;
-
-    void onResponse(uint8_t tag, const msg::getString& response) override
-    {
-        if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
-            //txt.applyResponse(response);
-            return;
-        }
-        ListSelect<S>::onResponse(tag, response);
-    }
+    // NIS `txt` (RO) — в MCU API не зеркалим: строки из path знает приложение; выбор — val (ListSelect).
 
     TextSelect(Page& owner, const Literal& name, uint8_t id = 0)
         : ListSelect<S>(owner, name, Component::Type::TextSelect, id)
-        //, txt{*this, attr::Id::Txt}
     {}
 };
 
 template<BG S = BG::Color, uint16_t TxtMaxL = 16u>
 class Text : public Textual<S> {
 public:
+    void setVAlign(VAlign v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
+    }
+
     /** user: текст (ввод с клавиатуры) */
     attr::String<TxtMaxL> txt;
 
@@ -379,6 +373,7 @@ public:
     attr::String<TxtMaxL> txt;
 
     // NIS type 62: нет `ycen` — запрет assign через SlidingText&.
+    // `ch`, `maxval_y` в NIS есть, но в MCU API намеренно не экспортируем (Editor / val_y достаточно).
     void setVAlign(VAlign) = delete;
 
     void setShowProgressBar(ShowProgressBar v) noexcept
@@ -387,7 +382,7 @@ public:
     }
 
     /** user: позиция прокрутки по Y */
-    attr::Num<uint16_t> val_y;
+    attr::Num<Coord> val_y;
 
     void onResponse(uint8_t tag, const msg::getString& response) override
     {
@@ -417,6 +412,11 @@ public:
 template<BG S = BG::Color, uint16_t TxtMaxL = 16u>
 class ScrollText : public Textual<S> {
 public:
+    void setVAlign(VAlign v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Ycen, v);
+    }
+
     /** user: текст */
     attr::String<TxtMaxL> txt;
 
@@ -433,13 +433,13 @@ public:
     void setScrollStep(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Dis,
-            attr_detail::clamp(v, kScrollStepMin, kScrollStepMax));
+            clamp(v, kScrollStepMin, kScrollStepMax));
     }
 
     void setPeriod(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Tim,
-            attr_detail::clamp(v, kPeriodMin, kPeriodMax));
+            clamp(v, kPeriodMin, kPeriodMax));
     }
 
     void enable() noexcept

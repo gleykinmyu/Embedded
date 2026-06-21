@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <type_traits>
 
 #include "../core/nexCommands.hpp"
 #include "../core/nexMessages.hpp"
@@ -11,42 +10,6 @@
 namespace nex {
 
 class Application;
-
-namespace sysvar_detail {
-
-template<typename T>
-inline constexpr bool is_nex_numeric_storage_v = std::disjunction_v<
-    std::is_convertible<T, bool>,
-    std::is_convertible<T, int8_t>,
-    std::is_convertible<T, uint8_t>,
-    std::is_convertible<T, int16_t>,
-    std::is_convertible<T, uint16_t>,
-    std::is_convertible<T, int32_t>>;
-
-template<typename T, bool IsEnum = std::is_enum_v<T>>
-struct is_nex_enum_storage : std::false_type {};
-
-template<typename T>
-struct is_nex_enum_storage<T, true> : std::is_same<std::underlying_type_t<T>, uint8_t> {};
-
-template<typename T>
-inline constexpr bool is_nex_enum_storage_v = is_nex_enum_storage<T>::value;
-
-template<typename T>
-[[nodiscard]] constexpr int32_t to_wire(const T& v) noexcept {
-    if constexpr (is_nex_enum_storage_v<T>)
-        return static_cast<int32_t>(static_cast<uint8_t>(v));
-    return static_cast<int32_t>(v);
-}
-
-template<typename T>
-[[nodiscard]] constexpr T from_wire(int32_t wire) noexcept {
-    if constexpr (is_nex_enum_storage_v<T>)
-        return static_cast<T>(static_cast<uint8_t>(wire));
-    return static_cast<T>(wire);
-}
-
-} // namespace sysvar_detail
 
 /** `tag` транзакции / `onSysResponse` для полей `SysVar` в `Application`. */
 enum class SysVarTag : uint8_t {
@@ -97,7 +60,7 @@ protected:
     [[nodiscard]] AttrRef target() const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
-        msg::Status::Mask awaiting_status = msg::kAwaitingDefault) const noexcept;
+        msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel) const noexcept;
 };
 
 /** `sysN=…` через маршрут `Route::kSysVar*` (общий helper для facades / canvas / addons). */
@@ -111,7 +74,7 @@ template<typename T>
 class SysVar : public SysVarBase {
 public:
     static_assert(
-        sysvar_detail::is_nex_numeric_storage_v<T> || sysvar_detail::is_nex_enum_storage_v<T>,
+        wire::is_sysvar_numeric_v<T>,
         "nex::SysVar<T>: T — целое 8/16/32 бит или enum class с underlying uint8_t");
 
     explicit SysVar(Application& app, const Literal& sysName, SysVarTag routeTag,
@@ -129,13 +92,13 @@ public:
 
     SysVar& operator=(const T& v) noexcept {
         _val = v;
-        const cmd::assign::Numeric cmd(target(), sysvar_detail::to_wire(v));
-        enqueueTransaction(cmd);
+        const cmd::assign::Numeric cmd(target(), wire::toWire(v));
+        enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
         return *this;
     }
 
     void applyResponse(const msg::getNumeric& response) noexcept {
-        _val = sysvar_detail::from_wire<T>(response.value);
+        _val = wire::fromWire<T>(response.value);
     }
 
 private:

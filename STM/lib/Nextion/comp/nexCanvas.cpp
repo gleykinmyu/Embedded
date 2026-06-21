@@ -16,7 +16,7 @@ constexpr Literal kSysThdra{"thdra"};
 
 // --- Canvas rect helpers ----------------------------------------------------
 
-void Canvas::normalizeRect(const uint16_t x0, const uint16_t y0, const uint16_t x1, const uint16_t y1, Point& upperLeft,
+void Canvas::normalizeRect(const Coord x0, const Coord y0, const Coord x1, const Coord y1, Point& upperLeft,
     Point& lowerRightInclusive) noexcept {
     const Point a(x0, y0);
     const Point b(x1, y1);
@@ -26,7 +26,7 @@ void Canvas::normalizeRect(const uint16_t x0, const uint16_t y0, const uint16_t 
     lowerRightInclusive.y = (a.y > b.y) ? a.y : b.y;
 }
 
-Region Canvas::region(const uint16_t x0, const uint16_t y0, const uint16_t x1, const uint16_t y1) noexcept {
+Region Canvas::region(const Coord x0, const Coord y0, const Coord x1, const Coord y1) noexcept {
     Region r;
     Point lr;
     normalizeRect(x0, y0, x1, y1, r.ul, lr);
@@ -45,8 +45,8 @@ bool Canvas::contains(const Region region, const Point p) noexcept {
 }
 
 Point Canvas::center(const Rect& screen, const Rect& box) noexcept {
-    return Point(static_cast<uint16_t>((static_cast<unsigned>(screen.w) - box.w) / 2u),
-        static_cast<uint16_t>((static_cast<unsigned>(screen.h) - box.h) / 2u));
+    return Point(static_cast<Coord>((static_cast<unsigned>(screen.w) - box.w) / 2u),
+        static_cast<Coord>((static_cast<unsigned>(screen.h) - box.h) / 2u));
 }
 
 Region Canvas::innerRegion(const Region& outer, const uint16_t borderThickness) noexcept {
@@ -54,8 +54,8 @@ Region Canvas::innerRegion(const Region& outer, const uint16_t borderThickness) 
         return outer;
     if (outer.size.w <= 2u * borderThickness || outer.size.h <= 2u * borderThickness)
         return Region();
-    return Region(Point(static_cast<uint16_t>(outer.ul.x + borderThickness),
-                      static_cast<uint16_t>(outer.ul.y + borderThickness)),
+    return Region(Point(static_cast<Coord>(outer.ul.x + borderThickness),
+                      static_cast<Coord>(outer.ul.y + borderThickness)),
         Rect(static_cast<uint16_t>(outer.size.w - 2u * borderThickness),
             static_cast<uint16_t>(outer.size.h - 2u * borderThickness)));
 }
@@ -125,7 +125,7 @@ void AppCanvas::text_in_region(const Region region, const uint16_t pad, const ch
     const BG fill) const noexcept {
     if (region.size.w <= 2u * pad || region.size.h <= 2u * pad)
         return;
-    const Region inset(Point(static_cast<uint16_t>(region.ul.x + pad), static_cast<uint16_t>(region.ul.y + pad)),
+    const Region inset(Point(static_cast<Coord>(region.ul.x + pad), static_cast<Coord>(region.ul.y + pad)),
         Rect(static_cast<uint16_t>(region.size.w - 2u * pad), static_cast<uint16_t>(region.size.h - 2u * pad)));
     text_in_region(inset, contentToken, fontId, fg, hAlign, vAlign, bg, fill);
 }

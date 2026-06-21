@@ -48,11 +48,11 @@
 
 | Файл | Изменения |
 |------|-----------|
-| `core/nexStatusMask.hpp` | `kAwaitingDefault`, `kAwaitingPageCommand`, `bkcmdAllowedStatus()` |
-| `core/nexSession.hpp` | `Transaction::Kind`, поле `awaiting_status`, методы mask/correlate в `.cpp`; без `_active` |
+| `core/nexStatusMask.hpp` | `kAwaitingPageCommand`, `bkcmdAllowedStatus()` |
+| `core/nexSession.hpp` | `Transaction::Kind`, поле `awaiting_status`, `correlatesWith` / `sessionWaitMask` |
 | `core/nexSession.cpp` | Реализация `Transaction::*`; correlate в dispatch path |
-| `core/nexCommands.hpp/cpp` | `defaultAwaitingStatus()`; assign→`kAwaitingNone`, Page→`kAwaitingPageCommand`; `EmptyCommand` |
-| `app/nexApplication.cpp` | `statusCorrelates…`: uncorrelated → `dispatchError(0,0)`, `return true` (session не трогаем) |
+| `comp/nexAttributes.hpp`, `waveform.hpp`, `nexApplicationAddons.cpp` | маски в enqueue: assign/`add` → `kAwaitingNone`, Page → `kAwaitingPageCommand` |
+| `app/nexApplication.cpp` | `correlatesWith`: uncorrelated → `dispatchError(0,0)`, session не `end` |
 | `comp/nexAttributes.hpp`, `app/nexSysVars.*` | `Kind` вместо `State::Awaiting*` |
 | `examples/example4/app.hpp` | `Transaction::Kind::Command` / `GetNumeric` |
 | `REFACTORING.md` | R106e = mask-based NoAwaiting; R106d частично |
@@ -70,7 +70,7 @@
 ### `Transaction` lifecycle
 
 ```
-enqueue(Transaction{ cmd temp, route, kind, mask })  // by value; mask=kAwaitingDefault → из Command
+enqueue(Transaction{ cmd, route, kind, mask })  // mask явно или дефолт kAwaitingAllPanel
   → push → emplace(cmd → Slot::storage)
   → _command указывает на storage
 
@@ -99,8 +99,7 @@ begin → pushCommand(queued->command())
 | Тема | Решение |
 |------|---------|
 | `_active` копия в Session | ✓ убрано |
-| `Command::defaultAwaitingStatus()` | ✓ assign/page |
-| `kAwaitingDefault` sentinel | ✓ resolve в `tryEnqueue` |
+| `Command::defaultAwaitingStatus()` | ✓ убрано; маски в `Transaction` / enqueue |
 
 ---
 
@@ -109,10 +108,10 @@ begin → pushCommand(queued->command())
 1. ~~**Session без `_active`**~~ ✓
 2. ~~**PR-2 masks**~~ ✓ (assign/page; file/get — базовый `kAwaitingAllPanel`)
 3. ~~**example6**~~ ✓ (`kAwaitingPageCommand` + Success-only wait)
-4. ~~**R106f**~~ — **отложено**
+4. ~~**R106f**~~ — **отложено** → [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md)
 5. ~~**R106d**~~ ✓
 6. ~~**R105**~~ ✓ — `getResponseTimeoutMs` / ctor
-7. **Следующий:** NEX-R101 (буфер при QueueFull) или PR-3 NEX-R210
+7. **Следующий:** NEX-R101 (`tryEnqueue`) или PR-3 NEX-R210
 
 ---
 

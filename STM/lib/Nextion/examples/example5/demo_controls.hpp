@@ -116,16 +116,6 @@ inline void demoMultiline(Multiline<BG::Color>& w) noexcept
     demoFont(w);
     w.setLineSpacing(4u);
     w.setWordWrap(true);
-    w.setVAlign(VAlign::Center);
-    w.setHAlign(HAlign::Center);
-}
-
-/** Multiline без `ycen` (SlidingText type 62). */
-inline void demoMultilineNoVAlign(Multiline<BG::Color>& w) noexcept
-{
-    demoFont(w);
-    w.setLineSpacing(4u);
-    w.setWordWrap(true);
     w.setHAlign(HAlign::Center);
 }
 
@@ -301,13 +291,14 @@ inline void demoText(Text<>& t) noexcept
 {
     NEX_DBG("[ex5c] Text\n");
     demoTextual(t);
+    t.setVAlign(VAlign::Center);
     t.disablePassword();
 }
 
 inline void demoSlidingText(SlidingText<>& s) noexcept
 {
     NEX_DBG("[ex5c] SlidingText\n");
-    detail::demoMultilineNoVAlign(s);
+    detail::demoMultiline(s);
     s.setText("Sliding text sample");
     s.setShowProgressBar(nex::ShowProgressBar::OperationTime);
     s.val_y = 0u;
@@ -317,6 +308,7 @@ inline void demoScrollText(ScrollText<>& s) noexcept
 {
     NEX_DBG("[ex5c] ScrollText (прокрутка на панели после enable)\n");
     demoTextual(s);
+    s.setVAlign(VAlign::Center);
     s.setText("Scrolling marquee text — driven by panel timer");
     s.setScrollDirection(ScrollDirection::LeftToRight);
     s.setScrollStep(4u);
@@ -328,6 +320,7 @@ inline void demoNumeric(Numeric<>& n) noexcept
 {
     NEX_DBG("[ex5c] Numeric\n");
     detail::demoMultiline(n);
+    n.setVAlign(VAlign::Center);
     n.val = 42;
 }
 
@@ -357,6 +350,7 @@ inline void demoButton(Button<>& b, Drawable& layerRef) noexcept
 {
     NEX_DBG("[ex5d] Button\n");
     demoTextual(b);
+    b.setVAlign(VAlign::Center);
     detail::demoPressed(b);
     b.placeAbove(layerRef);
     b.move(Point{0, 0}, Point{4, 4}, 0u, 0u);
@@ -366,6 +360,7 @@ inline void demoDualStateButton(DualStateButton<>& d) noexcept
 {
     NEX_DBG("[ex5d] DualStateButton\n");
     demoTextual(d);
+    d.setVAlign(VAlign::Center);
     detail::demoPressed(d);
     d.val = 1u;
 }
@@ -494,37 +489,43 @@ inline void runPageDDemos(PageDWidgets& w) noexcept
     demoToggleSwitch(w.toggle);
 }
 
+inline void pumpUntilIdleOrLog(Application& app) noexcept
+{
+    if (!app.pumpUntilIdle())
+        NEX_DBG("[ex5] pumpUntilIdle: timeout (session not idle)\n");
+}
+
 inline void runAllDemos(Application& app, PageAWidgets& a, PageBWidgets& b, PageCWidgets& c,
     PageDWidgets& d) noexcept
 {
     NEX_DBG("[ex5] === attribute demo start ===\n");
 
     app.switchPage(kPageAId);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
     runPageADemos(a);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
 
     waitBeforeComponentDemo();
     app.switchPage(kPageBId);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
     runPageBDemos(b);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
 
     waitBeforeComponentDemo();
     app.switchPage(kPageCId);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
     runPageCDemos(c);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
 
     waitBeforeComponentDemo();
     app.switchPage(kPageDId);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
     runPageDDemos(d);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
 
     waitBeforeComponentDemo();
     app.switchPage(kPageAId);
-    app.pumpUntilIdle();
+    pumpUntilIdleOrLog(app);
 
     NEX_DBG("[ex5] === attribute demo enqueued ===\n");
 }
@@ -535,6 +536,10 @@ struct LiveDemoState {
     uint8_t phase = 0;
     /** 0=ex5a, 1=ex5b, 2=ex5c — страницы с живым обновлением. */
     uint8_t live_page = 0;
+    /** R214: один раз шлём `add` с неверным каналом при `bkcmd=OnFailure`. */
+    bool wf_add_probe_done = false;
+    uint32_t wf_add_ticks = 0u;
+    uint32_t wf_panel_fails = 0u;
 };
 
 inline constexpr uint8_t kLivePageCount = 3u;
@@ -567,25 +572,40 @@ inline void logLivePagePrompt(uint8_t live_page) noexcept
         livePageName(live_page));
 }
 
-/** Enter в main loop: следующая live-страница (A→B→C→A…). */
-inline void advanceLivePage(Application& app, LiveDemoState& st) noexcept
+/** R214: при `bkcmd=OnFailure` панель отвечает 0x12; с `kAwaitingNone` маршрут orphan (0,0). */
+inline void probeWaveformAddPolicy(Waveform<BG::Color, 4>& w, LiveDemoState& st) noexcept
 {
-    st.live_page = static_cast<uint8_t>((st.live_page + 1u) % kLivePageCount);
-    st.phase = 0;
-    st.last_ms = 0;
-    app.switchPage(pageIdForLiveSlot(st.live_page));
-    logLivePagePrompt(st.live_page);
+    if (st.wf_add_probe_done)
+        return;
+    st.wf_add_probe_done = true;
+    NEX_DBG("[ex5] live: waveform probe — invalid ch (expect 0x12 at p0 c0)\n");
+    w.page.app.enqueue(Transaction{
+        cmd::WaveForm::add(w.id(), 99u, 0u),
+        w.page.ID, w.id(), 0u, Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
-inline void tickLivePageA(PageAWidgets& a, uint8_t t) noexcept
+inline void tickLivePageA(PageAWidgets& a, LiveDemoState& st, uint8_t t) noexcept
 {
+    probeWaveformAddPolicy(a.waveform, st);
     const uint8_t wave0 = static_cast<uint8_t>(128 + static_cast<int8_t>(t - 128));
     const uint8_t wave1 = static_cast<uint8_t>(255u - wave0);
     if ((t & 1u) == 0u)
         a.waveform.ch[0].add(wave0);
     else
         a.waveform.ch[1].add(wave1);
+    ++st.wf_add_ticks;
     a.nvar.val = static_cast<int32_t>(t);
+}
+
+/** Enter в main loop: следующая live-страница (A→B→C→A…). */
+inline void advanceLivePage(Application& app, LiveDemoState& st) noexcept
+{
+    st.live_page = static_cast<uint8_t>((st.live_page + 1u) % kLivePageCount);
+    st.phase = 0;
+    st.last_ms = 0;
+    st.wf_add_probe_done = false;
+    app.switchPage(pageIdForLiveSlot(st.live_page));
+    logLivePagePrompt(st.live_page);
 }
 
 inline void tickLivePageB(PageBWidgets& b, uint8_t t) noexcept
@@ -601,7 +621,7 @@ inline void tickLivePageC(PageCWidgets& c, uint8_t t) noexcept
 {
     c.number.val = static_cast<int32_t>(t);
     c.xfloat.val = static_cast<int32_t>(t);
-    c.sltext.val_y = static_cast<uint16_t>(t);
+    c.sltext.val_y = static_cast<Coord>(t);
 }
 
 /** Обновление виджетов на **текущей** live-странице (`st.live_page`). */
@@ -617,7 +637,7 @@ inline void tickLiveDemos(Application& app, LiveDemoState& st, uint32_t now_ms, 
 
     switch (st.live_page % kLivePageCount) {
     case 0u:
-        tickLivePageA(a, t);
+        tickLivePageA(a, st, t);
         break;
     case 1u:
         tickLivePageB(b, t);

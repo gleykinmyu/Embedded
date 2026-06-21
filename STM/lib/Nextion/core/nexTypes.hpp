@@ -1,8 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace nex {
+
+// --- Color (RGB565) -----------------------------------------------------------
+
 /**
  * Цвет RGB565 для Nextion (`raw`). Каналы 565 в API — `r`, `g`, `b`; 8-bit — параметры `r8`, `g8`, `b8`.
  * Именованные значения — `Color::std` (NIS: одно 16-битное слово, часто десятичное 0…65535; R[15:11], G[10:5], B[4:0]).
@@ -101,29 +106,27 @@ constexpr bool operator==(Color::std a, Color::std b) noexcept {
 }
 constexpr bool operator!=(Color::std a, Color::std b) noexcept { return !(a == b); }
 
+// --- NIS: виджеты / атрибуты (enum class : uint8_t) ---------------------------
 
-/**
- * Атрибут `sta` (фон / заливка) в NIS для ветки BG: crop | color | image | transparent.
- * Коды 0…3 совместимы с xstr / типичным Attribute Pane для текстовых виджетов.
- */
+/** Атрибут `sta` (фон / заливка): crop | color | image | transparent (0…3). */
 enum class BG : uint8_t {
-    CropImage    = 0,
-    Color        = 1,
-    Image        = 2,
-    Transparent  = 3,
+    CropImage   = 0,
+    Color       = 1,
+    Image       = 2,
+    Transparent = 3,
 };
 
-/** Режим заливки фона в `xstr` (NIS); те же коды 0…3, что у `BGStyle`. */
+/** Режим заливки фона в `xstr` (NIS); те же коды 0…3, что у `BG`. */
 using BGStyle = BG;
 
-/** Горизонтальное выравнивание в `xstr` (NIS: xcenter, 0…2). */
+/** Горизонтальное выравнивание (NIS: `xcen`, 0…2). */
 enum class HAlign : uint8_t {
     Left   = 0,
     Center = 1,
     Right  = 2,
 };
 
-/** Вертикальное выравнивание в `xstr` (NIS: ycenter, 0…2). */
+/** Вертикальное выравнивание (NIS: `ycen`, 0…2). */
 enum class VAlign : uint8_t {
     Top    = 0,
     Center = 1,
@@ -160,18 +163,47 @@ enum class ShowProgressBar : uint8_t {
     Continuous    = 2u,
 };
 
-/** Формат отображения числа (`format` в NIS): Decimal, Currency, Hex. */
+/** Формат отображения числа (NIS `format`): Decimal, Currency, Hex. */
 enum class NumFormat : uint8_t {
-    Dec  = 0,
+    Dec      = 0,
     Currency = 1,
     Hex      = 2,
 };
 
-/** Код нажатия/отпускания в touch-событиях и аргументе UART-инструкции `click` (NIS, 0 / 1). */
+/** Код нажатия/отпускания в touch-событиях и UART `click` (0 / 1). */
 enum class TouchState : uint8_t {
     Release = 0x00,
-    Press = 0x01
+    Press   = 0x01,
 };
+
+// --- NIS: протокол / система ---------------------------------------------------
+
+/** NIS §6 `bkcmd`: UART status после команд (0–3, на панели default 2). */
+enum class BkCmd : uint8_t {
+    Off       = 0,
+    OnSuccess = 1,
+    OnFailure = 2,
+    Always    = 3,
+};
+
+/** NIS §6: допустимые значения `baud` / `bauds` (бит/с). */
+enum Baudrate : uint32_t {
+    b2400   = 2400u,
+    b4800   = 4800u,
+    b9600   = 9600u,
+    b19200  = 19200u,
+    b31250  = 31250u,
+    b38400  = 38400u,
+    b57600  = 57600u,
+    b115200 = 115200u,
+    b230400 = 230400u,
+    b250000 = 250000u,
+    b256000 = 256000u,
+    b512000 = 512000u,
+    b921600 = 921600u,
+};
+
+// --- Идентификаторы компонентов и ресурсов ------------------------------------
 
 /**
  * Идентификатор компонента в кадрах touch/status (NIS): `0` — сама страница, не виджет.
@@ -210,33 +242,33 @@ struct Font {
     }
 };
 
-/** Пиксельная координата по оси X или Y на экране Nextion (NIS). */
+// --- Геометрия экрана ---------------------------------------------------------
+
+/** Пиксельная координата X/Y (NIS `x`, `y`, touch): ≥ 0, `uint16_t`, не `int16_t`. */
 using Coord = uint16_t;
 
 /** Точка (x, y) на экране в пикселях. */
 struct Point {
-    uint16_t x;
-    uint16_t y;
+    Coord x;
+    Coord y;
 
     constexpr Point() noexcept
         : x(0u)
         , y(0u)
     {}
-    constexpr Point(uint16_t px, uint16_t py) noexcept
+    constexpr Point(Coord px, Coord py) noexcept
         : x(px)
         , y(py)
     {}
 
     /** Точка правее на `dx` пикселей (тот же `y`). */
-    [[nodiscard]] constexpr Point right(uint16_t dx) const noexcept
-    {
-        return Point(static_cast<uint16_t>(x + dx), y);
+    [[nodiscard]] constexpr Point right(Coord dx) const noexcept {
+        return Point(static_cast<Coord>(x + dx), y);
     }
 
     /** Точка левее на `dx` пикселей (тот же `y`, `x` не меньше 0). */
-    [[nodiscard]] constexpr Point left(uint16_t dx) const noexcept
-    {
-        return Point(x >= dx ? static_cast<uint16_t>(x - dx) : 0u, y);
+    [[nodiscard]] constexpr Point left(Coord dx) const noexcept {
+        return Point(x >= dx ? static_cast<Coord>(x - dx) : 0u, y);
     }
 };
 
@@ -274,7 +306,7 @@ struct Region {
     {}
 
     [[nodiscard]] Point lowerRight() const noexcept {
-        return Point(static_cast<uint16_t>(ul.x + size.w - 1u), static_cast<uint16_t>(ul.y + size.h - 1u));
+        return Point(static_cast<Coord>(ul.x + size.w - 1u), static_cast<Coord>(ul.y + size.h - 1u));
     }
 };
 
@@ -288,29 +320,101 @@ struct ScreenLayout {
     {}
 };
 
-    /**
-     * Представление строкового литерала (или массива `const char[N]`): длина без завершающего NUL, указатель на первый символ.
-     * Сконструировать из `const char*` нельзя — только из `const char (&)[N]` (литерал `"..."` и т.п.).
-     * Копирование копирует только `data`/`len` (тот же буфер литерала). Перемещение и присваивание запрещены.
-     */
-    class Literal {
-    public:
-        const char* const data;
-        const uint8_t len;
+// --- Утилиты ------------------------------------------------------------------
 
-        template<std::size_t N>
-        constexpr Literal(const char (&s)[N]) noexcept
-            : data(s)
-            , len(static_cast<uint8_t>(N > 0u ? N - 1u : 0u))
-        {
-            static_assert(N <= 256u, "nex::Literal: строка длиннее 255 символов (экран не поддерживает)");
-        }
+/** Ограничить `v` диапазоном `[lo, hi]` (inclusive). */
+template<typename T>
+[[nodiscard]] constexpr T clamp(T v, T lo, T hi) noexcept {
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
 
-        constexpr Literal(const Literal&) noexcept = default;
-        Literal(Literal&&) = delete;
-        Literal& operator=(const Literal&) = delete;
-        Literal& operator=(Literal&&) = delete; 
-    };
+// --- Wire: int32 в NIS numeric assign / get -----------------------------------
+
+namespace wire {
+
+template<typename T>
+inline constexpr bool is_integral_storage_v = std::disjunction_v<
+    std::is_convertible<T, bool>,
+    std::is_convertible<T, int8_t>,
+    std::is_convertible<T, uint8_t>,
+    std::is_convertible<T, int16_t>,
+    std::is_convertible<T, uint16_t>,
+    std::is_convertible<T, int32_t>>;
+
+template<typename T>
+inline constexpr bool is_color_v = std::is_same_v<std::decay_t<T>, Color>;
+
+template<typename T, bool IsEnum = std::is_enum_v<T>>
+struct is_u8_enum : std::false_type {};
+
+template<typename T>
+struct is_u8_enum<T, true> : std::is_same<std::underlying_type_t<T>, uint8_t> {};
+
+template<typename T>
+inline constexpr bool is_u8_enum_v = is_u8_enum<T>::value;
+
+/** `attr::Num` / assign numeric: целые, `Color`, enum class : uint8_t. */
+template<typename T>
+inline constexpr bool is_attr_numeric_v =
+    is_integral_storage_v<T> || is_color_v<T> || is_u8_enum_v<T>;
+
+/** `SysVar<T>`: целые и enum class : uint8_t (без `Color`). */
+template<typename T>
+inline constexpr bool is_sysvar_numeric_v = is_integral_storage_v<T> || is_u8_enum_v<T>;
+
+template<typename T>
+[[nodiscard]] constexpr int32_t toWire(const T& v) noexcept {
+    if constexpr (is_color_v<T>) {
+        return static_cast<int32_t>(v.raw);
+    } else if constexpr (is_u8_enum_v<T>) {
+        return static_cast<int32_t>(static_cast<uint8_t>(v));
+    } else {
+        return static_cast<int32_t>(v);
+    }
+}
+
+template<typename T>
+[[nodiscard]] constexpr T fromWire(int32_t wire) noexcept {
+    if constexpr (is_color_v<T>) {
+        return Color(static_cast<uint16_t>(wire));
+    } else if constexpr (is_u8_enum_v<T>) {
+        return static_cast<T>(static_cast<uint8_t>(wire));
+    } else {
+        return static_cast<T>(wire);
+    }
+}
+
+} // namespace wire
+
+// --- Строковые литералы и маршруты транзакций ---------------------------------
+
+/**
+ * Представление строкового литерала (или массива `const char[N]`): длина без завершающего NUL, указатель на первый символ.
+ * Сконструировать из `const char*` нельзя — только из `const char (&)[N]` (литерал `"..."` и т.п.).
+ * Копирование копирует только `data`/`len` (тот же буфер литерала). Перемещение и присваивание запрещены.
+ */
+class Literal {
+public:
+    const char* const data;
+    const uint8_t len;
+
+    template<std::size_t N>
+    constexpr Literal(const char (&s)[N]) noexcept
+        : data(s)
+        , len(static_cast<uint8_t>(N > 0u ? N - 1u : 0u))
+    {
+        static_assert(N <= 256u, "nex::Literal: строка длиннее 255 символов (экран не поддерживает)");
+    }
+
+    constexpr Literal(const Literal&) noexcept = default;
+    Literal(Literal&&) = delete;
+    Literal& operator=(const Literal&) = delete;
+    Literal& operator=(Literal&&) = delete;
+};
 
 /** Пустая лексема (`len == 0`): `AttrRef` без компонента (`sys0`, …), невалидный `attr::Id`, … */
 inline constexpr Literal kEmptyLiteral{""};
@@ -334,30 +438,5 @@ namespace Route {
         return page_id == kCompIdMapPollPageId && comp_id == kCompIdMapPollCompId;
     }
 } // namespace Route
-
-/** NIS §6 `bkcmd`: UART status после команд (0–3, на панели default 2). */
-enum class BkCmd : uint8_t {
-    Off = 0,
-    OnSuccess = 1,
-    OnFailure = 2,
-    Always = 3,
-};
-
-/** NIS §6: допустимые значения `baud` / `bauds` (бит/с). */
-enum Baudrate : uint32_t {
-    b2400 = 2400u,
-    b4800 = 4800u,
-    b9600 = 9600u,
-    b19200 = 19200u,
-    b31250 = 31250u,
-    b38400 = 38400u,
-    b57600 = 57600u,
-    b115200 = 115200u,
-    b230400 = 230400u,
-    b250000 = 250000u,
-    b256000 = 256000u,
-    b512000 = 512000u,
-    b921600 = 921600u,
-};
 
 } // namespace nex

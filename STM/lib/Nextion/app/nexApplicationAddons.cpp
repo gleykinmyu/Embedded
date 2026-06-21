@@ -20,15 +20,15 @@ void Application::onError(const msg::Status& status, uint8_t page_id, uint8_t co
 }
 
 void Application::switchPage(uint8_t pageId) noexcept {
-    enqueue(Transaction{cmd::Page::switchTo(pageId), 0u, 0u});
+    enqueue(Transaction{cmd::Page::switchTo(pageId), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
 
 void Application::requestCurrentPage() noexcept {
-    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u});
+    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
 
 void Application::refreshPage() noexcept {
-    enqueue(Transaction{cmd::Page::refresh(), 0u, 0u});
+    enqueue(Transaction{cmd::Page::refresh(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
 
 void Application::restartScreen() noexcept {

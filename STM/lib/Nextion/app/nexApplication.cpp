@@ -90,7 +90,7 @@ void Application::enqueue(Transaction tx) noexcept {
     dispatchError(appErrorFrom(Session::Status::QueueFull), tx.page_id, tx.comp_id);
 }
 
-void Application::pumpUntilIdle() noexcept {
+bool Application::pumpUntilIdle() noexcept {
     MsTimer stall;
     stall.start(nowMs(), _timeoutMs);
 
@@ -102,6 +102,8 @@ void Application::pumpUntilIdle() noexcept {
         if (stall.timedOut(nowMs()))
             break;
     }
+
+    return !_session.isActive() && !_session.hasQueued();
 }
 
 void Application::update() noexcept {
@@ -165,17 +167,19 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     if (active == nullptr)
         return false;
 
-    switch (active->kind) {
-    case Transaction::Kind::GetNumeric: {
-        if (const auto* st = std::get_if<msg::Status>(&m)) {
-            if (!active->correlatesWith(*st, bkcmd)) {
-                dispatchError(*st, 0u, 0u);
-                return true;
-            }
-            dispatchError(*st, active->page_id, active->comp_id);
-            _session.end(false);
+    if (const auto* st = std::get_if<msg::Status>(&m)) {
+        if (!active->correlatesWith(*st, bkcmd)) {
+            dispatchError(*st, 0u, 0u);
             return true;
         }
+        dispatchError(*st, active->page_id, active->comp_id);
+        const bool ok = (active->kind == Transaction::Kind::Command) && st->isOK();
+        _session.end(ok);
+        return true;
+    }
+
+    switch (active->kind) {
+    case Transaction::Kind::GetNumeric:
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
             if (Route::isSysVar(active->page_id, active->comp_id)) {
                 dispatchSysVarResponse(active->tag, *nr);
@@ -186,18 +190,8 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
             return true;
         }
         return false;
-    }
 
-    case Transaction::Kind::GetString: {
-        if (const auto* st = std::get_if<msg::Status>(&m)) {
-            if (!active->correlatesWith(*st, bkcmd)) {
-                dispatchError(*st, 0u, 0u);
-                return true;
-            }
-            dispatchError(*st, active->page_id, active->comp_id);
-            _session.end(false);
-            return true;
-        }
+    case Transaction::Kind::GetString:
         if (const auto* sr = std::get_if<msg::getString>(&m)) {
             if (Component* const c = getComponent(active->page_id, active->comp_id))
                 c->onResponse(active->tag, *sr);
@@ -205,28 +199,21 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
             return true;
         }
         return false;
-    }
 
-    case Transaction::Kind::Command: {
-        const auto* const st = std::get_if<msg::Status>(&m);
-        if (st == nullptr)
+    case Transaction::Kind::Command:
+        return false;
+
+    case Transaction::Kind::TransparentTx:
+        // NEX-R301: `evTransparent` + follow-up bytes; `pollTimeout` для transparent mode.
+        if (const auto* tr = std::get_if<msg::evTransparent>(&m)) {
+            (void)tr;
+            // onTransparentEvent(*tr); _session.end(...);
             return false;
-
-        if (!active->correlatesWith(*st, bkcmd)) {
-            dispatchError(*st, 0u, 0u);
-            return true;
         }
+        return false;
 
-        dispatchError(*st, active->page_id, active->comp_id);
-        if (!st->isOK()) {
-            _session.end(false);
-            return true;
-        }
-        _session.end(true);
-        return true;
-    }
-
-    default:
+    case Transaction::Kind::RawDataRx:
+        // NEX-R301: raw RX chunks после преамбулы read/raw.
         return false;
     }
 }

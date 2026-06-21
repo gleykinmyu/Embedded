@@ -51,9 +51,9 @@ void clampTextForXstr(char* buf, const std::size_t cap) noexcept {
 }
 
 /** Y верхнего края кнопки в ряду (все кнопки на одной линии). `boxBottomY` — нижний Y рамки окна. */
-[[nodiscard]] uint16_t buttonTopY(const uint16_t boxBottomY) noexcept {
-    const uint16_t bottomY = static_cast<uint16_t>(boxBottomY - kBorder - kButtonBottomLift);
-    return static_cast<uint16_t>(bottomY - kButtonH + 1u);
+[[nodiscard]] Coord buttonTopY(Coord boxBottomY) noexcept {
+    const Coord bottomY = static_cast<Coord>(boxBottomY - kBorder - kButtonBottomLift);
+    return static_cast<Coord>(bottomY - kButtonH + 1u);
 }
 
 } // namespace
@@ -213,13 +213,13 @@ void MsgBox::Box::draw(const AppCanvas& cs, const char* title, const char* text,
             kBorder, title, kTitleFont.fontId(), titleFg);
 
     // Нижний Y тела сообщения (включительно): сразу над рядом кнопок.
-    const uint16_t textUy1 = static_cast<uint16_t>(buttonTopY(frame.lowerRight().y) - kButtonGap - 1u);
+    const Coord textUy1 = static_cast<Coord>(buttonTopY(frame.lowerRight().y) - kButtonGap - 1u);
 
     // Верхний Y тела: под заголовком и боковым паддингом.
-    const uint16_t textUy0 = static_cast<uint16_t>(frame.ul.y + kBorder + kTitleH + kPad + 1u);
+    const Coord textUy0 = static_cast<Coord>(frame.ul.y + kBorder + kTitleH + kPad + 1u);
     if (textUy0 <= textUy1 && text != nullptr && text[0] != '\0') {
         // Прямоугольник тела: bodyUl — верхний левый, bodySize — между боковыми pad и [textUy0..textUy1].
-        const Point bodyUl(static_cast<uint16_t>(frame.ul.x + kPad), textUy0);
+        const Point bodyUl(static_cast<Coord>(frame.ul.x + kPad), textUy0);
         const Rect bodySize(static_cast<uint16_t>(frame.size.w - 2u * kPad),
             static_cast<uint16_t>(textUy1 - textUy0 + 1u));
         if (bodySize.w > 0u && bodySize.h > 0u)
@@ -240,38 +240,38 @@ void MsgBox::Box::layoutButtons(const Preset preset, const Action defaultAction)
     hideButtons();
 
     // Общий Y верхнего левого угла всех кнопок ряда.
-    const uint16_t topY = buttonTopY(frame.lowerRight().y);
+    const Coord topY = buttonTopY(frame.lowerRight().y);
     // Несколько кнопок: rowW — ширина ряда, x — левый X ряда (центр frame); соседи — x + w + kButtonRowGap.
 
     switch (preset) {
     case Preset::OK: {
         // X: одна кнопка по центру ширины окна.
-        const uint16_t x = static_cast<uint16_t>(frame.ul.x + Canvas::center(frame.size, okBtn.size()).x);
+        const Coord x = static_cast<Coord>(frame.ul.x + Canvas::center(frame.size, okBtn.size()).x);
         okBtn.show(Point(x, topY));
         break;
     }
     case Preset::OKCancel: {
         const uint16_t rowW = static_cast<uint16_t>(okBtn.w() + kButtonRowGap + cancelBtn.w());
-        const uint16_t x = static_cast<uint16_t>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
+        const Coord x = static_cast<Coord>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
         okBtn.show(Point(x, topY));
-        cancelBtn.show(Point(static_cast<uint16_t>(x + okBtn.w() + kButtonRowGap), topY));
+        cancelBtn.show(Point(static_cast<Coord>(x + okBtn.w() + kButtonRowGap), topY));
         break;
     }
     case Preset::YesNo: {
         const uint16_t rowW = static_cast<uint16_t>(yesBtn.w() + kButtonRowGap + noBtn.w());
-        const uint16_t x = static_cast<uint16_t>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
+        const Coord x = static_cast<Coord>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
         yesBtn.show(Point(x, topY));
-        noBtn.show(Point(static_cast<uint16_t>(x + yesBtn.w() + kButtonRowGap), topY));
+        noBtn.show(Point(static_cast<Coord>(x + yesBtn.w() + kButtonRowGap), topY));
         break;
     }
     case Preset::YesNoCancel: {
         const uint16_t rowW =
             static_cast<uint16_t>(yesBtn.w() + 2u * kButtonRowGap + noBtn.w() + cancelBtn.w());
-        const uint16_t x = static_cast<uint16_t>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
+        const Coord x = static_cast<Coord>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
         yesBtn.show(Point(x, topY));
-        noBtn.show(Point(static_cast<uint16_t>(x + yesBtn.w() + kButtonRowGap), topY));
+        noBtn.show(Point(static_cast<Coord>(x + yesBtn.w() + kButtonRowGap), topY));
         cancelBtn.show(
-            Point(static_cast<uint16_t>(x + yesBtn.w() + kButtonRowGap + noBtn.w() + kButtonRowGap), topY));
+            Point(static_cast<Coord>(x + yesBtn.w() + kButtonRowGap + noBtn.w() + kButtonRowGap), topY));
         break;
     }
     }

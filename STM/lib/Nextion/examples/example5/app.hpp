@@ -190,6 +190,19 @@ public:
         ex5::advanceLivePage(*this, _live);
     }
 
+    void onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept override
+    {
+        Application::onError(status, page_id, comp_id);
+        if (!_demo_done)
+            return;
+        if (status.status == msg::Status::Code::Invalid_Waveform_ID_Channel) {
+            ++_live.wf_panel_fails;
+            NEX_DBG("[ex5] live: waveform panel fail 0x12 p%u c%u (add_ticks=%lu)\n",
+                static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id),
+                static_cast<unsigned long>(_live.wf_add_ticks));
+        }
+    }
+
     /** Периодическое обновление Waveform, ProgressBar, Gauge и др. — из main loop. */
     void tickLiveDemos(uint32_t now_ms) noexcept
     {

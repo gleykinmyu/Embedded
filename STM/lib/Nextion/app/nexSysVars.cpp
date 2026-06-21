@@ -25,7 +25,8 @@ void SysVarBase::enqueueTransaction(
 
 void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_t value) noexcept {
     const AttrRef target{kEmptyLiteral, sysName};
-    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Route::kSysVarPageId, Route::kSysVarCompId, 0u});
+    app.enqueue(Transaction{cmd::assign::Numeric(target, value), Route::kSysVarPageId, Route::kSysVarCompId, 0u,
+        Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
 } // namespace nex

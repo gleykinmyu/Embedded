@@ -130,8 +130,6 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
 } // namespace
 
 bool Session::enqueue(Transaction tx) noexcept {
-    if (tx.awaiting_status == msg::kAwaitingDefault)
-        tx.awaiting_status = tx.command().defaultAwaitingStatus();
     if (_queue.push(tx)) {
         if (_status != Status::Active)
             _status = Status::Idle;

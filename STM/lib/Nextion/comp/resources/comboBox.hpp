@@ -68,7 +68,7 @@ struct ComboCells {
     void setExpandCount(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Qty,
-            attr_detail::clamp(v, kExpandCountMin, kExpandCountMax));
+            clamp(v, kExpandCountMin, kExpandCountMax));
     }
 
     void setSpacing(int16_t v) noexcept
@@ -84,7 +84,7 @@ struct ComboCells {
     void setMarkerSize(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(owner, attr::Id::Wid,
-            attr_detail::clamp(v, kMarkerSizeMin, kMarkerSizeMax));
+            clamp(v, kMarkerSizeMin, kMarkerSizeMax));
     }
 
     void setMarkerSpacing(int16_t v) noexcept
