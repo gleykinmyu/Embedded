@@ -1,4 +1,5 @@
 #include "nexGateway.hpp"
+#include "nexDebug.hpp"
 
 namespace nex
 {
@@ -304,6 +305,8 @@ bool Gateway::pushCommand(const Command& cmd) {
         return false;
     }
 
+    misc::printTxPayloadLine("TX ", _txFramer.frame);
+
     clearError();
     return true;
 }
@@ -349,6 +352,7 @@ bool Gateway::receive(Message& out) {
         if (_rxFramer.appendByte(b)) {
             clearError();
             TranslateMessage(_rxFramer.frame, out);
+            misc::printRxLine(_rxFramer.frame, out);
             return true;
         }
         if (_rxFramer.getOverflowReport())

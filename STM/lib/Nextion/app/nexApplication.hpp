@@ -30,6 +30,9 @@ public:
     virtual ~Application() = default;
 
     void enqueue(Transaction tx) noexcept;
+    /** Неблокирующая постановка: одна попытка без `update()`. `false` при `QueueFull` — без `onError`; иная ошибка Session → `dispatchError`. */
+    bool tryEnqueue(Transaction tx) noexcept;
+    
     virtual void update() noexcept;
 
     /** Крутит `update()` пока session idle (`!isActive() && !hasQueued()`).

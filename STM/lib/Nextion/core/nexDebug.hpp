@@ -11,6 +11,7 @@
  *   NEX_NO_LOG_TICKS — отключить тики при `NEX_DEBUG`
  *   NEX_IDMAP_DEBUG — Discover / CompIdMap (`[IdMap]`)
  *   NEX_TRACE_TX    — дамп исходящих NIS-кадров (`misc::printTxPayloadLine`)
+ *   NEX_TRACE_RX    — дамп принятых кадров (`misc::printRxLine`)
  *   NEX_CID_DEBUG   — устаревшее имя; то же, что NEX_IDMAP_DEBUG
  *
  * Пример: `build_flags = ... -DNEX_DEBUG`
@@ -23,7 +24,10 @@
 #    define NEX_IDMAP_DEBUG 1
 #  endif
 #  if !defined(NEX_TRACE_TX)
-#    define NEX_TRACE_TX 1
+#    //define NEX_TRACE_TX 1
+#  endif
+#  if !defined(NEX_TRACE_RX)
+#    //define NEX_TRACE_RX 1
 #  endif
 #  if !defined(NEX_NO_LOG_TICKS)
 #    define NEX_LOG_TICKS 1
@@ -50,6 +54,12 @@
 #  define NEX_DBG_TRACE_TX(...) std::printf(__VA_ARGS__)
 #else
 #  define NEX_DBG_TRACE_TX(...) ((void)0)
+#endif
+
+#if defined(NEX_TRACE_RX)
+#  define NEX_DBG_TRACE_RX(...) std::printf(__VA_ARGS__)
+#else
+#  define NEX_DBG_TRACE_RX(...) ((void)0)
 #endif
 
 /** Проверка инварианта; активна при `NEX_DEBUG`, иначе no-op (как `assert` в release). */

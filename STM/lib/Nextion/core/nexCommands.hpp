@@ -5,6 +5,7 @@
 #include <new>
 #include "nexProtocol.hpp"
 #include "nexTypes.hpp"
+#include "nexMessages.hpp"
 
 /**
  * @file nexCommands.hpp
@@ -152,6 +153,9 @@ inline const char* cstr(Command::Status s) noexcept {
 namespace misc {
 /** Отладка TX: печать полезной нагрузки `serialize` (`-DNEX_TRACE_TX` или `-DNEX_DEBUG`). */
 void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept;
+
+/** Отладка RX: wire-кадр + разбор `TranslateMessage` (`-DNEX_TRACE_RX` или `-DNEX_DEBUG`). */
+void printRxLine(const RxFrame& wire, const Message& parsed) noexcept;
 }
 
 namespace cmd {

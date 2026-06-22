@@ -3,11 +3,11 @@
 /**
  * Пример 4: автоматическая проверка путей ошибок и вывод в UART / MsgBox.
  *
- * HMI: как example3 — page id=0, кнопки b0…b9, comp id 1…10.
- * При старте последовательно провоцируются Register / NIS / Session / Gateway·Stream;
- * каждая ошибка логируется через `onError` → `printStatusError`.
+ * HMI: page id=0, b0/b1/b2 на page0 (b0 id=1, b1 id=2, b2 id=3 — duplicate register на b1/b2 при необходимости).
+ * Ошибки логируются через `onError` → `printStatusError`.
  *
- * Повтор прогона: release на b0.
+ * b0 release — полный прогон (6 тестов, без QueueFull).
+ * b1 release — только QueueFull + drain.
  *
  * Сборка: pio run -e example4
  */
@@ -52,14 +52,14 @@ public:
 
     struct TestPage : PageImpl<3> {
         Button<> btn0;
-        Button<> btn_dup_a;
-        Button<> btn_dup_b;
+        Button<> btn1;
+        Button<> btn2;
 
         TestPage(ErrorTestApp& a) noexcept
             : PageImpl<3>(a, "page0", ErrorTestApp::kPageId)
             , btn0(*this, "b0", 1u)
-            , btn_dup_a(*this, "b4", ErrorTestApp::kDupCompId)
-            , btn_dup_b(*this, "b5", ErrorTestApp::kDupCompId)
+            , btn1(*this, "b1", 2u)
+            , btn2(*this, "b2", 3u)
         {}
     };
 
@@ -69,19 +69,42 @@ public:
     {
         Application::onError(status, page_id, comp_id);
         recordError(status);
-        logErrorLine(status, page_id, comp_id);
     }
 
     void onTouch(const msg::evTouch& e) override
     {
-        if (e.page_id == kPageId && e.comp_id == 1u && e.state == TouchState::Release && tests_done) {
-            NEX_DBG("[ex4] restart tests (b0 release)\n");
-            beginTests();
+        if (e.page_id == kPageId && e.state == TouchState::Release && !tests_running) {
+            if (e.comp_id == 1u) {
+                NEX_DBG("[ex4] full tests (b0 release)\n");
+                beginTests();
+            } else if (e.comp_id == 2u) {
+                NEX_DBG("[ex4] queue-full test only (b1 release)\n");
+                beginQueueFullTest();
+            }
         }
         Application::onTouch(e);
     }
 
     void beginTests() noexcept
+    {
+        run_kind_ = RunKind::FullSuite;
+        beginRunCommon();
+        logTestSection("test 0: Register");
+        NEX_DBG("[ex4] full error test run begin\n");
+    }
+
+    /** Отдельный прогон: переполнение Session (65× sendMe) + drain. */
+    void beginQueueFullTest() noexcept
+    {
+        run_kind_ = RunKind::QueueFullOnly;
+        beginRunCommon();
+        phase_ = Phase::QueueFull;
+        phase_started_ms_ = 0u;
+        logTestSection("queue-only: Session QueueFull");
+        NEX_DBG("[ex4] queue-full test begin\n");
+    }
+
+    void beginRunCommon() noexcept
     {
         const uint32_t boot_register = stats.register_err;
         tests_running = true;
@@ -94,8 +117,6 @@ public:
         phase_once_ = false;
         sanity_idx_ = 0u;
         queue_enqueued_ = 0u;
-        logTestSection("test 0: Register");
-        NEX_DBG("[ex4] error test run begin\n");
     }
 
     /** @return true — прогон ещё идёт. */
@@ -135,7 +156,7 @@ public:
         case Phase::NisInvalidVar:
             if (!phase_once_) {
                 phase_once_ = true;
-                enqueue(Transaction{cmd::Get::numeric(kBadAttr), kPageId, 1u, 0u, Transaction::Kind::GetNumeric});
+                enqueue(Transaction{cmd::Get::numeric(kBadAttr), kPageId, 4u, 0u, Transaction::Kind::GetNumeric});
             }
             if (elapsed >= 800u) {
                 markTest(2u, stats.nis_panel > 0u);
@@ -152,27 +173,21 @@ public:
             if (elapsed >= 800u) {
                 markTest(3u, stats.nis_panel >= 2u);
                 NEX_DBG("[ex4] NIS invalid comp total=%u\n", static_cast<unsigned>(stats.nis_panel));
-                enterPhase(Phase::QueueFull, now_ms);
+                enterPhase(Phase::TimeoutPrep, now_ms);
             }
             break;
 
         case Phase::QueueFull:
             if (!phase_once_) {
                 phase_once_ = true;
-                metric_at_phase_ = stats.app_session;
-                queue_enqueued_ = 0u;
-                for (unsigned i = 0u; i < 65u; ++i) {
-                    const uint32_t before = stats.total;
-                    enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
-                    ++queue_enqueued_;
-                    if (stats.total > before)
-                        break;
-                }
-                NEX_DBG("[ex4] queue fill tries=%u session_err=%u\n", static_cast<unsigned>(queue_enqueued_),
-                    static_cast<unsigned>(stats.app_session - metric_at_phase_));
+                fillQueueUntilError();
             }
             if (elapsed >= 100u) {
-                markTest(4u, stats.app_session > metric_at_phase_);
+                const bool ok = stats.app_session > metric_at_phase_;
+                if (run_kind_ == RunKind::QueueFullOnly)
+                    markTest(0u, ok);
+                else
+                    markTest(4u, ok);
                 enterPhase(Phase::QueueDrain, now_ms);
             }
             break;
@@ -187,7 +202,10 @@ public:
             if (elapsed >= 12000u) {
                 NEX_DBG("[ex4] queue drain done (timeout)\n");
                 clearErrors();
-                enterPhase(Phase::TimeoutPrep, now_ms);
+                if (run_kind_ == RunKind::QueueFullOnly)
+                    enterPhase(Phase::QueueSummary, now_ms);
+                else
+                    enterPhase(Phase::TimeoutPrep, now_ms);
             }
             break;
 
@@ -206,7 +224,7 @@ public:
 
         case Phase::TimeoutWait:
             if (elapsed >= 900u) {
-                markTest(5u, stats.app_session > metric_at_phase_);
+                markTest(4u, stats.app_session > metric_at_phase_);
                 NEX_DBG("[ex4] session errors=%u (delta in timeout phase)\n",
                     static_cast<unsigned>(stats.app_session));
                 _link.open(250000u);
@@ -223,12 +241,27 @@ public:
                 enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
             }
             if (elapsed >= 200u) {
-                markTest(6u, (stats.app_gateway + stats.app_stream) > metric_at_phase_);
+                markTest(5u, (stats.app_gateway + stats.app_stream) > metric_at_phase_);
                 NEX_DBG("[ex4] gateway=%u stream=%u\n", static_cast<unsigned>(stats.app_gateway),
                     static_cast<unsigned>(stats.app_stream));
                 _link.open(250000u);
                 clearErrors();
                 enterPhase(Phase::Summary, now_ms);
+            }
+            break;
+
+        case Phase::QueueSummary:
+            if (!phase_once_) {
+                phase_once_ = true;
+                printQueueSummary();
+            }
+            if (elapsed >= 2000u) {
+                tests_running = false;
+                tests_done = true;
+                phase_ = Phase::Done;
+                NEX_DBG("[ex4] === queue test done (mask=0x%02lX) ===\n",
+                    static_cast<unsigned long>(tests_pass_mask));
+                logTestSection("queue test done");
             }
             break;
 
@@ -255,6 +288,8 @@ public:
     }
 
 private:
+    enum class RunKind : uint8_t { FullSuite, QueueFullOnly };
+
     enum class Phase : uint8_t {
         BootWait,
         SanityAppError,
@@ -262,6 +297,7 @@ private:
         NisInvalidComp,
         QueueFull,
         QueueDrain,
+        QueueSummary,
         TimeoutPrep,
         TimeoutWait,
         LinkFault,
@@ -270,7 +306,8 @@ private:
     };
 
     static constexpr unsigned kSanityCount = 5u;
-    static constexpr unsigned kTestCount = 7u;
+    static constexpr unsigned kFullTestCount = 6u;
+    static constexpr unsigned kQueueOnlyTestCount = 1u;
     static constexpr Literal kCompB0{"b0"};
     static constexpr Literal kAttrTxt{"txt"};
     static constexpr Literal kAttrBad{"nope_attr"};
@@ -279,7 +316,8 @@ private:
     static constexpr AttrRef kBadAttr{kCompB0, kAttrBad};
     static constexpr AttrRef kGhostComp{kCompGhost, kAttrTxt};
 
-    Phase phase_ = Phase::BootWait;
+    Phase phase_ = Phase::Done;
+    RunKind run_kind_ = RunKind::FullSuite;
     uint32_t phase_started_ms_ = 0u;
     uint32_t metric_at_phase_ = 0u;
     bool phase_once_ = false;
@@ -307,9 +345,8 @@ private:
         case Phase::SanityAppError: return "test 1: AppError sanity";
         case Phase::NisInvalidVar: return "test 2: NIS invalid attr";
         case Phase::NisInvalidComp: return "test 3: NIS invalid comp";
-        case Phase::QueueFull: return "test 4: Session QueueFull";
-        case Phase::TimeoutPrep: return "test 5: Session Timeout";
-        case Phase::LinkFault: return "test 6: Gateway / Stream";
+        case Phase::TimeoutPrep: return "test 4: Session Timeout";
+        case Phase::LinkFault: return "test 5: Gateway / Stream";
         case Phase::Summary: return "summary";
         default: return nullptr;
         }
@@ -369,10 +406,41 @@ private:
         return n;
     }
 
+    void fillQueueUntilError() noexcept
+    {
+        metric_at_phase_ = stats.app_session;
+        queue_enqueued_ = 0u;
+        NEX_DBG("[ex4] queue fill: NEX_TRACE_TX → каждый pushCommand (sendme + 0xFF×3)\n");
+        for (unsigned i = 0u; i < 65; ++i) {
+            const uint32_t before = stats.total;
+            //NEX_DBG("[ex4] enqueue try #%u\n", i + 1u);
+            enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command,
+                msg::kAwaitingPageCommand});
+            ++queue_enqueued_;
+            if (stats.total > before)
+                break;
+        }
+        NEX_DBG("[ex4] queue fill tries=%u session_err=%u\n", static_cast<unsigned>(queue_enqueued_),
+            static_cast<unsigned>(stats.app_session - metric_at_phase_));
+    }
+
+    void printQueueSummary() noexcept
+    {
+        const bool pass = (tests_pass_mask & 1u) != 0u;
+        NEX_DBG("[ex4] queue summary: %s, fill tries=%u, session_err=%u\n", pass ? "PASS" : "FAIL",
+            static_cast<unsigned>(queue_enqueued_),
+            static_cast<unsigned>(stats.app_session - metric_at_phase_));
+
+        char body[96]{};
+        std::snprintf(body, sizeof(body), "queue %s tries %u", pass ? "OK" : "FAIL",
+            static_cast<unsigned>(queue_enqueued_));
+        msgBox.show("ex4 queue", body, MsgBox::Preset::OK);
+    }
+
     void printSummary() noexcept
     {
         const unsigned passed = popcount(tests_pass_mask);
-        NEX_DBG("[ex4] summary: %u/%u passed, total errors=%u\n", passed, kTestCount,
+        NEX_DBG("[ex4] summary: %u/%u passed, total errors=%u\n", passed, kFullTestCount,
             static_cast<unsigned>(stats.total));
         NEX_DBG("[ex4]   Register=%u NIS=%u Session=%u Gateway=%u Stream=%u Command=%u\n",
             static_cast<unsigned>(stats.register_err), static_cast<unsigned>(stats.nis_panel),
@@ -380,7 +448,7 @@ private:
             static_cast<unsigned>(stats.app_stream), static_cast<unsigned>(stats.app_command));
 
         char body[96]{};
-        std::snprintf(body, sizeof(body), "pass %u/%u err %lu", passed, kTestCount,
+        std::snprintf(body, sizeof(body), "pass %u/%u err %lu", passed, kFullTestCount,
             static_cast<unsigned long>(stats.total));
         msgBox.show("ex4 tests", body, MsgBox::Preset::OK);
     }

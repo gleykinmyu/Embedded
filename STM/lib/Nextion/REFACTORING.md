@@ -51,7 +51,7 @@ flowchart LR
 | **7. IdMap** | `idmap/nexIdMap.*` | [R303…R305, R011](IdMap.md) |
 | **8. Examples / tests** | `examples/`, host tests | R011, R401, example4/5 |
 
-**Следующие шаги:** NEX-R106 ✓ → **NEX-R101** (`tryEnqueue`) / R210…
+**Следующие шаги:** NEX-R106 ✓, NEX-R101 ✓ → R210…
 
 ---
 
@@ -169,7 +169,9 @@ flowchart LR
 
 ## Фаза 2 — Надёжность очереди и UART
 
-- [ ] **NEX-R101** — `tryEnqueue(Transaction) -> bool` — spec: [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md)
+- [x] **NEX-R101** — `tryEnqueue(Transaction) -> bool` — `Session::tryEnqueue` + `Application::tryEnqueue`; blocking `enqueue` без изменений
+  - **Файлы:** `app/nexApplication.hpp/cpp`, `core/nexSession.hpp/cpp`
+  - **Сложность:** S
 
 - [x] **NEX-R102** — Лимит повторов на голову очереди (исторический пункт; логика в `enqueue` spin)
   - **Файлы:** `app/nexApplication.cpp`

@@ -10,7 +10,7 @@ class CServerBoard : public CBaseBoard
 {
 
 public:
-    PHL::Serial<PHL::ID::SERIAL1, 512, 64> serial1;
+    PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
     PHL::Serial<PHL::ID::SERIAL2, 1024, 128> serial2;
     PHL::SdDisk SD;
 

@@ -133,7 +133,8 @@ public:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
-    [[nodiscard]] bool enqueue(Transaction tx) noexcept;
+    /** Одна попытка поставить tx в очередь; без `update()` / spin. */
+    [[nodiscard]] bool tryEnqueue(Transaction tx) noexcept;
 
     /**
      * Активировать голову очереди: `pushCommand` в Gateway.

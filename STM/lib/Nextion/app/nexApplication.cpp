@@ -64,12 +64,22 @@ void Application::registerPage(Page& page) noexcept {
     (void)_pageStorage.registerSeq(&page, page.ID);
 }
 
+bool Application::tryEnqueue(Transaction tx) noexcept {
+    if (_session.tryEnqueue(tx))
+        return true;
+
+    const Session::Status st = _session.getStatus();
+    if (st != Session::Status::QueueFull)
+        dispatchError(appErrorFrom(st), tx.page_id, tx.comp_id);
+    return false;
+}
+
 void Application::enqueue(Transaction tx) noexcept {
     MsTimer stall;
     stall.start(nowMs(), _timeoutMs);
 
     for (;;) {
-        if (_session.enqueue(tx))
+        if (_session.tryEnqueue(tx))
             return;
 
         const Session::Status st = _session.getStatus();

@@ -129,7 +129,7 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
 
 } // namespace
 
-bool Session::enqueue(Transaction tx) noexcept {
+bool Session::tryEnqueue(Transaction tx) noexcept {
     if (_queue.push(tx)) {
         if (_status != Status::Active)
             _status = Status::Idle;

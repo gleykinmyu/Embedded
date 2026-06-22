@@ -12,7 +12,7 @@
 
 ## Фаза 2 — Надёжность очереди и UART
 
-### [ ] NEX-R101 — `tryEnqueue()` → `bool` (неблокирующая постановка)
+### [x] NEX-R101 — `tryEnqueue()` → `bool` (неблокирующая постановка)
 
 **Было:** side-buffer / deferred FIFO при `QueueFull` (авто re-enqueue при освобождении слота).
 
@@ -44,6 +44,7 @@ Example4 намеренно провоцирует QueueFull (65× `sendMe` в `
 | **Сложность** | S |
 | **Зависит от** | NEX-R106 ✓ |
 | **Переработано** | 2026-06-18 — отказ от side-buffer после разбора stall-timeout |
+| **Выполнено** | 2026-06-18 — `Application::tryEnqueue`, `Session::tryEnqueue`; `enqueue` через try + spin |
 
 ---
 

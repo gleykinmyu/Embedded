@@ -2,8 +2,15 @@
  * Пример 4: прогон проверок ошибок Nextion (Register / NIS / Session / Gateway / Stream).
  * Приложение: lib/Nextion/examples/example4/app.hpp
  *
- * Сборка: pio run -e example4
- * Монитор: pio device monitor -e example4
+ * Сборка:  pio run -e example4
+ * Прошивка: pio run -e example4 -t upload
+ * Монитор:  pio device monitor -e example4
+ *
+ * После старта прогон не запускается автоматически — выбор с панели:
+ *   b0 release — полный прогон (6 тестов, без QueueFull);
+ *   b1 release — только переполнение очереди Session (65× sendMe + drain).
+ *
+ * Из кода: app.beginTests() / app.beginQueueFullTest().
  */
 
 #include <stm32f4xx.h>
@@ -11,8 +18,6 @@
 
 #include "server.h"
 #include "examples/example4/app.hpp"
-
-
 
 int main(void)
 {
@@ -23,12 +28,13 @@ int main(void)
     board.serial2.open(250000);
 
     NEX_DBG("Nextion example4: error path test harness\n");
+    NEX_DBG("ex4: idle — b0=full tests, b1=queue-full only\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
 
     nex::examples::ErrorTestApp app(board.serial2, boardClockMs);
-    
+
     app.restartScreen();
 
     {
@@ -36,8 +42,6 @@ int main(void)
         while ((board.GetTick() - t0) < 500u)
             app.update();
     }
-
-    app.beginTests();
 
     while (1) {
         const uint32_t now = board.GetTick();

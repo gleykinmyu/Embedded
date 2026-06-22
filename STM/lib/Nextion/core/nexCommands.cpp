@@ -1,7 +1,10 @@
 #include "nexCommands.hpp"
 #include "nexDebug.hpp"
+#include "nexMessages.hpp"
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
+#include <variant>
 
 /** Литерал имени команды NIS в кадр; длина — `sizeof(lit) - 1` (без strlen). `lit` — только строковый литерал `"…"`. */
 #define NEX_CMD_PRINT_LIT(tx, lit) pushBytes((tx), (lit), static_cast<uint16_t>(sizeof(lit) - 1u))
@@ -168,8 +171,71 @@ namespace misc {
 void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
     if (label != nullptr)
         NEX_DBG_TRACE_TX("%s", label);
-    NEX_DBG_TRACE_TX("\"%.*s\" + 0xFF 0xFF 0xFF\n", static_cast<int>(tx.length),
-        reinterpret_cast<const char*>(tx.payload));
+    NEX_DBG_TRACE_TX("[%u] \"", static_cast<unsigned>(tx.length));
+    for (uint16_t i = 0u; i < tx.length; ++i) {
+        const uint8_t b = tx.payload[i];
+        if (b >= 0x20u && b < 0x7Fu)
+            NEX_DBG_TRACE_TX("%c", static_cast<char>(b));
+        else
+            NEX_DBG_TRACE_TX("\\x%02X", static_cast<unsigned>(b));
+    }
+    NEX_DBG_TRACE_TX("\" + 0xFF 0xFF 0xFF\n");
+}
+
+void printRxLine(const RxFrame& wire, const Message& parsed) noexcept {
+    NEX_DBG_TRACE_RX("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
+        static_cast<unsigned>(wire.length));
+    if (wire.length > 0u) {
+        NEX_DBG_TRACE_RX(" [");
+        for (uint16_t i = 0u; i < wire.length; ++i)
+            NEX_DBG_TRACE_RX("%s0x%02X", (i != 0u) ? " " : "",
+                static_cast<unsigned>(wire.payload[i]));
+        NEX_DBG_TRACE_RX("]\n");
+    } else {
+        NEX_DBG_TRACE_RX("\n");
+    }
+
+    std::visit([](auto&& m) {
+        using T = std::decay_t<decltype(m)>;
+        if constexpr (std::is_same_v<T, msg::Status>) {
+            NEX_DBG_TRACE_RX("RX msg Status %s (0x%02X)", cstr(m.status),
+                static_cast<unsigned>(static_cast<uint8_t>(m.status)));
+            if (m.tag_1 != 0u || m.tag_2 != 0u)
+                NEX_DBG_TRACE_RX(" tag1=%u tag2=%u", static_cast<unsigned>(m.tag_1),
+                    static_cast<unsigned>(m.tag_2));
+        } else if constexpr (std::is_same_v<T, msg::getNumeric>) {
+            NEX_DBG_TRACE_RX("RX msg getNumeric %ld", static_cast<long>(m.value));
+        } else if constexpr (std::is_same_v<T, msg::getString>) {
+            NEX_DBG_TRACE_RX("RX msg getString len=%u \"", static_cast<unsigned>(m.length));
+            for (uint16_t i = 0u; i < m.length; ++i) {
+                const uint8_t b = static_cast<uint8_t>(m.chars[i]);
+                if (b >= 0x20u && b < 0x7Fu)
+                    NEX_DBG_TRACE_RX("%c", static_cast<char>(b));
+                else
+                    NEX_DBG_TRACE_RX("\\x%02X", static_cast<unsigned>(b));
+            }
+            NEX_DBG_TRACE_RX("\"");
+        } else if constexpr (std::is_same_v<T, msg::evTouch>) {
+            NEX_DBG_TRACE_RX("RX msg evTouch page=%u comp=%u %s", static_cast<unsigned>(m.page_id),
+                static_cast<unsigned>(m.comp_id),
+                m.state == TouchState::Press ? "Press" : "Release");
+        } else if constexpr (std::is_same_v<T, msg::evTouchXY>) {
+            NEX_DBG_TRACE_RX("RX msg evTouchXY mode=0x%02X x=%u y=%u %s",
+                static_cast<unsigned>(static_cast<uint8_t>(m.mode)), static_cast<unsigned>(m.pos.x),
+                static_cast<unsigned>(m.pos.y), m.state == TouchState::Press ? "Press" : "Release");
+        } else if constexpr (std::is_same_v<T, msg::evPage>) {
+            NEX_DBG_TRACE_RX("RX msg evPage page=%u", static_cast<unsigned>(m.page_id));
+        } else if constexpr (std::is_same_v<T, msg::evSystem>) {
+            NEX_DBG_TRACE_RX("RX msg evSystem code=0x%02X", static_cast<unsigned>(static_cast<uint8_t>(m.code)));
+        } else if constexpr (std::is_same_v<T, msg::evTransparent>) {
+            NEX_DBG_TRACE_RX("RX msg evTransparent code=0x%02X", static_cast<unsigned>(static_cast<uint8_t>(m.code)));
+        } else if constexpr (std::is_same_v<T, msg::evMsgBox>) {
+            NEX_DBG_TRACE_RX("RX msg evMsgBox page=%u comp=%u tag=%u action=%u",
+                static_cast<unsigned>(m.page_id), static_cast<unsigned>(m.comp_id),
+                static_cast<unsigned>(m.tag), static_cast<unsigned>(static_cast<uint8_t>(m.action)));
+        }
+    }, parsed);
+    NEX_DBG_TRACE_RX("\n");
 }
 
 } // namespace misc
