@@ -111,7 +111,7 @@ begin → pushCommand(queued->command())
 4. ~~**R106f**~~ — **отложено** → [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md)
 5. ~~**R106d**~~ ✓
 6. ~~**R105**~~ ✓ — `getResponseTimeoutMs` / ctor
-7. **Следующий:** NEX-R101 (`tryEnqueue`) или PR-3 NEX-R210
+7. ~~**NEX-R101**~~ ✓ — `tryEnqueue`; далее PR-3 NEX-R210
 
 ---
 

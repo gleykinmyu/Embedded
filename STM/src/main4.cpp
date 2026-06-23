@@ -8,7 +8,7 @@
  *
  * После старта прогон не запускается автоматически — выбор с панели:
  *   b0 release — полный прогон (6 тестов, без QueueFull);
- *   b1 release — только переполнение очереди Session (65× sendMe + drain).
+ *   b1 release — только переполнение очереди Session (65× API компонентов + drain).
  *
  * Из кода: app.beginTests() / app.beginQueueFullTest().
  */

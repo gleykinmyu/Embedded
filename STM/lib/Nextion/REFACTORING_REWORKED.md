@@ -8,45 +8,7 @@
 
 **Легенда:** `[ ]` — к реализации; в заголовке — кратко «было → стало».
 
----
-
 ## Фаза 2 — Надёжность очереди и UART
-
-### [x] NEX-R101 — `tryEnqueue()` → `bool` (неблокирующая постановка)
-
-**Было:** side-buffer / deferred FIFO при `QueueFull` (авто re-enqueue при освобождении слота).
-
-**Стало:** неблокирующий `tryEnqueue` + сохранить blocking `enqueue`; без второй очереди.
-
-**Проблема.** Единственный API — blocking `enqueue()`: при полной очереди крутит `update()` до `_timeoutMs`, затем теряет `Transaction` и шлёт `QueueFull`. Из ISR или «fire-and-forget» UI нельзя безопасно ждать; при stall-timeout transport уже **не двигается** — второй FIFO команд это не лечит (head session застрял → любой буфер встанет в тупик).
-
-**Как сейчас** (`nexApplication.cpp`):
-
-```cpp
-void enqueue(Transaction tx) { /* spin + stall timeout → dispatchError(QueueFull) */ }
-bool Session::enqueue(Transaction tx);  // одна попытка, без update()
-```
-
-Example4 намеренно провоцирует QueueFull (65× `sendMe` в `Phase::QueueFull`).
-
-**Цель.**
-- `[[nodiscard]] bool tryEnqueue(Transaction tx) noexcept` — **одна** попытка `_session.enqueue(tx)` без цикла `update()`; `true` если принято, `false` если `QueueFull` / иная ошибка Session (→ `dispatchError` с route tx, как сейчас при не-QueueFull).
-- Blocking `enqueue()` оставить: внутри — spin `update()` + stall timeout (backpressure / «transport fault»).
-- Документ в `nexApplication.hpp`: timeout при `enqueue` = «очередь не продвинулась» → авария, не повод для side-buffer; при `tryEnqueue(false)` приложение само решает retry/drop/coalesce.
-
-**Не делаем:** автоматический side-buffer / deferred FIFO при QueueFull.
-
-**Критерий готовности.** Unit или example: `tryEnqueue` при полной очереди возвращает `false` без блокировки; `enqueue` по-прежнему drain'ит; example4 фаза QueueFull без изменения семантики.
-
-| | |
-|---|---|
-| **Файлы** | `app/nexApplication.hpp/cpp` |
-| **Сложность** | S |
-| **Зависит от** | NEX-R106 ✓ |
-| **Переработано** | 2026-06-18 — отказ от side-buffer после разбора stall-timeout |
-| **Выполнено** | 2026-06-18 — `Application::tryEnqueue`, `Session::tryEnqueue`; `enqueue` через try + spin |
-
----
 
 ### [~] NEX-R103 — Политики UART (`ByteStreamPolicy`)
 
@@ -106,7 +68,7 @@ Example4 намеренно провоцирует QueueFull (65× `sendMe` в `
 |---|---|
 | **Файлы** | `comp/nexAttributes.hpp`, `app/nexSysVars.hpp`, `app/nexApplication.cpp` |
 | **Сложность** | M |
-| **Зависит от** | NEX-R101 (для pessimistic через `tryEnqueue`) |
+| **Зависит от** | NEX-R101 ✓ (`tryEnqueue`) |
 | **Перенесено** | 2026-06-18 — spec из REFACTORING_REMAINING |
 
 ---
@@ -282,7 +244,7 @@ NexTransport                    // headless: только pump + callbacks
 - Композиция (`NexApp` содержит `NexTransport`) vs `NexApp : NexTransport`.
 - `IErrorSink` / `ICommandSink` — один интерфейс или два.
 - Нужен ли headless-сценарий в продукте (flash/RAM выигрыш vs стоимость XL-рефактора).
-- Связь с R101 (`tryEnqueue` на transport), R204, R206.
+- Связь с R204, R206.
 
 #### Критерий готовности (после design pass)
 

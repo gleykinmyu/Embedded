@@ -190,7 +190,7 @@ void AppEeprom::write_t(..., const uint8_t* buffer, ...) {
 
 1. **Не вызывать** `*_t` / `addt` из production firmware.
 2. В заголовках — **`@experimental`** (facades, waveform).
-3. PR — **отдельная ветка** (XL), после R106 и желательно R101 (`tryEnqueue`).
+3. PR — **отдельная ветка** (XL), после R106 ✓
 4. При code review: любой новый transparent path должен завершать `_session.end`.
 
 ---

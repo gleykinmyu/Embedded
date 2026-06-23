@@ -337,7 +337,7 @@ flowchart LR
 1. **PR-1 (Фаза 0):** NEX-R0a + R0b + R0c + R0e  
 2. **PR-2 (Фаза 1):** NEX-R106 (masks) + R106d + R106e ~~(+ R106f)~~ отложено  
 3. **PR-3 (Фаза 3):** NEX-R210 (Multiline / VAlign)  
-4. **PR-4 (Фаза 2):** NEX-R105 + [R101](REFACTORING_REWORKED.md) (`tryEnqueue`)  
+4. **PR-4 (Фаза 2):** NEX-R105  
 5. **PR-5 (IdMap):** [NEX-R305 + NEX-R011](IdMap.md) (Flash example)  
 6. **PR-6 (отдельная ветка):** NEX-R301 Transparent (XL)
 
