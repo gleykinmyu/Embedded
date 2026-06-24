@@ -124,7 +124,7 @@ void Application::update() noexcept {
         _session.end(false);
     }
 
-    if (!_session.transmit(_gateway)) {
+    if (!_session.transmit(_gateway, now_ms, _timeoutMs)) {
         abortSessionFault();
         _session.end(false);
     }

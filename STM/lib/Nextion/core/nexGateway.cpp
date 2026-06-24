@@ -220,9 +220,8 @@ bool TxFramer::beginRaw(const uint8_t* data, size_t len) noexcept {
     return true;
 }
 
-bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
-    if (_state == State::Idle && frame.length > 0u)
-    {
+TxFramer::Status TxFramer::tick(BIF::IByteStream& stream) noexcept {
+    if (_state == State::Idle && frame.length > 0u) {
         std::memcpy(frame.payload + frame.length, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
         frame.length += Physical::TERM_COUNT;
         _state = State::FramePayload;
@@ -231,37 +230,31 @@ bool TxFramer::tick(BIF::IByteStream& stream) noexcept {
     while (_state == State::FramePayload) {
         const size_t w = stream.write(frame.payload + _pos, static_cast<size_t>(frame.length - _pos));
         if (w == 0u) {
-            if (stream.getStatus() != BIF::IByteStream::Status::OK) {
-                reset();
-                stream.purgeOutput();
-                return false;
-            }
-            return true;
+            if (stream.getStatus() == BIF::IByteStream::Status::Disconnected)
+                return Status::Disconnected;
+            return Status::WaitTxSpace;
         }
         _pos += w;
         if (_pos >= frame.length) {
             reset();
-            return true;
+            return Status::OK;
         }
     }
 
     while (_state == State::RawPayload) {
         const size_t w = stream.write(_rawData + _pos, _rawLen - _pos);
         if (w == 0u) {
-            if (stream.getStatus() != BIF::IByteStream::Status::OK) {
-                reset();
-                stream.purgeOutput();
-                return false;
-            }
-            return true;
+            if (stream.getStatus() == BIF::IByteStream::Status::Disconnected)
+                return Status::Disconnected;
+            return Status::WaitTxSpace;
         }
         _pos += w;
         if (_pos >= _rawLen) {
             reset();
-            return true;
+            return Status::OK;
         }
     }
-    return true;
+    return Status::OK;
 }
 
 //===============================================
@@ -311,11 +304,38 @@ bool Gateway::pushCommand(const Command& cmd) {
     return true;
 }
 
-bool Gateway::transmit() noexcept {
-    if (_txFramer.tick(_stream))
+bool Gateway::transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept {
+    if (_txFramer.isIdle()) {
+        _txStallTimer.stop();
         return true;
-    _status = Status::StreamTxError;
-    return false;
+    }
+
+    const TxFramer::Status txSt = _txFramer.tick(_stream);
+    switch (txSt) {
+    case TxFramer::Status::Disconnected:
+        _txFramer.reset();
+        _stream.purgeOutput();
+        _txStallTimer.stop();
+        _status = Status::StreamTxError;
+        return false;
+
+    case TxFramer::Status::WaitTxSpace:
+        _txStallTimer.startOnce(now_ms, timeout_ms);
+        if (_txStallTimer.timedOut(now_ms)) {
+            _txFramer.reset();
+            _stream.purgeOutput();
+            _txStallTimer.stop();
+            _status = Status::StreamTxError;
+            return false;
+        }
+        break;
+
+    case TxFramer::Status::OK:
+        _txStallTimer.stop();
+        break;
+    }
+
+    return true;
 }
 
 bool Gateway::writeTransparentRaw(const uint8_t* data, size_t len) noexcept {

@@ -146,7 +146,7 @@ public:
      * Продолжить TX активной транзакции (`Gateway::transmit`).
      * @return false — `TransmitFailed`; при `!isActive()` — true (нечего слать).
      */
-    [[nodiscard]] bool transmit(Gateway& gateway) noexcept;
+    [[nodiscard]] bool transmit(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms) noexcept;
 
     /** Завершить активную транзакцию: снять таймер, pop головы очереди. @a success — сбросить статусы ошибок. */
     void end(bool success) noexcept;

@@ -3,6 +3,7 @@
 #include "nexProtocol.hpp"
 #include "nexMessages.hpp"
 #include "nexCommands.hpp"
+#include "nexTimeout.hpp"
 #include "ibyte_stream.hpp"
 
 namespace nex {
@@ -34,12 +35,20 @@ private:
  */
 class TxFramer {
 public:
+    enum class Status : uint8_t {
+        OK = 0,
+        /** `write()==0`, TX-кольцо полно — ждать IRQ (`OverFlowTX`). */
+        WaitTxSpace,
+        /** Линия недоступна (`IByteStream::Disconnected`). */
+        Disconnected,
+    };
+
     TxFrame frame{};
 
     void reset() noexcept;
     bool isIdle() const noexcept;
     bool beginRaw(const uint8_t* data, size_t len) noexcept;
-    bool tick(BIF::IByteStream& stream) noexcept;
+    Status tick(BIF::IByteStream& stream) noexcept;
 
 private:
     enum class State : uint8_t { Idle, FramePayload, RawPayload };
@@ -61,7 +70,7 @@ public:
     enum class Status : uint8_t {
         /** Нет ошибки; начальное значение и после `clearError()`. */
         OK = 0,
-        /** `transmit()`: `TxFramer::tick()` вернул false — сбой записи в `IByteStream` (не OK у потока). */
+        /** `transmit()`: hard fault потока, stall-timeout TX или `tick()` false. */
         StreamTxError,
         /** `receive()`: сбой RX потока или переполнение RX-кольца — framer reset, `purge()`; при OverFlowRX ещё `clearErrors()`. */
         StreamRxError,
@@ -87,7 +96,8 @@ public:
     bool isTxIdle() const noexcept { return _txFramer.isIdle(); }
 
     bool pushCommand(const Command& cmd);
-    bool transmit() noexcept;
+    /** Продолжить TX; при полном TX-кольце (`write()==0`, `OverFlowTX`) — yield до следующего вызова. */
+    bool transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept;
     bool receive(Message& out);
     bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 
@@ -98,8 +108,18 @@ private:
     BIF::IByteStream& _stream;
     RxFramer _rxFramer;
     TxFramer _txFramer;
+    MsTimer _txStallTimer{};
     Status _status = Status::OK;
 };
+
+inline const char* cstr(TxFramer::Status s) noexcept {
+    switch (s) {
+    case TxFramer::Status::OK: return "OK";
+    case TxFramer::Status::WaitTxSpace: return "WaitTxSpace";
+    case TxFramer::Status::Disconnected: return "Disconnected";
+    default: return "?";
+    }
+}
 
 inline const char* cstr(Gateway::Status s) noexcept {
     switch (s) {

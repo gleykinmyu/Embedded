@@ -156,11 +156,11 @@ bool Session::begin(Gateway& gateway) noexcept {
     return true;
 }
 
-bool Session::transmit(Gateway& gateway) noexcept {
+bool Session::transmit(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms) noexcept {
     if (!isActive())
         return true;
 
-    if (!gateway.transmit()) {
+    if (!gateway.transmit(now_ms, timeout_ms)) {
         _status = Status::TransmitFailed;
         return false;
     }
