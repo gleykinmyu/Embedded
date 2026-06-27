@@ -1,7 +1,0 @@
-{
-  "name": "board",
-  "version": "1.0.0",
-  "build": {
-    "libArchive": false
-  }
-}

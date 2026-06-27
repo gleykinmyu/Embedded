@@ -1,8 +1,0 @@
-{
-  "name": "Interfaces",
-  "version": "1.0.0",
-  "description": "Shared interfaces (ObjRegistry, toStr, …)",
-  "build": {
-    "srcFilter": ["+<*>", "-<*.hpp>"]
-  }
-}
