@@ -18,14 +18,14 @@ namespace nex::examples {
 
 using namespace nex::comp;
 
-class AllComponentsDemoApp : public Application {
+class AllComponentsDemoApp : public AppUI<kDefaultMaxPages> {
 public:
     static constexpr uint16_t kScreenWidth = 800;
     static constexpr uint16_t kScreenHeight = 480;
     static constexpr unsigned kPageCount = 4u;
 
     explicit AllComponentsDemoApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
-        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
+        : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
         , page_a(*this)
         , page_b(*this)
         , page_c(*this)
@@ -33,7 +33,7 @@ public:
     {}
 
     /** Страница 0 — переменные, hotspot, картинки, waveform (8 виджетов). */
-    struct PageA : PageImpl<8> {
+    struct PageA : Page<8> {
         Timer timer;
         NumericVar nvar;
         StringVar<64> svar;
@@ -44,7 +44,7 @@ public:
         Waveform<BG::Color, 4> waveform;
 
         PageA(AllComponentsDemoApp& app) noexcept
-            : PageImpl<8>(app, "ex5a", 0u)
+            : Page<8>(app, "ex5a", 0u)
             , timer(*this, "timer0")
             , nvar(*this, "nvar0")
             , svar(*this, "svar0")
@@ -61,7 +61,7 @@ public:
     };
 
     /** Страница 1 — progress, slider, gauge, списки (6 виджетов). */
-    struct PageB : PageImpl<6> {
+    struct PageB : Page<6> {
         ProgressBar<BG::Color> pbar_color;
         ProgressBar<BG::Image> pbar_image;
         Slider<> slider;
@@ -70,7 +70,7 @@ public:
         TextSelect<> text_select;
 
         PageB(AllComponentsDemoApp& app) noexcept
-            : PageImpl<6>(app, "ex5b", 1u)
+            : Page<6>(app, "ex5b", 1u)
             , pbar_color(*this, "pbar0")
             , pbar_image(*this, "pbari0")
             , slider(*this, "slid0")
@@ -84,7 +84,7 @@ public:
     };
 
     /** Страница 2 — текст и числовой ввод (5 виджетов). */
-    struct PageC : PageImpl<5> {
+    struct PageC : Page<5> {
         Text<> text;
         SlidingText<> sltext;
         ScrollText<> scroll_text;
@@ -92,7 +92,7 @@ public:
         XFloat<> xfloat;
 
         PageC(AllComponentsDemoApp& app) noexcept
-            : PageImpl<5>(app, "ex5c", 2u)
+            : Page<5>(app, "ex5c", 2u)
             , text(*this, "text0")
             , sltext(*this, "slt0")
             , scroll_text(*this, "stext0")
@@ -105,7 +105,7 @@ public:
     };
 
     /** Страница 3 — кнопки и selection (5 виджетов). */
-    struct PageD : PageImpl<5> {
+    struct PageD : Page<5> {
         Button<> button;
         DualStateButton<> dual_button;
         Checkbox checkbox;
@@ -113,7 +113,7 @@ public:
         ToggleSwitch toggle;
 
         PageD(AllComponentsDemoApp& app) noexcept
-            : PageImpl<5>(app, "ex5d", 3u)
+            : Page<5>(app, "ex5d", 3u)
             , button(*this, "btn0")
             , dual_button(*this, "dual0")
             , checkbox(*this, "chk0")
@@ -190,15 +190,15 @@ public:
         ex5::advanceLivePage(*this, _live);
     }
 
-    void onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept override
+    void onStatus(const msg::Status& status, Route route) noexcept override
     {
-        Application::onError(status, page_id, comp_id);
+        Application::onStatus(status, route);
         if (!_demo_done)
             return;
         if (status.status == msg::Status::Code::Invalid_Waveform_ID_Channel) {
             ++_live.wf_panel_fails;
             NEX_DBG("[ex5] live: waveform panel fail 0x12 p%u c%u (add_ticks=%lu)\n",
-                static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id),
+                static_cast<unsigned>(route.page), static_cast<unsigned>(route.comp),
                 static_cast<unsigned long>(_live.wf_add_ticks));
         }
     }
@@ -237,10 +237,10 @@ public:
         ex5::tickLiveDemos(*this, _live, now_ms, wa, wb, wc);
     }
 
-    void onPageChange(uint8_t page_id) noexcept override
+    void onPageChange(const msg::evPage& e) noexcept override
     {
-        Application::onPageChange(page_id);
-        NEX_DBG("[ex5] onPageChange -> %u\n", static_cast<unsigned>(page_id));
+        Application::onPageChange(e);
+        NEX_DBG("[ex5] onPageChange -> %u\n", static_cast<unsigned>(e.page));
     }
 
 private:

@@ -1,20 +1,7 @@
 #pragma once
 
 /**
- * @file nexDebug.hpp
- *
- * Единый отладочный вывод библиотеки Nextion (UART `printf`).
- *
- * Флаги компилятора (`build_flags = -D...`):
- *   NEX_DEBUG       — включить все подсистемы ниже
- *   NEX_LOG_TICKS   — `[Nex %010u]` в `printStatusError` (нужен `NEX_DEBUG`)
- *   NEX_NO_LOG_TICKS — отключить тики при `NEX_DEBUG`
- *   NEX_IDMAP_DEBUG — Discover / CompIdMap (`[IdMap]`)
- *   NEX_TRACE_TX    — дамп исходящих NIS-кадров (`misc::printTxPayloadLine`)
- *   NEX_TRACE_RX    — дамп принятых кадров (`misc::printRxLine`)
- *   NEX_CID_DEBUG   — устаревшее имя; то же, что NEX_IDMAP_DEBUG
- *
- * Пример: `build_flags = ... -DNEX_DEBUG`
+ * Отладочный вывод библиотеки (`NEX_DEBUG`, `NEX_IDMAP_DEBUG`, `NEX_TRACE_TX`/`RX` — см. `build_flags`).
  */
 
 #include <cstdio>

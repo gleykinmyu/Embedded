@@ -4,6 +4,11 @@
 #include "nexTypes.hpp"
 #include "nexProtocol.hpp"
 
+/**
+ * Типы разобранных UART-кадров NIS: `msg::Status`, события **0x65**…, variant `Message`.
+ * Парсинг — `Gateway::receive`; байты заголовка — поля `Header` / `Code`.
+ */
+
 namespace nex {
     namespace msg {
 
@@ -88,8 +93,7 @@ namespace nex {
          */
         struct evTouch {
             constexpr static uint8_t Header = 0x65;
-            uint8_t page_id;
-            uint8_t comp_id;
+            Route route;
             TouchState state;
         };
 
@@ -109,7 +113,7 @@ namespace nex {
         /** Смена страницы на дисплее (заголовок **0x66**, индекс страницы). */
         struct evPage {
             constexpr static uint8_t Header = 0x66;
-            uint8_t page_id;
+            uint8_t page = 0u;
         };
 
         /** Системное событие дисплея (сон, готовность, SD-обновление и т.д.). */
@@ -155,8 +159,7 @@ namespace nex {
             /** Зарезервирован для `MsgBox::showError` (прочие `tag` — код вызывающего). */
             static constexpr uint8_t kTagError = 0xFFu;
 
-            uint8_t page_id = 0u;
-            uint8_t comp_id = 0u;
+            Route route;
             uint8_t tag = 0u;
             Action action = Action::None;
         };

@@ -18,7 +18,7 @@ namespace nex::examples::ex5 {
 
 using namespace nex::comp;
 
-/** Id страниц HMI (совпадают с `PageImpl` в app.hpp). */
+/** Id страниц HMI (совпадают с `Page<>` в app.hpp). */
 inline constexpr uint8_t kPageAId = 0u;
 inline constexpr uint8_t kPageBId = 1u;
 inline constexpr uint8_t kPageCId = 2u;
@@ -572,7 +572,7 @@ inline void logLivePagePrompt(uint8_t live_page) noexcept
         livePageName(live_page));
 }
 
-/** R214: при `bkcmd=OnFailure` панель отвечает 0x12; с `kAwaitingNone` маршрут orphan (0,0). */
+/** R214: при `bkcmd=OnFailure` панель отвечает 0x12; с `kAwaitingNone` — status вне активной транзакции, маршрут `(0,0)`. */
 inline void probeWaveformAddPolicy(Waveform<BG::Color, 4>& w, LiveDemoState& st) noexcept
 {
     if (st.wf_add_probe_done)

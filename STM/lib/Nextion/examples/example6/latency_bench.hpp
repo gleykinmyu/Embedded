@@ -13,8 +13,8 @@ namespace nex::examples::ex6 {
 
 struct BenchResult {
     const char* label = nullptr;
-    uint8_t page_id = 0u;
-    uint8_t comp_id = 0u;
+    uint8_t page = 0u;
+    uint8_t comp = 0u;
     uint32_t ms = 0u;
     unsigned got_success = 0u;
     /** 0 — таймаут; 0x01 — Success; иначе код panel-статуса при FAIL. */
@@ -25,12 +25,12 @@ class LatencyRecorder {
 public:
     static constexpr unsigned kMaxResults = 128u;
 
-    void add(const char* label, uint8_t page_id, uint8_t comp_id, uint32_t ms, unsigned got_success,
+    void add(const char* label, uint8_t page, uint8_t comp, uint32_t ms, unsigned got_success,
         uint8_t rx_status = 0u) noexcept
     {
         if (_count >= kMaxResults)
             return;
-        _results[_count++] = BenchResult{label, page_id, comp_id, ms, got_success, rx_status};
+        _results[_count++] = BenchResult{label, page, comp, ms, got_success, rx_status};
     }
 
     void printSummary() const noexcept
@@ -70,15 +70,15 @@ public:
             const BenchResult& r = sorted[i];
             if (r.got_success) {
                 NEX_DBG("[ex6] %4lu ms  p%u c%u  OK  %s\n", static_cast<unsigned long>(r.ms),
-                    static_cast<unsigned>(r.page_id), static_cast<unsigned>(r.comp_id), r.label);
+                    static_cast<unsigned>(r.page), static_cast<unsigned>(r.comp), r.label);
             } else if (r.rx_status != 0u) {
                 NEX_DBG("[ex6] %4lu ms  p%u c%u  FAIL  %s  (rx 0x%02X)\n",
-                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page_id),
-                    static_cast<unsigned>(r.comp_id), r.label, static_cast<unsigned>(r.rx_status));
+                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page),
+                    static_cast<unsigned>(r.comp), r.label, static_cast<unsigned>(r.rx_status));
             } else {
                 NEX_DBG("[ex6] %4lu ms  p%u c%u  FAIL  %s  (timeout)\n",
-                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page_id),
-                    static_cast<unsigned>(r.comp_id), r.label);
+                    static_cast<unsigned long>(r.ms), static_cast<unsigned>(r.page),
+                    static_cast<unsigned>(r.comp), r.label);
             }
         }
         NEX_DBG("[ex6] === end summary ===\n\n");

@@ -8,15 +8,10 @@
 
 namespace nex {
 
-Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockMs,
-    uint32_t timeout_ms) noexcept
-    : ep(*this)
-    , fs(*this)
-    , cs(*this)
-    , audio(*this)
+Application::Application(BIF::IByteStream& stream, Rect screen, AppTiming timing) noexcept
+    : cs(*this)
     , touch(*this)
     , sleep(*this)
-    , msgBox(*this)
     , bkcmd(*this, "bkcmd", SysVarTag::Bkcmd, BkCmd::OnFailure)
     , sys{SysVar<uint32_t>(*this, "sys0", SysVarTag::Sys0), SysVar<uint32_t>(*this, "sys1", SysVarTag::Sys1),
         SysVar<uint32_t>(*this, "sys2", SysVarTag::Sys2)}
@@ -27,41 +22,22 @@ Application::Application(BIF::IByteStream& stream, Rect screen, ClockMsFn clockM
     , _screen(screen.w, screen.h)
     , _stream(stream)
     , _gateway(stream)
-    , _clockMsFn(clockMs)
-    , _timeoutMs(timeout_ms)
+    , _clockMsFn(timing.clockMs)
+    , _timeoutMs(timing.timeoutMs)
 {
-    NEX_ASSERT(clockMs != nullptr);
+    NEX_ASSERT(timing.clockMs != nullptr);
 #if defined(NEX_LOG_TICKS)
-    detail::setNexLogTickFn(clockMs);
+    detail::setNexLogTickFn(timing.clockMs);
 #endif
 }
 
 void Application::onTimeout(const Transaction& active) noexcept {
-    dispatchError(appErrorFrom(Session::Status::Timeout), active.page_id, active.comp_id);
+    onStatus(appErrorFrom(Session::Status::Timeout), active.route);
 }
 
 void Application::abortSessionFault() noexcept {
     if (const Transaction* const tx = _session.current())
-        dispatchError(appErrorFrom(_session.getStatus(), _gateway.getStatus()), tx->page_id, tx->comp_id);
-}
-
-void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept {
-    app.dispatchError(appErrorFrom(st), page.ID, c.id());
-}
-
-Page* Application::getPage(uint8_t id) noexcept {
-    return _pageStorage.get(id);
-}
-
-Component* Application::getComponent(uint8_t page_id, uint8_t comp_id) noexcept {
-    Page* const p = getPage(page_id);
-    if (p == nullptr)
-        return nullptr;
-    return p->getComponent(comp_id);
-}
-
-void Application::registerPage(Page& page) noexcept {
-    (void)_pageStorage.registerSeq(&page, page.ID);
+        onStatus(appErrorFrom(_session.getStatus(), _gateway.getStatus()), tx->route);
 }
 
 bool Application::tryEnqueue(Transaction tx) noexcept {
@@ -70,7 +46,7 @@ bool Application::tryEnqueue(Transaction tx) noexcept {
 
     const Session::Status st = _session.getStatus();
     if (st != Session::Status::QueueFull)
-        dispatchError(appErrorFrom(st), tx.page_id, tx.comp_id);
+        onStatus(appErrorFrom(st), tx.route);
     return false;
 }
 
@@ -84,7 +60,7 @@ void Application::enqueue(Transaction tx) noexcept {
 
         const Session::Status st = _session.getStatus();
         if (st != Session::Status::QueueFull) {
-            dispatchError(appErrorFrom(st), tx.page_id, tx.comp_id);
+            onStatus(appErrorFrom(st), tx.route);
             return;
         }
 
@@ -97,7 +73,7 @@ void Application::enqueue(Transaction tx) noexcept {
             break;
     }
 
-    dispatchError(appErrorFrom(Session::Status::QueueFull), tx.page_id, tx.comp_id);
+    onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
 }
 
 bool Application::pumpUntilIdle() noexcept {
@@ -140,33 +116,79 @@ void Application::update() noexcept {
     }
 
     Message m{};
+    // Сначала привязка к активной tx (`dispatchResponse`), иначе — события панели.
     while (_gateway.receive(m)) {
         if (dispatchResponse(m, _gateway.isTxIdle()))
             continue;
         dispatchEvent(m);
     }
 
-    const Gateway::Status gwSt = _gateway.getStatus();
-    const BIF::IByteStream::Status streamSt = _stream.getStatus();
-    if (gwSt != Gateway::Status::OK || streamSt != BIF::IByteStream::Status::OK)
-        dispatchError(appErrorFrom(gwSt, streamSt), 0u, 0u);
-    else if (_lastError.status != msg::Status::Code::Success)
-        _lastError = msg::Status{};
+    processTransportFault(now_ms);
 }
 
-void Application::dispatchError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
-    if (_lastError.status != msg::Status::Code::Success && status == _lastError
-        && page_id == _lastErrorPage && comp_id == _lastErrorComp)
-        return;
+void Application::processTransportFault(uint32_t now_ms) noexcept {
+    // Re-TX head при `StreamRxError` + `bkcmd`/`canRetryActive`; иначе `onStatus` и сброс session.
+    const Gateway::Status gwSt = _gateway.getStatus();
+    const BIF::IByteStream::Status streamSt = _stream.getStatus();
 
-    _lastError = status;
-    _lastErrorPage = page_id;
-    _lastErrorComp = comp_id;
-    onError(status, page_id, comp_id);
-    if (page_id == 0u && comp_id == 0u)
+    if (gwSt == Gateway::Status::OK && streamSt == BIF::IByteStream::Status::OK) {
+        _rxFaultRetries = 0u;
+        if (_lastError.status != msg::Status::Code::Success)
+            _lastError = msg::Status{};
         return;
-    if (Page* const p = getPage(page_id))
-        p->onError(status, comp_id);
+    }
+
+    switch (gwSt) {
+    case Gateway::Status::StreamRxError:
+        if (_session.canRetryActive(bkcmd) && _rxFaultRetries < kMaxRxFaultRetries) {
+            if (!_gateway.isTxIdle())
+                return;
+
+            if (streamSt == BIF::IByteStream::Status::DataError)
+                _stream.clearErrors();
+            _gateway.clearError();
+
+            if (_session.retryActive(_gateway, bkcmd)) {
+                _rxFaultRetries++;
+                (void)_session.transmit(_gateway, now_ms, _timeoutMs);
+                return;
+            }
+        }
+
+        if (_session.isActive()) {
+            abortSessionFault();
+            _session.end(false);
+            _rxFaultRetries = 0u;
+            return;
+        }
+
+        if (streamSt == BIF::IByteStream::Status::DataError)
+            _stream.clearErrors();
+        _gateway.clearError();
+        _rxFaultRetries = 0u;
+        break;
+
+    case Gateway::Status::StreamTxError:
+        if (_session.isActive()) {
+            abortSessionFault();
+            _session.end(false);
+            _rxFaultRetries = 0u;
+            return;
+        }
+        _rxFaultRetries = 0u;
+        break;
+
+    case Gateway::Status::RxOverflow:
+        _gateway.clearError();
+        break;
+
+    case Gateway::Status::OK:
+    default:
+        _rxFaultRetries = 0u;
+        break;
+    }
+
+    onStatus(appErrorFrom(gwSt, streamSt));
 }
 
 bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
@@ -178,11 +200,12 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         return false;
 
     if (const auto* st = std::get_if<msg::Status>(&m)) {
+        // Status вне активной транзакции: не коррелирует с active tx → `onStatus` без route.
         if (!active->correlatesWith(*st, bkcmd)) {
-            dispatchError(*st, 0u, 0u);
+            onStatus(*st);
             return true;
         }
-        dispatchError(*st, active->page_id, active->comp_id);
+        onStatus(*st, active->route);
         const bool ok = (active->kind == Transaction::Kind::Command) && st->isOK();
         _session.end(ok);
         return true;
@@ -191,11 +214,7 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
     switch (active->kind) {
     case Transaction::Kind::GetNumeric:
         if (const auto* nr = std::get_if<msg::getNumeric>(&m)) {
-            if (Route::isSysVar(active->page_id, active->comp_id)) {
-                dispatchSysVarResponse(active->tag, *nr);
-                onSysResponse(active->tag, *nr);
-            } else if (Component* const c = getComponent(active->page_id, active->comp_id))
-                c->onResponse(active->tag, *nr);
+            onResponse(*nr, active->route, active->tag);
             _session.end(true);
             return true;
         }
@@ -203,8 +222,7 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
 
     case Transaction::Kind::GetString:
         if (const auto* sr = std::get_if<msg::getString>(&m)) {
-            if (Component* const c = getComponent(active->page_id, active->comp_id))
-                c->onResponse(active->tag, *sr);
+            onResponse(*sr, active->route, active->tag);
             _session.end(true);
             return true;
         }
@@ -226,15 +244,17 @@ bool Application::dispatchResponse(const Message& m, bool txIdle) noexcept {
         // NEX-R301: raw RX chunks после преамбулы read/raw.
         return false;
     }
+
+    return false;
 }
 
 void Application::dispatchEvent(const Message& m) noexcept {
     if (const auto* e = std::get_if<msg::evPage>(&m)) {
-        onPageChange(e->page_id);
+        onPageChange(*e);
         return;
     }
     if (const auto* e = std::get_if<msg::Status>(&m)) {
-        dispatchError(*e, 0u, 0u);
+        onStatus(*e);
         return;
     }
     if (const auto* e = std::get_if<msg::evTouch>(&m)) {
@@ -260,79 +280,80 @@ void Application::dispatchEvent(const Message& m) noexcept {
 }
 
 void Application::onTouch(const msg::evTouch& e) {
-    if (msgBox.isActive())
-        return;
-    if (Page* const p = getPage(e.page_id))
-        p->onTouch(e);
+    (void)e;
 }
 
 void Application::onTouchXY(const msg::evTouchXY& e) {
-    if (msgBox.isActive())
-        msgBox.onTouchXY(e);
+    (void)e;
 }
 
 void Application::onMsgBox(const msg::evMsgBox& e) noexcept {
-    if (e.comp_id != 0u) {
-        if (Component* const c = getComponent(e.page_id, e.comp_id)) {
-            c->onMsgBox(e);
-            return;
-        }
-    }
-    if (Page* const p = getPage(e.page_id)) {
-        p->onMsgBox(e);
-        if (e.comp_id == 0u)
-            return;
-    }
+    (void)e;
 }
 
-void Application::onPageChange(uint8_t page_id) noexcept {
-    const uint8_t prev = _currentPageId;
-    if (prev != page_id) {
-        if (Page* const old_page = getPage(prev))
-            old_page->onExit();
+void Application::onPageChange(const msg::evPage& e) noexcept {
+    _currentPage = e.page;
+}
+
+void Application::onStatus(const msg::Status& status, Route route) noexcept {
+    if (_lastError.status != msg::Status::Code::Success && status == _lastError && route == _lastErrorRoute)
+        return;
+
+    _lastError = status;
+    _lastErrorRoute = route;
+    printStatusError(status, route);
+}
+
+void Application::onResponse(const msg::getNumeric& response, Route route, uint8_t tag) noexcept
+{
+    if (route.isSysVar()) {
+        switch (static_cast<SysVarTag>(tag)) {
+        case SysVarTag::Bkcmd:
+            bkcmd.applyResponse(response);
+            break;
+        case SysVarTag::Sys0:
+        case SysVarTag::Sys1:
+        case SysVarTag::Sys2:
+            sys[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Sys0)].applyResponse(response);
+            break;
+        case SysVarTag::Pio0:
+        case SysVarTag::Pio1:
+        case SysVarTag::Pio2:
+        case SysVarTag::Pio3:
+        case SysVarTag::Pio4:
+        case SysVarTag::Pio5:
+        case SysVarTag::Pio6:
+        case SysVarTag::Pio7:
+            pio[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Pio0)].applyResponse(response);
+            break;
+        case SysVarTag::Tch0:
+        case SysVarTag::Tch1:
+        case SysVarTag::Tch2:
+        case SysVarTag::Tch3:
+            touch.tch[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Tch0)].applyResponse(response);
+            break;
+        default:
+            break;
+        }
     }
-    _currentPageId = page_id;
-    if (prev != page_id) {
-        if (Page* const new_page = getPage(page_id))
-            new_page->onLoad();
-    }
+    (void)response;
+    (void)route;
+    (void)tag;
+}
+
+void Application::onResponse(const msg::getString& response, Route route, uint8_t tag) noexcept
+{
+    (void)response;
+    (void)route;
+    (void)tag;
 }
 
 void Application::clearErrors() noexcept {
     _lastError = msg::Status{};
-    _lastErrorPage = 0u;
-    _lastErrorComp = 0u;
+    _lastErrorRoute = {};
     _stream.clearErrors();
     _gateway.clearError();
     _session.clearError();
-}
-
-void Application::dispatchSysVarResponse(uint8_t tag, const msg::getNumeric& response) noexcept {
-    switch (static_cast<SysVarTag>(tag)) {
-    case SysVarTag::Bkcmd: bkcmd.applyResponse(response); break;
-    case SysVarTag::Sys0:
-    case SysVarTag::Sys1:
-    case SysVarTag::Sys2:
-        sys[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Sys0)].applyResponse(response);
-        break;
-    case SysVarTag::Pio0:
-    case SysVarTag::Pio1:
-    case SysVarTag::Pio2:
-    case SysVarTag::Pio3:
-    case SysVarTag::Pio4:
-    case SysVarTag::Pio5:
-    case SysVarTag::Pio6:
-    case SysVarTag::Pio7:
-        pio[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Pio0)].applyResponse(response);
-        break;
-    case SysVarTag::Tch0:
-    case SysVarTag::Tch1:
-    case SysVarTag::Tch2:
-    case SysVarTag::Tch3:
-        touch.tch[static_cast<size_t>(tag) - static_cast<size_t>(SysVarTag::Tch0)].applyResponse(response);
-        break;
-    default: break;
-    }
 }
 
 } // namespace nex

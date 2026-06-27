@@ -4,6 +4,8 @@
 #include "../nexAttributes.hpp"
 #include "../nexComponentBase.hpp"
 
+/** Фон виджета (`bco`/`pic`/`picc` и индексы 1/2) по `BG` и `sta`. */
+
 namespace nex::resources {
 
 namespace bg_detail {

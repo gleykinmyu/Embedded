@@ -1,16 +1,8 @@
 #pragma once
 
 /**
- * @file nexAttrLexemes.hpp
- *
- * Единый реестр NIS-имён атрибутов (`objname.lexeme=…`), используемых в setter'ах
- * (`assignNumeric` / `assignText`) и полях `attr::Num` / `attr::String`.
- *
- * `Id` — стабильный tag (будущая замена локальных `enum Tag` в виджетах).
- * `kLiteral[]` — `nex::Literal` во flash (.rodata): указатель + длина без NUL.
- *
- * Список собран из: nexComponents.hpp, nexCompImpl.*, nexExComponents.hpp,
- * resources/ (background, comboBox, cursor, font, gauge, pressed, progressBar, waveform).
+ * Реестр NIS-имён атрибутов (`objname.lexeme`): `attr::Id` ↔ литерал для `AttrRef` и `attr::Num`/`String`.
+ * Список — макрос `NEX_ATTR_LEXEME_LIST`; порядок по алфавиту NIS-имени.
  */
 
 #include <cstddef>

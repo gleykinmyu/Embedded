@@ -11,13 +11,13 @@ bool isKnownCstr(const char* name) noexcept {
     return name != nullptr && !(name[0] == '?' && name[1] == '\0');
 }
 
-size_t appendRoute(char* buf, size_t cap, size_t off, uint8_t page_id, uint8_t comp_id) noexcept {
-    if (page_id == 0u && comp_id == 0u)
+size_t appendRoute(char* buf, size_t cap, size_t off, Route route) noexcept {
+    if (route.isGlobal())
         return off;
     if (off >= cap)
         return off;
     return static_cast<size_t>(std::snprintf(buf + off, cap - off, " page=%u comp=%u",
-        static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id))) + off;
+        static_cast<unsigned>(route.page), static_cast<unsigned>(route.comp))) + off;
 }
 
 size_t formatAppErrorBody(AppError reporter, uint16_t detail, char* buf, size_t cap) noexcept {
@@ -101,7 +101,7 @@ void nexLogPrint(const char* fmt, ...) noexcept {
 
 } // namespace detail
 
-size_t formatStatusMessage(const msg::Status& st, uint8_t page_id, uint8_t comp_id, char* buf, size_t cap) noexcept {
+size_t formatStatusMessage(const msg::Status& st, Route route, char* buf, size_t cap) noexcept {
     if (cap == 0u)
         return 0u;
 
@@ -115,25 +115,24 @@ size_t formatStatusMessage(const msg::Status& st, uint8_t page_id, uint8_t comp_
         bodyLen = formatNisStatusBody(st, body, sizeof(body));
         bodyLen = static_cast<size_t>(std::snprintf(buf, cap, "%.*s", static_cast<int>(bodyLen), body));
     }
-    return appendRoute(buf, cap, bodyLen, page_id, comp_id);
+    return appendRoute(buf, cap, bodyLen, route);
 }
 
-void printStatusError(const msg::Status& st, uint8_t page_id, uint8_t comp_id) noexcept {
+void printStatusError(const msg::Status& st, Route route) noexcept {
 #if defined(NEX_DEBUG)
     char body[96];
     if (st.isAppError()) {
         const size_t bodyLen = formatAppErrorBody(appErrorReporter(st), appErrorDetail(st), body, sizeof(body));
-        const size_t off = appendRoute(body, sizeof(body), bodyLen, page_id, comp_id);
-        detail::nexLogPrint("onError AppError %.*s\n", static_cast<int>(off), body);
+        const size_t off = appendRoute(body, sizeof(body), bodyLen, route);
+        detail::nexLogPrint("onStatus AppError %.*s\n", static_cast<int>(off), body);
     } else {
         const size_t bodyLen = formatNisStatusBody(st, body, sizeof(body));
-        const size_t off = appendRoute(body, sizeof(body), bodyLen, page_id, comp_id);
-        detail::nexLogPrint("onError %.*s\n", static_cast<int>(off), body);
+        const size_t off = appendRoute(body, sizeof(body), bodyLen, route);
+        detail::nexLogPrint("onStatus %.*s\n", static_cast<int>(off), body);
     }
 #else
     (void)st;
-    (void)page_id;
-    (void)comp_id;
+    (void)route;
 #endif
 }
 

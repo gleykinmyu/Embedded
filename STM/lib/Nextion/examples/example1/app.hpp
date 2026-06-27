@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "nex.hpp"
+#include "../../overlay/ovl.hpp"
 
 namespace nex::examples {
 
@@ -38,7 +39,7 @@ public:
     {
         ++hits;
         NEX_DBG("[2page] %s onTouch page=%u comp=%u state=%s hits=%lu\n", tag,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id), touch_state_cstr(e.state),
+            static_cast<unsigned>(e.route.page), static_cast<unsigned>(e.route.comp), touch_state_cstr(e.state),
             static_cast<unsigned long>(hits));
         Base::onTouch(e);
     }
@@ -46,7 +47,7 @@ public:
     void onMsgBox(const msg::evMsgBox& e) override
     {
         NEX_DBG("[2page] %s onMsgBox action=%s tag=%u\n", tag,
-            MsgBox::actionCstr(static_cast<MsgBox::Action>(e.action)), static_cast<unsigned>(e.tag));
+            ovl::MsgBox::actionCstr(static_cast<ovl::MsgBox::Action>(e.action)), static_cast<unsigned>(e.tag));
         Base::onMsgBox(e);
     }
 
@@ -57,12 +58,12 @@ private:
 
 } // namespace detail
 
-class TwoPageTouchDemoApp : public Application {
+class TwoPageTouchDemoApp : public AppUI<kDefaultMaxPages> {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
     explicit TwoPageTouchDemoApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
-        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
+        : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
     {}
 
     static constexpr uint8_t kPage0Id = 0u;
@@ -84,16 +85,18 @@ public:
     uint32_t page1_exits{};
 
     uint8_t last_touch_page = 0xFF;
-    uint8_t last_touch_comp_id = 0xFF;
+    uint8_t last_touch_comp = 0xFF;
     TouchState last_touch_state = TouchState::Release;
     uint8_t last_page_change_id = 0xFF;
 
-    struct Page0 : PageImpl<2> {
+    ovl::MsgBox msgBox{*this};
+
+    struct Page0 : Page<2> {
         detail::CountingTouchWidget<Button<>> btn;
         detail::CountingTouchWidget<DualStateButton<>> dsbtn;
 
         Page0(TwoPageTouchDemoApp& a) noexcept
-            : PageImpl<2>(a, "page0", TwoPageTouchDemoApp::kPage0Id)
+            : Page<2>(a, "page0", TwoPageTouchDemoApp::kPage0Id)
             , btn(a.touch_btn_p0, "btn_p0", *this, "b0", TwoPageTouchDemoApp::kCompAId)
             , dsbtn(a.touch_dsbtn_p0, "dsbtn_p0", *this, "ds0", TwoPageTouchDemoApp::kCompBId)
         {}
@@ -111,12 +114,12 @@ public:
         }
     };
 
-    struct Page1 : PageImpl<2> {
+    struct Page1 : Page<2> {
         detail::CountingTouchWidget<Button<>> btn;
         detail::CountingTouchWidget<Text<>> txt;
 
         Page1(TwoPageTouchDemoApp& a) noexcept
-            : PageImpl<2>(a, "page1", TwoPageTouchDemoApp::kPage1Id)
+            : Page<2>(a, "page1", TwoPageTouchDemoApp::kPage1Id)
             , btn(a.touch_btn_p1, "btn_p1", *this, "b0", TwoPageTouchDemoApp::kCompAId)
             , txt(a.touch_txt_p1, "txt_p1", *this, "t0", TwoPageTouchDemoApp::kCompBId)
         {}
@@ -151,48 +154,48 @@ public:
     void onTouch(const msg::evTouch& e) override
     {
         ++app_touch_events;
-        last_touch_page = e.page_id;
-        last_touch_comp_id = e.comp_id;
+        last_touch_page = e.route.page;
+        last_touch_comp = e.route.comp;
         last_touch_state = e.state;
         NEX_DBG("[2page] Application::onTouch page=%u comp=%u state=%s app_events=%lu\n",
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state),
+            static_cast<unsigned>(e.route.page), static_cast<unsigned>(e.route.comp), detail::touch_state_cstr(e.state),
             static_cast<unsigned long>(app_touch_events));
-        if (e.page_id == kPage0Id && e.state == TouchState::Release) {
-            if (e.comp_id == kCompAId) {
+        if (e.route.page == kPage0Id && e.state == TouchState::Release) {
+            if (e.route.comp == kCompAId) {
                 msg::Status st{};
                 st.status = msg::Status::Code::Invalid_CompId;
                 NEX_DBG("[2page] msgBox Status sim %s p%u c%u\n", cstr(st.status),
                     static_cast<unsigned>(kPage0Id), static_cast<unsigned>(kCompAId));
-                onError(st, kPage0Id, kCompAId);
-                msgBox.show("NIS error", cstr(st.status), MsgBox::Preset::OK);
+                onStatus(st, Route{kPage0Id, kCompAId});
+                msgBox.show("NIS error", ovl::MsgBox::Preset::OK, kCompAId, ovl::MsgBox::Action::None, "%s", cstr(st.status));
                 return;
             }
-            if (e.comp_id == kCompBId) {
+            if (e.route.comp == kCompBId) {
                 ++msgbox_demo_presses;
-                static constexpr MsgBox::Preset kPresets[] = {MsgBox::Preset::OK, MsgBox::Preset::OKCancel,
-                    MsgBox::Preset::YesNo, MsgBox::Preset::YesNoCancel};
-                const MsgBox::Preset preset = kPresets[(msgbox_demo_presses - 1u) % 4u];
+                static constexpr ovl::MsgBox::Preset kPresets[] = {ovl::MsgBox::Preset::OK, ovl::MsgBox::Preset::OKCancel,
+                    ovl::MsgBox::Preset::YesNo, ovl::MsgBox::Preset::YesNoCancel};
+                const ovl::MsgBox::Preset preset = kPresets[(msgbox_demo_presses - 1u) % 4u];
                 char title[24]{};
                 char body[56]{};
                 std::snprintf(title, sizeof(title), "Demo #%lu", static_cast<unsigned long>(msgbox_demo_presses));
-                std::snprintf(body, sizeof(body), "%s", MsgBox::presetCstr(preset));
+                std::snprintf(body, sizeof(body), "%s", ovl::MsgBox::presetCstr(preset));
                 NEX_DBG("[2page] msgBox demo press=%lu preset=%s\n",
-                    static_cast<unsigned long>(msgbox_demo_presses), MsgBox::presetCstr(preset));
-                msgBox.setRoute(kPage0Id, kCompBId);
-                msgBox.show(title, body, preset, kCompBId);
+                    static_cast<unsigned long>(msgbox_demo_presses), ovl::MsgBox::presetCstr(preset));
+                msgBox.setRoute(Route{kPage0Id, kCompBId});
+                msgBox.show(title, preset, kCompBId, ovl::MsgBox::Action::None, "%s", body);
             }
         }
         Application::onTouch(e);
     }
 
-    void onPageChange(uint8_t page_id) noexcept override
+    void onPageChange(const msg::evPage& e) noexcept override
     {
         ++app_page_changes;
-        last_page_change_id = page_id;
-        NEX_DBG("[2page] onPageChange -> page=%u page_changes=%lu currentPageId=%u\n",
-            static_cast<unsigned>(page_id), static_cast<unsigned long>(app_page_changes),
-            static_cast<unsigned>(currentPageId()));
-        Application::onPageChange(page_id);
+        last_page_change_id = e.page;
+        NEX_DBG("[2page] onPageChange -> page=%u page_changes=%lu currentPage=%u\n",
+            static_cast<unsigned>(e.page), static_cast<unsigned long>(app_page_changes),
+            static_cast<unsigned>(currentPage()));
+        Application::onPageChange(e);
     }
 
 private:

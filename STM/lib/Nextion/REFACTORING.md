@@ -6,9 +6,7 @@
 **Как идти:** с **глубины кода** (`core/` → `comp/` → `app/`) — см. «Bottom-up порядок».  
 **Сейчас в приоритете:** Фаза 0 (демо/API) → **NEX-R106** (Session/UART) → очередь → Components → Transparent.
 
-**Handoff сессии R106:** [R106_HANDOFF.md](R106_HANDOFF.md) — что сделано, архитектура, следующие шаги, перенос на другой ПК.
-
-**Backlog:** [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md) (активный scope) · [IdMap.md](IdMap.md) · [TRANSPARENT_PROTOCOL.md](TRANSPARENT_PROTOCOL.md) · **Отложено:** [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md) · **Точка входа:** [README.md](README.md).
+**Backlog:** [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md) (активный scope) · [smartApp/IdMap.md](smartApp/IdMap.md) · [TRANSPARENT_PROTOCOL.md](TRANSPARENT_PROTOCOL.md) · **Отложено:** [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md) · **Точка входа:** [README.md](README.md).
 
 ---
 
@@ -20,8 +18,8 @@
 | **1** | Session / UART (критично) | **NEX-R106** |
 | **2** | Очередь, timeout, UART policy | NEX-R101…R105 |
 | **3** | Components / attr API | NEX-R210…R217 |
-| **4** | Application architecture | NEX-R201…R206 |
-| **5** | Transparent / raw, IdMap | [R301…R302](TRANSPARENT_PROTOCOL.md), [R303…R305 / R011](IdMap.md) |
+| **4** | Application architecture | split `IAppUI` ✓, R204 ✓ |
+| **5** | Transparent / raw, IdMap | [R301…R302](TRANSPARENT_PROTOCOL.md), [R303…R305 / R011](smartApp/IdMap.md) |
 | **6** | Тесты, примеры, infra | NEX-R401…R405, R011, R012 |
 | **—** | Закрытые quick wins (история) | NEX-R001…R010, R403 |
 
@@ -44,11 +42,11 @@ flowchart LR
 | **0. Типы и протокол** | `nexTypes.hpp`, `nexProtocol.hpp` | NEX-R002 ✓ |
 | **1. Session / Gateway** | `nexSession.*`, `nexGateway.*` | **NEX-R106**, [R104](REFACTORING_REWORKED.md), R105 |
 | **2. Commands / Messages** | `nexCommands.*`, `nexMessages.hpp` | R403 ✓ |
-| **3. Ошибки** | `app/nexErrors.hpp` | R008, [R103](REFACTORING_REWORKED.md) ~ |
+| **3. Ошибки** | `app/nexErrors.hpp` | R008, [R103](REFACTORING_REWORKED.md) ✓ |
 | **4. SysVar helpers** | `nexSysVars.*` | R009 ✓, R216 ✓ |
 | **5. Components** | `nexComponents.hpp`, `nexExComponents.hpp`, `nexCompImpl.*` | R210…R217 |
-| **6. Application / SmartApp** | `nexApplication.*`, `nexSmartApp.*`, facades | R101, R201…R206 |
-| **7. IdMap** | `idmap/nexIdMap.*` | [R303…R305, R011](IdMap.md) |
+| **6. Application / SmartApp** | `nexApplication.*`, `nexAppUI.*`, `nexSmartApp.*`, facades, `nexMsgBox.*` | R101, R201, R204 ✓, IAppUI split ✓ |
+| **7. IdMap** | `smartApp/nexIdMap.*` | [R303…R305, R011](smartApp/IdMap.md) |
 | **8. Examples / tests** | `examples/`, host tests | R011, R401, example4/5 |
 
 **Следующие шаги:** NEX-R106 ✓, NEX-R101 ✓ → R210…
@@ -60,7 +58,7 @@ flowchart LR
 | Модуль | Файлы | Состояние |
 |--------|-------|-----------|
 | **Application** | `app/nexApplication.*`, `nexApplicationAddons.cpp` | UART-цикл; `enqueue`/`update`/`dispatchResponse`; `_lastError*` |
-| **SmartApp / IdMap** | `app/nexSmartApp.*`, `idmap/nexIdMap.*` | Discover + Flash; `applyFromTable`; не transport layer |
+| **SmartApp / IdMap** | `smartApp/nexSmartApp.*`, `smartApp/nexIdMap.*` | Discover + Flash; `applyFromTable`; не transport layer |
 | **Ошибки** | `app/nexErrors.hpp`, `app/nexErrorFormat.cpp` | `makeAppError`, `formatStatusMessage`, `printStatusError`; recovery inline в `nexApplication.cpp` |
 | **Session** | `core/nexSession.*` | `Transaction::Kind`, `awaiting_status` wire-mask; `_active` убран ✓ |
 | **Gateway** | `core/nexGateway.*` | RX/TX framer; `isTxIdle` |
@@ -95,7 +93,7 @@ flowchart LR
 | `pollTimeout` | Session `ResponseTimedOut` | active tx |
 | RX / Gateway | Gateway / Stream | `(0,0)` или active tx |
 | `dispatchResponse` NIS Status | Panel | route транзакции |
-| `dispatchEvent` Status | Panel | **orphan `(0,0)`** |
+| `dispatchEvent` Status | Panel | **status вне активной транзакции `(0,0)`** |
 | `registerPage` / `registerComponent` | Register | Page / Component |
 
 ---
@@ -107,8 +105,8 @@ flowchart LR
 | **Critical** | R106 | Wire-маска `awaiting_status` + correlate ✓ |
 | **High** | R106d | `sessionWaitMask` vs `statusCorrelateMask` ✓ |
 | **High** | R301 | `AwaitingTransparentTx` / `AwaitingRawDataRx` без timeout и `dispatchResponse` → **зависание очереди** |
-| **Medium** | R305 | `idmap::Table::upsert` принимает `panel_id=0xFF` | → [IdMap.md](IdMap.md) |
-| **Low** | R0b | `kAttrId{"id"}` в `nexSmartApp.cpp` дублирует `nexAttrLexemes.hpp` |
+| **Medium** | R305 | `idmap::Table::upsert` принимает `panel_id=0xFF` | → [smartApp/IdMap.md](smartApp/IdMap.md) |
+| **Low** | R0b | `kAttrId{"id"}` в `smartApp/nexSmartApp.cpp` дублирует `nexAttrLexemes.hpp` |
 
 ---
 
@@ -119,7 +117,7 @@ flowchart LR
   - **Сложность:** S
 
 - [x] **NEX-R0b** — Discover: `kAttrId` → `attr::literal(attr::Id::Id)`
-  - **Файлы:** `app/nexSmartApp.cpp`, include `nexAttrLexemes.hpp`
+  - **Файлы:** `smartApp/nexSmartApp.cpp`, include `nexAttrLexemes.hpp`
   - **Сложность:** S
 
 - [-] **NEX-R0c** — `dispatchError`: не вызывать `onError` для `Success` — **отменено** (`bkcmd=Always` только для отладки, шум OK)
@@ -154,7 +152,7 @@ flowchart LR
   - **Файлы:** `core/nexStatusMask.hpp`, `nexSession.*`, `nexApplication.cpp`, `nexCommands.*`
   - **Сложность:** M
 
-- [x] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → orphan
+- [x] **NEX-R106d** — `bkcmdAllowedStatus` (NIS §6.13): `sessionWaitMask` vs `statusCorrelateMask`; `0x24` bkcmd-independent → status вне активной транзакции
   - **Файлы:** `core/nexSession.hpp`, `core/nexSession.cpp`, `core/nexStatusMask.hpp`
   - **Сложность:** S
 
@@ -163,7 +161,7 @@ flowchart LR
   - **Файлы:** `comp/nexAttributes.hpp`, `comp/resources/waveform.hpp`, `app/nexApplicationAddons.cpp`
   - **Сложность:** S
 
-- [-] **NEX-R106f** — last-tx / orphan fail-route → `(page, comp)` — **отложено**, см. [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md)
+- [-] **NEX-R106f** — last-tx / fail-route status вне активной транзакции → `(page, comp)` — **отложено**, см. [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md)
 
 ---
 
@@ -181,9 +179,12 @@ flowchart LR
   - **Файлы:** `app/nexApplication.hpp/cpp`, `examples/example5/demo_controls.hpp`, `examples/example6/app.hpp`
   - **Сложность:** S
 
-- [~] **NEX-R103** — Политики UART (`ByteStreamPolicy`) — spec: [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md)
+- [x] **NEX-R103** — UART stream status + RX retry (`processTransportFault`, `retryActive`) — [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md)
 
-- [ ] **NEX-R104** — Настраиваемый размер очереди Session — spec: [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md)
+- [x] **NEX-R104** — Настраиваемый размер очереди Session (`NEX_SESSION_QUEUE_CAPACITY` в `nexConfig.hpp`)
+  - `TransactionQueue::kCapacity` берётся из глобального compile-time config; `kMaxObjectSize = 128` оставлен internal до отдельной проработки упаковки очереди
+  - **Файлы:** `nexConfig.hpp`, `core/nexSession.hpp`, docs
+  - **Сложность:** S
 
 - [x] **NEX-R105** — Настраиваемый `kDefaultGetResponseTimeoutMs`
   - ctor-параметр + `setGetResponseTimeoutMs()` / `getResponseTimeoutMs()`
@@ -229,7 +230,7 @@ flowchart LR
   - **Зависит от:** NEX-R101
   - **Сложность:** M
 
-- [ ] **NEX-R218** — ExComponents: полный рефакторинг `DataFile`/`DataRecord`/`FileBrowser` — [REWORKED](REFACTORING_REWORKED.md)
+- [x] **NEX-R218** — ExComponents: полный рефакторинг `DataFile`/`DataRecord`/`FileBrowser` — [REWORKED](REFACTORING_REWORKED.md)
   - **Сложность:** M / L
 
 ---
@@ -238,27 +239,24 @@ flowchart LR
 
 - [-] **NEX-R201** — SmartApp: dev-only Discover, не в release — **отложено** ([DEFERRED](REFACTORING_DEFERRED.md); возможно пересмотреть форму взаимодействия, не `ISmartAppHost`)
 
-- [ ] **NEX-R204** — Свести `friend class` к минимуму — [REWORKED](REFACTORING_REWORKED.md)
-  - **Сложность:** L
+- [x] **NEX-R204** — `friend class` сведён к минимуму: `detail::register*` вместо `friend Page`; `AppCanvas`/`AppTouch`/`AppSleep` — private ctor + `friend Application`; исключения — `SmartApp`, `ObjRegistry`
 
 - [x] **NEX-R205** — `dispatchResponse`: Status до `switch`, payload по Kind, stubs `TransparentTx`/`RawDataRx` (без `nexDispatch.hpp`)
   - **Файлы:** `app/nexApplication.cpp`
   - **Сложность:** M (минимальный scope)
 
-- [ ] **NEX-R206** — `MsgApplication`: MsgBox вне базового `Application` — [REWORKED](REFACTORING_REWORKED.md)
-  - **Сложность:** M
+- [-] **NEX-R206** — MsgBox вне `Application` — **отменено**: `evMsgBox` в `Message`, генератор — `Application::msgBox`
+
+- [x] **Application / `IAppUI` / `AppUI<N>`** — registry и routing вынесены; pump + shell в `Application`
 
 - [x] **NEX-R008** — `formatStatusMessage` / `printStatusError` → `app/nexErrorFormat.cpp`
   - **Файлы:** `app/nexErrorFormat.cpp`, `app/nexErrors.hpp` (`app/*.cpp` уже в srcFilter)
   - **Сложность:** M
 
-- [ ] **NEX-R307** — Split `NexTransport` / `NexApp` — [REWORKED](REFACTORING_REWORKED.md) (отдельная проработка)
-  - **Сложность:** XL
-
 ### Исторические (логика слита в Application + nexErrors)
 
 - [x] **NEX-R202** — ~~AppErrorHandler~~ → inline в `nexApplication.cpp` + `nexErrors.hpp`
-- [x] **NEX-R203** — ~~AppFailure struct~~ → `makeAppError` + `dispatchError`
+- [x] **NEX-R203** — ~~AppFailure struct~~ → `makeAppError` + `onStatus`
 - [x] **NEX-R203b** — Session `begin`/`transmit`/`end` в `nexSession.*` ✓
 
 ---
@@ -279,7 +277,7 @@ flowchart LR
 
 ### IdMap / SmartApp
 
-**Открытый backlog:** [IdMap.md](IdMap.md) — R303…R305c, R011.
+**Открытый backlog:** [smartApp/IdMap.md](smartApp/IdMap.md) — R303…R305c, R011.
 
 ---
 
@@ -296,7 +294,7 @@ flowchart LR
 - [x] **NEX-R404** — `library.json` srcFilter — checklist в [README.md](README.md#сборка-библиотеки-libraryjson)
   - **Сложность:** S
 
-- [ ] **NEX-R405** — Стиль комментариев RU/EN — [REWORKED](REFACTORING_REWORKED.md#nex-r405--стиль-комментариев-ruen-в-заголовках)
+- [x] **NEX-R405** — Стиль комментариев RU/EN — [README.md](README.md#комментарии-в-коде-nex-r405)
   - **Сложность:** S (косметика)
 
 - [x] **NEX-R012** — README библиотеки (`lib/Nextion/README.md`)
@@ -338,7 +336,7 @@ flowchart LR
 2. **PR-2 (Фаза 1):** NEX-R106 (masks) + R106d + R106e ~~(+ R106f)~~ отложено  
 3. **PR-3 (Фаза 3):** NEX-R210 (Multiline / VAlign)  
 4. **PR-4 (Фаза 2):** NEX-R105  
-5. **PR-5 (IdMap):** [NEX-R305 + NEX-R011](IdMap.md) (Flash example)  
+5. **PR-5 (IdMap):** [NEX-R305 + NEX-R011](smartApp/IdMap.md) (Flash example)  
 6. **PR-6 (отдельная ветка):** NEX-R301 Transparent (XL)
 
 ---
@@ -356,5 +354,5 @@ flowchart LR
 | 2026-06-18 | R106f | deferred | lastTx / LastCompleted — [REFACTORING_DEFERRED.md](REFACTORING_DEFERRED.md) |
 | 2026-05-27 | NEX-R403 | done | nexDebug.hpp, NEX_DBG / NEX_IDMAP_DEBUG / NEX_TRACE_TX |
 | 2026-05-27 | NEX-R003…R010, R102 | done | clearErrors, retry, IdMap poll fixes |
-| 2026-05-27 | rename | done | IdMap → `idmap/nexIdMap.*`, Discover → `SmartApp` |
+| 2026-05-27 | rename | done | IdMap → `smartApp/nexIdMap.*`, Discover → `SmartApp` |
 | 2026-05-27 | — | создан | Первичный аудит `lib/Nextion` |

@@ -1,4 +1,4 @@
-// nexApplicationAddons.cpp — вспомогательные команды и UI ошибок Application.
+// Команды shell и системные переменные `Application` — вынесены из `nexApplication.cpp`.
 
 #include "nexApplication.hpp"
 #include "nexSysVars.hpp"
@@ -14,10 +14,6 @@ constexpr Literal kSysDim{"dim"};
 constexpr Literal kSysDims{"dims"};
 
 } // namespace
-
-void Application::onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept {
-    printStatusError(status, page_id, comp_id);
-}
 
 void Application::switchPage(uint8_t pageId) noexcept {
     enqueue(Transaction{cmd::Page::switchTo(pageId), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});

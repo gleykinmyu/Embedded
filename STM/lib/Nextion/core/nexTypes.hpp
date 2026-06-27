@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <type_traits>
 
+/** Общие типы Nextion: геометрия, `Color`, `Literal`, `Route`, `BkCmd`, идентификаторы компонентов. */
+
 namespace nex {
 
 // --- Color (RGB565) -----------------------------------------------------------
@@ -231,8 +233,6 @@ struct Font {
         , heightPx(heightPx)
     {}
 
-    [[nodiscard]] constexpr FontId fontId() const noexcept { return id; }
-
     /** Минимальная ширина подписи: оценка по высоте шрифта + `padX` с каждой стороны. */
     [[nodiscard]] uint16_t minWidthFor(const char* text, uint16_t padX = 12u, int16_t spax = 0) const noexcept;
 
@@ -305,8 +305,25 @@ struct Region {
         , size(boxSize)
     {}
 
-    [[nodiscard]] Point lowerRight() const noexcept {
+    [[nodiscard]] constexpr Point lowerRight() const noexcept {
         return Point(static_cast<Coord>(ul.x + size.w - 1u), static_cast<Coord>(ul.y + size.h - 1u));
+    }
+
+    /** Точка `p` внутри (включительно по границе); при нулевом размере — false. */
+    [[nodiscard]] constexpr bool contains(Point p) const noexcept {
+        if (size.w == 0u || size.h == 0u)
+            return false;
+        const Point lr = lowerRight();
+        return p.x >= ul.x && p.x <= lr.x && p.y >= ul.y && p.y <= lr.y;
+    }
+
+    /** Непустое пересечение с `other`; при нулевом размере у любой — false. */
+    [[nodiscard]] constexpr bool overlaps(const Region& other) const noexcept {
+        if (size.w == 0u || size.h == 0u || other.size.w == 0u || other.size.h == 0u)
+            return false;
+        const Point lr = lowerRight();
+        const Point otherLr = other.lowerRight();
+        return ul.x <= otherLr.x && other.ul.x <= lr.x && ul.y <= otherLr.y && other.ul.y <= lr.y;
     }
 };
 
@@ -321,6 +338,12 @@ struct ScreenLayout {
 };
 
 // --- Утилиты ------------------------------------------------------------------
+
+/** Меньшее из `a`, `b`. */
+template<typename T>
+[[nodiscard]] constexpr T min(T a, T b) noexcept {
+    return (a < b) ? a : b;
+}
 
 /** Ограничить `v` диапазоном `[lo, hi]` (inclusive). */
 template<typename T>
@@ -420,23 +443,48 @@ public:
 inline constexpr Literal kEmptyLiteral{""};
 
 /**
- * Специальные пары `(page_id, comp_id)` в `Transaction` — вне таблицы страниц/компонентов.
- * SysVar — системные переменные NIS.
- * CompIdMap poll (`0xFE/0xFE`) — маршрут процедуры Discover (`AppProcedure::CompIdMapDiscover`), не транспортный слой.
+ * Маршрут транзакции / ошибки / ответа: пара `(page, comp)`.
+ * Специальные значения — вне таблицы страниц/компонентов (sysvar, CompIdMap poll, …).
  */
-namespace Route {
+struct Route {
+    /** Panel page id; с `comp == 0` — глобальный маршрут `(0,0)` для status вне активной транзакции. */
+    uint8_t page = 0u;
+    /** Panel component id; `kPageCompId` — касание по странице, не виджет. */
+    uint8_t comp = 0u;
+
     static constexpr uint8_t kSysVarPageId = 0xFFu;
     static constexpr uint8_t kSysVarCompId = 0xFFu;
     static constexpr uint8_t kCompIdMapPollPageId = 0xFEu;
     static constexpr uint8_t kCompIdMapPollCompId = 0xFEu;
 
-    [[nodiscard]] constexpr bool isSysVar(uint8_t page_id, uint8_t comp_id) noexcept {
-        return page_id == kSysVarPageId && comp_id == kSysVarCompId;
+    constexpr Route() noexcept = default;
+    constexpr Route(uint8_t page, uint8_t comp) noexcept
+        : page(page)
+        , comp(comp)
+    {}
+
+    /** Служебный маршрут зеркал `SysVar` (`0xFF`, `0xFF`). */
+    [[nodiscard]] static constexpr Route sysVar() noexcept { return {kSysVarPageId, kSysVarCompId}; }
+
+    [[nodiscard]] static constexpr Route compIdMapPoll() noexcept {
+        return {kCompIdMapPollPageId, kCompIdMapPollCompId};
     }
 
-    [[nodiscard]] constexpr bool isCompIdMapPoll(uint8_t page_id, uint8_t comp_id) noexcept {
-        return page_id == kCompIdMapPollPageId && comp_id == kCompIdMapPollCompId;
+    [[nodiscard]] constexpr bool isSysVar() const noexcept {
+        return page == kSysVarPageId && comp == kSysVarCompId;
     }
-} // namespace Route
+
+    [[nodiscard]] constexpr bool isCompIdMapPoll() const noexcept {
+        return page == kCompIdMapPollPageId && comp == kCompIdMapPollCompId;
+    }
+
+    [[nodiscard]] constexpr bool isGlobal() const noexcept { return page == 0u && comp == 0u; }
+
+    friend constexpr bool operator==(Route a, Route b) noexcept {
+        return a.page == b.page && a.comp == b.comp;
+    }
+
+    friend constexpr bool operator!=(Route a, Route b) noexcept { return !(a == b); }
+};
 
 } // namespace nex

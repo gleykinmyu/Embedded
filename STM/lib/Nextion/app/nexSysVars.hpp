@@ -9,9 +9,11 @@
 
 namespace nex {
 
+/** Зеркала системных переменных NIS и `enqueue` через `Application`. */
+
 class Application;
 
-/** `tag` транзакции / `onSysResponse` для полей `SysVar` в `Application`. */
+/** `tag` транзакции / `Application::onResponse` для полей `SysVar` в `Application`. */
 enum class SysVarTag : uint8_t {
     Sendxy = 1u,
     Bkcmd,
@@ -39,7 +41,7 @@ enum class SysVarTag : uint8_t {
 class SysVarBase {
 public:
     const Literal name;
-    /** Маршрутизация транзакции и `onSysResponse` (как `tag` у `Attribute`). */
+    /** Маршрутизация транзакции и `Application::onResponse` (как `tag` у `Attribute`). */
     const uint8_t tag;
 
     SysVarBase(const SysVarBase&) = delete;
@@ -49,7 +51,7 @@ public:
 
     [[nodiscard]] constexpr operator const Literal&() const noexcept { return name; }
 
-    /** `get <sysname>`; ответ — `Application::onSysResponse(tag, …)`, зеркало — `SysVar::applyResponse`. */
+    /** `get <sysname>`; ответ — `Application::onResponse(response, Route::sysVar(), tag)`, зеркало — в base. */
     void get() noexcept;
 
 protected:
@@ -68,7 +70,7 @@ void enqueueSysVarNumericAssign(Application& app, const Literal& sysName, int32_
 
 /**
  * Числовая системная переменная: зеркало в MCU, `operator=` → `sys0=…`.
- * Ответ `get` в зеркало — вручную: `onSysResponse` → `applyResponse`.
+ * Ответ `get` в зеркало — `Application::onResponse` (sysvar route); перехват — override с вызовом base.
  */
 template<typename T>
 class SysVar : public SysVarBase {

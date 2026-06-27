@@ -3,7 +3,7 @@
 /**
  * Пример 3: одна страница, 10 кнопок (objname b0…b9), id на панели 1…10.
  *
- * Как example2, но режим Compiled: `comp_id` заданы в конструкторе, без опроса Discover.
+ * Как example2, но режим Compiled: `comp` заданы в конструкторе, без опроса Discover.
  *
  * HMI (страница id=0): кнопки `b0` … `b9` с `.id` = 1 … 10.
  *
@@ -28,9 +28,9 @@ inline const char* touch_state_cstr(TouchState s) noexcept
 
 class CountingButton : public Button<> {
 public:
-    CountingButton(uint32_t& counter, Page& owner, const char* tag, const Literal& objname,
-        uint8_t comp_id) noexcept
-        : Button<>(owner, objname, comp_id)
+    CountingButton(uint32_t& counter, IPage& owner, const char* tag, const Literal& objname,
+        uint8_t comp) noexcept
+        : Button<>(owner, objname, comp)
         , hits(counter)
         , label(tag != nullptr ? tag : "?")
     {}
@@ -39,7 +39,7 @@ public:
     {
         ++hits;
         NEX_DBG("[10btn-id] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id),
+            static_cast<unsigned>(e.route.page), static_cast<unsigned>(e.route.comp),
             touch_state_cstr(e.state), static_cast<unsigned long>(hits),
             static_cast<unsigned>(id()));
         Button<>::onTouch(e);
@@ -52,20 +52,20 @@ private:
 
 } // namespace detail
 
-class TenButtonsCompiledApp : public Application {
+class TenButtonsCompiledApp : public AppUI<kDefaultMaxPages> {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
     static constexpr uint8_t kPageId = 0u;
     static constexpr unsigned kButtonCount = 10u;
     explicit TenButtonsCompiledApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
-        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
+        : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
         , buttons_page(*this)
     {}
 
     uint32_t button_hits[kButtonCount]{};
 
-    struct ButtonsPage : PageImpl<10> {
+    struct ButtonsPage : Page<10> {
         detail::CountingButton btn0;
         detail::CountingButton btn1;
         detail::CountingButton btn2;
@@ -78,7 +78,7 @@ public:
         detail::CountingButton btn9;
 
         ButtonsPage(TenButtonsCompiledApp& a) noexcept
-            : PageImpl<10>(a, "page0", TenButtonsCompiledApp::kPageId)
+            : Page<10>(a, "page0", TenButtonsCompiledApp::kPageId)
             , btn0(a.button_hits[0], *this, "btn0", "b0", 1u)
             , btn1(a.button_hits[1], *this, "btn1", "b1", 2u)
             , btn2(a.button_hits[2], *this, "btn2", "b2", 3u)
@@ -96,8 +96,8 @@ public:
 
     void onTouch(const msg::evTouch& e) override
     {
-        NEX_DBG("[10btn-id] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
-            static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state));
+        NEX_DBG("[10btn-id] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.route.page),
+            static_cast<unsigned>(e.route.comp), detail::touch_state_cstr(e.state));
     }
 };
 

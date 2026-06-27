@@ -6,10 +6,12 @@
 #include "nexTimeout.hpp"
 #include "ibyte_stream.hpp"
 
+/** UART TX/RX: `RxFramer` / `TxFramer`, `Gateway::pushCommand` / `receive`. */
+
 namespace nex {
 
 /**
- * **Rx** **Framer** — потоковый разбор UART: накопление байт до полного кадра (заголовок Nextion + полезная нагрузка + `0xFF×3`).
+ * Потоковый разбор UART: накопление байт до полного кадра (заголовок + payload + `0xFF×3`).
  */
 class RxFramer {
 public:
@@ -30,17 +32,15 @@ private:
     bool _overflowReportPending = false;
 };
 
-/**
- * **Tx** **Framer** — неблокирующая отправка `TxFrame` в `IByteStream`.
- */
+/** Неблокирующая отправка `TxFrame` в `IByteStream`. */
 class TxFramer {
 public:
     enum class Status : uint8_t {
         OK = 0,
-        /** `write()==0`, TX-кольцо полно — ждать IRQ (`OverFlowTX`). */
+        /** `write()==0`, TX-кольцо полно — ждать IRQ. */
         WaitTxSpace,
-        /** Линия недоступна (`IByteStream::Disconnected`). */
-        Disconnected,
+        /** Порт закрыт (`!IByteStream::isOpen()`). */
+        Closed,
     };
 
     TxFrame frame{};
@@ -72,7 +72,7 @@ public:
         OK = 0,
         /** `transmit()`: hard fault потока, stall-timeout TX или `tick()` false. */
         StreamTxError,
-        /** `receive()`: сбой RX потока или переполнение RX-кольца — framer reset, `purge()`; при OverFlowRX ещё `clearErrors()`. */
+        /** `receive()`: `DataError` / переполнение RX — framer reset, `purge()`; при OverFlowRX ещё `clearErrors()`. */
         StreamRxError,
         /** `pushCommand()`: TX занят — предыдущий кадр ещё не ушёл (`!_txFramer.isIdle()`). */
         TxBusy,
@@ -96,7 +96,7 @@ public:
     bool isTxIdle() const noexcept { return _txFramer.isIdle(); }
 
     bool pushCommand(const Command& cmd);
-    /** Продолжить TX; при полном TX-кольце (`write()==0`, `OverFlowTX`) — yield до следующего вызова. */
+    /** Продолжить TX; при полном TX-кольце (`write()==0`) — yield до следующего вызова. */
     bool transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept;
     bool receive(Message& out);
     bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
@@ -116,7 +116,7 @@ inline const char* cstr(TxFramer::Status s) noexcept {
     switch (s) {
     case TxFramer::Status::OK: return "OK";
     case TxFramer::Status::WaitTxSpace: return "WaitTxSpace";
-    case TxFramer::Status::Disconnected: return "Disconnected";
+    case TxFramer::Status::Closed: return "Closed";
     default: return "?";
     }
 }

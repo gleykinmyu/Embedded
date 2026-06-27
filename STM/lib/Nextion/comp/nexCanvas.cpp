@@ -38,10 +38,7 @@ Region Canvas::region(const Coord x0, const Coord y0, const Coord x1, const Coor
 }
 
 bool Canvas::contains(const Region region, const Point p) noexcept {
-    if (region.size.w == 0u || region.size.h == 0u)
-        return false;
-    const Point lr = region.lowerRight();
-    return p.x >= region.ul.x && p.x <= lr.x && p.y >= region.ul.y && p.y <= lr.y;
+    return region.contains(p);
 }
 
 Point Canvas::center(const Rect& screen, const Rect& box) noexcept {
@@ -58,6 +55,13 @@ Region Canvas::innerRegion(const Region& outer, const uint16_t borderThickness) 
                       static_cast<Coord>(outer.ul.y + borderThickness)),
         Rect(static_cast<uint16_t>(outer.size.w - 2u * borderThickness),
             static_cast<uint16_t>(outer.size.h - 2u * borderThickness)));
+}
+
+Region Canvas::toScreen(const Region& parentScreen, const Region& childLocal) noexcept {
+    return Region(
+        Point(static_cast<Coord>(parentScreen.ul.x + childLocal.ul.x),
+            static_cast<Coord>(parentScreen.ul.y + childLocal.ul.y)),
+        childLocal.size);
 }
 
 // --- AppCanvas --------------------------------------------------------------
@@ -227,8 +231,8 @@ uint16_t Font::minWidthFor(const char* text, const uint16_t padX, const int16_t 
 
     const uint16_t glyphW = static_cast<uint16_t>((heightPx * 3u + 4u) / 5u);
     uint16_t w = static_cast<uint16_t>(padX * 2u);
-    const std::size_t maxChars = maxXstrTextLength();
-    std::size_t n = 0u;
+    const uint16_t maxChars = cmd::gui::TextInRegion::maxTextLength;
+    uint16_t n = 0u;
     for (const char* p = text; *p != '\0' && n < maxChars; ++p, ++n) {
         w = static_cast<uint16_t>(w + glyphW);
         if (p[1] != '\0' && spax > 0 && (n + 1u) < maxChars)
@@ -291,7 +295,7 @@ void Canvas::Button::placeRight(const Button& left, const uint16_t gap) noexcept
 }
 
 bool Canvas::Button::contains(const Point p) const noexcept {
-    return isVisible() && Canvas::contains(_region, p);
+    return isVisible() && _region.contains(p);
 }
 
 void Canvas::Button::draw(const AppCanvas& cs, const bool pressed) const noexcept {
@@ -301,7 +305,7 @@ void Canvas::Button::draw(const AppCanvas& cs, const bool pressed) const noexcep
     const Color fill = pressed ? _pressedColor : _bgColor;
     const uint16_t borderTh = (!pressed && _borderThickness > 0u) ? _borderThickness : 0u;
     if (_label != nullptr) {
-        cs.text_in_region_bordered(_region, _label, _font.fontId(), Color::std::White, HAlign::Center, VAlign::Center,
+        cs.text_in_region_bordered(_region, _label, _font.id, Color::std::White, HAlign::Center, VAlign::Center,
             fill, _borderColor, borderTh, BG::Color);
     } else if (borderTh > 0u) {
         cs.rect_bordered(_region, fill, _borderColor, borderTh);

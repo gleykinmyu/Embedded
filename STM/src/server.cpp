@@ -14,11 +14,13 @@ bool g_serial1_log_enabled = true;
 
 bool serial1TxHealthy() noexcept
 {
+    if (!board.serial1.isOpen())
+        return false;
     switch (board.serial1.getStatus()) {
     case BIF::IByteStream::Status::OK:
     case BIF::IByteStream::Status::OverFlowRX:
-    case BIF::IByteStream::Status::OverFlowTX:
-        return board.serial1.isOpen();
+    case BIF::IByteStream::Status::DataError:
+        return true;
     default:
         return false;
     }

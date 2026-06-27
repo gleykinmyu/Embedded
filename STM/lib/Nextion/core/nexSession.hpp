@@ -1,25 +1,25 @@
 #pragma once
 
-/**
- * @file nexSession.hpp
- *
- * **Transaction** — метаданные транзакции и указатель на `Command` (в слоте очереди после `emplace`).
- * **Session** — очередь, активная транзакция, `begin`/`transmit`/`end` через `Gateway`.
- */
-
 #include <cstddef>
 #include <cstdint>
+#include "../nexConfig.hpp"
 #include "nexCommands.hpp"
 #include "nexTimeout.hpp"
 #include "nexMessages.hpp"
 #include "nexStatusMask.hpp"
 #include "nexTypes.hpp"
 
+/**
+ * `Transaction` — метаданные tx и указатель на `Command` в слоте очереди.
+ * `Session` — очередь, активная tx, `begin` / `transmit` / `pollTimeout` / `end`.
+ */
+
 namespace nex {
 
 class Gateway;
 
 struct Transaction {
+    /** Вид активной tx: команда, `get` число/строка, transparent (R301). */
     enum class Kind : uint8_t {
         Command,
         GetNumeric,
@@ -29,15 +29,20 @@ struct Transaction {
     };
 
     Kind kind = Kind::Command;
-    uint8_t page_id = 0u;
-    uint8_t comp_id = 0u;
+    /** Маршрут для `onStatus` / `onResponse` этой tx. */
+    /** Маршрут для `onStatus` / `onResponse` этой tx. */
+    Route route;
+    /** Атрибут виджета (`attr::Id`) или `SysVarTag` для зеркал и корреляции `get`. */
     uint8_t tag = 0u;
     /** Panel status, принимаемые как ответ этой tx; `msg::kAwaitingNone` = NoAwaiting. */
     msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel;
 
     Transaction() noexcept = default;
 
-    Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag = 0u,
+    Transaction(const Command& cmd, Route route, uint8_t tag = 0u, Kind kind = Kind::Command,
+        msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel) noexcept;
+
+    Transaction(const Command& cmd, uint8_t page, uint8_t comp, uint8_t tag = 0u,
         Kind kind = Kind::Command,
         msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel) noexcept;
 
@@ -70,8 +75,8 @@ public:
         EmplaceFailed,
     };
 
-    static constexpr std::size_t kCapacity = 64u; //TODO сделать настраиваемым
-    static constexpr std::size_t kMaxObjectSize = 128u; //TODO сделать настраиваемым
+    static const std::size_t kCapacity = static_cast<std::size_t>(NEX_SESSION_QUEUE_CAPACITY);
+    static constexpr std::size_t kMaxObjectSize = 128u; //TODO перейти на плотную упаковку очереди
     static constexpr std::size_t kMaxAlign = alignof(std::max_align_t);
 
     TransactionQueue() noexcept = default;
@@ -92,7 +97,7 @@ public:
     void clear() noexcept;
 
 private:
-    static_assert(kCapacity > 0u);
+    static_assert(kCapacity > 0u, "NEX_SESSION_QUEUE_CAPACITY must be > 0");
     static_assert(kMaxObjectSize >= kMaxAlign);
     static_assert(kMaxObjectSize % kMaxAlign == 0u);
     static_assert(kMaxAlign >= alignof(std::max_align_t));
@@ -111,6 +116,10 @@ private:
 
 } // namespace detail
 
+/**
+ * Очередь `Transaction` и жизненный цикл активной tx: `begin` → `transmit` → `pollTimeout` → `end`.
+ * Вызывается из `Application::update()`; сбои → `AppError::Session` через `onStatus`.
+ */
 class Session {
 public:
     using Kind = Transaction::Kind;
@@ -150,6 +159,12 @@ public:
 
     /** Завершить активную транзакцию: снять таймер, pop головы очереди. @a success — сбросить статусы ошибок. */
     void end(bool success) noexcept;
+
+    /** Get / Command с ожиданием panel-status; не assign (`kAwaitingNone`), не transparent. */
+    [[nodiscard]] bool canRetryActive(BkCmd bkcmd) const noexcept;
+
+    /** Повторная отправка active tx без `pop()`; вызывать при `canRetryActive` и `gateway.isTxIdle()`. */
+    bool retryActive(Gateway& gateway, BkCmd bkcmd) noexcept;
 
     void resetActive() noexcept;
     void clearTimeout() noexcept;

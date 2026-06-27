@@ -4,7 +4,7 @@
  * Пример 4: автоматическая проверка путей ошибок и вывод в UART / MsgBox.
  *
  * HMI: page id=0, b0/b1/b2 на page0 (b0 id=1, b1 id=2, b2 id=3 — duplicate register на b1/b2 при необходимости).
- * Ошибки логируются через `onError` → `printStatusError`.
+ * Статусы логируются через `onStatus` → `printStatusError`.
  *
  * b0 release — полный прогон (6 тестов, без QueueFull).
  * b1 release — только QueueFull + drain (9600 baud на время теста, затем 250000).
@@ -17,12 +17,13 @@
 
 #include "../../../Interfaces/iserial.hpp"
 #include "nex.hpp"
+#include "../../overlay/ovl.hpp"
 
 namespace nex::examples {
 
 using namespace nex::comp;
 
-class ErrorTestApp : public Application {
+class ErrorTestApp : public AppUI<kDefaultMaxPages> {
 public:
     static constexpr uint16_t kScreenWidth = 600;
     static constexpr uint16_t kScreenHeight = 1024;
@@ -40,23 +41,24 @@ public:
     };
 
     Stats stats{};
+    ovl::MsgBox msgBox{*this};
     bool tests_running = false;
     bool tests_done = false;
     uint32_t tests_pass_mask = 0u;
 
     explicit ErrorTestApp(BIF::IHardwareSerial& stream, Application::ClockMsFn clockMs) noexcept
-        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
+        : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
         , test_page(*this)
         , _link(stream)
     {}
 
-    struct TestPage : PageImpl<3> {
+    struct TestPage : Page<3> {
         Button<> btn0;
         Button<> btn1;
         Button<> btn2;
 
         TestPage(ErrorTestApp& a) noexcept
-            : PageImpl<3>(a, "page0", ErrorTestApp::kPageId)
+            : Page<3>(a, "page0", ErrorTestApp::kPageId)
             , btn0(*this, "b0", 1u)
             , btn1(*this, "b1", 2u)
             , btn2(*this, "b2", 4u)
@@ -65,19 +67,19 @@ public:
 
     TestPage test_page;
 
-    void onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept override
+    void onStatus(const msg::Status& status, Route route = {}) noexcept override
     {
-        Application::onError(status, page_id, comp_id);
+        Application::onStatus(status, route);
         recordError(status);
     }
 
     void onTouch(const msg::evTouch& e) override
     {
-        if (e.page_id == kPageId && e.state == TouchState::Release && !tests_running) {
-            if (e.comp_id == 1u) {
+        if (e.route.page == kPageId && e.state == TouchState::Release && !tests_running) {
+            if (e.route.comp == 1u) {
                 NEX_DBG("[ex4] full tests (b0 release)\n");
                 beginTests();
-            } else if (e.comp_id == 2u) {
+            } else if (e.route.comp == 2u) {
                 NEX_DBG("[ex4] queue-full test only (b1 release)\n");
                 beginQueueFullTest();
             }
@@ -350,7 +352,7 @@ private:
     uint8_t sanity_idx_ = 0u;
     unsigned queue_enqueued_ = 0u;
     bool queue_fill_ok_ = false;
-    uint32_t timeout_saved_ms_ = kDefaultTimeoutMs;
+    uint32_t timeout_saved_ms_ = AppTiming::kDefaultTimeoutMs;
     BIF::IHardwareSerial& _link;
 
     /** `baud` на панели + переключение MCU UART (сначала дождаться TX команды). */
@@ -415,21 +417,21 @@ private:
             ++stats.nis_panel;
     }
 
-    void logErrorLine(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept
+    void logErrorLine(const msg::Status& status, Route route) noexcept
     {
         char buf[80]{};
-        formatStatusMessage(status, page_id, comp_id, buf, sizeof(buf));
+        formatStatusMessage(status, route, buf, sizeof(buf));
         NEX_DBG("[ex4] err: %s\n", buf);
     }
 
     void fireSanityError(unsigned idx) noexcept
     {
         switch (idx) {
-        case 0u: onError(appErrorFrom(MISC::RegStatus::SlotOccupied), kPageId, kDupCompId); break;
-        case 1u: onError(appErrorFrom(Command::Status::EmptyLiteral), 0u, 0u); break;
-        case 2u: onError(appErrorFrom(Session::Status::QueueFull), 0u, 0u); break;
-        case 3u: onError(appErrorFrom(Gateway::Status::RxOverflow), 0u, 0u); break;
-        case 4u: onError(appErrorFrom(BIF::IByteStream::Status::FrameError), 0u, 0u); break;
+        case 0u: onStatus(appErrorFrom(MISC::RegStatus::SlotOccupied), Route{kPageId, kDupCompId}); break;
+        case 1u: onStatus(appErrorFrom(Command::Status::EmptyLiteral)); break;
+        case 2u: onStatus(appErrorFrom(Session::Status::QueueFull)); break;
+        case 3u: onStatus(appErrorFrom(Gateway::Status::RxOverflow)); break;
+        case 4u: onStatus(appErrorFrom(BIF::IByteStream::Status::DataError)); break;
         default: break;
         }
     }
@@ -526,7 +528,7 @@ private:
         char body[96]{};
         std::snprintf(body, sizeof(body), "queue %s steps %u", pass ? "OK" : "FAIL",
             static_cast<unsigned>(queue_enqueued_));
-        msgBox.show("ex4 queue", body, MsgBox::Preset::OK);
+        msgBox.show("ex4 queue", ovl::MsgBox::Preset::OK, 0u, ovl::MsgBox::Action::None, "%s", body);
     }
 
     void printSummary() noexcept
@@ -542,7 +544,7 @@ private:
         char body[96]{};
         std::snprintf(body, sizeof(body), "pass %u/%u err %lu", passed, kFullTestCount,
             static_cast<unsigned long>(stats.total));
-        msgBox.show("ex4 tests", body, MsgBox::Preset::OK);
+        msgBox.show("ex4 tests", ovl::MsgBox::Preset::OK, 0u, ovl::MsgBox::Action::None, "%s", body);
     }
 };
 

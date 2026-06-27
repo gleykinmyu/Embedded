@@ -2,6 +2,10 @@
 
 #include "nexCompImpl.hpp"
 
+/**
+ * Расширенные виджеты (Audio, FileStream, DataRecord, Video, …): те же правила attr, что в `nexComponents.hpp`.
+ */
+
 namespace nex {
 namespace comp {
 
@@ -36,7 +40,7 @@ public:
     /** user: позиция воспроизведения (RO) */
     attr::NumRO<uint32_t> stim;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
         case static_cast<uint8_t>(attr::Id::From):
@@ -48,10 +52,10 @@ public:
         default:
             break;
         }
-        Component::onResponse(tag, response);
+        Component::onResponse(response, tag);
     }
 
-    Audio(Page& owner, const Literal& name, uint8_t id = 0)
+    Audio(IPage& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Audio, id)
         , from{*this, attr::Id::From}
         , vid{*this, attr::Id::Vid}
@@ -94,7 +98,7 @@ public:
         page.app.enqueue(Transaction{cmd::FileStream::find(name, path), page.ID, id()});
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
         case static_cast<uint8_t>(attr::Id::Val):
@@ -109,10 +113,10 @@ public:
         default:
             break;
         }
-        Component::onResponse(tag, response);
+        Component::onResponse(response, tag);
     }
 
-    FileStream(Page& owner, const Literal& name, uint8_t id = 0)
+    FileStream(IPage& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::FileStream, id)
         , val{*this, attr::Id::Val}
         , qty{*this, attr::Id::Qty}
@@ -126,16 +130,16 @@ public:
     /** mcu: путь к файлу изображения на панели */
     attr::String<512> path;
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Path)) {
             path.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    ExternalPicture(Page& owner, const Literal& name, uint8_t id = 0)
+    ExternalPicture(IPage& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::ExternalPicture, id)
         , path{*this, attr::Id::Path}
     {}
@@ -179,7 +183,7 @@ public:
     /** user: длительность / количество кадров (RO) */
     attr::NumRO<uint32_t> qty;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
         case static_cast<uint8_t>(attr::Id::Stim):
@@ -191,11 +195,11 @@ public:
         default:
             break;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
 protected:
-    explicit MediaComponent(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit MediaComponent(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Drawable(owner, objectName, componentType, id)
         , stim{*this, attr::Id::Stim}
         , qty{*this, attr::Id::Qty}
@@ -204,7 +208,7 @@ protected:
 
 class Gmov : public MediaComponent {
 public:
-    Gmov(Page& owner, const Literal& name, uint8_t id = 0)
+    Gmov(IPage& owner, const Literal& name, uint8_t id = 0)
         : MediaComponent(owner, name, Component::Type::Gmov, id) {}
 };
 
@@ -218,44 +222,45 @@ public:
         attr_detail::assignText(*this, attr::Id::Vid, path);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::From)) {
             from.applyResponse(response);
             return;
         }
-        MediaComponent::onResponse(tag, response);
+        MediaComponent::onResponse(response, tag);
     }
 
-    Video(Page& owner, const Literal& name, uint8_t id = 0)
+    Video(IPage& owner, const Literal& name, uint8_t id = 0)
         : MediaComponent(owner, name, Component::Type::Video, id)
         , from{*this, attr::Id::From}
     {}
 };
 
 /**
- * DataFile — поля таблицы/файлов (DataRecord, FileBrowser);
- * `txt`, `qty` — RO в NIS у FileBrowser / DataRecord.
+ * Общая база type 65/66 (`FileBrowser`, `DataRecord`): прокрутка, RO `txt`/`qty`, позиция.
+ * `dir`, `val`, `dis`, `bco2`/`pco2` — разная семантика NIS; только в листьях.
  */
 template<BG S = BG::Color>
 class DataFile : public Printable<S> {
 public:
-    /** user: буфер/подпись ячейки (навигация по таблице) */
+    /** user: выбранная ячейка / имя файла (RO, NIS `txt`) */
     attr::String<256> txt;
-    /** user: смещение по горизонтали при прокрутке */
+    /** user: горизонтальное смещение прокрутки (NIS `left`) */
     attr::Num<Coord> left;
-    /** user: индекс канала/строки */
+    /** user: индекс канала / столбца (NIS `ch`) */
     attr::Num<uint8_t> ch;
-    /** user: направление прокрутки */
-    attr::Num<uint8_t> dir;
-    /** user: значение ячейки / выбор */
-    attr::Num<int32_t> val;
-    /** user: количество (RO, отражает состояние после действий на панели) */
+    /** user: число записей / элементов (RO, NIS `qty`) */
     attr::NumRO<uint16_t> qty;
-    //TODO проверить реальное назначение атрибута dis
-    void setCellSpacing(uint16_t v) noexcept
+    /** user: позиция прокрутки X (NIS `val_x`) */
+    attr::Num<Coord> val_x;
+    /** user: позиция прокрутки Y (NIS `val_y`) */
+    attr::Num<Coord> val_y;
+
+    /** Межсимвольный интервал в ячейке (NIS `spax`). */
+    void setCharSpacing(uint16_t v) noexcept
     {
-        attr_detail::assignNumeric(*this, attr::Id::Dis, v);
+        attr_detail::assignNumeric(*this, attr::Id::Spax, v);
     }
 
     void setMaxvalY(uint16_t v) noexcept
@@ -268,23 +273,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::MaxvalX, v);
     }
 
-    /** user: позиция/значение по X */
-    attr::Num<Coord> val_x;
-    /** user: позиция/значение по Y */
-    attr::Num<Coord> val_y;
-
-    //TODO посмотреть реальное назначение атрибутов bco2 и pco2
-    void setBco2(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Bco2, v);
-    }
-
-    void setPco2(uint16_t v) noexcept
-    {
-        attr_detail::assignNumeric(*this, attr::Id::Pco2, v);
-    }
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
         case static_cast<uint8_t>(attr::Id::Left):
@@ -292,12 +281,6 @@ public:
             return;
         case static_cast<uint8_t>(attr::Id::Ch):
             ch.applyResponse(response);
-            return;
-        case static_cast<uint8_t>(attr::Id::Dir):
-            dir.applyResponse(response);
-            return;
-        case static_cast<uint8_t>(attr::Id::Val):
-            val.applyResponse(response);
             return;
         case static_cast<uint8_t>(attr::Id::Qty):
             qty.applyResponse(response);
@@ -311,68 +294,85 @@ public:
         default:
             break;
         }
-        Printable<S>::onResponse(tag, response);
+        Printable<S>::onResponse(response, tag);
     }
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
-        Styled<S>::onResponse(tag, response);
+        Styled<S>::onResponse(response, tag);
     }
 
 protected:
-    explicit DataFile(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit DataFile(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Printable<S>(owner, objectName, componentType, id)
         , txt{*this, attr::Id::Txt}
         , left{*this, attr::Id::Left}
         , ch{*this, attr::Id::Ch}
-        , dir{*this, attr::Id::Dir}
-        , val{*this, attr::Id::Val}
         , qty{*this, attr::Id::Qty}
         , val_x{*this, attr::Id::ValX}
         , val_y{*this, attr::Id::ValY}
     {}
 };
 
+/** type 66: таблица записей на SD (`path`, `insert`/`delete`/…). */
 template<BG S = BG::Color>
 class DataRecord : public DataFile<S> {
 public:
-    /** mcu: путь к файлу данных */
+    /** mcu: путь к файлу данных (NIS `path`) */
     attr::String<512> path;
-    /** user: длина файла (RO) */
+    /** mcu: ширины колонок `w1^w2^…` (NIS `format`) */
+    attr::String<256> format;
+    /** mcu: заголовки колонок `h1^h2^…` (NIS `dir`) */
+    attr::String<256> dir;
+    /** user: длина файла, байт (RO, NIS `lenth`) */
     attr::NumRO<uint32_t> lenth;
-    /** user: максимальное значение (RO) */
+    /** user: макс. число записей (RO, NIS `maxval`) */
     attr::NumRO<int32_t> maxval;
+    /** user: выбранная строка (RO, NIS `val`) */
+    attr::NumRO<int32_t> val;
 
     void setRecordLength(uint16_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Length, v);
     }
 
-    void setFormat(NumFormat v) noexcept
+    void setColumnWidths(const char* pattern) noexcept
     {
-        attr_detail::assignNumeric(*this, attr::Id::Format, v);
+        attr_detail::assignText(*this, attr::Id::Format, pattern);
     }
 
-    void setMode(uint8_t v) noexcept
+    void setColumnHeaders(const char* headers) noexcept
+    {
+        attr_detail::assignText(*this, attr::Id::Dir, headers);
+    }
+
+    /** Число полей в строке (NIS `mode`). */
+    void setFieldCount(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Mode, v);
     }
 
-    void setOrder(uint8_t v) noexcept
+    /** Порядок вставки: `0` — новые сверху (NIS `order`). */
+    void setInsertOrder(uint8_t v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Order, v);
+    }
+
+    /** Интервал между колонками (NIS `dis`). */
+    void setColumnSpacing(uint8_t v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Dis, v);
     }
 
     void setCellSize(uint8_t v) noexcept
     {
         static constexpr uint8_t kMin = 16u;
         static constexpr uint8_t kMax = 255u;
-        attr_detail::assignNumeric(*this, attr::Id::Hig,
-            clamp(v, kMin, kMax));
+        attr_detail::assignNumeric(*this, attr::Id::Hig, clamp(v, kMin, kMax));
     }
 
     void setGridColor(nex::Color v) noexcept
@@ -390,14 +390,24 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Gdh, v);
     }
 
-    void setCellBgColor(nex::Color v) noexcept
+    void setAltCellBgColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Bco1, v);
     }
 
-    void setCellColor(nex::Color v) noexcept
+    void setAltCellColor(nex::Color v) noexcept
     {
         attr_detail::assignNumeric(*this, attr::Id::Pco1, v);
+    }
+
+    void setSelCellBgColor(nex::Color v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Bco2, v);
+    }
+
+    void setSelCellColor(nex::Color v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Pco2, v);
     }
 
     void setHAlign(HAlign v) noexcept
@@ -405,7 +415,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Xcen, v);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
         case static_cast<uint8_t>(attr::Id::Lenth):
@@ -414,32 +424,66 @@ public:
         case static_cast<uint8_t>(attr::Id::Maxval):
             maxval.applyResponse(response);
             return;
+        case static_cast<uint8_t>(attr::Id::Val):
+            val.applyResponse(response);
+            return;
         default:
             break;
         }
-        DataFile<S>::onResponse(tag, response);
+        DataFile<S>::onResponse(response, tag);
     }
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
-        if (tag == static_cast<uint8_t>(attr::Id::Path)) {
+        switch (tag) {
+        case static_cast<uint8_t>(attr::Id::Path):
             path.applyResponse(response);
             return;
+        case static_cast<uint8_t>(attr::Id::Format):
+            format.applyResponse(response);
+            return;
+        case static_cast<uint8_t>(attr::Id::Dir):
+            dir.applyResponse(response);
+            return;
+        default:
+            break;
         }
-        DataFile<S>::onResponse(tag, response);
+        DataFile<S>::onResponse(response, tag);
     }
 
-    DataRecord(Page& owner, const Literal& name, uint8_t id = 0)
+    DataRecord(IPage& owner, const Literal& name, uint8_t id = 0)
         : DataFile<S>(owner, name, Component::Type::DataRecord, id)
         , path{*this, attr::Id::Path}
+        , format{*this, attr::Id::Format}
+        , dir{*this, attr::Id::Dir}
         , lenth{*this, attr::Id::Lenth}
         , maxval{*this, attr::Id::Maxval}
+        , val{*this, attr::Id::Val}
     {}
 };
 
+/** type 65: браузер файлов на SD; `dir` — папка, `txt` — выбранное имя (RO). */
 template<BG S = BG::Color>
 class FileBrowser : public DataFile<S> {
 public:
+    /** mcu: текущая папка (NIS `dir`) */
+    attr::String<512> dir;
+    /** mcu: маска файлов (NIS `filter`) */
+    attr::String<256> filter;
+    /** user: выбранный элемент (NIS `val`) */
+    attr::Num<int32_t> val;
+    /** user: состояние панели (RO, NIS `psta`) */
+    attr::NumRO<uint8_t> psta;
+    /** user: размер буфера (RO, NIS `buffsize`) */
+    attr::NumRO<uint32_t> buffsize;
+    /** user: флаг предупреждения (RO, NIS `fwarning`) */
+    attr::NumRO<uint8_t> fwarning;
+
+    void setFolderPath(const char* folder) noexcept
+    {
+        attr_detail::assignText(*this, attr::Id::Dir, folder);
+    }
+
     void setFilter(const char* pattern) noexcept
     {
         attr_detail::assignText(*this, attr::Id::Filter, pattern);
@@ -450,8 +494,24 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Spay, v);
     }
 
-    /** user: состояние панели (RO) */
-    attr::NumRO<uint8_t> psta;
+    static constexpr uint8_t kScrollStepMin = 2u;
+    static constexpr uint8_t kScrollStepMax = 50u;
+
+    /** Шаг прокрутки списка (NIS `dis`). */
+    void setScrollStep(uint8_t v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Dis, clamp(v, kScrollStepMin, kScrollStepMax));
+    }
+
+    void setSelBgColor(nex::Color v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Bco2, v);
+    }
+
+    void setSelColor(nex::Color v) noexcept
+    {
+        attr_detail::assignNumeric(*this, attr::Id::Pco2, v);
+    }
 
     void setIcon1(PicId v) noexcept
     {
@@ -468,14 +528,12 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Vvs2, v);
     }
 
-    /** user: размер буфера (RO) */
-    attr::NumRO<uint32_t> buffsize;
-    /** user: флаг предупреждения (RO) */
-    attr::NumRO<uint8_t> fwarning;
-
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         switch (tag) {
+        case static_cast<uint8_t>(attr::Id::Val):
+            val.applyResponse(response);
+            return;
         case static_cast<uint8_t>(attr::Id::Psta):
             psta.applyResponse(response);
             return;
@@ -488,11 +546,29 @@ public:
         default:
             break;
         }
-        DataFile<S>::onResponse(tag, response);
+        DataFile<S>::onResponse(response, tag);
     }
 
-    FileBrowser(Page& owner, const Literal& name, uint8_t id = 0)
+    void onResponse(const msg::getString& response, uint8_t tag) override
+    {
+        switch (tag) {
+        case static_cast<uint8_t>(attr::Id::Dir):
+            dir.applyResponse(response);
+            return;
+        case static_cast<uint8_t>(attr::Id::Filter):
+            filter.applyResponse(response);
+            return;
+        default:
+            break;
+        }
+        DataFile<S>::onResponse(response, tag);
+    }
+
+    FileBrowser(IPage& owner, const Literal& name, uint8_t id = 0)
         : DataFile<S>(owner, name, Component::Type::FileBrowser, id)
+        , dir{*this, attr::Id::Dir}
+        , filter{*this, attr::Id::Filter}
+        , val{*this, attr::Id::Val}
         , psta{*this, attr::Id::Psta}
         , buffsize{*this, attr::Id::Buffsize}
         , fwarning{*this, attr::Id::Fwarning}

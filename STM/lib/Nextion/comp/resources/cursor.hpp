@@ -4,6 +4,8 @@
 #include "../nexAttributes.hpp"
 #include "../nexComponentBase.hpp"
 
+/** Курсор Slider: `wid`, `hig` (NIS). */
+
 namespace nex::resources {
 
 struct Cursor {

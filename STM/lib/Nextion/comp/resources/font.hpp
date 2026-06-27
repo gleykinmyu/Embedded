@@ -4,6 +4,8 @@
 #include "../nexAttributes.hpp"
 #include "../nexComponentBase.hpp"
 
+/** Шрифт и цвет текста виджета (`font`, `pco`, …). */
+
 namespace nex::resources {
 
 namespace font_detail {

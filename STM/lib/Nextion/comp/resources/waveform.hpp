@@ -6,6 +6,8 @@
 #include "../nexComponentBase.hpp"
 #include "background.hpp"
 
+/** Каналы Waveform: `ch`, `pco0`…`pco3`, `add`/`addt`, масштаб `dis`. */
+
 namespace nex::resources {
 
 namespace waveform_detail {
@@ -28,7 +30,7 @@ inline constexpr attr::Id pcoId(uint8_t channel) noexcept
  * **`add` / streaming:** `awaiting_status = msg::kAwaitingNone` — сессия закрывается на `txIdle`,
  * очередь не блокируется ожиданием panel-status. Рекомендуемый **`bkcmd=OnFailure`**: панель шлёт
  * fail-байты (0x12 channel, 0x24 overflow) без Success ACK на каждый сэмпл. **`bkcmd=Always`**
- * даёт шум Success на потоке. При `kAwaitingNone` fail-status uncorrelated → `onError(0,0)` (маршрут
+ * даёт шум Success на потоке. При `kAwaitingNone` fail-status uncorrelated → `onStatus(0,0)` (маршрут
  * last-tx — NEX-R106f). См. example5 live probe.
  */
 template<uint8_t ChannelCount>

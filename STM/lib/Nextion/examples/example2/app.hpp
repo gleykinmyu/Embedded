@@ -31,7 +31,7 @@ inline const char* touch_state_cstr(TouchState s) noexcept
 
 class CountingButton : public Button<> {
 public:
-    CountingButton(uint32_t& counter, Page& owner, const char* tag, const Literal& objname,
+    CountingButton(uint32_t& counter, IPage& owner, const char* tag, const Literal& objname,
         uint8_t reg_id = 0u) noexcept
         : Button<>(owner, objname, reg_id)
         , hits(counter)
@@ -42,7 +42,7 @@ public:
     {
         ++hits;
         NEX_DBG("[ex2] %s touch page=%u comp=%u state=%s hits=%lu id=%u\n", label,
-            static_cast<unsigned>(e.page_id), static_cast<unsigned>(e.comp_id),
+            static_cast<unsigned>(e.route.page), static_cast<unsigned>(e.route.comp),
             touch_state_cstr(e.state), static_cast<unsigned long>(hits),
             static_cast<unsigned>(id()));
         Button<>::onTouch(e);
@@ -68,14 +68,14 @@ public:
     idmap::TableStorage<kIdMapRecordCount> id_map_storage;
 
     explicit TenButtonsApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
-        : SmartApp(stream, {kScreenWidth, kScreenHeight}, clockMs, id_map_storage.table)
+        : SmartApp(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs}, id_map_storage.table)
         , page0(*this)
         , page1(*this)
     {}
 
     uint32_t button_hits[kPageCount][kButtonsPerPage]{};
 
-    struct Page0 : PageImpl<10> {
+    struct Page0 : Page<10> {
         detail::CountingButton btn0;
         detail::CountingButton btn1;
         detail::CountingButton btn2;
@@ -88,7 +88,7 @@ public:
         detail::CountingButton btn9;
 
         Page0(TenButtonsApp& a) noexcept
-            : PageImpl<10>(a, "page0", TenButtonsApp::kPage0Id)
+            : Page<10>(a, "page0", TenButtonsApp::kPage0Id)
             , btn0(a.button_hits[0][0], *this, "p0/b0", "b0")
             , btn1(a.button_hits[0][1], *this, "p0/b1", "b1")
             , btn2(a.button_hits[0][2], *this, "p0/b2", "b2")
@@ -104,7 +104,7 @@ public:
         void onExit() override { NEX_DBG("[ex2] page0 onExit\n"); }
     };
 
-    struct Page1 : PageImpl<10> {
+    struct Page1 : Page<10> {
         detail::CountingButton btn0;
         detail::CountingButton btn1;
         detail::CountingButton btn2;
@@ -117,7 +117,7 @@ public:
         detail::CountingButton btn9;
 
         Page1(TenButtonsApp& a) noexcept
-            : PageImpl<10>(a, "page1", TenButtonsApp::kPage1Id)
+            : Page<10>(a, "page1", TenButtonsApp::kPage1Id)
             , btn0(a.button_hits[1][0], *this, "p1/b0", "b0")
             , btn1(a.button_hits[1][1], *this, "p1/b1", "b1")
             , btn2(a.button_hits[1][2], *this, "p1/b2", "b2")
@@ -172,16 +172,16 @@ public:
             static_cast<unsigned>(id_map_storage.table.count), static_cast<unsigned>(kIdMapRecordCount));
     }
 
-    void onPageChange(uint8_t page_id) noexcept override
+    void onPageChange(const msg::evPage& e) noexcept override
     {
-        SmartApp::onPageChange(page_id);
-        NEX_DBG("[ex2] onPageChange -> page=%u\n", static_cast<unsigned>(page_id));
+        SmartApp::onPageChange(e);
+        NEX_DBG("[ex2] onPageChange -> page=%u\n", static_cast<unsigned>(e.page));
     }
 
     void onTouch(const msg::evTouch& e) override
     {
-        NEX_DBG("[ex2] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.page_id),
-            static_cast<unsigned>(e.comp_id), detail::touch_state_cstr(e.state));
+        NEX_DBG("[ex2] app onTouch page=%u comp=%u %s\n", static_cast<unsigned>(e.route.page),
+            static_cast<unsigned>(e.route.comp), detail::touch_state_cstr(e.state));
         Application::onTouch(e);
     }
 };

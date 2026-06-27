@@ -58,11 +58,11 @@ public:
     /** NIS `click obj,0|1` — программное нажатие/отпускание. */
     void touch(TouchState state = TouchState::Press) noexcept;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override;
-    void onResponse(uint8_t tag, const msg::getString& response) override;
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override;
+    void onResponse(const msg::getString& response, uint8_t tag) override;
 
 protected:
-    explicit TouchArea(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit TouchArea(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Component(owner, objectName, componentType, id)
 #if NEX_TOUCH_AREA_POSITION
         , x{*this, attr::Id::X}
@@ -105,7 +105,7 @@ public:
     void move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept;
 
 protected:
-    explicit Drawable(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Drawable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : TouchArea(owner, objectName, componentType, id)
     {}
 };
@@ -122,7 +122,7 @@ public:
     resources::Background<S> bg;
 
 protected:
-    explicit Styled(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Styled(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Drawable(owner, objectName, componentType, id)
         , bg{*this}
     {}
@@ -136,7 +136,7 @@ public:
     resources::Font<> font;
 
 protected:
-    explicit Printable(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Printable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Styled<S>(owner, objectName, componentType, id)
         , font{*this}
     {}
@@ -161,26 +161,26 @@ public:
             clamp(v, kCellSizeMin, kCellSizeMax));
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Path)) {
             path.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
 protected:
-    explicit ListSelect(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit ListSelect(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Printable<S>(owner, objectName, componentType, id)
         , path{*this, attr::Id::Path}
         , val{*this, attr::Id::Val}
@@ -207,7 +207,7 @@ public:
     }
 
 protected:
-    explicit Multiline(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Multiline(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Printable<S>(owner, objectName, componentType, id)
     {}
 };
@@ -221,13 +221,13 @@ public:
         attr_detail::assignText(*this, attr::Id::Txt, text);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
 protected:
-    explicit Textual(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Textual(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Multiline<S>(owner, objectName, componentType, id)
     {}
 };
@@ -245,7 +245,7 @@ public:
     resources::Pressed<S> pressed;
 
 protected:
-    explicit ButtonBase(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit ButtonBase(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Textual<S>(owner, objectName, componentType, id)
         , pressed{*this}
     {}
@@ -263,17 +263,17 @@ public:
     /** user: число (ввод с экранной клавиатуры) */
     attr::Num<int32_t> val;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
 protected:
-    explicit Numeric(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Numeric(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Multiline<S>(owner, objectName, componentType, id)
         , val{*this, attr::Id::Val}
     {}
@@ -294,17 +294,17 @@ public:
     /** user: состояние выбора (checkbox/radio/toggle) */
     attr::Num<bool> val;
  
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
 protected:
-    explicit Selection(Page& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
+    explicit Selection(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
         : Styled<BG::Color>(owner, objectName, componentType, id)
         , val{*this, attr::Id::Val}
     {}

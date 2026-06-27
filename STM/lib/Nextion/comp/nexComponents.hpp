@@ -10,6 +10,11 @@
 #include "resources/progressBar.hpp"
 #include "resources/waveform.hpp"
 
+/**
+ * Публичные классы виджетов (`nex::comp::*`): листья иерархии из `nexCompImpl.hpp`.
+ * Атрибуты `user` / `mcu` — см. `nexAttributes.hpp`; коды типов — `Component::Type`.
+ */
+
 namespace nex {
 namespace comp {
 // --- Прямые наследники Component (без x,y,w,h на странице) --------------------
@@ -32,7 +37,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::En, false);
     }
 
-    Timer(Page& owner, const Literal& name, uint8_t id = 0)
+    Timer(IPage& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Timer, id)
     {}
 };
@@ -44,16 +49,16 @@ public:
     attr::Num<int32_t> val;
 
     using Component::onResponse;
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        Component::onResponse(tag, response);
+        Component::onResponse(response, tag);
     }
 
-    NumericVar(Page& owner, const Literal& name, uint8_t id = 0)
+    NumericVar(IPage& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id)
         , val{*this, attr::Id::Val}
     {}
@@ -66,21 +71,21 @@ public:
     /** user: значение глобальной строковой переменной */
     attr::String<TxtMaxL> txt;
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
-        Component::onResponse(tag, response);
+        Component::onResponse(response, tag);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
-        Component::onResponse(tag, response);
+        Component::onResponse(response, tag);
     }
 
-    StringVar(Page& owner, const Literal& name, uint8_t id = 0)
+    StringVar(IPage& owner, const Literal& name, uint8_t id = 0)
         : Component(owner, name, Component::Type::Variable, id)
         , txt{*this, attr::Id::Txt}
     {}
@@ -90,7 +95,7 @@ public:
 
 class Hotspot : public TouchArea {
 public:
-    Hotspot(Page& owner, const Literal& name, uint8_t id = 0)
+    Hotspot(IPage& owner, const Literal& name, uint8_t id = 0)
         : TouchArea(owner, name, Component::Type::Hotspot, id) {}
 };
 
@@ -114,7 +119,7 @@ public:
         attr_detail::assignText(*this, attr::Id::Txt, text);
     }
 
-    QRCode(Page& owner, const Literal& name, uint8_t id = 0)
+    QRCode(IPage& owner, const Literal& name, uint8_t id = 0)
         : Styled<BG::Color>(owner, name, Component::Type::QRCode, id)
     {}
 };
@@ -127,7 +132,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Pic, v);
     }
 
-    Picture(Page& owner, const Literal& name, uint8_t id = 0)
+    Picture(IPage& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::Picture, id)
     {}
 };
@@ -140,7 +145,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Picc, v);
     }
 
-    CropPicture(Page& owner, const Literal& name, uint8_t id = 0)
+    CropPicture(IPage& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::CropPicture, id)
     {}
 };
@@ -165,7 +170,7 @@ public:
             clamp(v, kDataScaleMin, kDataScaleMax));
     }
 
-    Waveform(Page& owner, const Literal& name, uint8_t id = 0)
+    Waveform(IPage& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::Waveform, id)
         , bg{*this}
         , ch{*this}
@@ -189,16 +194,16 @@ public:
     /** mcu: заливка (`pco`/`dis` / `ppic`) — поля внутри `bar` */
     resources::PbBar<S> bar;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             value.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    ProgressBar(Page& owner, const Literal& name, uint8_t id = 0)
+    ProgressBar(IPage& owner, const Literal& name, uint8_t id = 0)
         : Drawable(owner, name, Component::Type::ProgressBar, id)
         , value{*this, attr::Id::Val}
         , bg{*this}
@@ -220,16 +225,16 @@ public:
     /** mcu: bco1 — поля в `bg2` */
     resources::Background<S, 1u> bg2;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             value.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    Slider(Page& owner, const Literal& name, uint8_t id = 0)
+    Slider(IPage& owner, const Literal& name, uint8_t id = 0)
         : Styled<S>(owner, name, Component::Type::Slider, id)
         , value{*this, attr::Id::Val}
         , cursor{*this}
@@ -255,7 +260,7 @@ public:
             clamp(v, kAngleMin, kAngleMax));
     }
 
-    Gauge(Page& owner, const Literal& name, uint8_t id = 0)
+    Gauge(IPage& owner, const Literal& name, uint8_t id = 0)
         : Styled<S>(owner, name, Component::Type::Gauge, id)
         , center{*this}
         , pointer{*this}
@@ -287,16 +292,16 @@ public:
     /** user: список раскрыт (NIS `down`) */
     attr::Num<bool> isOpened;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Down)) {
             isOpened.applyResponse(response);
             return;
         }
-        ListSelect<S>::onResponse(tag, response);
+        ListSelect<S>::onResponse(response, tag);
     }
 
-    ComboBox(Page& owner, const Literal& name, uint8_t id = 0)
+    ComboBox(IPage& owner, const Literal& name, uint8_t id = 0)
         : ListSelect<S>(owner, name, Component::Type::ComboBox, id)
         , border{*this}
         , arrow{*this}
@@ -325,7 +330,7 @@ public:
 
     // NIS `txt` (RO) — в MCU API не зеркалим: строки из path знает приложение; выбор — val (ListSelect).
 
-    TextSelect(Page& owner, const Literal& name, uint8_t id = 0)
+    TextSelect(IPage& owner, const Literal& name, uint8_t id = 0)
         : ListSelect<S>(owner, name, Component::Type::TextSelect, id)
     {}
 };
@@ -351,16 +356,16 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Pw, false);
     }
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    Text(Page& owner, const Literal& name, uint8_t id = 0)
+    Text(IPage& owner, const Literal& name, uint8_t id = 0)
         : Textual<S>(owner, name, Component::Type::Text, id)
         , txt{*this, attr::Id::Txt}
     {}
@@ -384,25 +389,25 @@ public:
     /** user: позиция прокрутки по Y */
     attr::Num<Coord> val_y;
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::ValY)) {
             val_y.applyResponse(response);
             return;
         }
-        Textual<S>::onResponse(tag, response);
+        Textual<S>::onResponse(response, tag);
     }
 
-    SlidingText(Page& owner, const Literal& name, uint8_t id = 0)
+    SlidingText(IPage& owner, const Literal& name, uint8_t id = 0)
         : Textual<S>(owner, name, Component::Type::SlidingText, id)
         , txt{*this, attr::Id::Txt}
         , val_y{*this, attr::Id::ValY}
@@ -452,16 +457,16 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::En, false);
     }
 
-    void onResponse(uint8_t tag, const msg::getString& response) override
+    void onResponse(const msg::getString& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Txt)) {
             txt.applyResponse(response);
             return;
         }
-        TouchArea::onResponse(tag, response);
+        TouchArea::onResponse(response, tag);
     }
 
-    ScrollText(Page& owner, const Literal& name, uint8_t id = 0)
+    ScrollText(IPage& owner, const Literal& name, uint8_t id = 0)
         : Textual<S>(owner, name, Component::Type::ScrollText, id)
         , txt{*this, attr::Id::Txt}
     {}
@@ -470,7 +475,7 @@ public:
 template<BG S = BG::Color>
 class Button : public ButtonBase<S> {
 public:
-    Button(Page& owner, const Literal& name, uint8_t id = 0)
+    Button(IPage& owner, const Literal& name, uint8_t id = 0)
         : ButtonBase<S>(owner, name, Component::Type::Button, id)
     {}
 };
@@ -481,16 +486,16 @@ public:
     /** user: состояние кнопки (нажато/отпущено) */
     attr::Num<uint32_t> val;
 
-    void onResponse(uint8_t tag, const msg::getNumeric& response) override
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
     {
         if (tag == static_cast<uint8_t>(attr::Id::Val)) {
             val.applyResponse(response);
             return;
         }
-        ButtonBase<S>::onResponse(tag, response);
+        ButtonBase<S>::onResponse(response, tag);
     }
 
-    DualStateButton(Page& owner, const Literal& name, uint8_t id = 0)
+    DualStateButton(IPage& owner, const Literal& name, uint8_t id = 0)
         : ButtonBase<S>(owner, name, Component::Type::DualStateButton, id)
         , val{*this, attr::Id::Val}
     {}
@@ -509,7 +514,7 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Format, v);
     }
 
-    Number(Page& owner, const Literal& name, uint8_t id = 0)
+    Number(IPage& owner, const Literal& name, uint8_t id = 0)
         : Numeric<S>(owner, name, Component::Type::Number, id)
     {}
 };
@@ -524,20 +529,20 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Vvs1, digitsAfterPoint);
     }
 
-    XFloat(Page& owner, const Literal& name, uint8_t id = 0)
+    XFloat(IPage& owner, const Literal& name, uint8_t id = 0)
         : Numeric<S>(owner, name, Component::Type::XFloat, id)
     {}
 };
 
 class Checkbox : public Selection {
 public:
-    Checkbox(Page& owner, const Literal& name, uint8_t id = 0)
+    Checkbox(IPage& owner, const Literal& name, uint8_t id = 0)
         : Selection(owner, name, Component::Type::Checkbox, id) {}
 };
 
 class Radio : public Selection {
 public:
-    Radio(Page& owner, const Literal& name, uint8_t id = 0)
+    Radio(IPage& owner, const Literal& name, uint8_t id = 0)
         : Selection(owner, name, Component::Type::Radio, id) {}
 };
 
@@ -559,7 +564,7 @@ public:
     //возможно использовать txt как private поле
     attr::String<24> txt;
 
-    ToggleSwitch(Page& owner, const Literal& name, uint8_t id = 0)
+    ToggleSwitch(IPage& owner, const Literal& name, uint8_t id = 0)
         : Selection(owner, name, Component::Type::ToggleSwitch, id)
         , pressed{*this}
         , font{*this}

@@ -13,7 +13,7 @@ void TouchArea::touch(TouchState state) noexcept
     page.app.enqueue(Transaction{cmd::Component::click(name, state), page.ID, id()});
 }
 
-void TouchArea::onResponse(uint8_t tag, const msg::getNumeric& response)
+void TouchArea::onResponse(const msg::getNumeric& response, uint8_t tag)
 {
     switch (tag) {
 #if NEX_TOUCH_AREA_POSITION
@@ -35,12 +35,12 @@ void TouchArea::onResponse(uint8_t tag, const msg::getNumeric& response)
     default:
         break;
     }
-    Component::onResponse(tag, response);
+    Component::onResponse(response, tag);
 }
 
-void TouchArea::onResponse(uint8_t tag, const msg::getString& response)
+void TouchArea::onResponse(const msg::getString& response, uint8_t tag)
 {
-    Component::onResponse(tag, response);
+    Component::onResponse(response, tag);
 }
 
 #if NEX_DRAWABLE_DRAG

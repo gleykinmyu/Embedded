@@ -10,6 +10,7 @@ class Application;
 /** Фасад `cmd::gui::*` и связанные системные переменные — поле `Application::cs`. */
 class AppCanvas {
     friend class Application;
+    explicit AppCanvas(Application& a) noexcept;
 
     Application& _app;
 
@@ -23,10 +24,13 @@ public:
     /** Вкл./выкл. touch-рисование (`thdra`). */
     void drawOnTouch(bool enable) const noexcept;
 
+    /** Заливка экрана (`cle` + цвет). */
     void clear_screen(Color color) const noexcept;
+    /** Вывод картинки `pic` в точку (`x`, `y`). */
     void picture(Point at, PicId pictureId) const noexcept;
     void picture_in_place(Region region, PicId pictureId) const noexcept;
     void picture_in_place(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) const noexcept;
+    /** Фрагмент `pic` в `dst` из области `src`. */
     void picture_draw(Point dst, Region src, PicId pictureId) const noexcept;
     void picture_draw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) const noexcept;
 
@@ -63,7 +67,6 @@ public:
     /** Круг: заливка `color`. */
     void circle_filled(Point center, uint16_t radius, Color color) const noexcept;
 
-    explicit AppCanvas(Application& a) noexcept;
 };
 
 namespace Canvas {
@@ -83,6 +86,9 @@ void normalizeRect(Coord x0, Coord y0, Coord x1, Coord y1, Point& upperLeft,
 
 /** Внутренняя область `outer` после отступа `borderThickness` с каждой стороны. */
 [[nodiscard]] Region innerRegion(const Region& outer, uint16_t borderThickness) noexcept;
+
+/** `Region` в координатах экрана: origin родителя + local `child`. */
+[[nodiscard]] Region toScreen(const Region& parentScreen, const Region& childLocal) noexcept;
 
 /** Кнопка в координатах экрана: заливка + подпись (`xstr`). */
 class Button {

@@ -4,6 +4,8 @@
 #include "../nexAttributes.hpp"
 #include "../nexComponentBase.hpp"
 
+/** ProgressBar: фон (`PbBackground`) и полоса (`PbBar`) для `sta=Color|Image`. */
+
 namespace nex::resources {
 
 /** Фон ProgressBar: `bco` (Color) / `bpic` (Image). */

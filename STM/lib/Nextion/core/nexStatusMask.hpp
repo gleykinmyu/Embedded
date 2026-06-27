@@ -1,15 +1,8 @@
 #pragma once
 
 /**
- * @file nexStatusMask.hpp
- *
- * Маска приёмных panel-status (NIS §7 Table 1, 0x00…0x24) для `Transaction`.
- * `AppError (0xFB)` — только MCU, в маску не входит.
- *
- * NIS §6.13 `bkcmd`: Table 1 — Success при 1|3, fail при 2|3; Off — ничего из Table 1.
- * Не зависят от bkcmd: Serial Overflow (0x24, §7 п.23) и Table 2 (0x70/0x71, touch, …).
- *
- * `kAwaitingNone` (0) — NoAwaiting: session закрывается на txIdle.
+ * Маски panel **status** (NIS §7 Table 1, `0x00`…`0x24`) для `Transaction::awaiting_status`.
+ * `AppError` (`0xFB`) — только MCU, в маску не входит. См. также `bkcmd` (NIS §6.13).
  */
 
 #include "nexMessages.hpp"

@@ -5,14 +5,20 @@
 namespace BIF { // Base Interface
 
 /// Упорядоченный поток байтов (UART/USB CDC, полезная нагрузка RS-485, потоковый SPI и т.п.).
-/// Контракт: write/read не обязаны быть блокирующими; частичная запись/чтение допустима (см. возврат).
+///
+/// **Контракт**
+/// - `write`/`read` не обязаны быть блокирующими; частичная запись/чтение допустима.
+/// - `write()==0` при `isOpen()` — backpressure (нет места в TX-буфере), не `getStatus()`.
+/// - `getStatus()` — только ошибки **приёма**; смысл имеет при `isOpen()==true`.
+/// - Закрытый порт (`!isOpen()`) — `write`/`read` возвращают 0; lifecycle вне enum Status.
+/// - Link-down / HeartBeat — уровень приложения (Nextion NIS не предоставляет ping).
 
 class IByteStream 
 {
 public:
     virtual ~IByteStream() = default;
 
-    /// Записывает до size байт; возвращает фактически записанное число (0 — нет места / ошибка).
+    /// Записывает до size байт; возвращает фактически записанное число (0 — нет места / порт закрыт).
     virtual size_t write(const uint8_t* data, size_t size) = 0;
 
     /// Читает до maxSize байт; возвращает фактически прочитанное число (0 — буфер пуст).
@@ -35,24 +41,18 @@ public:
 
     enum class Status : uint8_t 
     { 
-        /// Нормальная работа, ошибок нет.
+        /// Нормальная работа, ошибок приёма нет.
         OK = 0,
-        /// Переполнение аппаратного/программного буфера приёма.
+        /// Внутреннее: MCU/буфер не успевает вычитывать RX (кольцо, UART overrun).
         OverFlowRX,
-        /// Переполнение аппаратного/программного буфера передачи.
-        OverFlowTX,
-        /// Ошибка бита при приёме (например, шум, неверный уровень на линии для UART).
-        BitError,
-        /// Ошибка кадра при приёме: стоп-бит, чётность, break и т.п. (зависит от реализации).
-        FrameError,
-        /// Линия/канал недоступен: кабель, хост USB, потеря несущей и т.д.
-        Disconnected
+        /// Внешнее: искажения на линии (шум, FE/NE, parity и т.п.).
+        DataError,
     };
 
-    /// Поток открыт и готов к обмену (зависит от реализации: порт, сессия и т.д.).
+    /// Порт открыт и готов к обмену (явный open/close драйвера).
     virtual bool isOpen() = 0;
 
-    /// Текущее состояние линии/драйвера; не сбрасывается до clearErrors().
+    /// Sticky-ошибки приёма; сброс — `clearErrors()`. При `!isOpen()` — `OK`.
     virtual Status getStatus() = 0;
 
     /// Сбрасывает флаги ошибок, возвращаемые getStatus().
@@ -63,10 +63,7 @@ inline const char* cstr(IByteStream::Status s) noexcept {
     switch (s) {
     case IByteStream::Status::OK: return "OK";
     case IByteStream::Status::OverFlowRX: return "OverFlowRX";
-    case IByteStream::Status::OverFlowTX: return "OverFlowTX";
-    case IByteStream::Status::BitError: return "BitError";
-    case IByteStream::Status::FrameError: return "FrameError";
-    case IByteStream::Status::Disconnected: return "Disconnected";
+    case IByteStream::Status::DataError: return "DataError";
     default: return "?";
     }
 }

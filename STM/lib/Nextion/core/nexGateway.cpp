@@ -144,8 +144,8 @@ void TranslateMessage(const RxFrame& f, Message& out)
     // NIS §11 — событие нажатия на компонент.
     if (h == msg::evTouch::Header) {
         msg::evTouch t{};
-        t.page_id = f.length > 0u ? f.payload[0] : 0u;
-        t.comp_id = f.length > 1u ? f.payload[1] : 0u;
+        t.route.page = f.length > 0u ? f.payload[0] : 0u;
+        t.route.comp = f.length > 1u ? f.payload[1] : 0u;
         t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
         out = t;
         return;
@@ -171,7 +171,7 @@ void TranslateMessage(const RxFrame& f, Message& out)
 
     // NIS §13 — событие смены страницы.
     if (h == msg::evPage::Header) {
-        out = msg::evPage{static_cast<uint8_t>(f.length > 0u ? f.payload[0] : 0u)};
+        out = msg::evPage{.page = static_cast<uint8_t>(f.length > 0u ? f.payload[0] : 0u)};
         return;
     }
 
@@ -221,6 +221,9 @@ bool TxFramer::beginRaw(const uint8_t* data, size_t len) noexcept {
 }
 
 TxFramer::Status TxFramer::tick(BIF::IByteStream& stream) noexcept {
+    if (!stream.isOpen())
+        return Status::Closed;
+
     if (_state == State::Idle && frame.length > 0u) {
         std::memcpy(frame.payload + frame.length, Physical::FRAME_TERMINATORS, Physical::TERM_COUNT);
         frame.length += Physical::TERM_COUNT;
@@ -229,11 +232,8 @@ TxFramer::Status TxFramer::tick(BIF::IByteStream& stream) noexcept {
 
     while (_state == State::FramePayload) {
         const size_t w = stream.write(frame.payload + _pos, static_cast<size_t>(frame.length - _pos));
-        if (w == 0u) {
-            if (stream.getStatus() == BIF::IByteStream::Status::Disconnected)
-                return Status::Disconnected;
+        if (w == 0u)
             return Status::WaitTxSpace;
-        }
         _pos += w;
         if (_pos >= frame.length) {
             reset();
@@ -243,11 +243,8 @@ TxFramer::Status TxFramer::tick(BIF::IByteStream& stream) noexcept {
 
     while (_state == State::RawPayload) {
         const size_t w = stream.write(_rawData + _pos, _rawLen - _pos);
-        if (w == 0u) {
-            if (stream.getStatus() == BIF::IByteStream::Status::Disconnected)
-                return Status::Disconnected;
+        if (w == 0u)
             return Status::WaitTxSpace;
-        }
         _pos += w;
         if (_pos >= _rawLen) {
             reset();
@@ -275,9 +272,11 @@ void Gateway::onStreamReadFault(BIF::IByteStream::Status streamSt) noexcept {
         recoverStreamRxOverFlow();
         return;
     }
-    _rxFramer.reset();
-    _stream.purge();
-    _status = Status::StreamRxError;
+    if (streamSt == BIF::IByteStream::Status::DataError) {
+        _rxFramer.reset();
+        _stream.purge();
+        _status = Status::StreamRxError;
+    }
 }
 
 bool Gateway::pushCommand(const Command& cmd) {
@@ -312,7 +311,7 @@ bool Gateway::transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept {
 
     const TxFramer::Status txSt = _txFramer.tick(_stream);
     switch (txSt) {
-    case TxFramer::Status::Disconnected:
+    case TxFramer::Status::Closed:
         _txFramer.reset();
         _stream.purgeOutput();
         _txStallTimer.stop();

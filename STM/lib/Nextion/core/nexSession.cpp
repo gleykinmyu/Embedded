@@ -69,14 +69,18 @@ void TransactionQueue::clear() noexcept {
 
 } // namespace detail
 
-Transaction::Transaction(const Command& cmd, uint8_t page_id, uint8_t comp_id, uint8_t tag, Kind kind,
+Transaction::Transaction(const Command& cmd, Route route, uint8_t tag, Kind kind,
     msg::Status::Mask awaiting_status) noexcept
     : kind(kind)
-    , page_id(page_id)
-    , comp_id(comp_id)
+    , route(route)
     , tag(tag)
     , awaiting_status(awaiting_status)
     , _command(&cmd)
+{}
+
+Transaction::Transaction(const Command& cmd, uint8_t page, uint8_t comp, uint8_t tag, Kind kind,
+    msg::Status::Mask awaiting_status) noexcept
+    : Transaction(cmd, Route{page, comp}, tag, kind, awaiting_status)
 {}
 
 bool Transaction::isEmpty() const noexcept {
@@ -172,6 +176,48 @@ void Session::end(bool success) noexcept {
     _queue.pop();
     if (success)
         clearError();
+}
+
+bool Session::canRetryActive(BkCmd bkcmd) const noexcept {
+    if (!isActive())
+        return false;
+
+    const Transaction* const tx = current();
+    if (tx == nullptr || tx->isEmpty())
+        return false;
+
+    switch (tx->kind) {
+    case Transaction::Kind::GetNumeric:
+    case Transaction::Kind::GetString:
+        return true;
+    case Transaction::Kind::Command:
+        return tx->sessionWaitMask(bkcmd) != msg::kAwaitingNone;
+    case Transaction::Kind::TransparentTx:
+    case Transaction::Kind::RawDataRx:
+        return false;//TODO доделать когда вернемся к TransparentTx и RawDataRx
+    }
+    return false;
+}
+
+bool Session::retryActive(Gateway& gateway, BkCmd bkcmd) noexcept {
+    if (!canRetryActive(bkcmd))
+        return false;
+
+    if (!gateway.isTxIdle())
+        return false;
+
+    const Transaction* const tx = current();
+    if (tx == nullptr || tx->isEmpty())
+        return false;
+
+    if (!gateway.pushCommand(tx->command())) {
+        _status = Status::PushFailed;
+        return false;
+    }
+
+    clearTimeout();
+    _status = Status::Active;
+    return true;
 }
 
 bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms, BkCmd bkcmd) noexcept {

@@ -2,7 +2,7 @@
 
 Спецификация и backlog для **Transparent Data Mode** (NIS §1.16) и связанного API `*_t` / `addt`.
 
-**Связанные документы:** [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md) (отсылка), [IdMap.md](IdMap.md), [R106_HANDOFF.md](R106_HANDOFF.md) (`Transaction::Kind::TransparentTx` / `RawDataRx`).
+**Связанные документы:** [REFACTORING_REWORKED.md](REFACTORING_REWORKED.md) (отсылка), [smartApp/IdMap.md](smartApp/IdMap.md).
 
 **Статус:** **не готово к prod** — первый вызов `*_t` / `addt` **зависает очередь Session**.
 
@@ -37,7 +37,7 @@
 | `RxFramer` / `TranslateMessage` | `0xFD`/`0xFE` → `msg::evTransparent` | приём произвольного raw block в buffer |
 | `Session::pollTimeout` | — | `TransparentTx`/`RawDataRx` → `return false` (вечное ожидание) |
 | `Application::dispatchResponse` | stub cases | `onTransparentEvent`, `_session.end`, raw RX |
-| `Application::dispatchEvent` | orphan `evTransparent` → `onTransparentEvent` | не при active transparent tx |
+| `Application::dispatchEvent` | `evTransparent` вне активной транзакции → `onTransparentEvent` | не при active transparent tx |
 | Facades `AppEeprom` / `AppFileSystem` | enqueue преамбулы | `(void)buffer` — payload не передаётся |
 | `waveform.hpp` | `addt` @experimental | TX buffer, `writeTransparentRaw` после `0xFE` |
 
@@ -76,7 +76,7 @@ sequenceDiagram
 2. **`pollTimeout`** — отдельный timeout на каждую фазу (не общий get-response).
 3. **`dispatchResponse`** — `evTransparent`: `ReadyToReceive` → trigger TX raw; `BlockComplete` → `end(true)`; fail status → `end(false)`.
 4. **`RawDataRx`** — RX path: накопление `byteCount` байт в caller buffer (→ R302).
-5. **Ошибки** — `TxBusyRaw`, timeout, orphan `0xFE`/`0xFD` → `dispatchError` + `end(false)`.
+5. **Ошибки** — `TxBusyRaw`, timeout, `0xFE`/`0xFD` вне активной транзакции → `dispatchError` + `end(false)`.
 6. **Не ломать** gate `txIdle` для обычных Command/Get (R106b отменён — gate корректен).
 
 **Критерий готовности.** `write_t`/`read_t` round-trip на dedicated example; `pumpUntilIdle()` → `true` после transparent; queue drain.
@@ -152,7 +152,7 @@ void AppEeprom::write_t(..., const uint8_t* buffer, ...) {
 - [ ] `core/nexGateway.cpp` — RX transparent mode: raw bytes не через обычный `RxFrame` (или отдельный collector)
 - [ ] `core/nexGateway.hpp` — API: `beginTransparentRx(size_t n)`, `transparentRxIdle()`
 - [ ] `core/nexMessages.hpp` — internal `evTransparent::Code` (timeout, cancelled, chunk) — комментарий «добавлять по мере необходимости»
-- [ ] Согласовать orphan `evTransparent` в `dispatchEvent` vs correlated в `dispatchResponse`
+- [ ] Согласовать `evTransparent` вне активной транзакции в `dispatchEvent` vs correlated в `dispatchResponse`
 
 ### Facades
 

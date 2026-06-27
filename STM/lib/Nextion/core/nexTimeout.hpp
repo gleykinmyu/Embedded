@@ -1,10 +1,7 @@
 #pragma once
 
 /**
- * @file nexTimeout.hpp
- *
- * Одноразовый timeout по `uint32_t` ms (wrap-safe).
- * `_expires_ms == 0` — остановлен (`kStopped`).
+ * Одноразовый таймаут по `uint32_t` ms (wrap-safe). `_expires_ms == 0` — остановлен (`kStopped`).
  */
 
 #include <cstdint>

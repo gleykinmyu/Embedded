@@ -35,8 +35,8 @@ protected:
     virtual uint8_t readHardware() = 0;
     virtual void writeHardware(uint8_t data) = 0;
 
-    /// Прочитать флаги ошибок RX (ISR/SR), выставить у ISerial _isFrameError / _isBitError при необходимости.
-    /// Возвращает true, если байт после readHardware() не следует класть в кольцо (кадр/шум и т.п.).
+    /// Прочитать флаги ошибок RX (ISR/SR); выставить `_dataError` / `_hwOverrunRx` при необходимости.
+    /// Возвращает true, если байт после readHardware() не следует класть в кольцо.
     virtual bool checkErrors() = 0;
 
     friend class SGuard;
@@ -74,28 +74,21 @@ private:
 
 protected:
     volatile bool _isOpen = false;
-    volatile bool _isBitError = false;
-    volatile bool _isFrameError = false;
-    volatile bool _isDisconnected = false;
+    volatile bool _dataError = false;
+    volatile bool _hwOverrunRx = false;
 
 public:
     bool isOpen() override { return _isOpen; }
 
-    /// Краткий снимок без SGuard (флаги и счётчики переполнения кольца).
+    /// Краткий снимок без SGuard (флаги и счётчики переполнения RX-кольца).
     IByteStream::Status getStatus() override
     {
         if (!_isOpen)
-            return IByteStream::Status::Disconnected;
-        if (_rxBuf.overflows() > 0)
+            return IByteStream::Status::OK;
+        if (_rxBuf.overflows() > 0 || _hwOverrunRx)
             return IByteStream::Status::OverFlowRX;
-        if (_txBuf.overflows() > 0)
-            return IByteStream::Status::OverFlowTX;
-        if (_isFrameError)
-            return IByteStream::Status::FrameError;
-        if (_isBitError)
-            return IByteStream::Status::BitError;
-        if (_isDisconnected)
-            return IByteStream::Status::Disconnected;
+        if (_dataError)
+            return IByteStream::Status::DataError;
         return IByteStream::Status::OK;
     }
 
@@ -154,9 +147,8 @@ public:
 
     void clearErrors() override
     {
-        _isBitError = false;
-        _isFrameError = false;
-        _isDisconnected = false;
+        _dataError = false;
+        _hwOverrunRx = false;
         _rxBuf.clearOverflows();
         _txBuf.clearOverflows();
     }

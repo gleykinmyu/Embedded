@@ -3,6 +3,8 @@
 #include "background.hpp"
 #include "font.hpp"
 
+/** Состояние «нажато» у кнопок: фон (`bco2`/`pic2`) и цвет шрифта (`pco2`). */
+
 namespace nex::resources {
 
 /** Нажатое состояние: только фон (`bco2` / `pic2` / `picc2`). */

@@ -97,10 +97,11 @@ protected:
 
         const REG::BitMask<SR> sr = _uart.sr.get();
 
-        if (sr.any(SR::FE))  this->_isFrameError = true;
-        if (sr.any(SR::NE))  this->_isBitError = true;
-        if (sr.any(SR::ORE)) this->_isDisconnected = true;
-        
+        if (sr.any(SR::FE | SR::NE))
+            this->_dataError = true;
+        if (sr.any(SR::ORE))
+            this->_hwOverrunRx = true;
+
         return sr.any(SR::FE | SR::NE);
     }
 

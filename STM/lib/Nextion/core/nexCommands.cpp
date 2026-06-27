@@ -216,22 +216,22 @@ void printRxLine(const RxFrame& wire, const Message& parsed) noexcept {
             }
             NEX_DBG_TRACE_RX("\"");
         } else if constexpr (std::is_same_v<T, msg::evTouch>) {
-            NEX_DBG_TRACE_RX("RX msg evTouch page=%u comp=%u %s", static_cast<unsigned>(m.page_id),
-                static_cast<unsigned>(m.comp_id),
+            NEX_DBG_TRACE_RX("RX msg evTouch page=%u comp=%u %s", static_cast<unsigned>(m.route.page),
+                static_cast<unsigned>(m.route.comp),
                 m.state == TouchState::Press ? "Press" : "Release");
         } else if constexpr (std::is_same_v<T, msg::evTouchXY>) {
             NEX_DBG_TRACE_RX("RX msg evTouchXY mode=0x%02X x=%u y=%u %s",
                 static_cast<unsigned>(static_cast<uint8_t>(m.mode)), static_cast<unsigned>(m.pos.x),
                 static_cast<unsigned>(m.pos.y), m.state == TouchState::Press ? "Press" : "Release");
         } else if constexpr (std::is_same_v<T, msg::evPage>) {
-            NEX_DBG_TRACE_RX("RX msg evPage page=%u", static_cast<unsigned>(m.page_id));
+            NEX_DBG_TRACE_RX("RX msg evPage page=%u", static_cast<unsigned>(m.page));
         } else if constexpr (std::is_same_v<T, msg::evSystem>) {
             NEX_DBG_TRACE_RX("RX msg evSystem code=0x%02X", static_cast<unsigned>(static_cast<uint8_t>(m.code)));
         } else if constexpr (std::is_same_v<T, msg::evTransparent>) {
             NEX_DBG_TRACE_RX("RX msg evTransparent code=0x%02X", static_cast<unsigned>(static_cast<uint8_t>(m.code)));
         } else if constexpr (std::is_same_v<T, msg::evMsgBox>) {
             NEX_DBG_TRACE_RX("RX msg evMsgBox page=%u comp=%u tag=%u action=%u",
-                static_cast<unsigned>(m.page_id), static_cast<unsigned>(m.comp_id),
+                static_cast<unsigned>(m.route.page), static_cast<unsigned>(m.route.comp),
                 static_cast<unsigned>(m.tag), static_cast<unsigned>(static_cast<uint8_t>(m.action)));
         }
     }, parsed);

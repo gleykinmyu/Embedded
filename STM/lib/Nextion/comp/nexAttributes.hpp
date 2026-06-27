@@ -1,10 +1,16 @@
 #pragma once
 
+#include "nexComponentBase.hpp"
 #include "../app/nexApplication.hpp"
 #include "nexAttrLexemes.hpp"
 
 #include <cstdint>
 #include <cstring>
+
+/**
+ * Поля атрибутов виджетов: `attr::Num`, `attr::String`, зеркала и `get`/`assign`.
+ * Категории в листьях: `user` (поле) vs `mcu` (`setPeriod`, …).
+ */
 
 namespace nex {
 

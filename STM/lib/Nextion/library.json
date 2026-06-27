@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "build": {
     "libArchive": false,
-    "srcFilter": "+<app/*.cpp> +<comp/*.cpp> +<core/*.cpp> +<idmap/*.cpp>"
+    "srcFilter": "+<app/*.cpp> +<comp/*.cpp> +<core/*.cpp> +<smartApp/*.cpp> +<overlay/*.cpp> +<overlay/comp/*.cpp>"
   }
 }

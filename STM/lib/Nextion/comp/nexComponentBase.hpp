@@ -4,21 +4,28 @@
 #include "../core/nexMessages.hpp"
 #include "../core/nexTypes.hpp"
 
+/** Объектная модель UI: `IPage`, `Page<>`, `Component` и регистрация в `IAppUI`. */
+
 namespace nex {
 
     class Application;
+    class IAppUI;
     class SmartApp;
+    class IPage;
     class Component;
 
-    /** Пустое имя страницы в HMI, если достаточно только `PageBase::ID`. */
+    namespace detail {
+        void registerPage(IAppUI& app, IPage& page) noexcept;
+        void registerComponent(IPage& page, Component& c) noexcept;
+    } // namespace detail
     inline constexpr Literal kUnnamedPageLexeme{""};
 
     /**
-     * Базовая страница без шаблона: `Application` хранит `PageBase*`.
-     * Касание: `comp_id == kPageCompId` — `onTouchPage`; иначе `getComponent` → `Component::onTouch`.
-     * Конкретная страница с таблицей виджетов — `PageImpl<MaxWidgets>` (число виджетов, panel id 1…N).
+     * Базовая страница без шаблона: `Application` хранит `IPage*`.
+     * Касание: `route.comp == kPageCompId` — `onTouchPage`; иначе `getComponent` → `Component::onTouch`.
+     * Конкретная страница с таблицей виджетов — `Page<MaxWidgets>` (число виджетов, panel id 1…N).
      */
-    class Page {
+    class IPage {
     public:
         const Literal name;
         const uint8_t ID;
@@ -26,49 +33,51 @@ namespace nex {
         Application& app;
 
         /** Регистрирует страницу в `application` по полю `ID`. */
-        Page(Application& application, const Literal& pageObjName, uint8_t id) noexcept;
-        virtual ~Page() = default;
+        IPage(IAppUI& application, const Literal& pageObjName, uint8_t id) noexcept;
+        virtual ~IPage() = default;
 
-        /** Касание по этой странице: фильтр `page_id`, затем `onTouchPage` при `comp_id == 0`, иначе виджет. */
+        /** Касание по этой странице: фильтр `route.page`, затем `onTouchPage` при `route.comp == 0`, иначе виджет. */
         virtual void onTouch(const msg::evTouch& e);
 
-        /** Touch с `comp_id == kPageCompId` — касание по странице (NIS). */
+        /** Touch с `route.comp == kPageCompId` — касание по странице (NIS). */
         virtual void onTouchPage(const msg::evTouch& e) { (void)e; }
 
-        /** Панель перешла на эту страницу: `msg::evPage`, новый `page_id` отличается от предыдущего в `Application`. */
+        /** Панель перешла на эту страницу: `msg::evPage`, новый `page` отличается от предыдущего в `Application`. */
         virtual void onLoad() {}
-        /** Панель уходит с этой страницы на другую (`page_id` меняется); до обновления `Application::currentPageId()`. */
+        /** Панель уходит с этой страницы на другую (`page` меняется); до обновления `Application::currentPage()`. */
         virtual void onExit() {}
-        /** `status == Code::AppError`; далее — `Component::onError` по `comp_id`. */
-        virtual void onError(const msg::Status& status, uint8_t comp_id);
+        /** `status == Code::AppError`; далее — `Component::onStatus` по `comp`. */
+        virtual void onStatus(const msg::Status& status, Route route);
 
-        /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`comp_id == 0`). */
+        /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`comp == 0`). */
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
-        Component* getComponent(uint8_t comp_id) noexcept;
+        /** Ответ `get` по `route` на этой странице: `Component::onResponse`, затем хук страницы в override. */
+        virtual void onResponse(const msg::getNumeric& response, Route route, uint8_t tag);
+        virtual void onResponse(const msg::getString& response, Route route, uint8_t tag);
+
+        /** Виджет из `storage()` по panel `comp`; `nullptr` для `kPageCompId` и неизвестного id. */
+        Component* getComponent(uint8_t comp) noexcept;
+        /** Зарегистрированных виджетов на странице (без `kPageCompId`). */
         uint8_t compCount() const noexcept;
 
     private:
-        friend class MISC::ObjRegistry<Page, uint8_t>;        
+        friend class MISC::ObjRegistry<IPage, uint8_t>;
         friend class SmartApp;
-        friend class Component;
-
-        virtual MISC::ObjRegistry<Component, uint8_t>& registry() noexcept = 0;
-
-        MISC::ObjRegistry<Component, uint8_t>& registry() const noexcept {
-            return const_cast<Page*>(this)->registry();
-        }
+        friend void detail::registerComponent(IPage& page, Component& c) noexcept;
 
         /** `ID` фиксирован при создании; вызывается только из `ObjRegistry`. */
         void set_id(uint8_t) noexcept {}
-        void registerComponent(Component& c) noexcept;
+
+    protected:
+        virtual MISC::ObjRegistry<Component, uint8_t>& storage() noexcept = 0;
     };
 
     /**
      * Объект компонента на странице Nextion (MCU: `name` ↔ objname, `type` ↔ атрибут type, `id()` ↔ id).
      * Внутри хранится копия-представление `nex::Literal` (указатель на литерал + длина); буфер символов — как у исходного литерала.
      *
-     * Привязка к `PageBase`: компонент регистрируется на странице (`page.ID`, `id()`).
+     * Привязка к `IPage`: компонент регистрируется на странице (`page.ID`, `id()`).
      *
      * В `nexWidgets.hpp` у наследников перечислены только атрибуты, характерные для данного типа виджета.
      */
@@ -109,7 +118,7 @@ namespace nex {
             Gauge           = 122, //type, id, objname, vscope, drag, aph, effect, sta(cropimage, color, image, transparent), bco(picc, pic) - when sta != transparent, val, format, up, down, left, pco, pco2, hig, vvs0, vvs1, vvs2, x, y, w, h
         };
 
-        Page& page;
+        IPage& page;
         const Literal name;
         /** Вид этого экземпляра (тот же код, что атрибут `type` объекта на панели). */
         const Type type;
@@ -119,16 +128,16 @@ namespace nex {
          * `@p id` — panel id (`≥ kFirstCompId`) или `0` = автослот при регистрации
          * (не panel id; на панели у виджетов id начинается с 1).
          */
-        Component(Page& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
+        Component(IPage& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
 
         virtual void onTouch(const msg::evTouch& e);
         
         /** Ответ `get` (0x71 / 0x70); `tag` — атрибут, заданный при запросе. */
-        virtual void onResponse(uint8_t tag, const msg::getNumeric& response);
-        virtual void onResponse(uint8_t tag, const msg::getString& response);
+        virtual void onResponse(const msg::getNumeric& response, uint8_t tag);
+        virtual void onResponse(const msg::getString& response, uint8_t tag);
 
-        /** Ответ **status** с ошибкой выполнения команды этого компонента. */
-        virtual void onError(const msg::Status& response);
+        /** `status != Success` с маршрутом на этот компонент. */
+        virtual void onStatus(const msg::Status& response);
 
         /** Ответ MCU `MsgBox`, маршрутизированный на этот компонент. */
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
@@ -137,27 +146,23 @@ namespace nex {
         friend class MISC::ObjRegistry<Component, uint8_t>;
 
         void set_id(uint8_t id) noexcept { id_ = id; }
-
         uint8_t id_;
     };
-
-    /** Сообщает `ComponentRegisterFailed` с кодом `MISC::RegStatus`. */
-    void nexComponentRegisterFailed(Application& app, Page& page, const Component& c, MISC::RegStatus st) noexcept;
 
     /**
      * Страница с `ObjStorage<Component, MaxWidgets, uint8_t, kFirstCompId>` — только виджеты (panel id 1…N).
      * `kPageCompId` в реестре не хранится; `getComponent(0)` всегда `nullptr`.
      */
     template <uint8_t MaxWidgets>
-    class PageImpl : public Page {
-        static_assert(MaxWidgets < 255u, "PageImpl: MaxWidgets must be < 255");
+    class Page : public IPage {
+        static_assert(MaxWidgets < 255u, "Page: MaxWidgets must be < 255");
         static constexpr size_t kRegistryCapacity = (MaxWidgets > 0u) ? static_cast<size_t>(MaxWidgets) : 1u;
 
     public:
-        using Page::Page;
+        using IPage::IPage;
 
     protected:
-        MISC::ObjRegistry<Component, uint8_t>& registry() noexcept override { return _components; }
+        MISC::ObjRegistry<Component, uint8_t>& storage() noexcept override { return _components; }
 
     private:
         MISC::ObjStorage<Component, kRegistryCapacity, uint8_t, kFirstCompId> _components;
@@ -166,7 +171,7 @@ namespace nex {
     /*
      * ---------------------------------------------------------------------------
      * Дерево наследования C++ (соответствует `nexCompImpl.hpp` + листья в `nexComponents.hpp` / `nexExComponents.hpp`).
-     * `Page`, `Component` — `namespace nex`; базы и листья виджетов — `namespace nex::comp`.
+     * `IPage`, `Page<>`, `Component` — `namespace nex`; базы и листья виджетов — `namespace nex::comp`.
      * У узла — только дельта к родителю. Комментарии у `enum Type` выше — эталон атрибутов NIS.
      *
      *   PageComponent (121)                    // нет C++-листа
@@ -199,9 +204,9 @@ namespace nex {
      *               ├── Slider<S>              // value; cursor; bg; bg2
      *               │
      *               ├── Printable<S>           // font (FontColor → FontId → Font)
-     *               │   ├── DataFile           // nexExComponents: txt; left; ch; dir; val; qty(RO); setCellSpacing; …
-     *               │   │   ├── DataRecord     // nexExComponents: path; lenth(RO); maxval(RO); setRecordLength; …
-     *               │   │   └── FileBrowser    // nexExComponents: filter; spay; pic1; pic2; …
+     *               │   ├── DataFile           // nexExComponents: txt; left; ch; qty(RO); spax; val_x/val_y
+     *               │   │   ├── DataRecord     // path; format; dir (заголовки); setFieldCount; setColumnSpacing(dis); …
+     *               │   │   └── FileBrowser    // dir (папка); filter; setScrollStep(dis); setSelBgColor/Color; …
      *               │   ├── ListSelect         // path; val; setCellSize
      *               │   │   ├── ComboBox       // border; arrow; cells; isOpened; setVAlign; setHAlign
      *               │   │   └── TextSelect     // setSelColor; setLineColor; setSelectionLine; path/val (без txt mirror)

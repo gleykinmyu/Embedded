@@ -1,8 +1,8 @@
 # Nextion — отложенный backlog
 
-Пункты, сознательно **не в активном** backlog ([REFACTORING_REWORKED.md](REFACTORING_REWORKED.md), [IdMap.md](IdMap.md)): не блокируют core, низкий приоритет или ждут продуктового решения.
+Пункты, сознательно **не в активном** backlog ([REFACTORING_REWORKED.md](REFACTORING_REWORKED.md), [smartApp/IdMap.md](smartApp/IdMap.md)): не блокируют core, низкий приоритет или ждут продуктового решения.
 
-История и контекст R106: [R106_HANDOFF.md](R106_HANDOFF.md), полный план: [REFACTORING.md](REFACTORING.md).
+Полный план: [REFACTORING.md](REFACTORING.md).
 
 **Легенда:** `[-]` — отложено.
 
@@ -10,13 +10,13 @@
 
 ## Фаза 1 — Session / UART
 
-### [-] NEX-R106f — example4: маршрут OnFailure к `(page, comp)`, не orphan `(0,0)`
+### [-] NEX-R106f — example4: маршрут OnFailure к `(page, comp)`, не `(0,0)` при status вне активной транзакции
 
-**Проблема.** После R106 uncorrelated panel-status уходит в `dispatchError(…, 0, 0)` — это правильно для фонового шума. Но при `bkcmd=OnFailure` и ошибке **по текущей** serial-команде (invalid attr на известном компоненте) UI и example4 ожидают `(page_id, comp_id)` активной транзакции, а не orphan.
+**Проблема.** После R106 uncorrelated panel-status уходит в `dispatchError(…, 0, 0)` — это правильно для фонового шума. Но при `bkcmd=OnFailure` и ошибке **по текущей** serial-команде (invalid attr на известном компоненте) UI и example4 ожидают `(page_id, comp_id)` активной транзакции, а не status вне активной транзакции с маршрутом `(0,0)`.
 
-**Как сейчас.** `dispatchResponse` для `Kind::Command`: correlated fail → `dispatchError(*st, active->page_id, active->comp_id)`. Если status пришёл **после** txIdle при OnFailure (fail-bit в correlate-маске, но session уже Complete) — маршрут теряется. Example4 в фазах NIS-тестов считает `stats.nis_panel` по любому `(page, comp)`, но сценарий «invalid attr assign + OnFailure» может дать `(0,0)`. То же для waveform `add` с `kAwaitingNone` (R214): fail 0x12 → orphan до реализации last-tx.
+**Как сейчас.** `dispatchResponse` для `Kind::Command`: correlated fail → `dispatchError(*st, active->page_id, active->comp_id)`. Если status пришёл **после** txIdle при OnFailure (fail-bit в correlate-маске, но session уже Complete) — маршрут теряется. Example4 в фазах NIS-тестов считает `stats.nis_panel` по любому `(page, comp)`, но сценарий «invalid attr assign + OnFailure» может дать `(0,0)`. То же для waveform `add` с `kAwaitingNone` (R214): fail 0x12 → status вне активной транзакции до реализации last-tx.
 
-**Цель.** Хранить «последнюю завершённую tx» (`LastCompleted` / `lastTx`) с `(page, comp, route, mask)` и при orphan fail-status, plausibly matching last command, маршрутизировать к last route вместо `(0,0)`.
+**Цель.** Хранить «последнюю завершённую tx» (`LastCompleted` / `lastTx`) с `(page, comp, route, mask)` и при fail-status вне активной транзакции, plausibly matching last command, маршрутизировать к last route вместо `(0,0)`.
 
 **Критерий готовности.** Example4: тест «invalid attr на b0 при OnFailure» → `onError` с `(kPageId, 1)`, не `(0,0)`; регрессия example6 bench не ломается.
 
@@ -25,7 +25,7 @@
 | **Файлы** | `core/nexSession.hpp/cpp`, `app/nexApplication.cpp`, `examples/example4/app.hpp` |
 | **Сложность** | S |
 | **Зависит от** | NEX-R106 ✓ |
-| **Отложено** | 2026-06-18 — UX example4 / orphan fail-route; не блокирует очередь и masks |
+| **Отложено** | 2026-06-18 — UX example4 / fail-route status вне активной транзакции; не блокирует очередь и masks |
 
 ---
 
@@ -61,7 +61,7 @@
 
 | | |
 |---|---|
-| **Файлы** | `app/nexSmartApp.*`, `app/nexApplication.hpp`, `examples/example4` |
+| **Файлы** | `smartApp/nexSmartApp.*`, `app/nexApplication.hpp`, `examples/example4` |
 | **Сложность** | M (старый scope) / ? (новая форма — TBD) |
 | **Отложено** | 2026-06-18 — SmartApp не в release; refactor friend не в приоритете |
 

@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <cstring>
 
-// --- Кадр UART и разбор потока (до семантики сообщений Nextion) ---
+/** Кадры UART до семантики NIS: `RxFrame` / `TxFrame`, терминатор `0xFF×3` (NIS §16). */
+
 namespace nex {
 
     /** Физический уровень кадра: байт-терминатор и массив `0xFF×3` (NIS §16). */
@@ -33,15 +34,5 @@ namespace nex {
         uint8_t payload[MAX_PAYLOAD + Physical::TERM_COUNT]{};
         uint16_t length = 0;
     };
-
-    /** Запас под префикс `xstr` и числовые поля до quoted-текста (`gui::TextInRegion`). */
-    constexpr std::size_t kXstrCommandOverhead = 80u;
-
-    /** Макс. длина строки в `xstr` (байт текста в кавычках, ≤ `TxFrame::MAX_PAYLOAD`). */
-    [[nodiscard]] constexpr std::size_t maxXstrTextLength() noexcept {
-        return (static_cast<std::size_t>(TxFrame::MAX_PAYLOAD) > kXstrCommandOverhead)
-            ? static_cast<std::size_t>(TxFrame::MAX_PAYLOAD) - kXstrCommandOverhead
-            : 0u;
-    }
 
 } // namespace nex

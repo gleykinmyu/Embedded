@@ -24,7 +24,7 @@ void runLatencyBench(LatencyBenchApp& app, LatencyRecorder& rec, ex5::PageAWidge
     ex5::PageCWidgets& c, ex5::PageDWidgets& d) noexcept;
 }
 
-class LatencyBenchApp : public Application {
+class LatencyBenchApp : public AppUI<kDefaultMaxPages> {
 public:
     static constexpr uint16_t kScreenWidth = 800;
     static constexpr uint16_t kScreenHeight = 480;
@@ -36,14 +36,14 @@ public:
     static constexpr uint32_t kAckDrainMs = 50u;
 
     explicit LatencyBenchApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
-        : Application(stream, {kScreenWidth, kScreenHeight}, clockMs)
+        : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
         , page_a(*this)
         , page_b(*this)
         , page_c(*this)
         , page_d(*this)
     {}
 
-    struct PageA : PageImpl<8> {
+    struct PageA : Page<8> {
         Timer timer;
         NumericVar nvar;
         StringVar<64> svar;
@@ -54,7 +54,7 @@ public:
         Waveform<BG::Color, 4> waveform;
 
         PageA(LatencyBenchApp& app) noexcept
-            : PageImpl<8>(app, "ex5a", 0u)
+            : Page<8>(app, "ex5a", 0u)
             , timer(*this, "timer0")
             , nvar(*this, "nvar0")
             , svar(*this, "svar0")
@@ -66,7 +66,7 @@ public:
         {}
     };
 
-    struct PageB : PageImpl<6> {
+    struct PageB : Page<6> {
         ProgressBar<BG::Color> pbar_color;
         ProgressBar<BG::Image> pbar_image;
         Slider<> slider;
@@ -75,7 +75,7 @@ public:
         TextSelect<> text_select;
 
         PageB(LatencyBenchApp& app) noexcept
-            : PageImpl<6>(app, "ex5b", 1u)
+            : Page<6>(app, "ex5b", 1u)
             , pbar_color(*this, "pbar0")
             , pbar_image(*this, "pbari0")
             , slider(*this, "slid0")
@@ -85,7 +85,7 @@ public:
         {}
     };
 
-    struct PageC : PageImpl<5> {
+    struct PageC : Page<5> {
         Text<> text;
         SlidingText<> sltext;
         ScrollText<> scroll_text;
@@ -93,7 +93,7 @@ public:
         XFloat<> xfloat;
 
         PageC(LatencyBenchApp& app) noexcept
-            : PageImpl<5>(app, "ex5c", 2u)
+            : Page<5>(app, "ex5c", 2u)
             , text(*this, "text0")
             , sltext(*this, "slt0")
             , scroll_text(*this, "stext0")
@@ -102,7 +102,7 @@ public:
         {}
     };
 
-    struct PageD : PageImpl<5> {
+    struct PageD : Page<5> {
         Button<> button;
         DualStateButton<> dual_button;
         Checkbox checkbox;
@@ -110,7 +110,7 @@ public:
         ToggleSwitch toggle;
 
         PageD(LatencyBenchApp& app) noexcept
-            : PageImpl<5>(app, "ex5d", 3u)
+            : Page<5>(app, "ex5d", 3u)
             , button(*this, "btn0")
             , dual_button(*this, "dual0")
             , checkbox(*this, "chk0")
@@ -134,8 +134,7 @@ public:
     void waitBkcmdApplied() noexcept
     {
         _cmd_label = "bkcmd";
-        _cmd_page = Route::kSysVarPageId;
-        _cmd_comp = Route::kSysVarCompId;
+        _cmd_route = Route::sysVar();
         if (waitForPanelSuccess(kWaitSuccessTimeoutMs))
             NEX_DBG("[ex6] bkcmd=Always applied (Success p255 c255)\n");
         else
@@ -171,19 +170,18 @@ public:
     }
 
     template<typename Fn>
-    void measureOne(ex6::LatencyRecorder& rec, const char* label, uint8_t page_id, uint8_t comp_id,
+    void measureOne(ex6::LatencyRecorder& rec, const char* label, uint8_t page, uint8_t comp,
         uint8_t expect_page, uint8_t expect_comp, Fn&& fn) noexcept
     {
         drainPanelAcks();
         clearErrors();
 
         _cmd_label = label;
-        _cmd_page = expect_page;
-        _cmd_comp = expect_comp;
+        _cmd_route = Route{expect_page, expect_comp};
         _last_rx_status = 0u;
 
         NEX_DBG("[ex6-tx] t=%010lu p%u c%u  %s (expect p%u c%u)\n", static_cast<unsigned long>(nowMs()),
-            static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id), label,
+            static_cast<unsigned>(page), static_cast<unsigned>(comp), label,
             static_cast<unsigned>(expect_page), static_cast<unsigned>(expect_comp));
 
         const uint32_t t0 = nowMs();
@@ -192,10 +190,10 @@ public:
         const uint32_t dt = ok ? (_response_tick - t0) : (nowMs() - t0);
         const uint8_t rx_status = ok ? static_cast<uint8_t>(msg::Status::Code::Success) : _last_rx_status;
 
-        rec.add(label, page_id, comp_id, dt, ok ? 1u : 0u, rx_status);
+        rec.add(label, page, comp, dt, ok ? 1u : 0u, rx_status);
 
         NEX_DBG("[ex6] %4lu ms  p%u c%u  %s  %s\n", static_cast<unsigned long>(dt),
-            static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id), label, ok ? "Success" : "TIMEOUT");
+            static_cast<unsigned>(page), static_cast<unsigned>(comp), label, ok ? "Success" : "TIMEOUT");
 
         if (!ok)
             NEX_DBG("[ex6]   (no matched Success within %lu ms, last rx 0x%02X)\n",
@@ -206,36 +204,36 @@ public:
     }
 
     template<typename Fn>
-    void measureOne(ex6::LatencyRecorder& rec, const char* label, uint8_t page_id, uint8_t comp_id,
+    void measureOne(ex6::LatencyRecorder& rec, const char* label, uint8_t page, uint8_t comp,
         Fn&& fn) noexcept
     {
-        measureOne(rec, label, page_id, comp_id, page_id, comp_id, static_cast<Fn&&>(fn));
+        measureOne(rec, label, page, comp, page, comp, static_cast<Fn&&>(fn));
     }
 
-    void measureSwitchPage(ex6::LatencyRecorder& rec, uint8_t page_id) noexcept
+    void measureSwitchPage(ex6::LatencyRecorder& rec, uint8_t page) noexcept
     {
         /** `switchPage` enqueue: маршрут tx p0 c0; ACK панели — тоже p0 c0. */
-        measureOne(rec, "switchPage", page_id, 0u, 0u, 0u, [&]() noexcept { switchPage(page_id); });
+        measureOne(rec, "switchPage", page, 0u, 0u, 0u, [&]() noexcept { switchPage(page); });
     }
 
-    void onError(const msg::Status& status, uint8_t page_id, uint8_t comp_id) noexcept override
+    void onStatus(const msg::Status& status, Route route) noexcept override
     {
-        Application::onError(status, page_id, comp_id);
+        Application::onStatus(status, route);
 
         if (status.isAppError()) {
             const AppError reporter = appErrorReporter(status);
             NEX_DBG("[ex6-rx] t=%010lu AppError %s %s p%u c%u\n", static_cast<unsigned long>(nowMs()),
                 cstr(reporter), appErrorDetailCstr(reporter, appErrorDetail(status)),
-                static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id));
+                static_cast<unsigned>(route.page), static_cast<unsigned>(route.comp));
         } else {
             NEX_DBG("[ex6-rx] t=%010lu %s (0x%02X) p%u c%u", static_cast<unsigned long>(nowMs()),
                 cstr(status.status), static_cast<unsigned>(static_cast<uint8_t>(status.status)),
-                static_cast<unsigned>(page_id), static_cast<unsigned>(comp_id));
+                static_cast<unsigned>(route.page), static_cast<unsigned>(route.comp));
         }
 
         if (_cmd_label != nullptr) {
-            NEX_DBG("         after tx \"%s\" expect p%u c%u\n", _cmd_label, static_cast<unsigned>(_cmd_page),
-                static_cast<unsigned>(_cmd_comp));
+            NEX_DBG("         after tx \"%s\" expect p%u c%u\n", _cmd_label,
+                static_cast<unsigned>(_cmd_route.page), static_cast<unsigned>(_cmd_route.comp));
         } else {
             NEX_DBG("\n");
         }
@@ -246,7 +244,7 @@ public:
         if (status.isAppError())
             return;
 
-        if (!responseMatchesExpected(page_id, comp_id))
+        if (!responseMatchesExpected(route))
             return;
 
         if (status.status != msg::Status::Code::Success)
@@ -259,10 +257,7 @@ public:
             _got_success = true;
     }
 
-    [[nodiscard]] bool responseMatchesExpected(uint8_t page_id, uint8_t comp_id) const noexcept
-    {
-        return page_id == _cmd_page && comp_id == _cmd_comp;
-    }
+    [[nodiscard]] bool responseMatchesExpected(Route route) const noexcept { return route == _cmd_route; }
 
     void runLatencyBenchOnce() noexcept
     {
@@ -318,8 +313,7 @@ private:
     bool _got_success = false;
     uint32_t _response_tick = 0u;
     const char* _cmd_label = nullptr;
-    uint8_t _cmd_page = 0u;
-    uint8_t _cmd_comp = 0u;
+    Route _cmd_route{};
     uint8_t _last_rx_status = 0u;
 };
 

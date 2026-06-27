@@ -11,6 +11,8 @@
 
 namespace nex {
 
+/** Синтетический `msg::Status::AppError`: упаковка ошибок MCU (`tag_1` / `tag_2`). */
+
 namespace detail {
 
 using NexLogTickFn = uint32_t (*)() noexcept;
@@ -59,6 +61,7 @@ inline msg::Status appErrorFrom(Gateway::Status st) noexcept {
     return makeAppError(AppError::Gateway, static_cast<uint16_t>(st));
 }
 
+/** `tag_2` — `BIF::IByteStream::Status` (`OK` / `OverFlowRX` / `DataError`). */
 inline msg::Status appErrorFrom(BIF::IByteStream::Status st) noexcept {
     return makeAppError(AppError::Stream, static_cast<uint16_t>(st));
 }
@@ -106,8 +109,9 @@ inline const char* appErrorDetailCstr(AppError reporter, uint16_t detail) noexce
     }
 }
 
-std::size_t formatStatusMessage(const msg::Status& st, uint8_t page_id, uint8_t comp_id, char* buf, size_t cap) noexcept;
+std::size_t formatStatusMessage(const msg::Status& st, Route route, char* buf, size_t cap) noexcept;
 
-void printStatusError(const msg::Status& st, uint8_t page_id, uint8_t comp_id) noexcept;
+/** Лог в UART при `NEX_DEBUG`; иначе no-op. */
+void printStatusError(const msg::Status& st, Route route = {}) noexcept;
 
 } // namespace nex

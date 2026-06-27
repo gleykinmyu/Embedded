@@ -8,37 +8,8 @@
 #include "nexMessages.hpp"
 
 /**
- * @file nexCommands.hpp
- *
- * **Список классов команд** (исходящие UART-инструкции NIS). Базовый тип: `nex::Command`.
- * Ожидаемый ответ UART и маршрутизация — в `Transaction`; обработка — в `Application` (`core/nexSession.hpp`).
- *
- * | Пространство имён   | Класс                  | База                   |
- * |---------------------|------------------------|------------------------|
- * | `nex`               | `Command`              | —                      |
- * | `nex::cmd::assign`  | `Text`                 | `Command`              |
- * | `nex::cmd::assign`  | `TextSubtract`         | `Command`              |
- * | `nex::cmd::assign`  | `Numeric`              | `Command`              |
- * | `nex::cmd`          | `System`               | `Command`              |
- * | `nex::cmd`          | `Page`                 | `Command`              |
- * | `nex::cmd`          | `Cfgpio`               | `Command`              |
- * | `nex::cmd`          | `Get`                  | `Command`              |
- * | `nex::cmd`          | `String`               | `Command`              |
- * | `nex::cmd`          | `Component`            | `Command`              |
-     * | `nex::cmd`          | `FileStream`           | `Command`              |
-     * | `nex::cmd`          | `Move`                 | `Command`              |
- * | `nex::cmd`          | `WaveForm`             | `Command`              |
- * | `nex::cmd`          | `Eeprom`               | `Command`              |
- * | `nex::cmd`          | `Play`                 | `Command`              |
- * | `nex::cmd`          | `File`                 | `Command`              |
- * | `nex::cmd`          | `Directory`            | `Command`              |
- * | `nex::cmd::gui`     | `ClearScreen`          | `Command`              |
- * | `nex::cmd::gui`     | `Picture`              | `Command`              |
- * | `nex::cmd::gui`     | `PictureCrop`          | `Command`              |
- * | `nex::cmd::gui`     | `TextInRegion`         | `Command`              |
- * | `nex::cmd::gui`     | `Rect`                 | `Command`              |
- * | `nex::cmd::gui`     | `Line`                 | `Command`              |
- * | `nex::cmd::gui`     | `Circle`               | `Command`              |
+ * Исходящие UART-инструкции NIS. Базовый тип — `nex::Command`; ожидаемый ответ и маршрут — `Transaction` / `Application`.
+ * Пространства: `cmd::assign`, `cmd::gui`, `cmd::Page`, `cmd::Get`, …
  */
 
 namespace nex {
@@ -779,6 +750,15 @@ namespace gui {
     /** `xstr`: `pco`/`bco` — значение 565 (`Color::raw`); текст — в кавычках. */
     class TextInRegion final : public Command {
     public:
+        /** Запас под префикс `xstr` и числовые поля до quoted-текста. */
+        static constexpr uint16_t kCommandOverhead = 80u;
+
+        /** Макс. длина строки в кавычках (байт текста, ≤ `TxFrame::MAX_PAYLOAD`). */
+        static constexpr uint16_t maxTextLength =
+            (TxFrame::MAX_PAYLOAD > kCommandOverhead)
+            ? static_cast<uint16_t>(TxFrame::MAX_PAYLOAD - kCommandOverhead)
+            : 0u;
+
         TextInRegion(Region region, FontId fontId, Color fg, Color bg, HAlign hAlign, VAlign vAlign,
             BG fill, const char* contentToken) noexcept
             : _region(region)
