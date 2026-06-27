@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../core/nexCommands.hpp"
-#include "../core/nexTypes.hpp"
 
 namespace nex {
 

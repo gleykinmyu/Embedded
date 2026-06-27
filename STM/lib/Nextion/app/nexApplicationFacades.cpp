@@ -56,8 +56,8 @@ void AppTouch::sendXY(bool enable) const noexcept {
     enqueueSysVarNumericAssign(_app, kSysSendxy, enable ? 1 : 0);
 }
 
-void AppTouch::touchSwitch(bool enabled) const noexcept {
-    _app.enqueue(Transaction{cmd::Component::tsw(cmd::TopLayer, enabled), 0u, 0u});
+void AppTouch::setAllTouchable(bool on) const noexcept {
+    _app.enqueue(Transaction{cmd::Component::tsw(cmd::TopLayer, on), 0u, 0u});
 }
 
 void AppTouch::calibrate() const noexcept {

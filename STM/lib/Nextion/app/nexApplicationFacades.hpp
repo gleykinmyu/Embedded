@@ -43,8 +43,8 @@ class AppTouch {
 public:
     /** Вкл./выкл. отчёт координат **0x67** / **0x68** (`sendxy`, NIS §6.10). */
     void sendXY(bool enable) const noexcept;
-    /** `tsw 255,…` — touch для всех компонентов (NIS). */
-    void touchSwitch(bool enabled) const noexcept;
+    /** `tsw 255,…` — вкл./выкл. touch на всех компонентах (NIS). */
+    void setAllTouchable(bool on) const noexcept;
 
     SysVar<int16_t> tch[4];
 

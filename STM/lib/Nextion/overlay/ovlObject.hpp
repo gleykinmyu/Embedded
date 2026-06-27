@@ -11,8 +11,8 @@ namespace ovl {
 
 class Widget;
 
-/** Лист или ребёнок `Widget`: геометрия в координатах родителя, sibling z-order ( `_above` — выше ).
- *  Дети одного `Widget` не должны пересекаться по `screenRegion()` — partial redraw не поддерживается. */
+/** Лист или ребёнок `Widget`: геометрия в координатах родителя, sibling z-order (`_above` — выше).
+ *  Дети могут перекрываться; style redraw — `Widget::redrawObject()`. */
 class Object {
 public:
     virtual ~Object() = default;

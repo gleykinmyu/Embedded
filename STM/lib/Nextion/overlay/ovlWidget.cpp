@@ -69,16 +69,36 @@ void Widget::draw(const AppCanvas& cs) const {
     drawChildren(cs);
 }
 
-Object* Widget::hitTarget(const Point screenPt) noexcept {
-    if (!Object::hitTarget(screenPt))
-        return nullptr;
+void Widget::drawBackgroundRegion(const AppCanvas& cs, const Region clip) const {
+    (void)cs;
+    (void)clip;
+}
 
+void Widget::redrawObject(const Object& obj, const AppCanvas& cs) const noexcept {
+    drawBackgroundRegion(cs, obj.screenRegion());
+    obj.draw(cs);
+}
+
+Object* Widget::takeRedrawTarget() noexcept {
+    Object* const t = _redrawTarget;
+    _redrawTarget = nullptr;
+    return t;
+}
+
+Object* Widget::hitChildTarget(const Point screenPt) noexcept {
     for (Object* n = _childTop; n != nullptr; n = n->below()) {
         if (Object* const hit = n->hitTarget(screenPt))
             return hit;
     }
-
     return nullptr;
+}
+
+Object* Widget::hitTarget(const Point screenPt) noexcept {
+    if (!Object::hitTarget(screenPt))
+        return nullptr;
+    if (Object* const child = hitChildTarget(screenPt))
+        return child;
+    return this;
 }
 
 bool Widget::onTouchXY(const msg::evTouchXY& e) noexcept {
@@ -87,20 +107,37 @@ bool Widget::onTouchXY(const msg::evTouchXY& e) noexcept {
 
     if (e.state == TouchState::Press) {
         _pressedChild = nullptr;
-        if (Object* const hit = hitTarget(e.pos)) {
-            if (hit->onTouchXY(e)) {
-                _pressedChild = hit;
+
+        if (!Object::hitTarget(e.pos))
+            return false;
+
+        if (Object* const child = hitChildTarget(e.pos)) {
+            if (child->onTouchXY(e)) {
+                _pressedChild = child;
+                _redrawTarget = child;
                 return true;
             }
         }
-        return false;
+
+        _pressedChild = this;
+        onTouch(e);
+        return true;
+    }
+
+    if (_pressedChild == this) {
+        onTouch(e);
+        if (e.state == TouchState::Release)
+            _pressedChild = nullptr;
+        return true;
     }
 
     if (_pressedChild != nullptr) {
-        const bool consumed = _pressedChild->onTouchXY(e);
+        Object* const target = _pressedChild;
+        const bool consumed = target->onTouchXY(e);
+        _redrawTarget = target;
         if (e.state == TouchState::Release) {
-            if (_pressedChild->screenRegion().contains(e.pos))
-                onClick(_pressedChild);
+            if (target->screenRegion().contains(e.pos))
+                onClick(target);
             _pressedChild = nullptr;
         }
         return consumed;
@@ -115,10 +152,6 @@ void Widget::show(Overlay& ovl, const bool modal) noexcept {
 
 void Widget::hide(Overlay& ovl) noexcept {
     ovl.hideWidget(*this);
-}
-
-void Widget::redraw(const Overlay& ovl) const noexcept {
-    ovl.redrawWidget(*this);
 }
 
 } // namespace nex::ovl

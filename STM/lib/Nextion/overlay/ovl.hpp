@@ -2,7 +2,7 @@
 
 /**
  * McUI — canvas overlay поверх HMI: `Object`, `Widget`, `Overlay` на `Application`.
- * `Widget::show(overlay)` / `hide` — `sendxy`, `touchSwitch`, draw.
+ * `Widget::show(overlay)` / `hide` — `sendxy`, `touch.setAllTouchable`, draw.
  */
 
 #include "ovlStyle.hpp"

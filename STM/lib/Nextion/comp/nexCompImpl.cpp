@@ -3,9 +3,9 @@
 namespace nex {
 namespace comp {
 
-void TouchArea::touchSwitch(bool enabled) noexcept
+void TouchArea::setTouchable(bool on) noexcept
 {
-    page.app.enqueue(Transaction{cmd::Component::tsw(name, enabled), page.ID, id()});
+    page.app.enqueue(Transaction{cmd::Component::tsw(name, on), page.ID, id()});
 }
 
 void TouchArea::touch(TouchState state) noexcept

@@ -9,7 +9,7 @@ class Application;
 
 namespace ovl {
 
-/** McUI-слой: стек `Widget` (могут перекрываться), `sendxy` / `touchSwitch`, блок `evTouch` при modal. */
+/** McUI-слой: стек `Widget` (могут перекрываться), `sendxy` / `touch.setAllTouchable`, блок `evTouch` при modal. */
 class Overlay {
 public:
     explicit Overlay(Application& app) noexcept;
@@ -21,11 +21,8 @@ public:
     void showWidget(Widget& widget, bool modal = false) noexcept;
     void hideWidget(Widget& widget) noexcept;
 
-    /** Touch: сверху вниз; redraw — обработавший `Widget` и всё выше (перекрытие виджетов). */
-    void dispatchTouchXY(const msg::evTouchXY& e) const noexcept;
-
-    /** Перерисовать shown-виджет; виджеты выше — только при пересечении `screenRegion()`. */
-    void redrawWidget(const Widget& widget) const noexcept;
+    /** Touch: сверху вниз; modal-промах блокирует стек под собой. */
+    void dispatchTouchXY(const msg::evTouchXY& e) noexcept;
 
     /** Перерисовать весь shown-стек снизу вверх (после `hide`). */
     void redrawShownWidgets() const noexcept;
@@ -40,8 +37,12 @@ private:
     Widget _root;
     Widget* _modalWidget = nullptr;
     bool _sendXY = false;
+    bool _touchOff = false;
 
     void updateInputState() noexcept;
+
+    /** Поднять в стеке; `true` — z-order изменился. */
+    bool bringWidgetToFront(Widget& widget) noexcept;
 
     [[nodiscard]] Widget* bottomWidget() const noexcept;
 };

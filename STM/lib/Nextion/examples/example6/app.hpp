@@ -333,7 +333,7 @@ inline void benchPageA(LatencyBenchApp& app, LatencyRecorder& rec, ex5::PageAWid
     app.measureOne(rec, "timer.en", p, w.timer.id(), [&]() noexcept { w.timer.enable(); });
     app.measureOne(rec, "nvar.val", p, w.nvar.id(), [&]() noexcept { w.nvar.val = 12345; });
     app.measureOne(rec, "svar.txt", p, w.svar.id(), [&]() noexcept { w.svar.txt.set("MCU"); });
-    app.measureOne(rec, "hotspot.tsw", p, w.hotspot.id(), [&]() noexcept { w.hotspot.touchSwitch(true); });
+    app.measureOne(rec, "hotspot.tsw", p, w.hotspot.id(), [&]() noexcept { w.hotspot.setTouchable(true); });
     app.measureOne(rec, "qrcode.txt", p, w.qrcode.id(), [&]() noexcept { w.qrcode.setText("nextion.tech"); });
     app.measureOne(rec, "qrcode.pco", p, w.qrcode.id(), [&]() noexcept { w.qrcode.setPenColor(kMark); });
     app.measureOne(rec, "picture.pic", p, w.picture.id(), [&]() noexcept { w.picture.setImage(kPic); });

@@ -187,6 +187,10 @@ void MsgBox::drawBackground(const AppCanvas& cs) const {
     }
 }
 
+void MsgBox::drawBackgroundRegion(const AppCanvas& cs, const Region clip) const {
+    cs.rect_fill(clip, kMsgBoxFrame.bg);
+}
+
 void MsgBox::onClick(Object* const target) noexcept {
     MsgButton* btn = nullptr;
     for (MsgButton& b : _btns) {

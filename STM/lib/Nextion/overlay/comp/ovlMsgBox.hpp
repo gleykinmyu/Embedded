@@ -148,6 +148,7 @@ public:
 private:
     void layout() noexcept override;
     void drawBackground(const AppCanvas& cs) const override;
+    void drawBackgroundRegion(const AppCanvas& cs, Region clip) const override;
     void onClick(Object* target) noexcept override;
 
     void applyShow(Preset preset, Action defaultAction, uint8_t tag) noexcept;

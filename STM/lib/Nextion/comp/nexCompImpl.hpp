@@ -52,8 +52,8 @@ public:
     attr::NumRO<uint16_t> h;
 #endif
 
-    /** NIS `tsw obj,0|1` — touch switch компонента. */
-    void touchSwitch(bool enabled) noexcept;
+    /** NIS `tsw obj,0|1` — вкл./выкл. touch на компоненте. */
+    void setTouchable(bool on) noexcept;
 
     /** NIS `click obj,0|1` — программное нажатие/отпускание. */
     void touch(TouchState state = TouchState::Press) noexcept;

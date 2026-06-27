@@ -184,7 +184,7 @@ namespace nex {
      *   ├── TouchCap (5)                       // нет C++-листа
      *   ├── FileStream                         // nexExComponents: val; qty(RO); en(RO); open/read/write/close/find
      *   │
-     *   └── TouchArea                          // x, y, w, h; touchSwitch; click
+     *   └── TouchArea                          // x, y, w, h; setTouchable; click
      *       ├── Hotspot
      *       │
      *       └── Drawable                         // drag, aph, effect; refresh; show/hide; placeAbove; move

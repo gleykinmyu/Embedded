@@ -49,8 +49,13 @@ void Overlay::updateInputState() noexcept {
         app.touch.sendXY(false);
     }
 
-    if (_modalWidget != nullptr)
-        app.touch.touchSwitch(false);
+    if (_modalWidget != nullptr && !_touchOff) {
+        _touchOff = true;
+        app.touch.setAllTouchable(false);
+    } else if (_modalWidget == nullptr && _touchOff) {
+        _touchOff = false;
+        app.touch.setAllTouchable(true);
+    }
 }
 
 Widget* Overlay::topWidget() const noexcept {
@@ -78,24 +83,31 @@ void Overlay::redrawShownWidgets() const noexcept {
         w->draw(app.cs);
 }
 
-void Overlay::redrawWidget(const Widget& widget) const noexcept {
+bool Overlay::bringWidgetToFront(Widget& widget) noexcept {
     if (widget.parent() != &_root || !widget.isVisible())
-        return;
-    const Region base = widget.screenRegion();
-    for (const Widget* w = &widget; w != nullptr; w = nextAbove(w)) {
-        if (w == &widget || base.overlaps(w->screenRegion()))
-            w->draw(app.cs);
-    }
+        return false;
+    if (topWidget() == &widget)
+        return false;
+    _root.addChildTop(widget);
+    return true;
 }
 
-void Overlay::dispatchTouchXY(const msg::evTouchXY& e) const noexcept {
+void Overlay::dispatchTouchXY(const msg::evTouchXY& e) noexcept {
     for (Widget* w = topWidget(); w != nullptr; w = nextBelow(w)) {
-        if (w->onTouchXY(e)) {
-            redrawWidget(*w);
-            return;
+        if (!w->onTouchXY(e)) {
+            if (w == _modalWidget)
+                return;
+            continue;
         }
-        if (w == _modalWidget)
-            return;
+
+        const bool raised =
+            e.state == TouchState::Press && w->raiseOnPress() && bringWidgetToFront(*w);
+        Object* const target = w->takeRedrawTarget();
+        if (raised)
+            w->draw(app.cs);
+        else if (target != nullptr)
+            w->redrawObject(*target, app.cs);
+        return;
     }
 }
 

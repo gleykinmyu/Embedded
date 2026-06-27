@@ -103,8 +103,8 @@ void AppFileSystem::dir_find(const char* pathQuoted, const AttrRef& dstNumAttr) 
 }
 
 AppAudio::AppAudio(Application& a) noexcept
-    : _app(a)
-    , ch{AppAudioChannel(a, 0u), AppAudioChannel(a, 1u)}
+    : ch{AppAudioChannel(a, 0u), AppAudioChannel(a, 1u)}
+    , _app(a)
 {}
 
 void AppAudio::setEqLow(uint8_t level) const noexcept {

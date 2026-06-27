@@ -1,8 +1,8 @@
 /**
- * Пример 1: две страницы, touch, MsgBox.
- * Приложение: lib/Nextion/examples/example1/app.hpp
+ * Пример 7: McUI overlay — z-order, перекрытие виджетов, modal MsgBox.
+ * Приложение: lib/Nextion/examples/example7/app.hpp
  *
- * Сборка: pio run -e example1
+ * Сборка: pio run -e example7
  */
 
 #include <stm32f4xx.h>
@@ -10,12 +10,11 @@
 
 #include "Debug.h"
 #include "server.h"
-#include "ff.h"
 
 #include "nex.hpp"
-#include "examples/example1/app.hpp"
+#include "examples/example7/app.hpp"
 
-nex::examples::TwoPageTouchDemoApp app(board.serial2, boardClockMs);
+nex::examples::OverlayZOrderDemoApp app(board.serial2, boardClockMs);
 
 int main(void)
 {
@@ -25,12 +24,14 @@ int main(void)
     board.serial1.open(250000);
     board.serial2.open(250000);
 
-    NEX_DBG("Nextion example1: two-page demo\n");
+    NEX_DBG("Nextion example7: overlay z-order demo\n");
 
     board.led.Off();
     uint32_t last_blink_ms = 0;
 
-    app.restartScreen();
+    app.boot();
+    app.touch.setAllTouchable(false);
+
     while (1) {
         const uint32_t now = board.GetTick();
         if ((now - last_blink_ms) >= 1000u) {

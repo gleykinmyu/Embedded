@@ -27,7 +27,7 @@ int main(void)
     uint32_t last_blink_ms = 0;
 
     app.restartScreen();
-    app.touch.touchSwitch(true);
+    app.touch.setAllTouchable(true);
 
     {
         const uint32_t t0 = board.GetTick();

@@ -47,7 +47,7 @@ inline void demoTouchArea(TouchArea& w) noexcept
     w.x = 10u;
     w.y = 20u;
 #endif
-    w.touchSwitch(true);
+    w.setTouchable(true);
 }
 
 inline void demoDrawable(Drawable& w) noexcept

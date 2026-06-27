@@ -489,7 +489,7 @@ private:
             b1.setVisible(on);
             break;
         case 11u:
-            b2.touchSwitch(on);
+            b2.setTouchable(on);
             break;
         default:
             b2.pressed.font.setColor(color);
