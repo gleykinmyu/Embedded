@@ -1,8 +1,9 @@
 {
   "name": "Interfaces",
   "version": "1.0.0",
-  "description": "Shared interfaces (ObjRegistry, toStr, …)",
+  "description": "Shared interfaces (IDisk, serial, ObjRegistry, …)",
   "build": {
-    "srcFilter": ["+<*>", "-<*.hpp>"]
+    "libArchive": false,
+    "srcFilter": "+<idisk/*.cpp>"
   }
 }

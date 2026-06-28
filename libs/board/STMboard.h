@@ -28,7 +28,5 @@ class CBaseBoard : public CHW_Core{
 public:
     CBaseBoard() : CHW_Core() { };
 
-    //Board HW
     CHW_Led led;
-
 };

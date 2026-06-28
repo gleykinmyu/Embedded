@@ -51,6 +51,7 @@
         "--query-driver=**/arm-none-eabi-g++.exe",
         "--query-driver=**/arm-none-eabi-gcc.exe"
     ],
+    // После pio run -t compiledb: clangd: Restart language server
     "workbench.sideBar.location": "left",
     "workbench.activityBar.location": "default",
     "workbench.activityBar.orientation": "vertical"

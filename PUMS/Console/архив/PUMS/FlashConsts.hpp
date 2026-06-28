@@ -1,0 +1,44 @@
+#ifndef FLASH_CONSTS_H
+#define FLASH_CONSTS_H
+
+#include <cstring>
+
+#define FLASH_STR_LENGTH 300 
+
+#define FLASH_STR_LIST \
+    FLASH_STRING(MSG_FILE_SAVED, "") \
+    FLASH_STRING(MSG_FILE_EXISTS, "") \
+    FLASH_STRING(MSG_FILE_EXISTS_REWRITE, "") \
+    FLASH_STRING(MSG_FILE_NOT_EXISTS, "") \
+    FLASH_STRING(MSG_FILENAME_EMPTY, "") \
+    FLASH_STRING(MSG_FILENAME_TEMPLATE, "") \
+    FLASH_STRING(MSG_FILE_DEL_ACK, "") \
+    FLASH_STRING(MSG_FILE_DEL_OPENED, "") \
+    FLASH_STRING(MSG_FILE_DELETED, "") \
+    FLASH_STRING(MSG_SCENE_CLEAR_ACK, "") \
+    FLASH_STRING(CONST_FILE_NEWNAME, "") \
+    FLASH_STRING(CONST_SCENE_NEWNAME, "") \
+    FLASH_STRING(CONST_SCENE_PAGE_1, "") \
+    FLASH_STRING(CONST_SCENE_PAGE_2, "") \
+    FLASH_STRING(CONST_SCENE_PAGE_3, "") \
+    FLASH_STRING(CONST_SCENE_PAGE_4, "") \
+
+enum EFlashStrID {
+    #define FLASH_STRING(m,s) FSTR_##m,
+    FLASH_STR_LIST
+    FSTR_QT
+    #undef FLASH_STRING
+};
+
+const char _PGM_FlashStr [][FLASH_STR_LENGTH] = {
+    #define FLASH_STRING(m,s) s,
+    FLASH_STR_LIST
+    "End of list"
+    #undef FLASH_STRING
+};
+
+
+
+const char* GetFlashStr(EFlashStrID ID);
+
+#endif

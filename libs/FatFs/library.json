@@ -1,0 +1,9 @@
+{
+  "name": "FatFs",
+  "version": "0.12.3",
+  "description": "ChaN FatFs R0.12c; ffconf.h — в src проекта",
+  "build": {
+    "libArchive": false,
+    "srcFilter": "+<ff.c> +<option/*.c>"
+  }
+}

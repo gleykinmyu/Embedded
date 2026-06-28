@@ -1,0 +1,9 @@
+{
+  "name": "debug",
+  "version": "1.0.0",
+  "description": "Debug macros and UART console helpers (Debug.h)",
+  "build": {
+    "libArchive": false,
+    "srcFilter": "+<Debug.cpp>"
+  }
+}
