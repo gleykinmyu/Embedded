@@ -14,12 +14,12 @@ inline constexpr uint8_t kPageCount = 7u;
 // GENERATED-HMI-END:summary
 
 // GENERATED-HMI-BEGIN:pages
-#define HMI_PAGE_pgWait(X) \
-    X(pgWait, 0) \
-    X(t0, 1) \
-    X(tPress, 2) \
-    X(tmLabel, 3) \
-    X(tSt, 4)
+#define HMI_PAGE_pgWait(X, ...) \
+    X(pgWait, 0, ##__VA_ARGS__) \
+    X(t0, 1, ##__VA_ARGS__) \
+    X(tPress, 2, ##__VA_ARGS__) \
+    X(tmLabel, 3, ##__VA_ARGS__) \
+    X(tSt, 4, ##__VA_ARGS__)
 
 /** Page "pgWait" (panel page id 0). */
 struct Page_pgWait {
@@ -34,14 +34,14 @@ struct Page_pgWait {
     };
 };
 
-#define HMI_PAGE_pgFiles(X) \
-    X(pgFiles, 0) \
-    X(fSelect, 1) \
-    X(bCmd, 2) \
-    X(bCancel, 3) \
-    X(FileName, 4) \
-    X(tTitle, 5) \
-    X(tSt, 6)
+#define HMI_PAGE_pgFiles(X, ...) \
+    X(pgFiles, 0, ##__VA_ARGS__) \
+    X(fSelect, 1, ##__VA_ARGS__) \
+    X(bCmd, 2, ##__VA_ARGS__) \
+    X(bCancel, 3, ##__VA_ARGS__) \
+    X(FileName, 4, ##__VA_ARGS__) \
+    X(tTitle, 5, ##__VA_ARGS__) \
+    X(tSt, 6, ##__VA_ARGS__)
 
 /** Page "pgFiles" (panel page id 1). */
 struct Page_pgFiles {
@@ -56,28 +56,28 @@ struct Page_pgFiles {
     };
 };
 
-#define HMI_PAGE_mScn(X) \
-    X(mScn, 0) \
-    X(t0, 1) \
-    X(t2, 2) \
-    X(t1, 3) \
-    X(bsmClear, 4) \
-    X(bsmRecord, 5) \
-    X(bsmRename, 6) \
-    X(bsmScene, 7) \
-    X(tmClear, 8) \
-    X(tmRecord, 9) \
-    X(tmRename, 10) \
-    X(q0, 11) \
-    X(bS0, 12) \
-    X(bS1, 13) \
-    X(bS5, 14) \
-    X(bS4, 15) \
-    X(bS6, 16) \
-    X(bS7, 17) \
-    X(bS3, 18) \
-    X(bS2, 19) \
-    X(tSt, 20)
+#define HMI_PAGE_mScn(X, ...) \
+    X(mScn, 0, ##__VA_ARGS__) \
+    X(t0, 1, ##__VA_ARGS__) \
+    X(t2, 2, ##__VA_ARGS__) \
+    X(t1, 3, ##__VA_ARGS__) \
+    X(bsmClear, 4, ##__VA_ARGS__) \
+    X(bsmRecord, 5, ##__VA_ARGS__) \
+    X(bsmRename, 6, ##__VA_ARGS__) \
+    X(bsmScene, 7, ##__VA_ARGS__) \
+    X(tmClear, 8, ##__VA_ARGS__) \
+    X(tmRecord, 9, ##__VA_ARGS__) \
+    X(tmRename, 10, ##__VA_ARGS__) \
+    X(q0, 11, ##__VA_ARGS__) \
+    X(bS0, 12, ##__VA_ARGS__) \
+    X(bS1, 13, ##__VA_ARGS__) \
+    X(bS5, 14, ##__VA_ARGS__) \
+    X(bS4, 15, ##__VA_ARGS__) \
+    X(bS6, 16, ##__VA_ARGS__) \
+    X(bS7, 17, ##__VA_ARGS__) \
+    X(bS3, 18, ##__VA_ARGS__) \
+    X(bS2, 19, ##__VA_ARGS__) \
+    X(tSt, 20, ##__VA_ARGS__)
 
 /** Page "mScn" (panel page id 2). */
 struct Page_mScn {
@@ -92,17 +92,17 @@ struct Page_mScn {
     };
 };
 
-#define HMI_PAGE_mFile(X) \
-    X(mFile, 0) \
-    X(t0, 1) \
-    X(t2, 2) \
-    X(t1, 3) \
-    X(b1, 4) \
-    X(b0, 5) \
-    X(b2, 6) \
-    X(b3, 7) \
-    X(b4, 8) \
-    X(bFile, 9)
+#define HMI_PAGE_mFile(X, ...) \
+    X(mFile, 0, ##__VA_ARGS__) \
+    X(t0, 1, ##__VA_ARGS__) \
+    X(t2, 2, ##__VA_ARGS__) \
+    X(t1, 3, ##__VA_ARGS__) \
+    X(b1, 4, ##__VA_ARGS__) \
+    X(b0, 5, ##__VA_ARGS__) \
+    X(b2, 6, ##__VA_ARGS__) \
+    X(b3, 7, ##__VA_ARGS__) \
+    X(b4, 8, ##__VA_ARGS__) \
+    X(bFile, 9, ##__VA_ARGS__)
 
 /** Page "mFile" (panel page id 3). */
 struct Page_mFile {
@@ -117,15 +117,15 @@ struct Page_mFile {
     };
 };
 
-#define HMI_PAGE_MsgBox(X) \
-    X(MsgBox, 0) \
-    X(t0, 1) \
-    X(t1, 2) \
-    X(bCancel, 3) \
-    X(bYes, 4) \
-    X(tMsg, 5) \
-    X(bOK, 6) \
-    X(bNo, 7)
+#define HMI_PAGE_MsgBox(X, ...) \
+    X(MsgBox, 0, ##__VA_ARGS__) \
+    X(t0, 1, ##__VA_ARGS__) \
+    X(t1, 2, ##__VA_ARGS__) \
+    X(bCancel, 3, ##__VA_ARGS__) \
+    X(bYes, 4, ##__VA_ARGS__) \
+    X(tMsg, 5, ##__VA_ARGS__) \
+    X(bOK, 6, ##__VA_ARGS__) \
+    X(bNo, 7, ##__VA_ARGS__)
 
 /** Page "MsgBox" (panel page id 4). */
 struct Page_MsgBox {
@@ -140,55 +140,55 @@ struct Page_MsgBox {
     };
 };
 
-#define HMI_PAGE_pgWork(X) \
-    X(pgWork, 0) \
-    X(tc, 1) \
-    X(b0, 2) \
-    X(b1, 3) \
-    X(b2, 4) \
-    X(b3, 5) \
-    X(b4, 6) \
-    X(b5, 7) \
-    X(b6, 8) \
-    X(b7, 9) \
-    X(b8, 10) \
-    X(b9, 11) \
-    X(b10, 12) \
-    X(b11, 13) \
-    X(b12, 14) \
-    X(b13, 15) \
-    X(b14, 16) \
-    X(b15, 17) \
-    X(b16, 18) \
-    X(b17, 19) \
-    X(b18, 20) \
-    X(b19, 21) \
-    X(b20, 22) \
-    X(b21, 23) \
-    X(b22, 24) \
-    X(b23, 25) \
-    X(ctrlClear, 26) \
-    X(ctrlSelAll, 27) \
-    X(bS0, 28) \
-    X(bS1, 29) \
-    X(bS2, 30) \
-    X(bS3, 31) \
-    X(bS4, 32) \
-    X(bS5, 33) \
-    X(bS6, 34) \
-    X(bS7, 35) \
-    X(bSNext, 36) \
-    X(bSPrev, 37) \
-    X(mFile, 38) \
-    X(t0, 39) \
-    X(tSt, 40) \
-    X(tPg, 41) \
-    X(bsmScene, 42) \
-    X(tmrBlock, 43) \
-    X(sBlock, 44) \
-    X(varScnName, 45) \
-    X(t1, 46) \
-    X(sShow, 47)
+#define HMI_PAGE_pgWork(X, ...) \
+    X(pgWork, 0, ##__VA_ARGS__) \
+    X(tc, 1, ##__VA_ARGS__) \
+    X(b0, 2, ##__VA_ARGS__) \
+    X(b1, 3, ##__VA_ARGS__) \
+    X(b2, 4, ##__VA_ARGS__) \
+    X(b3, 5, ##__VA_ARGS__) \
+    X(b4, 6, ##__VA_ARGS__) \
+    X(b5, 7, ##__VA_ARGS__) \
+    X(b6, 8, ##__VA_ARGS__) \
+    X(b7, 9, ##__VA_ARGS__) \
+    X(b8, 10, ##__VA_ARGS__) \
+    X(b9, 11, ##__VA_ARGS__) \
+    X(b10, 12, ##__VA_ARGS__) \
+    X(b11, 13, ##__VA_ARGS__) \
+    X(b12, 14, ##__VA_ARGS__) \
+    X(b13, 15, ##__VA_ARGS__) \
+    X(b14, 16, ##__VA_ARGS__) \
+    X(b15, 17, ##__VA_ARGS__) \
+    X(b16, 18, ##__VA_ARGS__) \
+    X(b17, 19, ##__VA_ARGS__) \
+    X(b18, 20, ##__VA_ARGS__) \
+    X(b19, 21, ##__VA_ARGS__) \
+    X(b20, 22, ##__VA_ARGS__) \
+    X(b21, 23, ##__VA_ARGS__) \
+    X(b22, 24, ##__VA_ARGS__) \
+    X(b23, 25, ##__VA_ARGS__) \
+    X(ctrlClear, 26, ##__VA_ARGS__) \
+    X(ctrlSelAll, 27, ##__VA_ARGS__) \
+    X(bS0, 28, ##__VA_ARGS__) \
+    X(bS1, 29, ##__VA_ARGS__) \
+    X(bS2, 30, ##__VA_ARGS__) \
+    X(bS3, 31, ##__VA_ARGS__) \
+    X(bS4, 32, ##__VA_ARGS__) \
+    X(bS5, 33, ##__VA_ARGS__) \
+    X(bS6, 34, ##__VA_ARGS__) \
+    X(bS7, 35, ##__VA_ARGS__) \
+    X(bSNext, 36, ##__VA_ARGS__) \
+    X(bSPrev, 37, ##__VA_ARGS__) \
+    X(mFile, 38, ##__VA_ARGS__) \
+    X(t0, 39, ##__VA_ARGS__) \
+    X(tSt, 40, ##__VA_ARGS__) \
+    X(tPg, 41, ##__VA_ARGS__) \
+    X(bsmScene, 42, ##__VA_ARGS__) \
+    X(tmrBlock, 43, ##__VA_ARGS__) \
+    X(sBlock, 44, ##__VA_ARGS__) \
+    X(varScnName, 45, ##__VA_ARGS__) \
+    X(t1, 46, ##__VA_ARGS__) \
+    X(sShow, 47, ##__VA_ARGS__)
 
 /** Page "pgWork" (panel page id 5). */
 struct Page_pgWork {
@@ -203,57 +203,57 @@ struct Page_pgWork {
     };
 };
 
-#define HMI_PAGE_keybdA(X) \
-    X(keybdA, 0) \
-    X(t0, 1) \
-    X(loadpageid, 2) \
-    X(loadcmpid, 3) \
-    X(b0, 4) \
-    X(b251, 5) \
-    X(b1, 6) \
-    X(b2, 7) \
-    X(b3, 8) \
-    X(b4, 9) \
-    X(b5, 10) \
-    X(b6, 11) \
-    X(b7, 12) \
-    X(b8, 13) \
-    X(b200, 14) \
-    X(b20, 15) \
-    X(b21, 16) \
-    X(b22, 17) \
-    X(b23, 18) \
-    X(b24, 19) \
-    X(b25, 20) \
-    X(b26, 21) \
-    X(b27, 22) \
-    X(b28, 23) \
-    X(b220, 24) \
-    X(b40, 25) \
-    X(b41, 26) \
-    X(b42, 27) \
-    X(b43, 28) \
-    X(b44, 29) \
-    X(b45, 30) \
-    X(b46, 31) \
-    X(b47, 32) \
-    X(b240, 33) \
-    X(b48, 34) \
-    X(refshow, 35) \
-    X(tm0, 36) \
-    X(input, 37) \
-    X(show, 38) \
-    X(temp, 39) \
-    X(inputlenth, 40) \
-    X(b9, 41) \
-    X(temp2, 42) \
-    X(tempstr, 43) \
-    X(b10, 44) \
-    X(b11, 45) \
-    X(b29, 46) \
-    X(b30, 47) \
-    X(b242, 48) \
-    X(b210, 49)
+#define HMI_PAGE_keybdA(X, ...) \
+    X(keybdA, 0, ##__VA_ARGS__) \
+    X(t0, 1, ##__VA_ARGS__) \
+    X(loadpageid, 2, ##__VA_ARGS__) \
+    X(loadcmpid, 3, ##__VA_ARGS__) \
+    X(b0, 4, ##__VA_ARGS__) \
+    X(b251, 5, ##__VA_ARGS__) \
+    X(b1, 6, ##__VA_ARGS__) \
+    X(b2, 7, ##__VA_ARGS__) \
+    X(b3, 8, ##__VA_ARGS__) \
+    X(b4, 9, ##__VA_ARGS__) \
+    X(b5, 10, ##__VA_ARGS__) \
+    X(b6, 11, ##__VA_ARGS__) \
+    X(b7, 12, ##__VA_ARGS__) \
+    X(b8, 13, ##__VA_ARGS__) \
+    X(b200, 14, ##__VA_ARGS__) \
+    X(b20, 15, ##__VA_ARGS__) \
+    X(b21, 16, ##__VA_ARGS__) \
+    X(b22, 17, ##__VA_ARGS__) \
+    X(b23, 18, ##__VA_ARGS__) \
+    X(b24, 19, ##__VA_ARGS__) \
+    X(b25, 20, ##__VA_ARGS__) \
+    X(b26, 21, ##__VA_ARGS__) \
+    X(b27, 22, ##__VA_ARGS__) \
+    X(b28, 23, ##__VA_ARGS__) \
+    X(b220, 24, ##__VA_ARGS__) \
+    X(b40, 25, ##__VA_ARGS__) \
+    X(b41, 26, ##__VA_ARGS__) \
+    X(b42, 27, ##__VA_ARGS__) \
+    X(b43, 28, ##__VA_ARGS__) \
+    X(b44, 29, ##__VA_ARGS__) \
+    X(b45, 30, ##__VA_ARGS__) \
+    X(b46, 31, ##__VA_ARGS__) \
+    X(b47, 32, ##__VA_ARGS__) \
+    X(b240, 33, ##__VA_ARGS__) \
+    X(b48, 34, ##__VA_ARGS__) \
+    X(refshow, 35, ##__VA_ARGS__) \
+    X(tm0, 36, ##__VA_ARGS__) \
+    X(input, 37, ##__VA_ARGS__) \
+    X(show, 38, ##__VA_ARGS__) \
+    X(temp, 39, ##__VA_ARGS__) \
+    X(inputlenth, 40, ##__VA_ARGS__) \
+    X(b9, 41, ##__VA_ARGS__) \
+    X(temp2, 42, ##__VA_ARGS__) \
+    X(tempstr, 43, ##__VA_ARGS__) \
+    X(b10, 44, ##__VA_ARGS__) \
+    X(b11, 45, ##__VA_ARGS__) \
+    X(b29, 46, ##__VA_ARGS__) \
+    X(b30, 47, ##__VA_ARGS__) \
+    X(b242, 48, ##__VA_ARGS__) \
+    X(b210, 49, ##__VA_ARGS__)
 
 /** Page "keybdA" (panel page id 6). */
 struct Page_keybdA {

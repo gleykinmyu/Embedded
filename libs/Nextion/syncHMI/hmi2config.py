@@ -185,14 +185,14 @@ def _render_component_xmacro(page: PageInfo, macro_name: str) -> str:
     enum_pairs = _unique_enum_names(page.widgets)
     page_sym = _sanitize_cpp_identifier(page.objname, fallback=f"page_{page.panel_id}")
     entries: List[str] = [
-        f"    X({page_sym}, {K_PAGE_COMP_ID}) \\"
+        f"    X({page_sym}, {K_PAGE_COMP_ID}, ##__VA_ARGS__) \\"
     ]
     for enum_name, widget in enum_pairs:
-        entries.append(f"    X({enum_name}, {widget.panel_id}) \\")
+        entries.append(f"    X({enum_name}, {widget.panel_id}, ##__VA_ARGS__) \\")
     if entries:
         entries[-1] = entries[-1].rstrip(" \\")
 
-    lines = [f"#define {macro_name}(X) \\"]
+    lines = [f"#define {macro_name}(X, ...) \\"]
     lines.extend(entries)
     return "\n".join(lines)
 
