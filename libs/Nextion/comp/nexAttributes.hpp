@@ -37,6 +37,17 @@ inline void assignText(const Component& parent, attr::Id id, const char* text) n
         parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
+/** MCU: `append` строкового атрибута без зеркала (NIS `+=`, только исходящая команда). */
+inline void appendText(const Component& parent, attr::Id id, const char* text) noexcept
+{
+    if (text == nullptr || *text == '\0')
+        return;
+    const AttrRef target{parent.name, attr::literal(id)};
+    parent.page.app.enqueue(Transaction{
+        cmd::assign::Text(target, text, cmd::assign::Text::Op::Append),
+        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+}
+
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
 inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString& response) noexcept {
     if (buf_cap == 0u)

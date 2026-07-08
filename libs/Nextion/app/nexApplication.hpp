@@ -65,6 +65,7 @@ public:
     /** Команды shell экрана (`rest`, `page`, `sendme`, `ref_*`) — без реестра `IAppUI`. */
     void restartScreen() noexcept;
     void switchPage(uint8_t pageId) noexcept;
+    void switchPage(const Literal& pageName) noexcept;
     void requestCurrentPage() noexcept;
     void refreshPage() noexcept;
 
@@ -77,6 +78,9 @@ public:
     void setAddress(uint16_t address) noexcept;
     void setBrightness(uint8_t level) noexcept;
     void setBrightnessDefault(uint8_t level) noexcept;
+
+    /** Числовое присваивание глобальной переменной NIS (`keybdA.loadpageid.val`, …). */
+    void setGlobalVar(const Literal& path, int32_t value) noexcept;
 
     /** Фасады NIS и MCU-виджеты; дружественные поля, не наследуют `Application`. */
     AppCanvas cs;

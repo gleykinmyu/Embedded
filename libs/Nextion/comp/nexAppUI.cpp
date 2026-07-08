@@ -10,6 +10,35 @@ uint8_t IAppUI::pageCount() const noexcept {
     return const_cast<IAppUI*>(this)->storage().registeredCount();
 }
 
+namespace {
+
+constexpr Literal kKeybdAPage{"keybdA"};
+constexpr Literal kKeybdBPage{"keybdB"};
+constexpr Literal kKeybdALoadPageId{"keybdA.loadpageid.val"};
+constexpr Literal kKeybdALoadCmpId{"keybdA.loadcmpid.val"};
+constexpr Literal kKeybdBLoadPageId{"keybdB.loadpageid.val"};
+constexpr Literal kKeybdBLoadCmpId{"keybdB.loadcmpid.val"};
+
+void openKeybd(IAppUI& app, const Literal& keybdPageName, const Literal& loadPageId, const Literal& loadCmpId,
+               const Component& target) noexcept
+{
+    app.setGlobalVar(loadPageId, static_cast<int32_t>(target.page.ID));
+    app.setGlobalVar(loadCmpId, static_cast<int32_t>(target.id()));
+    app.switchPage(keybdPageName);
+}
+
+} // namespace
+
+void IAppUI::showKeybdFull(const Component& target) noexcept
+{
+    openKeybd(*this, kKeybdAPage, kKeybdALoadPageId, kKeybdALoadCmpId, target);
+}
+
+void IAppUI::showKeybdNum(const Component& target) noexcept
+{
+    openKeybd(*this, kKeybdBPage, kKeybdBLoadPageId, kKeybdBLoadCmpId, target);
+}
+
 void IAppUI::reportRegisterError(MISC::RegStatus st, Route route) noexcept {
     if (st != MISC::RegStatus::Ok)
         onStatus(appErrorFrom(st), route);

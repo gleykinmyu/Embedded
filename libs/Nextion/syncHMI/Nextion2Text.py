@@ -7,6 +7,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
 
 from string import whitespace
+import codecs
 import sys
 from pathlib import Path
 import struct
@@ -14,6 +15,11 @@ from typing import List
 import argparse
 import copy
 import json
+
+try:
+    codecs.lookup("ansi")
+except LookupError:
+    codecs.register(lambda name: codecs.lookup("latin-1") if name == "ansi" else None)
 
 
 class IndentList(list):
@@ -1514,10 +1520,11 @@ class Page:
     _defaultSortList = list(Component.attributes["type"]["mapping"].keys())
     defaultTextSort = lambda c: Page._defaultSortList.index(c.rawData["att"]["type"])
 
-    def __init__(self, raw, start: int, size: int, modelSeries: str):
+    def __init__(self, raw, start: int, size: int, modelSeries: str, fileName: str = ""):
         self.__raw = raw
         self.start = start
         self.size = size
+        self.fileName = fileName
         self.components : List[Component] = list()
 
         self.header = PageHeader(self.__raw, self.start)
@@ -1608,12 +1615,40 @@ class HMI:
         0x4fc44fa0: {"short":  "NX1060P101_011", "long": "Nextion 10.0\" Intelligent 1024x600",},
     }
 
+    @staticmethod
+    def _extractPageOrder(mainRaw: bytes) -> List[str]:
+        """
+        Extract page resource order from the `main.HMI` metadata blob.
+
+        The file stores a compact resource table with repeated `pa` entries:
+            b"pa\\0\\0\\0\\0\\0\\0" + b"<n>.pa\\0..."
+        This order matches the editor/project page order better than the physical
+        order of `.pa` objects inside the outer HMI container.
+        """
+        marker = b"pa" + (b"\x00" * 6)
+        ordered = []
+        seen = set()
+        limit = len(mainRaw) - len(marker)
+        for idx in range(limit + 1):
+            if mainRaw[idx : idx + len(marker)] != marker:
+                continue
+            rawName = mainRaw[idx + len(marker) : idx + len(marker) + 16]
+            name = rawName.split(b"\x00", 1)[0].decode("ansi")
+            if not name.endswith(".pa"):
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            ordered.append(name)
+        return ordered
+
     def __init__(self, HMIFilePath):
         objectList = list()
         with open(HMIFilePath, "rb") as HMIFile:
             self.raw = HMIFile.read()
         self.header = HMIHeader(self.raw)
         self.pages = []
+        self.pageOrderFiles = []
         self.programS = ""
         # Parse "main.HMI" first, then the other structures
         for obj in self.header.content:
@@ -1625,11 +1660,18 @@ class HMI:
                 self.modelDesc = self._models[self.modelCRC]["long"]
                 # Strip the NX/TJC prefix, take the T/K/P/X letter at the 4th place and unify P/X to P.
                 self.modelSeries = self.modelName.replace("NX", "").replace("TJC", "")[4].replace("X", "P")
+                self.pageOrderFiles = self._extractPageOrder(self.raw[obj.start : obj.start + obj.size])
         for obj in self.header.content:
             if obj.isPage():
-                self.pages.append(Page(self.raw, obj.start, obj.size, self.modelSeries))
+                self.pages.append(Page(self.raw, obj.start, obj.size, self.modelSeries, fileName=obj.name))
             elif obj.name == "Program.s":
                 self.programS = self.raw[obj.start : obj.start + obj.size].decode("ansi")
+        if self.pageOrderFiles:
+            pagesByFile = {page.fileName: page for page in self.pages}
+            orderedPages = [pagesByFile[name] for name in self.pageOrderFiles if name in pagesByFile]
+            orderedNames = {page.fileName for page in orderedPages}
+            orderedPages.extend(page for page in self.pages if page.fileName not in orderedNames)
+            self.pages = orderedPages
             """
             end = obj.start + len(obj)
             s = self.raw[obj.start:end].decode("ansi")

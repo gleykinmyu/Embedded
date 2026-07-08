@@ -30,6 +30,12 @@ public:
     /** Виджет на странице `route.page`; `nullptr` если страница или `comp` не найдены. */
     [[nodiscard]] Component* getComponent(Route route) noexcept;
 
+    /** Полная клавиатура (keybdA): цель ввода — `target` (page id + component id). */
+    void showKeybdFull(const Component& target) noexcept;
+
+    /** Цифровая клавиатура (keybdB). */
+    void showKeybdNum(const Component& target) noexcept;
+
     /** Touch → `IPage::onTouch`; игнорируется при modal-виджете в `overlay`. */
     virtual void onTouch(const msg::evTouch& e) override;
     /** `evMsgBox`: сначала компонент (`route.comp`), затем страница. */

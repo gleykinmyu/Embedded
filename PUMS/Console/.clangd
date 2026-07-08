@@ -2,9 +2,3 @@
 # QueryDriver нужен, чтобы clangd подхватил libstdc++ (<cstdint> и т.д.) из arm-none-eabi-g++
 CompileFlags:
   CompilationDatabase: .
-
-QueryDriver:
-  - C:/.platformio/packages/toolchain-gccarmnoneeabi@*/bin/arm-none-eabi-g++.exe
-  - C:/.platformio/packages/toolchain-gccarmnoneeabi@*/bin/arm-none-eabi-gcc.exe
-  - C:/Users/*/.platformio/packages/toolchain-gccarmnoneeabi@*/bin/arm-none-eabi-g++.exe
-  - C:/Users/*/.platformio/packages/toolchain-gccarmnoneeabi@*/bin/arm-none-eabi-gcc.exe

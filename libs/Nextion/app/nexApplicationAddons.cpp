@@ -19,6 +19,10 @@ void Application::switchPage(uint8_t pageId) noexcept {
     enqueue(Transaction{cmd::Page::switchTo(pageId), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
 
+void Application::switchPage(const Literal& pageName) noexcept {
+    enqueue(Transaction{cmd::Page::switchTo(pageName), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
+}
+
 void Application::requestCurrentPage() noexcept {
     enqueue(Transaction{cmd::Page::sendMe(), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
@@ -49,6 +53,12 @@ void Application::setBrightness(uint8_t level) noexcept {
 
 void Application::setBrightnessDefault(uint8_t level) noexcept {
     enqueueSysVarNumericAssign(*this, kSysDims, static_cast<int32_t>(level));
+}
+
+void Application::setGlobalVar(const Literal& path, int32_t value) noexcept {
+    const AttrRef target{kEmptyLiteral, path};
+    enqueue(Transaction{cmd::assign::Numeric(target, value), Route{}, 0u, Transaction::Kind::Command,
+        msg::kAwaitingNone});
 }
 
 } // namespace nex

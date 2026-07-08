@@ -27,6 +27,14 @@ PAGE_COMPONENT_TYPE = 121
 K_PAGE_COMP_ID = 0
 K_FIRST_COMP_ID = 1
 
+# Nextion keyboard overlay pages — not part of application UI.
+_SERVICE_PAGE_NAMES = frozenset({"keybdA", "keybdB", "keybdC"})
+_SERVICE_PAGE_CONSTANTS = {
+    "keybdA": "kKeybdAPageId",
+    "keybdB": "kKeybdBPageId",
+    "keybdC": "kKeybdCPageId",
+}
+
 _CPP_KEYWORDS = {
     "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
     "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t",
@@ -129,12 +137,21 @@ def _unique_enum_names(widgets: Sequence[WidgetInfo]) -> List[Tuple[str, WidgetI
     return result
 
 
+def _page_objname(page) -> str:
+    name = page.header.name or "page"
+    for comp in page.components:
+        att = comp.rawData.get("att", {})
+        if int(att.get("type", -1)) == PAGE_COMPONENT_TYPE and att.get("objname"):
+            name = str(att["objname"])
+    return name
+
+
 def extract_pages(hmi: HMI) -> List[PageInfo]:
     pages: List[PageInfo] = []
     for page_index, page in enumerate(hmi.pages):
         # In .pa blobs the Page object (type 121) always has id=0; route.page uses project order.
         page_panel_id = page_index
-        page_objname = page.header.name or "page"
+        page_objname = _page_objname(page)
         widgets: List[WidgetInfo] = []
 
         for comp in page.components:
@@ -144,8 +161,6 @@ def extract_pages(hmi: HMI) -> List[PageInfo]:
             objname = str(att.get("objname", ""))
 
             if type_code == PAGE_COMPONENT_TYPE:
-                if objname:
-                    page_objname = objname
                 continue
 
             if panel_id < K_FIRST_COMP_ID:
@@ -161,6 +176,8 @@ def extract_pages(hmi: HMI) -> List[PageInfo]:
             )
 
         widgets.sort(key=lambda w: w.panel_id)
+        if page_objname in _SERVICE_PAGE_NAMES:
+            continue
         pages.append(
             PageInfo(
                 panel_id=page_panel_id,
@@ -171,6 +188,15 @@ def extract_pages(hmi: HMI) -> List[PageInfo]:
 
     pages.sort(key=lambda p: p.panel_id)
     return pages
+
+
+def extract_service_pages(hmi: HMI) -> List[Tuple[int, str]]:
+    service_pages: List[Tuple[int, str]] = []
+    for page_index, page in enumerate(hmi.pages):
+        page_objname = _page_objname(page)
+        if page_objname in _SERVICE_PAGE_NAMES:
+            service_pages.append((page_index, page_objname))
+    return service_pages
 
 
 def _page_struct_name(page: PageInfo) -> str:
@@ -244,12 +270,20 @@ def _render_page_struct(page: PageInfo) -> str:
     return "\n".join(lines)
 
 
-def _render_summary(hmi: HMI, pages: Sequence[PageInfo]) -> str:
+def _render_summary(hmi: HMI, pages: Sequence[PageInfo], service_pages: Sequence[Tuple[int, str]]) -> str:
     lines = [
         f"inline constexpr const char* kHmiSource = {_cpp_string_literal(hmi.modelName)};",
         f"inline constexpr const char* kHmiModel = {_cpp_string_literal(hmi.modelDesc)};",
         f"inline constexpr uint8_t kPageCount = {len(pages)}u;",
     ]
+    for page_id, objname in service_pages:
+        const_name = _SERVICE_PAGE_CONSTANTS.get(objname)
+        if const_name:
+            lines.append(f"inline constexpr uint8_t {const_name} = {page_id}u;")
+    present = {name for _, name in service_pages}
+    for objname in sorted(_SERVICE_PAGE_NAMES):
+        flag = f"kHas{objname}Page"
+        lines.append(f"inline constexpr bool {flag} = {'true' if objname in present else 'false'};")
     return "\n".join(lines)
 
 
@@ -263,9 +297,13 @@ def _wrap_block(tag: str, body: str) -> str:
     return f"// GENERATED-HMI-BEGIN:{tag}\n{body}\n// GENERATED-HMI-END:{tag}"
 
 
-def render_blocks(hmi: HMI, pages: Sequence[PageInfo]) -> Dict[str, str]:
+def render_blocks(
+    hmi: HMI,
+    pages: Sequence[PageInfo],
+    service_pages: Sequence[Tuple[int, str]],
+) -> Dict[str, str]:
     return {
-        "summary": _render_summary(hmi, pages),
+        "summary": _render_summary(hmi, pages, service_pages),
         "pages": _render_pages_block(pages),
     }
 
@@ -418,7 +456,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     pages = extract_pages(hmi)
-    blocks = render_blocks(hmi, pages)
+    service_pages = extract_service_pages(hmi)
+    blocks = render_blocks(hmi, pages, service_pages)
     text: str
     warnings: List[str] = []
 
@@ -441,17 +480,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         sys.stdout.write(text)
     else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(text, encoding="utf-8", newline="\n")
+        with output_path.open("w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
         print(f"Wrote {output_path} ({len(pages)} page(s), source {hmi_path.name})")
 
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
 
-    for page in pages:
-        print(
-            f"  page {page.panel_id}: \"{page.objname}\" — {len(page.widgets)} widget(s)",
-            file=sys.stderr,
-        )
+    pages_by_id = {p.panel_id: p for p in pages}
+    for page_index, page in enumerate(hmi.pages):
+        name = _page_objname(page)
+        if name in _SERVICE_PAGE_NAMES:
+            print(
+                f"  page {page_index}: \"{name}\" — skipped (service page)",
+                file=sys.stderr,
+            )
+            continue
+        matched = pages_by_id.get(page_index)
+        if matched:
+            print(
+                f"  page {matched.panel_id}: \"{matched.objname}\" — {len(matched.widgets)} widget(s)",
+                file=sys.stderr,
+            )
 
     return 0
 

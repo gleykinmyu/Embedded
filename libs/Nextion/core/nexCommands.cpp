@@ -297,6 +297,10 @@ bool Page::serialize(TxFrame& tx) const noexcept {
         if (!NEX_CMD_PRINT_LIT(tx, "page") || !printSpace(tx))
             return false;
         return printUint32(tx, _pageId);
+    case Kind::SwitchByName:
+        if (!NEX_CMD_PRINT_LIT(tx, "page") || !printSpace(tx))
+            return false;
+        return _pageName != nullptr && printLiteral(tx, *_pageName);
     case Kind::Refresh:
         if (!NEX_CMD_PRINT_LIT(tx, "ref") || !printSpace(tx))
             return false;

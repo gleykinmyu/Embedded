@@ -236,12 +236,15 @@ namespace assign {
     public:
         enum class Kind : uint8_t {
             Switch,
+            SwitchByName,
             Refresh,
             SendMe,
         };
 
         /** Переключить страницу по числовому id (`page 0`, …). */
         static Page switchTo(uint32_t pageId) noexcept { return Page(Kind::Switch, pageId); }
+        /** Переключить страницу по objname (`page work`, …). */
+        static Page switchTo(const Literal& pageName) noexcept { return Page(pageName); }
         /** Перерисовать страницу 0 (`ref 0`). */
         static Page refresh() noexcept { return Page(Kind::Refresh, 0u); }
         /** Запросить id текущей страницы; ответ — `0x66` (`msg::evPage`). */
@@ -252,9 +255,20 @@ namespace assign {
 
     private:
         Kind _kind;
-        uint32_t _pageId;
+        union {
+            uint32_t _pageId;
+            const Literal* _pageName;
+        };
 
-        Page(Kind kind, uint32_t pageId) noexcept : _kind(kind), _pageId(pageId) {}
+        Page(Kind kind, uint32_t pageId) noexcept
+            : _kind(kind)
+            , _pageId(pageId)
+        {}
+
+        explicit Page(const Literal& pageName) noexcept
+            : _kind(Kind::SwitchByName)
+            , _pageName(&pageName)
+        {}
     };
 
     /**

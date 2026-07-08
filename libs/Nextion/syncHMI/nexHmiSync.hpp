@@ -40,17 +40,17 @@ namespace hmi {
 /** `HMI_PAGE_CFG(pgWork)` → `using PageCfg = nex::hmi::Page_pgWork;` (суффикс = objname страницы). */
 #define HMI_PAGE_CFG(pageSym) using PageCfg = nex::hmi::Page_##pageSym
 
-/** A: поле + default member init — одна строка в struct ... : Page<N>. */
-#define HMI_COMP(Type, PageMeta, sym) Type sym{HMI_COMP_ARGS(PageMeta, sym)};
+/** Короткая форма на текущей странице; требует `HMI_PAGE_CFG(...)` или `using PageCfg = ...`. */
+#define HMI_PAGE_COMP_ARGS(sym) HMI_COMP_ARGS(PageCfg, sym)
 
-/** B: как A; перед виджетами — `HMI_PAGE_CFG(pgWork)` или `using PageCfg = ...`. */
-#define HMI_WIDGET(Type, sym) HMI_COMP(Type, PageCfg, sym)
+/** A: поле + default member init — одна строка в struct ... : Page<N>. Нужен `PageCfg`. */
+#define HMI_COMP(Type, sym) Type sym{HMI_PAGE_COMP_ARGS(sym)};
 
 /** C: mem-initializer в ctor страницы (когда init list обязателен). */
 #define HMI_COMP_INIT(PageMeta, sym) sym(HMI_COMP_ARGS(PageMeta, sym))
 
 /** D: hook для локального X-macro списка `X(Type, sym)` → поле. Нужен PageCfg. */
-#define HMI_COMP_X(Type, sym) HMI_COMP(Type, PageCfg, sym)
+#define HMI_COMP_X(Type, sym) HMI_COMP(Type, sym)
 
 #define HMI_WIDGET_INIT(sym) HMI_COMP_INIT(PageCfg, sym)
 

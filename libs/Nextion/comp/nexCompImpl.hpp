@@ -221,9 +221,9 @@ public:
         attr_detail::assignText(*this, attr::Id::Txt, text);
     }
 
-    void onResponse(const msg::getNumeric& response, uint8_t tag) override
+    void appendText(const char* text) noexcept
     {
-        TouchArea::onResponse(response, tag);
+        attr_detail::appendText(*this, attr::Id::Txt, text);
     }
 
 protected:

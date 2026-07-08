@@ -9,7 +9,7 @@
 #include <stm32f4xx_hal.h>
 
 #include "Debug.h"
-#include "Console/console.hpp"
+#include "UI/console.hpp"
 
 #include "nex.hpp"
 #include "board.hpp"
