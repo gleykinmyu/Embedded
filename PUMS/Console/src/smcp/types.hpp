@@ -40,20 +40,6 @@ struct MechConfig {
 static_assert(sizeof(MechConfig) == Layout::mech_config);
 
 /**
- * Логическое объединение штанкетов — 64 байта.
- */
-struct Group {
-    uint16_t id = 0;
-    uint64_t mech_mask = 0;
-    char name[Layout::group_name]{};
-    uint8_t flags = 0;
-    uint16_t crc16 = 0;
-    uint8_t reserved[3] {};
-};
-
-static_assert(sizeof(Group) == Layout::group);
-
-/**
  * Статический снимок позиций сегмента сервера — 320 байт.
  */
 struct Preset {

@@ -51,48 +51,45 @@ struct Page_wait {
     X(bS7, 13, ##__VA_ARGS__) \
     X(bFile, 14, ##__VA_ARGS__) \
     X(t0, 15, ##__VA_ARGS__) \
-    X(tSt, 16, ##__VA_ARGS__) \
-    X(tTime, 17, ##__VA_ARGS__) \
-    X(bBlock, 18, ##__VA_ARGS__) \
-    X(bShow, 19, ##__VA_ARGS__) \
-    X(t1, 20, ##__VA_ARGS__) \
-    X(bSa0, 21, ##__VA_ARGS__) \
-    X(bSa1, 22, ##__VA_ARGS__) \
-    X(bSa2, 23, ##__VA_ARGS__) \
-    X(bSa3, 24, ##__VA_ARGS__) \
-    X(bSa4, 25, ##__VA_ARGS__) \
-    X(bSa5, 26, ##__VA_ARGS__) \
-    X(bSa6, 27, ##__VA_ARGS__) \
-    X(bSa7, 28, ##__VA_ARGS__) \
-    X(b0, 29, ##__VA_ARGS__) \
-    X(b1, 30, ##__VA_ARGS__) \
-    X(b2, 31, ##__VA_ARGS__) \
-    X(b3, 32, ##__VA_ARGS__) \
-    X(b4, 33, ##__VA_ARGS__) \
-    X(b5, 34, ##__VA_ARGS__) \
-    X(b6, 35, ##__VA_ARGS__) \
-    X(b7, 36, ##__VA_ARGS__) \
-    X(b8, 37, ##__VA_ARGS__) \
-    X(b9, 38, ##__VA_ARGS__) \
-    X(b10, 39, ##__VA_ARGS__) \
-    X(b11, 40, ##__VA_ARGS__) \
-    X(b12, 41, ##__VA_ARGS__) \
-    X(b13, 42, ##__VA_ARGS__) \
-    X(b14, 43, ##__VA_ARGS__) \
-    X(b15, 44, ##__VA_ARGS__) \
-    X(b16, 45, ##__VA_ARGS__) \
-    X(b17, 46, ##__VA_ARGS__) \
-    X(b18, 47, ##__VA_ARGS__) \
-    X(b19, 48, ##__VA_ARGS__) \
-    X(b20, 49, ##__VA_ARGS__) \
-    X(b21, 50, ##__VA_ARGS__) \
-    X(b22, 51, ##__VA_ARGS__) \
-    X(b23, 52, ##__VA_ARGS__) \
-    X(b24, 53, ##__VA_ARGS__) \
-    X(tFile, 54, ##__VA_ARGS__) \
-    X(t6, 55, ##__VA_ARGS__) \
-    X(tc, 56, ##__VA_ARGS__) \
-    X(gName, 57, ##__VA_ARGS__)
+    X(bBlock, 16, ##__VA_ARGS__) \
+    X(bShow, 17, ##__VA_ARGS__) \
+    X(t1, 18, ##__VA_ARGS__) \
+    X(bSa0, 19, ##__VA_ARGS__) \
+    X(bSa1, 20, ##__VA_ARGS__) \
+    X(bSa2, 21, ##__VA_ARGS__) \
+    X(bSa3, 22, ##__VA_ARGS__) \
+    X(bSa4, 23, ##__VA_ARGS__) \
+    X(bSa5, 24, ##__VA_ARGS__) \
+    X(bSa6, 25, ##__VA_ARGS__) \
+    X(bSa7, 26, ##__VA_ARGS__) \
+    X(b0, 27, ##__VA_ARGS__) \
+    X(b1, 28, ##__VA_ARGS__) \
+    X(b2, 29, ##__VA_ARGS__) \
+    X(b3, 30, ##__VA_ARGS__) \
+    X(b4, 31, ##__VA_ARGS__) \
+    X(b5, 32, ##__VA_ARGS__) \
+    X(b6, 33, ##__VA_ARGS__) \
+    X(b7, 34, ##__VA_ARGS__) \
+    X(b8, 35, ##__VA_ARGS__) \
+    X(b9, 36, ##__VA_ARGS__) \
+    X(b10, 37, ##__VA_ARGS__) \
+    X(b11, 38, ##__VA_ARGS__) \
+    X(b12, 39, ##__VA_ARGS__) \
+    X(b13, 40, ##__VA_ARGS__) \
+    X(b14, 41, ##__VA_ARGS__) \
+    X(b15, 42, ##__VA_ARGS__) \
+    X(b16, 43, ##__VA_ARGS__) \
+    X(b17, 44, ##__VA_ARGS__) \
+    X(b18, 45, ##__VA_ARGS__) \
+    X(b19, 46, ##__VA_ARGS__) \
+    X(b20, 47, ##__VA_ARGS__) \
+    X(b21, 48, ##__VA_ARGS__) \
+    X(b22, 49, ##__VA_ARGS__) \
+    X(b23, 50, ##__VA_ARGS__) \
+    X(b24, 51, ##__VA_ARGS__) \
+    X(t6, 52, ##__VA_ARGS__) \
+    X(tc, 53, ##__VA_ARGS__) \
+    X(gName, 54, ##__VA_ARGS__)
 
 /** Page "work" (panel page id 1). */
 struct Page_work {
@@ -115,8 +112,7 @@ struct Page_work {
     X(bRen, 4, ##__VA_ARGS__) \
     X(bRec, 5, ##__VA_ARGS__) \
     X(bSa, 6, ##__VA_ARGS__) \
-    X(tTime, 7, ##__VA_ARGS__) \
-    X(gbid, 8, ##__VA_ARGS__)
+    X(gbid, 7, ##__VA_ARGS__)
 
 /** Page "mGroup" (panel page id 2). */
 struct Page_mGroup {
@@ -138,10 +134,9 @@ struct Page_mGroup {
     X(bSave, 3, ##__VA_ARGS__) \
     X(bOpen, 4, ##__VA_ARGS__) \
     X(bNew, 5, ##__VA_ARGS__) \
-    X(tTime, 6, ##__VA_ARGS__) \
-    X(bFile, 7, ##__VA_ARGS__) \
-    X(bSaveAs, 8, ##__VA_ARGS__) \
-    X(bDel, 9, ##__VA_ARGS__)
+    X(bFile, 6, ##__VA_ARGS__) \
+    X(bSaveAs, 7, ##__VA_ARGS__) \
+    X(bDel, 8, ##__VA_ARGS__)
 
 /** Page "mFile" (panel page id 3). */
 struct Page_mFile {
@@ -161,40 +156,37 @@ struct Page_mFile {
     X(title, 1, ##__VA_ARGS__) \
     X(mBack, 2, ##__VA_ARGS__) \
     X(t0, 3, ##__VA_ARGS__) \
-    X(tSt, 4, ##__VA_ARGS__) \
-    X(tFile, 5, ##__VA_ARGS__) \
-    X(t6, 6, ##__VA_ARGS__) \
-    X(tTime, 7, ##__VA_ARGS__) \
-    X(bAction, 8, ##__VA_ARGS__) \
-    X(bFNext, 9, ##__VA_ARGS__) \
-    X(bFPrev, 10, ##__VA_ARGS__) \
-    X(t4, 11, ##__VA_ARGS__) \
-    X(t2, 12, ##__VA_ARGS__) \
-    X(t1, 13, ##__VA_ARGS__) \
-    X(t7, 14, ##__VA_ARGS__) \
-    X(bF0, 15, ##__VA_ARGS__) \
-    X(bF1, 16, ##__VA_ARGS__) \
-    X(bF2, 17, ##__VA_ARGS__) \
-    X(bF3, 18, ##__VA_ARGS__) \
-    X(bF4, 19, ##__VA_ARGS__) \
-    X(bF5, 20, ##__VA_ARGS__) \
-    X(bF6, 21, ##__VA_ARGS__) \
-    X(bF7, 22, ##__VA_ARGS__) \
-    X(tc, 23, ##__VA_ARGS__) \
-    X(b0, 24, ##__VA_ARGS__) \
-    X(bF0d, 25, ##__VA_ARGS__) \
-    X(bF1d, 26, ##__VA_ARGS__) \
-    X(bF2d, 27, ##__VA_ARGS__) \
-    X(bF3d, 28, ##__VA_ARGS__) \
-    X(bF4d, 29, ##__VA_ARGS__) \
-    X(bF5d, 30, ##__VA_ARGS__) \
-    X(bF6d, 31, ##__VA_ARGS__) \
-    X(bF7d, 32, ##__VA_ARGS__) \
-    X(t15, 33, ##__VA_ARGS__) \
-    X(tm, 34, ##__VA_ARGS__) \
-    X(mode, 35, ##__VA_ARGS__) \
-    X(fNameStr, 36, ##__VA_ARGS__) \
-    X(fName, 37, ##__VA_ARGS__)
+    X(t6, 4, ##__VA_ARGS__) \
+    X(bAction, 5, ##__VA_ARGS__) \
+    X(bFNext, 6, ##__VA_ARGS__) \
+    X(bFPrev, 7, ##__VA_ARGS__) \
+    X(t4, 8, ##__VA_ARGS__) \
+    X(t2, 9, ##__VA_ARGS__) \
+    X(t1, 10, ##__VA_ARGS__) \
+    X(t7, 11, ##__VA_ARGS__) \
+    X(bF0, 12, ##__VA_ARGS__) \
+    X(bF1, 13, ##__VA_ARGS__) \
+    X(bF2, 14, ##__VA_ARGS__) \
+    X(bF3, 15, ##__VA_ARGS__) \
+    X(bF4, 16, ##__VA_ARGS__) \
+    X(bF5, 17, ##__VA_ARGS__) \
+    X(bF6, 18, ##__VA_ARGS__) \
+    X(bF7, 19, ##__VA_ARGS__) \
+    X(tc, 20, ##__VA_ARGS__) \
+    X(b0, 21, ##__VA_ARGS__) \
+    X(bF0d, 22, ##__VA_ARGS__) \
+    X(bF1d, 23, ##__VA_ARGS__) \
+    X(bF2d, 24, ##__VA_ARGS__) \
+    X(bF3d, 25, ##__VA_ARGS__) \
+    X(bF4d, 26, ##__VA_ARGS__) \
+    X(bF5d, 27, ##__VA_ARGS__) \
+    X(bF6d, 28, ##__VA_ARGS__) \
+    X(bF7d, 29, ##__VA_ARGS__) \
+    X(t15, 30, ##__VA_ARGS__) \
+    X(tm, 31, ##__VA_ARGS__) \
+    X(mode, 32, ##__VA_ARGS__) \
+    X(fNameStr, 33, ##__VA_ARGS__) \
+    X(fName, 34, ##__VA_ARGS__)
 
 /** Page "browser" (panel page id 4). */
 struct Page_browser {

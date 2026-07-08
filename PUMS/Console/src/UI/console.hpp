@@ -19,7 +19,7 @@ struct WaitPage : nex::Page<0> {
     {}
 };
 
-struct WorkPage : nex::Page<57> {
+struct WorkPage : nex::Page<54> {
     HMI_PAGE_CFG(work);
 
     HMI_INPLACE_PAGE_RANGE_CFG(GroupButtons, work, Button<>, bS0, bS7)
@@ -39,13 +39,10 @@ struct WorkPage : nex::Page<57> {
     HMI_COMP(Button<>, bSNext);
     HMI_COMP(Button<>, bSPrev);
 
-    HMI_COMP(Text<>, tSt);
-    HMI_COMP(Text<>, tTime);
-    HMI_COMP(Text<>, tFile);
     HMI_COMP(StringVar<32>, gName);
 
     explicit WorkPage(nex::IAppUI& app) noexcept
-        : Page<57>(app, HMI_COMP_OBJNAME(work), PageCfg::kPageId)
+        : Page<54>(app, HMI_COMP_OBJNAME(work), PageCfg::kPageId)
     {}
 
     void onTouch(const nex::msg::evTouch& e) override;
@@ -71,18 +68,16 @@ private:
     uint8_t selectedScene_{0xFFu};
 };
 
-struct MGroupPage : nex::Page<8> {
+struct MGroupPage : nex::Page<7> {
     HMI_PAGE_CFG(mGroup);
 
     HMI_COMP(ConsoleButton, bClr);
     HMI_COMP(ConsoleButton, bRen);
     HMI_COMP(ConsoleButton, bRec);
     HMI_COMP(NumericVar, gbid);
-    
-    HMI_COMP(Text<>, tTime);
 
     explicit MGroupPage(nex::IAppUI& app) noexcept
-        : Page<8>(app, HMI_COMP_OBJNAME(mGroup), PageCfg::kPageId)
+        : Page<7>(app, HMI_COMP_OBJNAME(mGroup), PageCfg::kPageId)
     {}
 };
 
@@ -92,7 +87,6 @@ struct MFilePage : nex::Page<9> {
     HMI_COMP(ConsoleButton, bSave);
     HMI_COMP(ConsoleButton, bNew);
 
-    HMI_COMP(Text<>, tTime);
 
     explicit MFilePage(nex::IAppUI& app) noexcept
         : Page<9>(app, HMI_COMP_OBJNAME(mFile), PageCfg::kPageId)
@@ -113,10 +107,6 @@ struct BrowserPage : nex::Page<37> {
 
     HMI_COMP(NumericVar, mode);
     HMI_COMP(StringVar<32>, fNameStr);
-
-    HMI_COMP(Text<>, tSt);
-    HMI_COMP(Text<>, tFile);
-    HMI_COMP(Text<>, tTime);
 
     FileRows fileRows{*this};
     FileDateRows fileDates{*this};

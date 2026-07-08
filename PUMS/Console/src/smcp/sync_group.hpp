@@ -1,6 +1,6 @@
 /**
  * @file sync_group.hpp
- * @brief Синхронные группы штанкетов SMCP v1.5 (блок 2.4).
+ * @brief Поведение синхронных групп штанкетов SMCP v1.5 (блок 2.4).
  */
 
 #pragma once
@@ -9,32 +9,9 @@
 
 #include "constants.hpp"
 #include "fsm.hpp"
-#include "status.hpp"
-#include "types.hpp"
+#include "group.hpp"
 
 namespace smcp {
-
-/** Состояние активной синхронной группы в рантайме. */
-struct SyncGroupRuntime {
-    uint16_t group_id = 0;
-    uint64_t active_mask = 0;
-    bool sync_start_armed = false;
-    int32_t max_position_delta_mm = 0;
-};
-
-/**
- * Группа с флагом SYNC требует одновременного старта и остановки.
- * ATOMIC запрещает разделение маски при управлении.
- */
-[[nodiscard]] inline bool isSyncGroup(const Group& group) noexcept
-{
-    return hasGroupFlag(group.flags, GroupFlags::GroupSync);
-}
-
-[[nodiscard]] inline bool isAtomicGroup(const Group& group) noexcept
-{
-    return hasGroupFlag(group.flags, GroupFlags::GroupAtomic);
-}
 
 /** FAULT любого участника останавливает всю группу («сцепка»). */
 [[nodiscard]] inline bool syncFaultPropagates(MechState member_state) noexcept

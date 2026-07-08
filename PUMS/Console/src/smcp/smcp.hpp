@@ -8,6 +8,7 @@
 #include "addressing.hpp"
 #include "constants.hpp"
 #include "fsm.hpp"
+#include "group.hpp"
 #include "lease.hpp"
 #include "motion.hpp"
 #include "show_file.hpp"
