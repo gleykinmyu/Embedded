@@ -13,8 +13,6 @@
 #include <cstdint>
 #include <cstring>
 
-#include "types.hpp"
-
 namespace smcp {
 namespace file {
 
