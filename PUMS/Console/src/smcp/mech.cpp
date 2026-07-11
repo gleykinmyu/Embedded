@@ -4,42 +4,58 @@
  */
 
 #include "mech.hpp"
+#include "message.hpp"
 
 namespace smcp {
 
-IMech::IMech(uint8_t id) noexcept : id_(id) {}
+IMech::IMech(uint8_t id) noexcept : _id(id) {}
 
 IMech::~IMech() = default;
 
 uint8_t IMech::id() const noexcept
 {
-    return id_;
+    return _id;
+}
+
+int32_t IMech::position() const noexcept
+{
+    return _position;
+}
+
+REG::BitMask<IMech::Status> IMech::status() const noexcept
+{
+    return _status;
 }
 
 bool IMech::isIdle() const noexcept
 {
-    const auto mask = status();
-    return !mask.any(Status::Ready | Status::Moving);
+    return !_status.any(Status::Ready | Status::Moving);
 }
 
-uint8_t IMech::leaseOwner() const noexcept
+uint8_t IMech::owner_id() const noexcept
 {
-    return lease_owner_;
+    return _owner_id;
 }
 
 bool IMech::isLeased() const noexcept
 {
-    return lease_owner_ != kLeaseOwnerNone;
+    return _owner_id != kLeaseOwnerNone;
 }
 
 bool IMech::isLeasedBy(uint8_t console_id) const noexcept
 {
-    return console_id != kLeaseOwnerNone && lease_owner_ == console_id;
+    return console_id != kLeaseOwnerNone && _owner_id == console_id;
 }
 
-void IMech::setLeaseOwner(uint8_t console_id) noexcept
+void IMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {
-    lease_owner_ = console_id;
+    if (!msg::isServerId(src_id) || telemetry.local_id != _id) {
+        return;
+    }
+
+    _owner_id = telemetry.owner_id;
+    _position = telemetry.position_mm;
+    _status = telemetry.status;
 }
 
 } // namespace smcp

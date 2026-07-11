@@ -11,11 +11,26 @@
 
 namespace smcp {
 
+namespace msg {
+struct Telemetry;
+}
+
 /** Локальный идентификатор механизма в сегменте (0..63). */
 inline constexpr uint8_t kMechIdMax = 63u;
 
 /** Механизм свободен (lease не захвачен). */
 inline constexpr uint8_t kLeaseOwnerNone = 0u;
+
+/** Параметры взведённого движения (SetTarget). */
+#pragma pack(push, 1)
+struct MotionTarget {
+    int32_t target_mm = 0;
+    uint16_t speed_mm_s = 0;
+    uint16_t accel_mm_s2 = 0;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(MotionTarget) == 8u);
 
 /**
  * Абстракция одного механизма: телеметрия и управление.
@@ -45,10 +60,10 @@ public:
     [[nodiscard]] uint8_t id() const noexcept;
 
     /** Текущая позиция, мм. */
-    [[nodiscard]] virtual int32_t position() const noexcept = 0;
+    [[nodiscard]] int32_t position() const noexcept;
 
     /** Маска состояния (ready, moving, limit, fault и т.д.). */
-    [[nodiscard]] virtual REG::BitMask<Status> status() const noexcept = 0;
+    [[nodiscard]] REG::BitMask<Status> status() const noexcept;
 
     [[nodiscard]] bool isIdle() const noexcept;
 
@@ -56,23 +71,26 @@ public:
      * ID консоли, захватившей lease.
      * @return 0 — механизм свободен.
      */
-    [[nodiscard]] uint8_t leaseOwner() const noexcept;
+    [[nodiscard]] uint8_t owner_id() const noexcept;
 
     [[nodiscard]] bool isLeased() const noexcept;
 
     [[nodiscard]] bool isLeasedBy(uint8_t console_id) const noexcept;
 
     /** Задать целевую позицию, мм. */
-    virtual bool setTarget(int32_t position_mm) noexcept = 0;
+    virtual bool setTarget(const MotionTarget& target) noexcept = 0;
 
-    /** Остановить движение. */
-    virtual bool stop() noexcept = 0;
+    /** Сбросить локальный бит Fault (после ResetFault с сервера). */
+    virtual bool resetFault() noexcept = 0;
+
+    /** Обновить состояние из телеметрии (@a src_id — SRC_ID кадра, обычно сервер). */
+    virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept;
 
 protected:
-    void setLeaseOwner(uint8_t console_id) noexcept;
-
-    uint8_t id_;
-    uint8_t lease_owner_ = kLeaseOwnerNone;
+    uint8_t _id;
+    uint8_t _owner_id = kLeaseOwnerNone;
+    int32_t _position = 0;
+    REG::BitMask<Status> _status{};
 };
 
 REG_BITMASK_ENUM_OPS(IMech::Status)

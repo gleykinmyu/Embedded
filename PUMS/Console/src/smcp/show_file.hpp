@@ -18,6 +18,7 @@ namespace file {
 
 inline constexpr uint32_t kMagic = 0x534D4350u; /**< "SMCP". */
 inline constexpr uint16_t kVersion = 0x0114u;
+inline constexpr std::size_t kShowFileNameSize = 48u;
 
 /** Интерфейс чтения/записи шоуфайла на носителе (реализация — снаружи, например FatFS). */
 class IFile {
@@ -37,7 +38,7 @@ public:
     virtual bool write(const uint8_t* data, std::size_t size) noexcept = 0;
 
     /** Абсолютное смещение в файле (нужно для payload и патча заголовка). */
-    virtual bool seek_set(std::size_t offset) noexcept = 0;
+    virtual bool seek(std::size_t offset) noexcept = 0;
 };
 
 #pragma pack(push, 1)
@@ -114,7 +115,7 @@ constexpr std::size_t Header::payloadBase() const noexcept
     out_desc.record_count = static_cast<uint32_t>(record_count);
     const std::size_t byte_size = out_desc.payloadSize(record_size);
 
-    if (!io.seek_set(payload_offset)) {
+    if (!io.seek(payload_offset)) {
         return false;
     }
 
@@ -138,7 +139,7 @@ constexpr std::size_t Header::payloadBase() const noexcept
         return false;
     }
 
-    if (!io.seek_set(static_cast<std::size_t>(desc.offset))) {
+    if (!io.seek(static_cast<std::size_t>(desc.offset))) {
         return false;
     }
 
@@ -160,33 +161,33 @@ constexpr std::size_t Header::payloadBase() const noexcept
 class Writer {
 public:
     Writer(IFile& io, uint16_t section_count, SectionDesc* catalog) noexcept
-        : io_(io)
-        , catalog_(catalog)
-        , section_count_(section_count)
+        : _io(io)
+        , _catalog(catalog)
+        , _sectionCount(section_count)
     {}
 
     /** Открыть файл на носителе для записи. */
     [[nodiscard]] bool open(const char* path) noexcept
     {
-        if (path == nullptr || catalog_ == nullptr) {
+        if (path == nullptr || _catalog == nullptr) {
             return false;
         }
-        if (!io_.open(path, true)) {
+        if (!_io.open(path, true)) {
             return false;
         }
 
-        file_open_ = true;
-        hdr_.section_count = section_count_;
-        next_offset_ = hdr_.payloadBase();
+        _fileOpen = true;
+        _hdr.section_count = _sectionCount;
+        _nextOffset = _hdr.payloadBase();
         return true;
     }
 
     /** Закрыть файл без записи заголовка (отмена). */
     void close() noexcept
     {
-        if (file_open_) {
-            io_.close();
-            file_open_ = false;
+        if (_fileOpen) {
+            _io.close();
+            _fileOpen = false;
         }
     }
 
@@ -196,55 +197,55 @@ public:
                                     std::size_t record_size,
                                     std::size_t record_count) noexcept
     {
-        if (!file_open_ || catalog_ == nullptr || written_ >= section_count_) {
+        if (!_fileOpen || _catalog == nullptr || _written >= _sectionCount) {
             return false;
         }
 
-        if (!file::writeSection(io_, tag, records, record_size, record_count, next_offset_,
-                                catalog_[written_])) {
+        if (!file::writeSection(_io, tag, records, record_size, record_count, _nextOffset,
+                                _catalog[_written])) {
             return false;
         }
 
-        next_offset_ = catalog_[written_].endOffset();
-        ++written_;
+        _nextOffset = _catalog[_written].endOffset();
+        ++_written;
         return true;
     }
 
     /** Записать заголовок, каталог и закрыть файл. */
     [[nodiscard]] bool finalize() noexcept
     {
-        if (!file_open_ || catalog_ == nullptr || written_ != section_count_) {
+        if (!_fileOpen || _catalog == nullptr || _written != _sectionCount) {
             close();
             return false;
         }
 
-        hdr_.total_size = static_cast<uint32_t>(next_offset_);
+        _hdr.total_size = static_cast<uint32_t>(_nextOffset);
 
-        bool ok = io_.seek_set(0);
-        ok = ok && io_.write(reinterpret_cast<const uint8_t*>(&hdr_), sizeof(hdr_));
-        ok = ok && io_.seek_set(sizeof(Header));
-        ok = ok && io_.write(reinterpret_cast<const uint8_t*>(catalog_),
-                            static_cast<std::size_t>(section_count_) * sizeof(SectionDesc));
+        bool ok = _io.seek(0);
+        ok = ok && _io.write(reinterpret_cast<const uint8_t*>(&_hdr), sizeof(_hdr));
+        ok = ok && _io.seek(sizeof(Header));
+        ok = ok && _io.write(reinterpret_cast<const uint8_t*>(_catalog),
+                            static_cast<std::size_t>(_sectionCount) * sizeof(SectionDesc));
         close();
         return ok;
     }
 
-    [[nodiscard]] bool isOpen() const noexcept { return file_open_; }
+    [[nodiscard]] bool isOpen() const noexcept { return _fileOpen; }
 
-    [[nodiscard]] Header& header() noexcept { return hdr_; }
-    [[nodiscard]] const Header& header() const noexcept { return hdr_; }
-    [[nodiscard]] std::size_t nextOffset() const noexcept { return next_offset_; }
-    [[nodiscard]] uint16_t writtenCount() const noexcept { return written_; }
-    [[nodiscard]] const SectionDesc* catalog() const noexcept { return catalog_; }
+    [[nodiscard]] Header& header() noexcept { return _hdr; }
+    [[nodiscard]] const Header& header() const noexcept { return _hdr; }
+    [[nodiscard]] std::size_t nextOffset() const noexcept { return _nextOffset; }
+    [[nodiscard]] uint16_t writtenCount() const noexcept { return _written; }
+    [[nodiscard]] const SectionDesc* catalog() const noexcept { return _catalog; }
 
 private:
-    IFile& io_;
-    Header hdr_{};
-    SectionDesc* catalog_;
-    uint16_t section_count_;
-    uint16_t written_ = 0;
-    std::size_t next_offset_ = 0;
-    bool file_open_ = false;
+    IFile& _io;
+    Header _hdr{};
+    SectionDesc* _catalog;
+    uint16_t _sectionCount;
+    uint16_t _written = 0;
+    std::size_t _nextOffset = 0;
+    bool _fileOpen = false;
 };
 
 /**
@@ -261,22 +262,22 @@ private:
 class Reader {
 public:
     Reader(IFile& io, SectionDesc* catalog, uint16_t catalog_capacity) noexcept
-        : io_(io)
-        , catalog_(catalog)
-        , catalog_capacity_(catalog_capacity)
+        : _io(io)
+        , _catalog(catalog)
+        , _catalogCapacity(catalog_capacity)
     {}
 
     /** Открыть файл на носителе и прочитать заголовок с каталогом. */
     [[nodiscard]] bool open(const char* path) noexcept
     {
-        if (path == nullptr || catalog_ == nullptr) {
+        if (path == nullptr || _catalog == nullptr) {
             return false;
         }
-        if (!io_.open(path, false)) {
+        if (!_io.open(path, false)) {
             return false;
         }
 
-        file_open_ = true;
+        _fileOpen = true;
         if (!load()) {
             close();
             return false;
@@ -287,84 +288,84 @@ public:
     /** Закрыть файл на носителе. */
     void close() noexcept
     {
-        if (file_open_) {
-            io_.close();
-            file_open_ = false;
+        if (_fileOpen) {
+            _io.close();
+            _fileOpen = false;
         }
-        hdr_ = {};
-        loaded_ = false;
+        _hdr = {};
+        _loaded = false;
     }
 
     /** Прочитать payload секции по индексу в каталоге. */
     [[nodiscard]] bool readSectionAt(std::size_t index, void* buffer, std::size_t buffer_size) noexcept
     {
-        if (!loaded_ || index >= hdr_.section_count) {
+        if (!_loaded || index >= _hdr.section_count) {
             return false;
         }
-        return file::readSection(io_, catalog_[index], buffer, buffer_size);
+        return file::readSection(_io, _catalog[index], buffer, buffer_size);
     }
 
     /** Прочитать payload секции по тегу. */
     [[nodiscard]] bool readSection(uint32_t tag, void* buffer, std::size_t buffer_size) noexcept
     {
-        if (!loaded_) {
+        if (!_loaded) {
             return false;
         }
         const SectionDesc* desc = find(tag);
         if (desc == nullptr) {
             return false;
         }
-        return file::readSection(io_, *desc, buffer, buffer_size);
+        return file::readSection(_io, *desc, buffer, buffer_size);
     }
 
     [[nodiscard]] const SectionDesc* find(uint32_t tag) const noexcept
     {
-        if (!loaded_) {
+        if (!_loaded) {
             return nullptr;
         }
-        for (uint16_t i = 0; i < hdr_.section_count; ++i) {
-            if (catalog_[i].tag == tag) {
-                return &catalog_[i];
+        for (uint16_t i = 0; i < _hdr.section_count; ++i) {
+            if (_catalog[i].tag == tag) {
+                return &_catalog[i];
             }
         }
         return nullptr;
     }
 
-    [[nodiscard]] const Header& header() const noexcept { return hdr_; }
-    [[nodiscard]] uint16_t sectionCount() const noexcept { return hdr_.section_count; }
-    [[nodiscard]] const SectionDesc* catalog() const noexcept { return catalog_; }
-    [[nodiscard]] bool isOpen() const noexcept { return file_open_; }
-    [[nodiscard]] bool isLoaded() const noexcept { return loaded_; }
+    [[nodiscard]] const Header& header() const noexcept { return _hdr; }
+    [[nodiscard]] uint16_t sectionCount() const noexcept { return _hdr.section_count; }
+    [[nodiscard]] const SectionDesc* catalog() const noexcept { return _catalog; }
+    [[nodiscard]] bool isOpen() const noexcept { return _fileOpen; }
+    [[nodiscard]] bool isLoaded() const noexcept { return _loaded; }
 
 private:
     [[nodiscard]] bool load() noexcept
     {
-        if (!io_.seek_set(0)) {
+        if (!_io.seek(0)) {
             return false;
         }
-        if (!io_.read(reinterpret_cast<uint8_t*>(&hdr_), sizeof(hdr_))) {
+        if (!_io.read(reinterpret_cast<uint8_t*>(&_hdr), sizeof(_hdr))) {
             return false;
         }
-        if (hdr_.magic != kMagic || hdr_.section_count > catalog_capacity_) {
+        if (_hdr.magic != kMagic || _hdr.section_count > _catalogCapacity) {
             return false;
         }
-        if (!io_.seek_set(sizeof(Header))) {
+        if (!_io.seek(sizeof(Header))) {
             return false;
         }
-        if (!io_.read(reinterpret_cast<uint8_t*>(catalog_),
-                      static_cast<std::size_t>(hdr_.section_count) * sizeof(SectionDesc))) {
+        if (!_io.read(reinterpret_cast<uint8_t*>(_catalog),
+                      static_cast<std::size_t>(_hdr.section_count) * sizeof(SectionDesc))) {
             return false;
         }
-        loaded_ = true;
+        _loaded = true;
         return true;
     }
 
-    IFile& io_;
-    Header hdr_{};
-    SectionDesc* catalog_;
-    uint16_t catalog_capacity_;
-    bool file_open_ = false;
-    bool loaded_ = false;
+    IFile& _io;
+    Header _hdr{};
+    SectionDesc* _catalog;
+    uint16_t _catalogCapacity;
+    bool _fileOpen = false;
+    bool _loaded = false;
 };
 
 } // namespace file
