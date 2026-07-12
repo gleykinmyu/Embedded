@@ -4,7 +4,7 @@ Generate / update C++ HMI config from a Nextion .HMI file.
 
 Uses the binary parser from Nextion2Text.py (Max Zuidberg, MPL-2.0).
 
-Output: enum class with panel component ids + name table indexed by id.
+Output: scoped enum Id : uint8_t (plain enum, implicit uint8_t) + name table indexed by id.
 Blocks between GENERATED-HMI-BEGIN/END markers are replaced on --update.
 """
 
@@ -261,7 +261,7 @@ def _render_page_struct(page: PageInfo) -> str:
     lines.append(f"struct {struct_name} {{")
     lines.append(f"    static constexpr uint8_t kPageId = {page.panel_id}u;")
     lines.append("")
-    lines.append("    enum class Id : uint8_t {")
+    lines.append("    enum Id : uint8_t {")
     lines.append(f"        {macro_name}(HMI_ENUM_ITEM)")
     lines.append("    };")
     lines.append("")

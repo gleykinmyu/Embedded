@@ -12,6 +12,13 @@ public:
     PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
     PHL::Serial<PHL::ID::SERIAL2, 1024, 128> serial2;
     PHL::SdDisk SD;
+
+    void tick() noexcept;
+    void setLedAlive(bool alive) noexcept;
+
+private:
+    bool _ledAlive = false;
+    uint32_t _ledBlinkMs = 0;
 };
 
 extern CBoard board;

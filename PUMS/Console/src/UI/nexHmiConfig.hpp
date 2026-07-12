@@ -25,7 +25,7 @@ inline constexpr bool kHaskeybdCPage = false;
 struct Page_wait {
     static constexpr uint8_t kPageId = 0u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_wait(HMI_ENUM_ITEM)
     };
 
@@ -95,7 +95,7 @@ struct Page_wait {
 struct Page_work {
     static constexpr uint8_t kPageId = 1u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_work(HMI_ENUM_ITEM)
     };
 
@@ -118,7 +118,7 @@ struct Page_work {
 struct Page_mGroup {
     static constexpr uint8_t kPageId = 2u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_mGroup(HMI_ENUM_ITEM)
     };
 
@@ -142,7 +142,7 @@ struct Page_mGroup {
 struct Page_mFile {
     static constexpr uint8_t kPageId = 3u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_mFile(HMI_ENUM_ITEM)
     };
 
@@ -192,7 +192,7 @@ struct Page_mFile {
 struct Page_browser {
     static constexpr uint8_t kPageId = 4u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_browser(HMI_ENUM_ITEM)
     };
 

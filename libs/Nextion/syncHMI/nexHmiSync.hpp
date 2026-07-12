@@ -17,7 +17,7 @@ namespace hmi {
 #define HMI_STRINGIFY_(x) #x
 #define HMI_STRINGIFY(x) HMI_STRINGIFY_(x)
 
-/** `X(sym, id)` → `sym = id,` in `enum class Id`. */
+/** `X(sym, id)` → `sym = id,` in `enum Id : uint8_t`. */
 #define HMI_ENUM_ITEM(sym, id, ...) sym = id##u,
 
 /** `X(sym, id)` → NIS objname `"sym"`. */
@@ -26,10 +26,10 @@ namespace hmi {
 // --- Component members on nex::Page<> (nexHmiConfig.hpp) ---------------------
 // `comp::* (IPage& owner, const Literal& name, uint8_t id)` — owner = *this.
 // Имя: HMI_STRINGIFY(sym), не hmi::name() — Literal только из строкового литерала.
-// id: PageMeta::Id::sym (тот же panel id, что в enum / kNames[]).
+// id: PageMeta::sym (тот же panel id, что в enum Id / kNames[]).
 
 /** Panel component id для `sym` на странице `PageMeta`. */
-#define HMI_COMP_ID(PageMeta, sym) static_cast<uint8_t>(PageMeta::Id::sym)
+#define HMI_COMP_ID(PageMeta, sym) static_cast<uint8_t>(PageMeta::sym)
 
 /** NIS objname `"sym"` (совпадает с kNames[id], если sym == sanitized objname в HMI). */
 #define HMI_COMP_OBJNAME(sym) HMI_STRINGIFY(sym)

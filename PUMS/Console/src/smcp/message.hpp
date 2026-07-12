@@ -47,7 +47,7 @@ enum class MsgId : uint8_t {
     SysInfo      = 0x04, /**< Версии ПО и статус Master/Checker. */
     GetLog       = 0x05, /**< Выгрузка записей «чёрного ящика» (W25Q16). */
 
-    Lease        = 0x10, /**< Захват/освобождение маски штанкетов (action в payload). */
+    Select       = 0x10, /**< Выделение/снятие маски штанкетов (action в payload). */
     ResetFault   = 0x12, /**< Сброс аварийного состояния оси (Clear FAULT). */
 
     SetTarget    = 0x20, /**< Взвод движения: цель, скорость, ускорение. */
@@ -131,21 +131,21 @@ struct GetLog {
 
 static_assert(sizeof(Nack) == 1u);
 
-// --- 0x10: lease (классификатор действия в payload) ---
+// --- 0x10: select (классификатор действия в payload) ---
 
-struct Lease {
-    static constexpr MsgId kId = MsgId::Lease;
+struct Select {
+    static constexpr MsgId kId = MsgId::Select;
 
     enum class Action : uint8_t {
-        Request,  /**< Захват маски. */
-        Release,  /**< Освобождение маски. */
+        Select,   /**< Выделить маску. */
+        Deselect, /**< Снять выделение маски. */
     };
 
-    Action action = Action::Request;
+    Action action = Action::Select;
     Selection selection;
 };
 
-static_assert(sizeof(Lease) == sizeof(uint64_t) + 1u);
+static_assert(sizeof(Select) == sizeof(uint64_t) + 1u);
 
 // --- 0x12 ---
 
@@ -199,7 +199,7 @@ struct Telemetry {
     static constexpr MsgId kId = MsgId::Telemetry;
 
     uint8_t local_id = 0;
-    uint8_t owner_id = kLeaseOwnerNone; /**< SRC_ID консоли-владельца; 0 — lease свободен. */
+    uint8_t select_owner_id = kSelectOwnerNone; /**< SRC_ID консоли; 0 — не выделен. */
     int32_t position_mm = 0;
     int16_t speed_mm_s = 0;
     REG::BitMask<IMech::Status> status{};
@@ -221,7 +221,7 @@ using Message = std::variant<Ack,
                              Heartbeat,
                              SysInfo,
                              GetLog,
-                             Lease,
+                             Select,
                              ResetFault,
                              SetTarget,
                              ShowFile,
@@ -326,7 +326,7 @@ template <typename T>
     case MsgId::GetConfig:
     case MsgId::ShowFile:
         return kAckRetryConfig;
-    case MsgId::Lease:
+    case MsgId::Select:
     case MsgId::ResetFault:
     case MsgId::SetTarget:
     case MsgId::GetLog:

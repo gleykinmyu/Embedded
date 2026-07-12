@@ -31,7 +31,7 @@ static constexpr StateColors kStateColors[] =
     {AppColors::kBlocked, AppColors::kBorder,   AppColors::kBlocked, AppColors::kBorder},
 };
 
-class ConsoleButton : public nex::comp::Button<> {
+class ConsoleBtn : public nex::comp::Button<> {
 public:
     enum class State : uint8_t {
         Disabled,
@@ -40,7 +40,7 @@ public:
         Blocked,
     };
 
-    ConsoleButton(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept
+    ConsoleBtn(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept
         : Button(owner, name, id)
     {}
 
@@ -63,9 +63,9 @@ private:
     State state{State::Disabled};
 };
 
-class WinchButton : public ConsoleButton {
+class WinchButton : public ConsoleBtn {
 public:
-    using ConsoleButton::ConsoleButton;
+    using ConsoleBtn::ConsoleBtn;
 
     void setPrefix(const char* prefix) noexcept
     {
@@ -92,7 +92,7 @@ private:
 
     [[nodiscard]] uint8_t winchIndex() const noexcept
     {
-        const uint8_t first = static_cast<uint8_t>(nex::hmi::Page_work::Id::b0);
+        const uint8_t first = nex::hmi::Page_work::b0;
         return (id() >= first) ? static_cast<uint8_t>(id() - first) : 0u;
     }
 };

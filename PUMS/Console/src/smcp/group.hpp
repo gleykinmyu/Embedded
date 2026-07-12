@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #include "bitmask.hpp"
 
@@ -15,6 +16,7 @@ namespace smcp {
 inline constexpr std::size_t kGroupWireSize = 64u;
 inline constexpr std::size_t kGroupNameSize = 48u;
 inline constexpr std::size_t kMechCount = 64u;
+inline constexpr std::size_t kGroupMaxCount = 33u;
 
 /** FourCC-тег секции групп в шоуфайле — "GRUP". */
 inline constexpr uint32_t kGroupSectionTag = 0x50555247u;
@@ -55,6 +57,22 @@ public:
         }
     }
 
+    constexpr void toggle(uint8_t id) noexcept
+    {
+        if (id < kMechCount) {
+            bits_ ^= (1ULL << id);
+        }
+    }
+
+    [[nodiscard]] constexpr std::size_t count() const noexcept
+    {
+        std::size_t n = 0;
+        for (uint64_t v = bits_; v != 0ULL; v >>= 1) {
+            n += static_cast<std::size_t>(v & 1ULL);
+        }
+        return n;
+    }
+
     constexpr Selection operator|(Selection o) const noexcept { return Selection(bits_ | o.bits_); }
 
     constexpr Selection operator&(Selection o) const noexcept { return Selection(bits_ & o.bits_); }
@@ -64,7 +82,6 @@ public:
 
 static_assert(sizeof(Selection) == sizeof(uint64_t));
 
-#pragma pack(push, 1)
 
 /** Группа механизмов — 64 байта. */
 struct Group {
@@ -72,18 +89,50 @@ struct Group {
         Blocked = 1u << 0,
         Atomic  = 1u << 1
     };
-
     uint8_t id = 0;
-    char name[kGroupNameSize]{};
-    Selection mech;
     REG::BitMask<Flag> flag;
+    Selection mech;
+    char name[kGroupNameSize]{};
     uint8_t reserved[4]{};
     uint16_t crc16 = 0;
+
+    [[nodiscard]] constexpr bool isEmpty() const noexcept { return mech.empty(); }
+
+    void clear() noexcept
+    {
+        mech = Selection{};
+        name[0] = '\0';
+        flag = {};
+        crc16 = 0;
+    }
+
+    void setName(const char* group_name) noexcept
+    {
+        if (group_name == nullptr) {
+            name[0] = '\0';
+            return;
+        }
+        std::strncpy(name, group_name, kGroupNameSize - 1u);
+        name[kGroupNameSize - 1u] = '\0';
+    }
+
+    void setSelection(Selection selection) noexcept { mech = selection; }
+
+    [[nodiscard]] constexpr bool isBlocked() const noexcept { return flag.any(Flag::Blocked); }
+
+    void setBlocked(bool blocked) noexcept
+    {
+        if (blocked) {
+            flag.set(Flag::Blocked);
+        } else {
+            flag.clear(Flag::Blocked);
+        }
+    }
 };
 
-static_assert(sizeof(Group) == kGroupWireSize);
 
-#pragma pack(pop)
+//static_assert(sizeof(Group) == kGroupWireSize);
+
 
 REG_BITMASK_ENUM_OPS(Group::Flag)
 

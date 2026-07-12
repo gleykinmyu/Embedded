@@ -9,11 +9,19 @@
 #include <stm32f4xx_hal.h>
 
 #include "Debug.h"
-#include "UI/console.hpp"
+#include "UI/application.hpp"
 
+#include "core/nexDebug.hpp"
+#include "core/nexTypes.hpp"
 #include "nex.hpp"
 #include "board.hpp"
 
+nex::AppTiming timing = {boardClockMs, 500u};
+
+
+server::Application app(board.serial2, nex::Rect(320u, 240u), timing);
+
+MConsole console;
 
 int main(void)
 {
@@ -23,17 +31,17 @@ int main(void)
     board.serial1.open(250000);
     board.serial2.open(250000);
 
-    NEX_DBG("Nextion: overlay z-order demo\n");
+    setSerial1LogEnabled(true);
+    board.setLedAlive(true);
 
-    board.led.Off();
-    uint32_t last_blink_ms = 0;
+    NEX_DBG("PUMS Console boot: log=serial1 Nextion=serial2 250000\n");
+    NEX_DBG("NEX_TRACE_TX/RX enabled — смотрите serial1 (PA9/PA10)\n");
+
+    app.boot();
+    NEX_DBG("Application::boot() done, entering main loop\n");
 
     while (1) {
-        const uint32_t now = board.GetTick();
-        if ((now - last_blink_ms) >= 1000u) {
-            last_blink_ms = now;
-            board.led.Toggle();
-        }
-        //app.update();
+        board.tick();
+        app.update();
     }
 }

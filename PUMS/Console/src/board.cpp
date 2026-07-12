@@ -3,6 +3,27 @@
 
 CBoard board;
 
+void CBoard::tick() noexcept
+{
+    if (!_ledAlive) {
+        return;
+    }
+
+    const uint32_t now = GetTick();
+    if ((now - _ledBlinkMs) >= 1000u) {
+        _ledBlinkMs = now;
+        led.Toggle();
+    }
+}
+
+void CBoard::setLedAlive(bool alive) noexcept
+{
+    _ledAlive = alive;
+    if (!alive) {
+        led.Off();
+    }
+}
+
 uint32_t boardClockMs() noexcept
 {
     return board.GetTick();
@@ -62,6 +83,7 @@ extern "C" int _write(int file, char *ptr, int len) {
         }
 
         while (serial1TxHealthy() && board.serial1.availableForWrite() == 0) {
+            board.tick();
         }
     }
 
