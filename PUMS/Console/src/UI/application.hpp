@@ -7,8 +7,10 @@
 #include "waitPage.hpp"
 #include "workPage.hpp"
 #include "nex.hpp"
+#include "overlay/ovl.hpp"
 
 #include "mconsole.hpp"
+#include "mbrowser.hpp"
 
 namespace server {
 
@@ -20,6 +22,8 @@ public:
     /** Показать overlay UI (статус-бар и т.п.). */
     void boot() noexcept;
 
+    nex::ovl::MsgBox msgBox{*this};
+
    // StatusBar statusBar;
     WaitPage wait;
     WorkPage work;
@@ -28,8 +32,8 @@ public:
     BrowserPage browser;
 };
 
-
-
 } // namespace server
 
 extern MConsole console;
+extern MBrowser mBrowser;
+

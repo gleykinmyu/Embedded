@@ -14,6 +14,9 @@
 static constexpr uint8_t kMaxRxFaultRetries = 2u;
 
 namespace nex {
+
+class IPage;
+
 /** clock + session timeout. */
 struct AppTiming {
     using ClockMsFn = uint32_t (*)() noexcept;
@@ -66,6 +69,7 @@ public:
     void restartScreen() noexcept;
     void switchPage(uint8_t pageId) noexcept;
     void switchPage(const Literal& pageName) noexcept;
+    void switchPage(IPage& page) noexcept;
     void requestCurrentPage() noexcept;
     void refreshPage() noexcept;
 

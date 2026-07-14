@@ -183,16 +183,16 @@ void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
 }
 
 void printRxLine(const RxFrame& wire, const Message& parsed) noexcept {
-    NEX_DBG_TRACE_RX("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
+    NEX_DBG_TRACE_RX_WIRE("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
         static_cast<unsigned>(wire.length));
     if (wire.length > 0u) {
-        NEX_DBG_TRACE_RX(" [");
+        NEX_DBG_TRACE_RX_WIRE(" [");
         for (uint16_t i = 0u; i < wire.length; ++i)
-            NEX_DBG_TRACE_RX("%s0x%02X", (i != 0u) ? " " : "",
+            NEX_DBG_TRACE_RX_WIRE("%s0x%02X", (i != 0u) ? " " : "",
                 static_cast<unsigned>(wire.payload[i]));
-        NEX_DBG_TRACE_RX("]\n");
+        NEX_DBG_TRACE_RX_WIRE("]\n");
     } else {
-        NEX_DBG_TRACE_RX("\n");
+        NEX_DBG_TRACE_RX_WIRE("\n");
     }
 
     std::visit([](auto&& m) {

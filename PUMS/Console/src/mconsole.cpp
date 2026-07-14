@@ -9,7 +9,7 @@
 
 namespace {
 
-constexpr const char kDefaultGroupName[] = "-";
+constexpr const char kDefaultGroupName[] = "Group";
 constexpr const char kBlockedGroupName[] = "Blocked";
 
 } // namespace
@@ -23,8 +23,9 @@ void MConsole::initBlockedGroup() noexcept
     grp.setName(kBlockedGroupName);
 }
 
-MConsole::MConsole(uint8_t max_active_mechs, uint8_t console_id) noexcept
-    : _console_id(console_id)
+MConsole::MConsole(smcp::file::IFile& io, uint8_t max_active_mechs, uint8_t console_id) noexcept
+    : _io(io)
+    , _console_id(console_id)
     , _maxActiveMechs(max_active_mechs)
 {
     for (std::size_t i = 0; i < kMechCount; ++i) {
@@ -177,7 +178,14 @@ bool MConsole::recallGroup(uint8_t id) noexcept
         }
     }
 
+    _activeGroup = id;
     return true;
+}
+
+void MConsole::clearActiveGroup() noexcept
+{
+    clearSelection();
+    _activeGroup = kBlockedGroupId;
 }
 
 void MConsole::newShow() noexcept
@@ -186,18 +194,18 @@ void MConsole::newShow() noexcept
         grp.clear();
     }
     initBlockedGroup();
-    clearSelection();
+    clearActiveGroup();
     _showName[0] = '\0';
 }
 
-bool MConsole::loadShow(smcp::file::IFile& io, const char* path) noexcept
+bool MConsole::loadShow(const char* path) noexcept
 {
     if (path == nullptr) {
         return false;
     }
 
     smcp::file::SectionDesc catalog[1]{};
-    smcp::file::Reader reader(io, catalog, 1u);
+    smcp::file::Reader reader(_io, catalog, 1u);
     if (!reader.open(path)) {
         return false;
     }
@@ -244,14 +252,14 @@ bool MConsole::loadShow(smcp::file::IFile& io, const char* path) noexcept
     return true;
 }
 
-bool MConsole::saveShow(smcp::file::IFile& io, const char* path) noexcept
+bool MConsole::saveShow(const char* path) noexcept
 {
     if (path == nullptr) {
         return false;
     }
 
     smcp::file::SectionDesc catalog[1]{};
-    smcp::file::Writer writer(io, 1u, catalog);
+    smcp::file::Writer writer(_io, 1u, catalog);
     if (!writer.open(path)) {
         return false;
     }

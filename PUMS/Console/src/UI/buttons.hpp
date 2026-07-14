@@ -63,6 +63,16 @@ private:
     State state{State::Disabled};
 };
 
+class GroupBtn : public ConsoleBtn {
+public:
+    nex::attr::String<8> txt;
+
+    GroupBtn(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept
+        : ConsoleBtn(owner, name, id)
+        , txt{*this, nex::attr::Id::Txt}
+    {}
+};
+
 class WinchButton : public ConsoleBtn {
 public:
     using ConsoleBtn::ConsoleBtn;

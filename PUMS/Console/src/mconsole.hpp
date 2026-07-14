@@ -17,7 +17,9 @@ public:
     static constexpr std::size_t kMechCount = 24u;
     static constexpr uint8_t kBlockedGroupId = 0u;
 
-    explicit MConsole(uint8_t max_active_mechs = 3u, uint8_t console_id = 1u) noexcept;
+    explicit MConsole(smcp::file::IFile& io,
+                      uint8_t max_active_mechs = 3u,
+                      uint8_t console_id = 1u) noexcept;
 
     [[nodiscard]] uint8_t consoleId() const noexcept { return _console_id; }
 
@@ -50,6 +52,11 @@ public:
     /** Восстановить выделение механизмов из группы. */
     [[nodiscard]] bool recallGroup(uint8_t id) noexcept;
 
+    /** Снять выделение и сбросить активную группу. */
+    void clearActiveGroup() noexcept;
+
+    [[nodiscard]] uint8_t getActiveGroup() const noexcept { return _activeGroup; }
+
     [[nodiscard]] smcp::Group& group(uint8_t id) noexcept { return _groups[id]; }
 
     [[nodiscard]] const smcp::Group& group(uint8_t id) const noexcept { return _groups[id]; }
@@ -59,9 +66,12 @@ public:
     /** Пустой шоу: сброс всех групп и выделения. */
     void newShow() noexcept;
 
-    [[nodiscard]] bool loadShow(smcp::file::IFile& io, const char* path) noexcept;
+    [[nodiscard]] bool loadShow(const char* path) noexcept;
 
-    [[nodiscard]] bool saveShow(smcp::file::IFile& io, const char* path) noexcept;
+    [[nodiscard]] bool saveShow(const char* path) noexcept;
+
+    [[nodiscard]] smcp::file::IFile& file() noexcept { return _io; }
+    [[nodiscard]] const smcp::file::IFile& file() const noexcept { return _io; }
 
     [[nodiscard]] const char* showName() const noexcept { return _showName; }
 
@@ -81,8 +91,10 @@ private:
 
     void initBlockedGroup() noexcept;
 
+    smcp::file::IFile& _io;
     uint8_t _console_id;
     uint8_t _maxActiveMechs;
+    uint8_t _activeGroup = kBlockedGroupId;
     smcp::Mech _mechs[kMechCount];
     smcp::Group _groups[smcp::kGroupMaxCount];
     char _showName[smcp::file::kShowFileNameSize]{};

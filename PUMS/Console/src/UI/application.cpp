@@ -15,7 +15,9 @@ Application::Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTim
 void Application::boot() noexcept
 {
     //statusBar.show(overlay);
+    restartScreen();
     switchPage(0);
+
 }
 
 } // namespace server

@@ -1,8 +1,8 @@
 /**
  * @file show_file.hpp
- * @brief Формат шоуфайла SMCP: заголовок, каталог секций, интерфейс чтения/записи.
+ * @brief Формат шоуфайла SMCP: заголовок, каталог секций, Reader/Writer.
  *
- * Реализация носителя (FatFS и т.д.) подключается через smcp::file::IFile.
+ * Носитель — `smcp::file::IFile` (см. `fs.hpp`).
  * Запись: Writer(io, n, catalog) → open(path) → writeSection… → finalize().
  * Чтение: Reader(io, catalog, capacity) → open(path) → readSection… → close().
  */
@@ -13,33 +13,14 @@
 #include <cstdint>
 #include <cstring>
 
+#include "fs.hpp"
+
 namespace smcp {
 namespace file {
 
 inline constexpr uint32_t kMagic = 0x534D4350u; /**< "SMCP". */
 inline constexpr uint16_t kVersion = 0x0114u;
 inline constexpr std::size_t kShowFileNameSize = 48u;
-
-/** Интерфейс чтения/записи шоуфайла на носителе (реализация — снаружи, например FatFS). */
-class IFile {
-public:
-    virtual ~IFile() = default;
-
-    /** Открыть файл по пути (реализация — FatFS и т.д.). */
-    virtual bool open(const char* path, bool for_write) noexcept = 0;
-
-    /** Закрыть файл и освободить ресурс на носителе. */
-    virtual void close() noexcept = 0;
-
-    /** Последовательное или произвольное чтение блока данных. */
-    virtual bool read(uint8_t* data, std::size_t size) noexcept = 0;
-
-    /** Последовательная или произвольная запись блока данных. */
-    virtual bool write(const uint8_t* data, std::size_t size) noexcept = 0;
-
-    /** Абсолютное смещение в файле (нужно для payload и патча заголовка). */
-    virtual bool seek(std::size_t offset) noexcept = 0;
-};
 
 #pragma pack(push, 1)
 
@@ -226,6 +207,7 @@ public:
         ok = ok && _io.seek(sizeof(Header));
         ok = ok && _io.write(reinterpret_cast<const uint8_t*>(_catalog),
                             static_cast<std::size_t>(_sectionCount) * sizeof(SectionDesc));
+        ok = ok && _io.sync();
         close();
         return ok;
     }

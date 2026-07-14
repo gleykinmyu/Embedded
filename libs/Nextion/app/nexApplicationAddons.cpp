@@ -2,6 +2,7 @@
 
 #include "nexApplication.hpp"
 #include "nexSysVars.hpp"
+#include "../comp/nexComponentBase.hpp"
 
 namespace nex {
 
@@ -21,6 +22,10 @@ void Application::switchPage(uint8_t pageId) noexcept {
 
 void Application::switchPage(const Literal& pageName) noexcept {
     enqueue(Transaction{cmd::Page::switchTo(pageName), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
+}
+
+void Application::switchPage(IPage& page) noexcept {
+    enqueue(Transaction{cmd::Page::switchTo(page.ID), 0u, 0u, 0u, Transaction::Kind::Command, msg::kAwaitingPageCommand});
 }
 
 void Application::requestCurrentPage() noexcept {
