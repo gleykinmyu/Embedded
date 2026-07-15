@@ -68,20 +68,6 @@ void BrowserPage::showFsError() noexcept
         nex::ovl::MsgBox::Action::None, "Storage error.");
 }
 
-bool BrowserPage::takeDeleteDonePending() noexcept
-{
-    if (_pending != Pending::DeleteDoneMsg) {
-        return false;
-    }
-    _pending = Pending::None;
-    return true;
-}
-
-void BrowserPage::showDeleteDoneMsg() noexcept
-{
-    showFileMsg("File deleted.");
-}
-
 BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
     : Page<37>(app, HMI_COMP_OBJNAME(browser), PG::kPageId)
 {}
@@ -379,28 +365,30 @@ void BrowserPage::commitDelete() noexcept
     }
 
     _msg = Msg::None;
-    _pending = Pending::DeleteDoneMsg;
+    showFileMsg("File deleted.");
 }
 
 void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
 {
-    if (e.action == nex::msg::evMsgBox::Action::Yes) {
-        switch (_msg) {
-        case Msg::OverwriteSave:
-            commitSaveAs(_pendingPath);
-            return;
-        case Msg::ConfirmDelete:
-            commitDelete();
-            return;
-        default:
-            break;
-        }
+    if (e.action != nex::msg::evMsgBox::Action::Yes) {
+        _msg = Msg::None;
+        _pendingPath[0] = '\0';
+        clearFileRowSelection();
+        redrawRows();
+        return;
     }
 
-    _msg = Msg::None;
-    _pendingPath[0] = '\0';
-    clearFileRowSelection();
-    redrawRows();
+    switch (_msg) {
+    case Msg::OverwriteSave:
+        commitSaveAs(_pendingPath);
+        break;
+    case Msg::ConfirmDelete:
+        commitDelete();
+        break;
+    case Msg::None:
+    default:
+        break;
+    }
 }
 
 } // namespace server
