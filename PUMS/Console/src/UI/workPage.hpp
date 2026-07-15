@@ -13,9 +13,21 @@ using namespace nex::comp;
 struct WorkPage : nex::Page<54> {
     HMI_PAGE_CFG(work);
 
-    HMI_INPLACE_PAGE_RANGE_CFG(GroupButtons, work, GroupBtn, bS0, bS7)
-    HMI_INPLACE_PAGE_RANGE_CFG(GroupAssignButtons, work, ConsoleBtn, bSa0, bSa7)
-    HMI_INPLACE_PAGE_RANGE_CFG(CellButtons, work, WinchButton, b0, b23)
+    using GroupButtons = InplaceArray<GroupBtn,
+        PG::bS0, PG::bS1, PG::bS2, PG::bS3,
+        PG::bS4, PG::bS5, PG::bS6, PG::bS7>;
+
+    using GroupAssignButtons = InplaceArray<ConsoleBtn,
+        PG::bSa0, PG::bSa1, PG::bSa2, PG::bSa3,
+        PG::bSa4, PG::bSa5, PG::bSa6, PG::bSa7>;
+
+    using CellButtons = InplaceArray<WinchButton,
+        PG::b0, PG::b1, PG::b2, PG::b3,
+        PG::b4, PG::b5, PG::b6, PG::b7,
+        PG::b8, PG::b9, PG::b10, PG::b11,
+        PG::b12, PG::b13, PG::b14, PG::b15,
+        PG::b16, PG::b17, PG::b18, PG::b19,
+        PG::b20, PG::b21, PG::b22, PG::b23>;
 
     HMI_COMP(ConsoleBtn, bFile);
     HMI_COMP(ConsoleBtn, bBlock);

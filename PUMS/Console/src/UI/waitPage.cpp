@@ -3,7 +3,7 @@
 namespace server {
 
 WaitPage::WaitPage(nex::IAppUI& app) noexcept
-    : Page<0>(app, HMI_COMP_OBJNAME(wait), PageCfg::kPageId)
+    : Page<0>(app, HMI_COMP_OBJNAME(wait), PG::kPageId)
 {}
 
 } // namespace server

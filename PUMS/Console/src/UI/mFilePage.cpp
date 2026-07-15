@@ -3,7 +3,7 @@
 namespace server {
 
 MFilePage::MFilePage(nex::IAppUI& app) noexcept
-    : Page<9>(app, HMI_COMP_OBJNAME(mFile), PageCfg::kPageId)
+    : Page<9>(app, HMI_COMP_OBJNAME(mFile), PG::kPageId)
 {}
 
 } // namespace server

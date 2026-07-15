@@ -2,6 +2,7 @@
 
 #include "nex.hpp"
 #include "nexHmiConfig.hpp"
+#include "overlay/ovl.hpp"
 
 namespace server {
 
@@ -63,6 +64,83 @@ private:
     State state{State::Disabled};
 };
 
+struct BrwStateColors {
+    nex::Color bg;
+    nex::Color txt;
+    nex::Color border;
+};
+
+static constexpr BrwStateColors kBrwStateColors[] = {
+    {AppColors::kPage,    AppColors::kBorder,AppColors::kBorder},
+    {AppColors::kDefault, AppColors::kText,  AppColors::kBorder},
+    {AppColors::kDefault,    AppColors::kText,  AppColors::kMain},
+};
+
+class BrowserBtn : public nex::comp::Textual<> {
+public:
+    enum class State : uint8_t {
+        Disabled,
+        Active,
+        Selected,
+    };
+
+    BrowserBtn(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept
+        : Textual<>(owner, name, Component::Type::Text, id)
+    {}
+
+    void onTouch(const nex::msg::evTouch& e) override
+    {
+        if (e.state == nex::TouchState::Press && state == State::Active) {
+            if (active_id != 0xFFu && active_id != id()) {
+                nex::Component* comp = page.getComponent(active_id);
+                if (comp != nullptr && comp->type == type) {
+                    comp->onUser(0, 0);
+                }
+            }
+            active_id = id();
+            setState(State::Selected);
+        }
+        Textual::onTouch(e);
+    }
+
+    void onUser(uint8_t user1, uint8_t user2) override
+    {
+        if (user1 == 0 && user2 == 0) {
+            setState(State::Active);
+        }
+    }
+
+    void setState(State next) noexcept
+    {
+        state = next;
+        const BrwStateColors& colors = kBrwStateColors[static_cast<size_t>(state)];
+        bg.setColor(colors.bg);
+        font.setColor(colors.txt);
+        setBorderColor(colors.border);
+    }
+
+    [[nodiscard]] State getState() const noexcept
+    {
+        return state;
+    }
+
+    static inline uint8_t active_id = 0xFF;
+
+private:
+    void setBorderColor(nex::Color v) noexcept
+    {
+        nex::attr_detail::assignNumeric(*this, nex::attr::Id::Borderc, v);
+    }
+
+    State state{State::Disabled};
+};
+
+/** Строка даты/времени в browser (bF0d..bF7d), txt до 20 символов. */
+class FileDateText : public nex::comp::Text<nex::BG::Color, 20u> {
+public:
+    using nex::comp::Text<nex::BG::Color, 20u>::Text;
+};
+
 class GroupBtn : public ConsoleBtn {
 public:
     nex::attr::String<8> txt;
@@ -105,6 +183,23 @@ private:
         const uint8_t first = nex::hmi::Page_work::b0;
         return (id() >= first) ? static_cast<uint8_t>(id() - first) : 0u;
     }
+};
+
+
+
+/** Цвета MsgBox в палитре приложения (как StatusBar + ConsoleBtn). */
+inline constexpr nex::ovl::MsgBoxColors kAppMsgBoxColors{
+    AppColors::kPage,      // frameBg
+    AppColors::kBorder,    // frameBorder
+    AppColors::kTextLight, // title
+    AppColors::kText,      // body
+    AppColors::kMain,      // errorTitle
+    AppColors::kDefault,   // btnNormalBg
+    AppColors::kBorder,    // btnNormalBorder
+    AppColors::kText,      // btnNormalText
+    AppColors::kMain,      // btnPressedBg
+    AppColors::kDefault,      // btnHighlightBg
+    AppColors::kMain,      // btnHighlightBorder
 };
 
 } // namespace server

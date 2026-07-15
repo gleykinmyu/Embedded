@@ -102,7 +102,7 @@ const char* MsgBox::presetCstr(const Preset preset) noexcept {
     }
 }
 
-MsgBox::MsgBox(OvlApp& app) noexcept
+MsgBox::MsgBox(OvlApp& app, const MsgBoxColors& colors) noexcept
     : _app(app),
       _screenSize(app.screenLayout().size),
       _btns{
@@ -110,7 +110,8 @@ MsgBox::MsgBox(OvlApp& app) noexcept
           MsgButton{kMsgBoxLabels.cancel, Rect(kMsgBoxBtn.wCancel, kMsgBoxBtn.h), Action::Cancel, kMsgBoxBtnStyles.normal},
           MsgButton{kMsgBoxLabels.yes, Rect(kMsgBoxBtn.wMulti, kMsgBoxBtn.h), Action::Yes, kMsgBoxBtnStyles.normal},
           MsgButton{kMsgBoxLabels.no, Rect(kMsgBoxBtn.wMulti, kMsgBoxBtn.h), Action::No, kMsgBoxBtnStyles.normal},
-      } {
+      },
+      _colors(colors) {
     static constexpr uint8_t kChildOrder[] = {1u, 3u, 0u, 2u};
     for (const uint8_t idx : kChildOrder)
         addChildTop(_btns[idx]);
@@ -119,6 +120,34 @@ MsgBox::MsgBox(OvlApp& app) noexcept
 void MsgBox::setRoute(const Route route) noexcept {
     _ev.route = route;
     _routePinned = true;
+}
+
+MsgBoxFrameStyle MsgBox::resolvedFrame() const noexcept {
+    MsgBoxFrameStyle frame = kMsgBoxFrame;
+    frame.bg = _colors.frameBg;
+    frame.border.color = _colors.frameBorder;
+    return frame;
+}
+
+MsgBoxButtonStyles MsgBox::resolvedButtonStyles() const noexcept {
+    MsgBoxButtonStyles styles = kMsgBoxBtnStyles;
+    styles.normal.normal.bg = _colors.btnNormalBg;
+    styles.normal.normal.border.color = _colors.btnNormalBorder;
+    styles.normal.normal.font.color = _colors.btnNormalText;
+    styles.normal.pressed.bg = _colors.btnPressedBg;
+    styles.highlighted.normal.bg = _colors.btnHighlightBg;
+    styles.highlighted.normal.border.color = _colors.btnHighlightBorder;
+    styles.highlighted.pressed.bg = styles.normal.pressed.bg;
+    styles.highlighted.pressed.border.color = styles.highlighted.normal.border.color;
+    styles.highlighted.pressed.font.color = styles.highlighted.normal.font.color;
+    return styles;
+}
+
+Color MsgBox::resolvedTitleColor() const noexcept {
+    if (_ev.tag == msg::evMsgBox::kTagError) {
+        return _colors.errorTitle;
+    }
+    return _colors.title;
 }
 
 void MsgBox::applyShow(const Preset preset, const Action defaultAction, const uint8_t tag) noexcept {
@@ -157,11 +186,12 @@ void MsgBox::layout() noexcept {
     const Region& frame = region();
     const Coord topY = buttonTopY(frame.lowerRight().y);
     Button* row[3]{};
+    const MsgBoxButtonStyles btnStyles = resolvedButtonStyles();
 
     for (uint8_t i = 0u; i < count; ++i) {
         MsgButton& btn = _btns[kPresetBtns[presetIdx][i]];
         const bool isDefault = _defaultAction != Action::None && _defaultAction == btn.action();
-        btn.setHighlighted(kMsgBoxBtnStyles, isDefault);
+        btn.setHighlighted(btnStyles, isDefault);
         row[i] = &btn;
     }
 
@@ -170,25 +200,26 @@ void MsgBox::layout() noexcept {
 
 void MsgBox::drawBackground(const AppCanvas& cs) const {
     const Region frame = screenRegion();
-    const uint16_t border = kMsgBoxFrame.border.thickness;
+    const MsgBoxFrameStyle frameStyle = resolvedFrame();
+    const uint16_t border = frameStyle.border.thickness;
 
-    cs.rect_bordered(frame, kMsgBoxFrame.bg, kMsgBoxFrame.border.color, border);
+    cs.rect_bordered(frame, frameStyle.bg, frameStyle.border.color, border);
 
     if (_title[0] != '\0') {
-        const Color titleFg = (_ev.tag == msg::evMsgBox::kTagError) ? Color::std::Yellow : kMsgBoxFrame.font.color;
         cs.text_in_region(Region(frame.ul, Rect(frame.size.w, static_cast<uint16_t>(kMsgBoxFrame.titleH + 2u * border))),
-            border, _title, kMsgBoxFrame.font.id, titleFg);
+            border, _title, frameStyle.font.id, resolvedTitleColor());
     }
 
     if (_text[0] != '\0') {
         const Region body = bodyTextRegion(frame);
-        if (body.size.w > 0u && body.size.h > 0u)
-            cs.text_in_region(body, _text, kMsgBoxFrame.font.id);
+        if (body.size.w > 0u && body.size.h > 0u) {
+            cs.text_in_region(body, _text, frameStyle.font.id, _colors.body);
+        }
     }
 }
 
 void MsgBox::drawBackgroundRegion(const AppCanvas& cs, const Region clip) const {
-    cs.rect_fill(clip, kMsgBoxFrame.bg);
+    cs.rect_fill(clip, resolvedFrame().bg);
 }
 
 void MsgBox::onClick(Object* const target) noexcept {
@@ -204,7 +235,8 @@ void MsgBox::onClick(Object* const target) noexcept {
     _ev.action = btn->action();
     Widget::hide(_app.overlay);
     _app.onMsgBox(_ev);
-    _app.refreshPage();
+    if (!_app.overlay.isModal())
+        _app.refreshPage();
 }
 
 void MsgBox::setTitle(const char* title) noexcept {

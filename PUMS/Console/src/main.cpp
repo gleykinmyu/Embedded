@@ -23,7 +23,7 @@
 nex::AppTiming timing = {boardClockMs, 500u};
 
 
-server::Application app(board.serial2, nex::Rect(320u, 240u), timing);
+server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
 
 smcp::file::FatVolume sdVolume;
 smcp::file::FatFile showFile;

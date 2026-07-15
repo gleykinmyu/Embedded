@@ -11,7 +11,7 @@ constexpr uint8_t kScenePageCount = 4u;
 } // namespace
 
 WorkPage::WorkPage(nex::IAppUI& app) noexcept
-    : Page<54>(app, HMI_COMP_OBJNAME(work), PageCfg::kPageId)
+    : Page<54>(app, HMI_COMP_OBJNAME(work), PG::kPageId)
 {}
 
 uint8_t WorkPage::groupIdForSlot(uint8_t index) const noexcept

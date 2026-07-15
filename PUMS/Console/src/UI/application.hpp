@@ -1,6 +1,7 @@
 #pragma once
 
 #include "browserPage.hpp"
+#include "buttons.hpp"
 #include "mFilePage.hpp"
 #include "mGroupPage.hpp"
 #include "statusBar.hpp"
@@ -22,9 +23,9 @@ public:
     /** Показать overlay UI (статус-бар и т.п.). */
     void boot() noexcept;
 
-    nex::ovl::MsgBox msgBox{*this};
+    nex::ovl::MsgBox msgBox{*this, kAppMsgBoxColors};
 
-   // StatusBar statusBar;
+    //StatusBar statusBar;
     WaitPage wait;
     WorkPage work;
     MGroupPage mGroup;

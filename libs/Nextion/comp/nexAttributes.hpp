@@ -201,6 +201,9 @@ public:
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
     [[nodiscard]] char* operator*() noexcept { return buf; }
 
+    [[nodiscard]] operator const char*() const noexcept { return buf; }
+
+
     void set(const char* text) noexcept {
         if (text == nullptr) {
             buf[0] = '\0';
@@ -255,6 +258,8 @@ public:
     {}
 
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
+
+    [[nodiscard]] operator const char*() const noexcept { return buf; }
 
     void applyResponse(const msg::getString& response) noexcept {
         attr_detail::copy_string_mirror(buf, MaxL, response);

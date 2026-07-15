@@ -116,6 +116,7 @@ bool MConsole::createGroup(uint8_t id, const char* name) noexcept
     }
 
     smcp::Group& grp = _groups[id];
+    const bool overwrite = !grp.isEmpty();
     grp.id = id;
     grp.setSelection(selection);
 
@@ -127,7 +128,7 @@ bool MConsole::createGroup(uint8_t id, const char* name) noexcept
 
     if (name != nullptr && name[0] != '\0') {
         grp.setName(name);
-    } else {
+    } else if (!overwrite) {
         grp.setName(kDefaultGroupName);
     }
 

@@ -5,7 +5,7 @@
 namespace server {
 
 MGroupPage::MGroupPage(nex::IAppUI& app) noexcept
-    : Page<7>(app, HMI_COMP_OBJNAME(mGroup), PageCfg::kPageId)
+    : Page<7>(app, HMI_COMP_OBJNAME(mGroup), PG::kPageId)
 {}
 
 Application& MGroupPage::ui() const noexcept
@@ -81,7 +81,7 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
         if (console.group(group_id).isEmpty()) {
             doRecord(group_id);
         } else {
-            ui().msgBox.setRoute(nex::Route{PageCfg::kPageId, 0u});
+            ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
             ui().msgBox.show("Group", nex::ovl::MsgBox::Preset::YesNo, kTagOverwrite,
                              nex::ovl::MsgBox::Action::No, "Overwrite group?");
         }
@@ -92,7 +92,7 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
             _action = Action::None;
             finishToWork();
         } else {
-            ui().msgBox.setRoute(nex::Route{PageCfg::kPageId, 0u});
+            ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
             ui().msgBox.show("Group", nex::ovl::MsgBox::Preset::YesNo, kTagClear,
                              nex::ovl::MsgBox::Action::No, "Clear group?");
         }

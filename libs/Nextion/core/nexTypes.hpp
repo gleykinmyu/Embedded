@@ -433,6 +433,12 @@ public:
         static_assert(N <= 256u, "nex::Literal: строка длиннее 255 символов (экран не поддерживает)");
     }
 
+    /** Только для `Page::kNames[i]` из hmi2config (строка в .rodata, `nameLen` без NUL). */
+    constexpr Literal(const char* s, uint8_t nameLen) noexcept
+        : data(s)
+        , len(nameLen)
+    {}
+
     constexpr Literal(const Literal&) noexcept = default;
     Literal(Literal&&) = delete;
     Literal& operator=(const Literal&) = delete;

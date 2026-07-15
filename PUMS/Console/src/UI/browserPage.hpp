@@ -13,8 +13,13 @@ class Application;
 struct BrowserPage : nex::Page<37> {
     HMI_PAGE_CFG(browser);
 
-    HMI_INPLACE_PAGE_RANGE_CFG(FileRows, browser, nex::comp::Text<>, bF0, bF7)
-    HMI_INPLACE_PAGE_RANGE_CFG(FileDateRows, browser, nex::comp::Text<>, bF0d, bF7d)
+    using FileRows = InplaceArray<BrowserBtn,
+        PG::bF0, PG::bF1, PG::bF2, PG::bF3,
+        PG::bF4, PG::bF5, PG::bF6, PG::bF7>;
+
+    using FileDateRows = InplaceArray<FileDateText,
+        PG::bF0d, PG::bF1d, PG::bF2d, PG::bF3d,
+        PG::bF4d, PG::bF5d, PG::bF6d, PG::bF7d>;
 
     HMI_COMP(ConsoleBtn, bAction);
     HMI_COMP(ConsoleBtn, bFNext);
@@ -34,6 +39,7 @@ struct BrowserPage : nex::Page<37> {
     void onTouch(const nex::msg::evTouch& e) override;
     void onResponse(const nex::msg::getNumeric& response, nex::Route route, uint8_t tag) override;
     void onResponse(const nex::msg::getString& response, nex::Route route, uint8_t tag) override;
+    void onMsgBox(const nex::msg::evMsgBox& e) override;
 
 private:
     enum class Mode : int32_t {
@@ -48,26 +54,41 @@ private:
         SaveAsName,
     };
 
+    enum class Msg : uint8_t {
+        None = 0,
+        OverwriteSave,
+        ConfirmDelete,
+    };
+
+    static constexpr uint8_t kTagOverwriteSave = 1u;
+    static constexpr uint8_t kTagConfirmDelete = 2u;
+
     [[nodiscard]] Application& ui() const noexcept;
 
     [[nodiscard]] Mode currentMode() const noexcept;
     [[nodiscard]] std::size_t visibleRows() const noexcept;
 
-    void applyModeLayout() noexcept;
-    void refreshList() noexcept;
     void redrawRows() noexcept;
+    void clearFileRowSelection() noexcept;
 
     void onFileRow(std::size_t row) noexcept;
-    void onPageNext() noexcept;
-    void onPagePrev() noexcept;
+    void changePage(bool next) noexcept;
     void onAction() noexcept;
 
     void doOpen() noexcept;
     void beginSaveAs() noexcept;
     void finishSaveAs() noexcept;
+    void commitSaveAs(const char* path) noexcept;
     void doDelete() noexcept;
+    void commitDelete() noexcept;
+
+    void showFileMsg(const char* text) noexcept;
+    void showFileYesNo(uint8_t tag, const char* text) noexcept;
+    void showFsError() noexcept;
 
     Pending _pending = Pending::None;
+    Msg _msg = Msg::None;
+    char _pendingPath[48]{};
 };
 
 } // namespace server

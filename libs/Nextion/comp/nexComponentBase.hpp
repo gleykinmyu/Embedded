@@ -139,6 +139,8 @@ namespace nex {
         /** `status != Success` с маршрутом на этот компонент. */
         virtual void onStatus(const msg::Status& response);
 
+        virtual void onUser(uint8_t user1, uint8_t user2) {  }
+
         /** Ответ MCU `MsgBox`, маршрутизированный на этот компонент. */
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
