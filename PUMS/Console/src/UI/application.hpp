@@ -23,6 +23,8 @@ public:
     /** Показать overlay UI (статус-бар и т.п.). */
     void boot() noexcept;
 
+    void onStatus(const nex::msg::Status& status, nex::Route route = {}) noexcept override;
+
     nex::ovl::MsgBox msgBox{*this, kAppMsgBoxColors};
 
     //StatusBar statusBar;

@@ -41,6 +41,9 @@ struct BrowserPage : nex::Page<37> {
     void onResponse(const nex::msg::getString& response, nex::Route route, uint8_t tag) override;
     void onMsgBox(const nex::msg::evMsgBox& e) override;
 
+    [[nodiscard]] bool takeDeleteDonePending() noexcept;
+    void showDeleteDoneMsg() noexcept;
+
 private:
     enum class Mode : int32_t {
         Open = 0,
@@ -52,6 +55,7 @@ private:
         None = 0,
         ReadMode,
         SaveAsName,
+        DeleteDoneMsg,
     };
 
     enum class Msg : uint8_t {

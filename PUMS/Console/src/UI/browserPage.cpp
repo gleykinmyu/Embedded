@@ -68,6 +68,20 @@ void BrowserPage::showFsError() noexcept
         nex::ovl::MsgBox::Action::None, "Storage error.");
 }
 
+bool BrowserPage::takeDeleteDonePending() noexcept
+{
+    if (_pending != Pending::DeleteDoneMsg) {
+        return false;
+    }
+    _pending = Pending::None;
+    return true;
+}
+
+void BrowserPage::showDeleteDoneMsg() noexcept
+{
+    showFileMsg("File deleted.");
+}
+
 BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
     : Page<37>(app, HMI_COMP_OBJNAME(browser), PG::kPageId)
 {}
@@ -365,9 +379,7 @@ void BrowserPage::commitDelete() noexcept
     }
 
     _msg = Msg::None;
-    //clearFileRowSelection();
-    //redrawRows();
-    showFileMsg("File deleted.");
+    _pending = Pending::DeleteDoneMsg;
 }
 
 void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
@@ -387,6 +399,7 @@ void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
 
     _msg = Msg::None;
     _pendingPath[0] = '\0';
+    clearFileRowSelection();
     redrawRows();
 }
 

@@ -17,7 +17,18 @@ void Application::boot() noexcept
     //statusBar.show(overlay);
     restartScreen();
     switchPage(0);
+}
 
+void Application::onStatus(const nex::msg::Status& status, nex::Route route) noexcept
+{
+    IAppUI::onStatus(status, route);
+
+    if (!status.isOK()) {
+        return;
+    }
+    if (browser.takeDeleteDonePending()) {
+        browser.showDeleteDoneMsg();
+    }
 }
 
 } // namespace server

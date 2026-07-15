@@ -235,8 +235,7 @@ void MsgBox::onClick(Object* const target) noexcept {
     _ev.action = btn->action();
     Widget::hide(_app.overlay);
     _app.onMsgBox(_ev);
-    if (!_app.overlay.isModal())
-        _app.refreshPage();
+    _app.refreshPage();
 }
 
 void MsgBox::setTitle(const char* title) noexcept {
