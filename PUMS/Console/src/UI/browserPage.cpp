@@ -72,6 +72,18 @@ BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
     : Page<37>(app, HMI_COMP_OBJNAME(browser), PG::kPageId)
 {}
 
+void BrowserPage::enterSaveAs() noexcept
+{
+    _forceMode = true;
+    _forcedMode = Mode::SaveAs;
+
+    /* Квалифицированный путь: страница browser ещё не активна. */
+    static constexpr nex::Literal kBrowserModeVal{"browser.mode.val"};
+    ui().setGlobalVar(kBrowserModeVal, static_cast<int32_t>(Mode::SaveAs));
+
+    ui().switchPage(*this);
+}
+
 Application& BrowserPage::ui() const noexcept
 {
     return static_cast<Application&>(app);
@@ -97,6 +109,20 @@ std::size_t BrowserPage::visibleRows() const noexcept
 void BrowserPage::onLoad()
 {
     clearFileRowSelection();
+
+    if (_forceMode) {
+        _forceMode = false;
+        /* После page-события: короткий `mode.val` уже на активной странице. */
+        mode.val = static_cast<int32_t>(_forcedMode);
+        _pending = Pending::None;
+        if (!mBrowser.refresh()) {
+            showFsError();
+            return;
+        }
+        redrawRows();
+        return;
+    }
+
     _pending = Pending::ReadMode;
     mode.val.get();
 }
@@ -175,6 +201,19 @@ void BrowserPage::clearFileRowSelection() noexcept
     BrowserBtn::active_id = 0xFFu;
 }
 
+void BrowserPage::updateStatusTexts() noexcept
+{
+    char buf[12]{};
+    std::snprintf(buf, sizeof(buf), "%u/%u",
+        static_cast<unsigned>(mBrowser.page() + 1u),
+        static_cast<unsigned>(mBrowser.pageCount()));
+    tfPage.txt.set(buf);
+
+    std::snprintf(buf, sizeof(buf), "%u",
+        static_cast<unsigned>(mBrowser.fileCount()));
+    tfNum.txt.set(buf);
+}
+
 void BrowserPage::redrawRows() noexcept
 {
     mBrowser.setPageRows(visibleRows());
@@ -216,6 +255,8 @@ void BrowserPage::redrawRows() noexcept
         NEX_DBG("stamp: %s\n", stamp);
         fileDates[i].txt.set(stamp);
     }
+
+    updateStatusTexts();
 }
 
 void BrowserPage::onFileRow(std::size_t row) noexcept

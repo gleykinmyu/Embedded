@@ -1,7 +1,16 @@
 #include "board.hpp"
+
 #include <errno.h>
 
+#include "ff.h"
+
 CBoard board;
+
+extern "C" DWORD get_fattime(void)
+{
+    return board.rtc.fatTime();
+}
+
 
 void CBoard::tick() noexcept
 {

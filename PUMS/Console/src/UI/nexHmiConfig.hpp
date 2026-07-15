@@ -162,7 +162,7 @@ struct Page_mFile {
     X(bAction, 7, ##__VA_ARGS__) \
     X(bFNext, 8, ##__VA_ARGS__) \
     X(bFPrev, 9, ##__VA_ARGS__) \
-    X(t4, 10, ##__VA_ARGS__) \
+    X(tfPage, 10, ##__VA_ARGS__) \
     X(t2, 11, ##__VA_ARGS__) \
     X(t1, 12, ##__VA_ARGS__) \
     X(t7, 13, ##__VA_ARGS__) \
@@ -173,7 +173,7 @@ struct Page_mFile {
     X(bF4, 18, ##__VA_ARGS__) \
     X(bF5, 19, ##__VA_ARGS__) \
     X(bF6, 20, ##__VA_ARGS__) \
-    X(b0, 21, ##__VA_ARGS__) \
+    X(bCancel, 21, ##__VA_ARGS__) \
     X(bF0d, 22, ##__VA_ARGS__) \
     X(bF1d, 23, ##__VA_ARGS__) \
     X(bF2d, 24, ##__VA_ARGS__) \
@@ -182,7 +182,7 @@ struct Page_mFile {
     X(bF5d, 27, ##__VA_ARGS__) \
     X(bF6d, 28, ##__VA_ARGS__) \
     X(bF7d, 29, ##__VA_ARGS__) \
-    X(t15, 30, ##__VA_ARGS__) \
+    X(tfNum, 30, ##__VA_ARGS__) \
     X(tm, 31, ##__VA_ARGS__) \
     X(mode, 32, ##__VA_ARGS__) \
     X(fNameStr, 33, ##__VA_ARGS__)

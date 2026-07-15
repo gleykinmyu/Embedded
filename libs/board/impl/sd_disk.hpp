@@ -5,13 +5,12 @@
 
 namespace PHL {
 
-#if defined(SDMMC_DATATIMEOUT)
-constexpr uint32_t kSdDiskTimeout = SDMMC_DATATIMEOUT;
-#elif defined(SD_DATATIMEOUT)
-constexpr uint32_t kSdDiskTimeout = SD_DATATIMEOUT;
-#else
-constexpr uint32_t kSdDiskTimeout = 30u * 1000u;
+/* Софт-таймаут HAL_SD_*Blocks / waitUntilTransfer (мс).
+ * Не путать с SDMMC_DATATIMEOUT из Cube (на F4 = 0xFFFFFFFF). */
+#ifndef SD_DATATIMEOUT
+#define SD_DATATIMEOUT 1000u
 #endif
+constexpr uint32_t kSdDiskTimeout = SD_DATATIMEOUT;
 
 constexpr uint32_t kSdDefaultBlockSize = 512u;
 

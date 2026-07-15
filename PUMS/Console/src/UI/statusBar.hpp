@@ -7,7 +7,7 @@
 
 namespace server {
 
-/** Нижняя строка состояния McUI: Status | File | Time (слева направо). */
+/** Нижняя строка состояния McUI: [Status] | File (центр) | Time (справа). */
 class StatusBar : public nex::ovl::Widget {
 public:
     enum class Field : uint8_t {
@@ -17,7 +17,9 @@ public:
         Count,
     };
 
-    static constexpr uint16_t kDefaultHeight = 32u;
+    static constexpr uint16_t kDefaultHeight = 48u;
+    static constexpr nex::Coord kOriginY = 974;
+    static constexpr uint16_t kSideColumnWidth = 120u;
     static constexpr size_t kTextCap = 48u;
 
     explicit StatusBar(nex::Rect screen, uint16_t barHeight = kDefaultHeight) noexcept;
@@ -41,6 +43,7 @@ private:
         char text[kTextCap]{};
         nex::Region region{};
         uint16_t width{0u};
+        nex::HAlign align{nex::HAlign::Left};
     };
 
     void setField(Field field, const char* text) noexcept;

@@ -3,7 +3,10 @@
 #include <cstdint>
 
 #include "impl/serial.hpp"
+#include "impl/spi_stream.hpp"
+#include "impl/w25q.hpp"
 #include "impl/sd_disk.hpp"
+#include "phl/rtc.hpp"
 #include "STMboard.h"
 
 class CBoard : public CBaseBoard 
@@ -11,7 +14,12 @@ class CBoard : public CBaseBoard
 public:
     PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
     PHL::Serial<PHL::ID::SERIAL2, 1024, 128> serial2;
+
+    /** W25Q16: SCK=PB3, MISO=PB4, MOSI=PB5 (SPI3), CS=PA15 soft. */
+    PHL::SpiStream<PHL::ID::SPI3, 256, 256> flashSpi;
+    PHL::W25Q flash{flashSpi, GPIO::PortA::pin<15>};
     PHL::SdDisk SD;
+    PHL::Rtc rtc;
 
     void tick() noexcept;
     void setLedAlive(bool alive) noexcept;

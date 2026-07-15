@@ -25,7 +25,10 @@ struct BrowserPage : nex::Page<37> {
     HMI_COMP(ConsoleBtn, bFNext);
     HMI_COMP(ConsoleBtn, bFPrev);
 
-    HMI_COMP(ConsoleBtn, b0);
+    HMI_COMP(ConsoleBtn, bCancel);
+
+    HMI_COMP(nex::comp::Text<>, tfPage);
+    HMI_COMP(nex::comp::Text<>, tfNum);
 
     HMI_COMP(nex::comp::NumericVar, mode);
     HMI_COMP(nex::comp::StringVar<32>, fNameStr);
@@ -34,6 +37,9 @@ struct BrowserPage : nex::Page<37> {
     FileDateRows fileDates{*this};
 
     explicit BrowserPage(nex::IAppUI& app) noexcept;
+
+    /** Открыть браузер в Save As: выставляет `browser.mode.val` и переключает страницу. */
+    void enterSaveAs() noexcept;
 
     void onLoad() override;
     void onTouch(const nex::msg::evTouch& e) override;
@@ -69,6 +75,7 @@ private:
     [[nodiscard]] std::size_t visibleRows() const noexcept;
 
     void redrawRows() noexcept;
+    void updateStatusTexts() noexcept;
     void clearFileRowSelection() noexcept;
 
     void onFileRow(std::size_t row) noexcept;
@@ -89,6 +96,8 @@ private:
     Pending _pending = Pending::None;
     Msg _msg = Msg::None;
     char _pendingPath[48]{};
+    bool _forceMode = false;
+    Mode _forcedMode = Mode::Open;
 };
 
 } // namespace server

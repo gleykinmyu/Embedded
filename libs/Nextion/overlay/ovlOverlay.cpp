@@ -51,6 +51,9 @@ void Overlay::updateInputState() noexcept {
 
     if (_modalWidget != nullptr && !_touchOff) {
         _touchOff = true;
+        // `rest` / смена страницы могла сбросить sendxy на панели, пока _sendXY в MCU ещё true.
+        _sendXY = true;
+        app.touch.sendXY(true);
         app.touch.setAllTouchable(false);
     } else if (_modalWidget == nullptr && _touchOff) {
         _touchOff = false;
