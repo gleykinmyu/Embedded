@@ -7,6 +7,7 @@
 #include "impl/w25q.hpp"
 #include "impl/sd_disk.hpp"
 #include "phl/rtc.hpp"
+#include "phl/watchdog.hpp"
 #include "STMboard.h"
 
 class CBoard : public CBaseBoard 
@@ -20,6 +21,7 @@ public:
     PHL::W25Q flash{flashSpi, GPIO::PortA::pin<15>};
     PHL::SdDisk SD;
     PHL::Rtc rtc;
+    PHL::WatchDog watchdog;
 
     void tick() noexcept;
     void setLedAlive(bool alive) noexcept;

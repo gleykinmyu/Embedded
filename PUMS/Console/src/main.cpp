@@ -17,6 +17,7 @@
 #include "core/nexTypes.hpp"
 #include "nex.hpp"
 #include "board.hpp"
+#include "core/memstat.hpp"
 #include "fat_file.hpp"
 #include "mbrowser.hpp"
 
@@ -33,8 +34,13 @@ MBrowser mBrowser(sdVolume, showDir);
 
 namespace {
 
+/** Таймаут IWDG на время boot (SD/flash) и работы; kick — в board.tick(). */
+constexpr uint32_t kWatchdogTimeoutMs = 5000u;
+
 void tryFlashRoundtrip() noexcept
 {
+    board.watchdog.kick();
+
     uint8_t mfr = 0, type = 0, cap = 0;
     if (!board.flash.readJedec(mfr, type, cap)) {
         NEX_DBG("W25Q JEDEC read failed\n");
@@ -47,6 +53,8 @@ void tryFlashRoundtrip() noexcept
         return;
     }
 
+    board.watchdog.kick();
+
     constexpr uint32_t kTestAddr = decltype(board.flash)::kSize - 256U;
     const uint8_t pattern[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04};
     uint8_t got[8] = {};
@@ -55,6 +63,7 @@ void tryFlashRoundtrip() noexcept
         NEX_DBG("W25Q write failed\n");
         return;
     }
+    board.watchdog.kick();
     if (!board.flash.read(kTestAddr, got, sizeof(got))) {
         NEX_DBG("W25Q read failed\n");
         return;
@@ -70,12 +79,16 @@ void tryFlashRoundtrip() noexcept
 
 void tryShowFileRoundtrip() noexcept
 {
+    board.watchdog.kick();
+
     if (!sdVolume.mount(board.SD.volumePath())) {
         NEX_DBG("SD mount failed: %d (%s)\n", static_cast<int>(sdVolume.lastResult()),
             board.SD.volumePath());
         return;
     }
     NEX_DBG("SD mounted: %s\n", board.SD.volumePath());
+
+    board.watchdog.kick();
 
     if (!mBrowser.refresh()) {
         NEX_DBG("MBrowser::refresh failed\n");
@@ -85,6 +98,7 @@ void tryShowFileRoundtrip() noexcept
         static_cast<unsigned>(mBrowser.fileCount()),
         static_cast<unsigned>(mBrowser.pageCount()));
     for (std::size_t row = 0; row < mBrowser.pageRows(); ++row) {
+        board.watchdog.kick();
         const MBrowser::Entry* e = mBrowser.entryAt(row);
         if (e == nullptr) {
             break;
@@ -98,6 +112,11 @@ void tryShowFileRoundtrip() noexcept
 
 int main(void)
 {
+    memstat::boot();
+
+    /* Флаг RCC до clear — иначе потеряем причину сброса. */
+    const bool resetByWatchdog = PHL::WatchDog::causedReset();
+
     board.serial1.InitPins(GPIO::PortA::pin<9>, GPIO::PortA::pin<10>);
     board.serial2.InitPins(GPIO::PortA::pin<2>, GPIO::PortA::pin<3>, GPIO::ModeAlt::OD);
     // W25Q16 на SPI3: SCK=PB3, MISO=PB4, MOSI=PB5; CS=PA15 — у board.flash
@@ -112,7 +131,22 @@ int main(void)
     board.setLedAlive(true);
 
     NEX_DBG("PUMS Console boot: log=serial1 Nextion=serial2 250000 flashSpi=SPI3 8MHz\n");
-    NEX_DBG("NEX_TRACE_TX/RX enabled — смотрите serial1 (PA9/PA10)\n");
+    if (resetByWatchdog) {
+        NEX_DBG("*** Reset caused by IWDG watchdog ***\n");
+    }
+    PHL::WatchDog::clearResetFlags();
+
+    if (!board.watchdog.begin(kWatchdogTimeoutMs)) {
+        NEX_DBG("IWDG begin failed (timeout=%lu ms)\n",
+            static_cast<unsigned long>(kWatchdogTimeoutMs));
+    } else {
+        NEX_DBG("IWDG started: %lu ms (PR=%lu RLR=%lu)\n",
+            static_cast<unsigned long>(board.watchdog.timeoutMs()),
+            static_cast<unsigned long>(board.watchdog.prescaler()),
+            static_cast<unsigned long>(board.watchdog.reload()));
+    }
+
+    board.watchdog.kick();
 
     if (!board.rtc.begin()) {
         NEX_DBG("RTC begin failed (LSE?)\n");
@@ -127,6 +161,7 @@ int main(void)
     tryFlashRoundtrip();
     tryShowFileRoundtrip();
 
+    board.watchdog.kick();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
 

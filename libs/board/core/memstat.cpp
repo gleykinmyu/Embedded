@@ -1,6 +1,7 @@
 #include "memstat.hpp"
 
 #include <cstdio>
+#include <cstddef>
 
 #include <stm32f4xx.h>
 
@@ -23,6 +24,8 @@ constexpr uint32_t kStackFill = 0xA5A5A5A5u;
 
 struct State {
     uint32_t minSp = 0xFFFFFFFFu;
+    uint32_t minSpWindow = 0xFFFFFFFFu;
+    std::size_t minGap = SIZE_MAX;
     bool painted = false;
 };
 
@@ -62,9 +65,9 @@ char* heapBreak() noexcept
 void paintStackWatermark() noexcept
 {
     const uint32_t lo = stackRegionLo();
-    const uint32_t hi = estackAddr();
+    const uint32_t sp = __get_MSP();
     auto* word = reinterpret_cast<volatile uint32_t*>(lo);
-    while (reinterpret_cast<uintptr_t>(word) < static_cast<uintptr_t>(hi)) {
+    while (reinterpret_cast<uintptr_t>(word) < static_cast<uintptr_t>(sp)) {
         *word++ = kStackFill;
     }
     g_state.painted = true;
@@ -106,7 +109,9 @@ std::size_t stackPeakCombined() noexcept
 void boot() noexcept
 {
     g_state.minSp = __get_MSP();
+    g_state.minSpWindow = g_state.minSp;
     paintStackWatermark();
+    g_state.minGap = heapStackGapBytes();
 }
 
 void trackStackMin() noexcept
@@ -115,6 +120,43 @@ void trackStackMin() noexcept
     if (sp < g_state.minSp) {
         g_state.minSp = sp;
     }
+    if (sp < g_state.minSpWindow) {
+        g_state.minSpWindow = sp;
+    }
+}
+
+void trackFreeMin() noexcept
+{
+    std::size_t gapWorst = heapStackGapBytes();
+
+    if (g_state.minSpWindow != 0xFFFFFFFFu) {
+        const uint32_t heapTop =
+            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(heapBreak()));
+        if (g_state.minSpWindow > heapTop) {
+            const std::size_t gapAtMinSp =
+                static_cast<std::size_t>(g_state.minSpWindow - heapTop);
+            if (gapAtMinSp < gapWorst) {
+                gapWorst = gapAtMinSp;
+            }
+        } else {
+            gapWorst = 0u;
+        }
+    }
+
+    if (gapWorst < g_state.minGap) {
+        g_state.minGap = gapWorst;
+    }
+}
+
+void resetFreeMin() noexcept
+{
+    g_state.minGap = heapStackGapBytes();
+    g_state.minSpWindow = __get_MSP();
+}
+
+std::size_t freeMinBytes() noexcept
+{
+    return g_state.minGap;
 }
 
 std::size_t staticBytes() noexcept
@@ -168,17 +210,32 @@ Snapshot snapshot() noexcept
     return s;
 }
 
+namespace {
+
+constexpr unsigned kb(std::size_t bytes) noexcept
+{
+    return static_cast<unsigned>((bytes + 512u) / 1024u);
+}
+
+} // namespace
+
+void formatFreeMin(char* buf, const std::size_t cap) noexcept
+{
+    if (buf == nullptr || cap == 0u) {
+        return;
+    }
+
+    std::snprintf(buf, cap, "min %uk", kb(freeMinBytes()));
+    buf[cap - 1u] = '\0';
+}
+
 void format(const Snapshot& snap, char* buf, const std::size_t cap) noexcept
 {
     if (buf == nullptr || cap == 0u) {
         return;
     }
 
-    std::snprintf(buf, cap, "S:%u/%u H:%u G:%u",
-        static_cast<unsigned>(snap.stackPeak),
-        static_cast<unsigned>(snap.stackReserved),
-        static_cast<unsigned>(snap.heapUsed),
-        static_cast<unsigned>(snap.gapBytes));
+    std::snprintf(buf, cap, "free %uk", kb(snap.gapBytes));
     buf[cap - 1u] = '\0';
 }
 

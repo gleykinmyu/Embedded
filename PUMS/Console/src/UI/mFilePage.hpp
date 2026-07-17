@@ -22,30 +22,16 @@ struct MFilePage : nex::Page<9> {
     void onMsgBox(const nex::msg::evMsgBox& e) override;
 
 private:
-    enum class Msg : uint8_t {
+    enum Msg : uint8_t {
         None = 0,
         GoSaveAs,
         ConfirmNew,
         AfterSaveOk,
     };
 
-    static constexpr uint8_t kTagGoSaveAs = 1u;
-    static constexpr uint8_t kTagConfirmNew = 2u;
-    static constexpr uint8_t kTagAfterSave = 3u;
-
     [[nodiscard]] Application& ui() const noexcept;
 
     void doSave() noexcept;
-    void beginNew() noexcept;
-    void commitNew() noexcept;
-    void goSaveAs() noexcept;
-    void finishToWork() noexcept;
-
-    void showFileMsg(uint8_t tag, const char* text) noexcept;
-    void showFileYesNo(uint8_t tag, const char* text) noexcept;
-    void showFsError() noexcept;
-
-    Msg _msg = Msg::None;
 };
 
 } // namespace server

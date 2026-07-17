@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "board.hpp"
+#include "core/memstat.hpp"
 
 namespace server {
 
@@ -44,6 +45,7 @@ void Application::boot() noexcept
 void Application::update() noexcept
 {
     nex::AppUI<nex::hmi::kPageCount>::update();
+    memstat::trackFreeMin();
 
     const uint32_t now = nowMs();
     if ((now - _statusBarTickMs) < 1000u) {
@@ -53,8 +55,32 @@ void Application::update() noexcept
     refreshStatusBar();
 }
 
+void Application::showFileMsg(uint8_t tag, const char* text) noexcept
+{
+    msgBox.setRoute(nex::Route{currentPage(), 0u});
+    msgBox.show("File", nex::ovl::MsgBox::Preset::OK, tag,
+        nex::ovl::MsgBox::Action::Ok, "%s", text);
+}
+
+void Application::showFileYesNo(uint8_t tag, const char* text) noexcept
+{
+    msgBox.setRoute(nex::Route{currentPage(), 0u});
+    msgBox.show("File", nex::ovl::MsgBox::Preset::YesNo, tag,
+        nex::ovl::MsgBox::Action::No, "%s", text);
+}
+
+void Application::showFsError() noexcept
+{
+    showFileMsg(0u, "Storage error.");
+}
+
 void Application::refreshStatusBar() noexcept
 {
+    char memBuf[16]{};
+    memstat::formatFreeMin(memBuf, sizeof memBuf);
+    statusBar.setStatus(memBuf);
+    memstat::resetFreeMin();
+
     statusBar.setFile(fileBaseName(console.showName()));
 
     char timeBuf[16]{};

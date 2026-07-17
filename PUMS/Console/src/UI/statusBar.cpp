@@ -27,7 +27,7 @@ StatusBar::StatusBar(const nex::Rect screen, const uint16_t barHeight) noexcept
     : _screen(screen)
     , _barHeight(barHeight)
 {
-    _columns[static_cast<uint8_t>(Field::Status)].width = kSideColumnWidth;
+    _columns[static_cast<uint8_t>(Field::Status)].width = kStatusColumnWidth;
     _columns[static_cast<uint8_t>(Field::Status)].align = nex::HAlign::Left;
     _columns[static_cast<uint8_t>(Field::File)].width = 0u;
     _columns[static_cast<uint8_t>(Field::File)].align = nex::HAlign::Center;

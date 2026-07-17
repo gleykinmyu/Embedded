@@ -7,8 +7,8 @@
  * Оценка использования SRAM на Cortex-M (STM32 + GNU ld).
  *
  * boot() — в начале main(), до глубоких вызовов: заливает watermark стека.
- * HAL_SYSTICK_Callback — в memstat.cpp, раз в 1 ms обновляет min MSP (пик стека).
- * snapshot() / format() — читать и выводить из main loop (не из ISR).
+ * HAL_SYSTICK_Callback — в memstat.cpp, раз в 1 ms: только min MSP (без _sbrk).
+ * trackFreeMin() — из main loop; resetFreeMin() — после вывода (окно 1 с).
  *
  * Если нужен свой HAL_SYSTICK_Callback — не линкуйте memstat.cpp или вызывайте
  * memstat::trackStackMin() из своего обработчика.
@@ -40,9 +40,21 @@ void boot() noexcept;
 /** Обновить min MSP; вызывается из HAL_SYSTICK_Callback или вручную. */
 void trackStackMin() noexcept;
 
+/** Учесть текущий зазор heap↔stack; min за окно — freeMinBytes(). */
+void trackFreeMin() noexcept;
+
+/** Начать новое окно (после вывода на экран). */
+void resetFreeMin() noexcept;
+
 [[nodiscard]] Snapshot snapshot() noexcept;
 
-/** Короткая строка для StatusBar / NEX_DBG, напр. "S:812/1024 H:0 G:98240". */
+/** Минимальный gapBytes с последнего resetFreeMin(). */
+[[nodiscard]] std::size_t freeMinBytes() noexcept;
+
+/** Короткая строка для StatusBar, напр. "min 92k". */
+void formatFreeMin(char* buf, std::size_t cap) noexcept;
+
+/** Текущий зазор, напр. "free 96k". */
 void format(const Snapshot& snap, char* buf, std::size_t cap) noexcept;
 
 [[nodiscard]] std::size_t stackPeakBytes() noexcept;

@@ -14,6 +14,30 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 } // namespace
 
+const char* MConsole::showBaseName(const char* path) noexcept
+{
+    if (path == nullptr || path[0] == '\0') {
+        return "";
+    }
+    const char* base = path;
+    for (const char* p = path; *p != '\0'; ++p) {
+        if (*p == '/' || *p == '\\') {
+            base = p + 1;
+        }
+    }
+    return base;
+}
+
+bool MConsole::isTemplateName(const char* name) noexcept
+{
+    static constexpr char kTemplate[] = {
+        static_cast<char>(0xFB), static_cast<char>(0xE1), static_cast<char>(0xE2),
+        static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
+        '\0',
+    };
+    return name != nullptr && std::strncmp(name, kTemplate, sizeof(kTemplate) - 1u) == 0;
+}
+
 void MConsole::initBlockedGroup() noexcept
 {
     smcp::Group& grp = _groups[kBlockedGroupId];
@@ -201,24 +225,30 @@ void MConsole::newShow() noexcept
 
 bool MConsole::loadShow(const char* path) noexcept
 {
-    if (path == nullptr) {
+    clearError();
+
+    if (path == nullptr || path[0] == '\0') {
+        _status = Status::NoShowOpen;
         return false;
     }
 
     smcp::file::SectionDesc catalog[1]{};
     smcp::file::Reader reader(_io, catalog, 1u);
     if (!reader.open(path)) {
+        _status = Status::IoError;
         return false;
     }
 
     const smcp::file::SectionDesc* desc = reader.find(smcp::kGroupSectionTag);
     if (desc == nullptr) {
         reader.close();
+        _status = Status::IoError;
         return false;
     }
 
     if (desc->record_count == 0 || desc->record_count > smcp::kGroupMaxCount) {
         reader.close();
+        _status = Status::IoError;
         return false;
     }
 
@@ -227,6 +257,7 @@ bool MConsole::loadShow(const char* path) noexcept
         static_cast<std::size_t>(desc->record_count) * sizeof(smcp::Group);
     if (!reader.readSection(smcp::kGroupSectionTag, loaded, byte_size)) {
         reader.close();
+        _status = Status::IoError;
         return false;
     }
 
@@ -250,18 +281,28 @@ bool MConsole::loadShow(const char* path) noexcept
 
     std::strncpy(_showName, path, sizeof(_showName) - 1u);
     _showName[sizeof(_showName) - 1u] = '\0';
+    _status = Status::Ok;
     return true;
 }
 
 bool MConsole::saveShow(const char* path) noexcept
 {
-    if (path == nullptr) {
+    clearError();
+
+    if (path == nullptr || path[0] == '\0') {
+        _status = Status::NoShowOpen;
+        return false;
+    }
+
+    if (isTemplateName(showBaseName(path))) {
+        _status = Status::TemplateProtected;
         return false;
     }
 
     smcp::file::SectionDesc catalog[1]{};
     smcp::file::Writer writer(_io, 1u, catalog);
     if (!writer.open(path)) {
+        _status = Status::IoError;
         return false;
     }
 
@@ -270,14 +311,17 @@ bool MConsole::saveShow(const char* path) noexcept
                              sizeof(smcp::Group),
                              smcp::kGroupMaxCount)) {
         writer.close();
+        _status = Status::IoError;
         return false;
     }
 
     if (!writer.finalize()) {
+        _status = Status::IoError;
         return false;
     }
 
     setShowName(path);
+    _status = Status::Ok;
     return true;
 }
 

@@ -34,6 +34,10 @@ public:
     MFilePage mFile;
     BrowserPage browser;
 
+    void showFileMsg(uint8_t tag, const char* text) noexcept;
+    void showFileYesNo(uint8_t tag, const char* text) noexcept;
+    void showFsError() noexcept;
+
 private:
     void refreshStatusBar() noexcept;
 

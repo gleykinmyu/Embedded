@@ -66,6 +66,19 @@ public:
     /** Пустой шоу: сброс всех групп и выделения. */
     void newShow() noexcept;
 
+    enum class Status : uint8_t {
+        Ok = 0,
+        /** Пустой путь / нет открытого шоу. */
+        NoShowOpen,
+        /** Имя файла — шаблон (нельзя сохранять). */
+        TemplateProtected,
+        /** Ошибка носителя / формата файла. */
+        IoError,
+    };
+
+    [[nodiscard]] Status getStatus() const noexcept { return _status; }
+    void clearError() noexcept { _status = Status::Ok; }
+
     [[nodiscard]] bool loadShow(const char* path) noexcept;
 
     [[nodiscard]] bool saveShow(const char* path) noexcept;
@@ -91,10 +104,14 @@ private:
 
     void initBlockedGroup() noexcept;
 
+    [[nodiscard]] static const char* showBaseName(const char* path) noexcept;
+    [[nodiscard]] static bool isTemplateName(const char* name) noexcept;
+
     smcp::file::IFile& _io;
     uint8_t _console_id;
     uint8_t _maxActiveMechs;
     uint8_t _activeGroup = kBlockedGroupId;
+    Status _status = Status::Ok;
     smcp::Mech _mechs[kMechCount];
     smcp::Group _groups[smcp::kGroupMaxCount];
     char _showName[smcp::file::kShowFileNameSize]{};

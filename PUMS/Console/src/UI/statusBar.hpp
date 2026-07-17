@@ -19,8 +19,9 @@ public:
 
     static constexpr uint16_t kDefaultHeight = 48u;
     static constexpr nex::Coord kOriginY = 974;
+    static constexpr uint16_t kStatusColumnWidth = 260u;
     static constexpr uint16_t kSideColumnWidth = 120u;
-    static constexpr size_t kTextCap = 48u;
+    static constexpr size_t kTextCap = 64u;
 
     explicit StatusBar(nex::Rect screen, uint16_t barHeight = kDefaultHeight) noexcept;
 

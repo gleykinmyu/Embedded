@@ -14,6 +14,8 @@ extern "C" DWORD get_fattime(void)
 
 void CBoard::tick() noexcept
 {
+    watchdog.kick();
+
     if (!_ledAlive) {
         return;
     }

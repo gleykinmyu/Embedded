@@ -47,35 +47,13 @@ void formatFatStamp(char* out, std::size_t outLen, uint16_t date, uint16_t time)
 
 } // namespace
 
-void BrowserPage::showFileMsg(const char* text) noexcept
-{
-    ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
-    ui().msgBox.show("File", nex::ovl::MsgBox::Preset::OK, 0u,
-        nex::ovl::MsgBox::Action::None, "%s", text);
-}
-
-void BrowserPage::showFileYesNo(uint8_t tag, const char* text) noexcept
-{
-    ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
-    ui().msgBox.show("File", nex::ovl::MsgBox::Preset::YesNo, tag,
-        nex::ovl::MsgBox::Action::No, "%s", text);
-}
-
-void BrowserPage::showFsError() noexcept
-{
-    ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
-    ui().msgBox.show("File", nex::ovl::MsgBox::Preset::OK, 0u,
-        nex::ovl::MsgBox::Action::None, "Storage error.");
-}
-
 BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
     : Page<37>(app, HMI_COMP_OBJNAME(browser), PG::kPageId)
 {}
 
 void BrowserPage::enterSaveAs() noexcept
 {
-    _forceMode = true;
-    _forcedMode = Mode::SaveAs;
+    _forceSaveAs = true;
 
     /* Квалифицированный путь: страница browser ещё не активна. */
     static constexpr nex::Literal kBrowserModeVal{"browser.mode.val"};
@@ -110,13 +88,13 @@ void BrowserPage::onLoad()
 {
     clearFileRowSelection();
 
-    if (_forceMode) {
-        _forceMode = false;
+    if (_forceSaveAs) {
+        _forceSaveAs = false;
         /* После page-события: короткий `mode.val` уже на активной странице. */
-        mode.val = static_cast<int32_t>(_forcedMode);
+        mode.val = static_cast<int32_t>(Mode::SaveAs);
         _pending = Pending::None;
         if (!mBrowser.refresh()) {
-            showFsError();
+            ui().showFsError();
             return;
         }
         redrawRows();
@@ -143,14 +121,11 @@ void BrowserPage::onTouch(const nex::msg::evTouch& e)
         return;
     }
 
-    if (comp == PB::bFNext) {
-        changePage(true);
+    if (comp == PB::bFNext || comp == PB::bFPrev) {
+        changePage(comp == PB::bFNext);
         return;
     }
-    if (comp == PB::bFPrev) {
-        changePage(false);
-        return;
-    }
+
     if (comp == PB::bAction) {
         onAction();
     }
@@ -169,7 +144,7 @@ void BrowserPage::onResponse(const nex::msg::getNumeric& response, nex::Route ro
 
     _pending = Pending::None;
     if (!mBrowser.refresh()) {
-        showFsError();
+        ui().showFsError();
         return;
     }
     redrawRows();
@@ -305,17 +280,20 @@ void BrowserPage::doOpen() noexcept
 {
     char path[48]{};
     if (!mBrowser.makeSelectedPath(path, sizeof(path))) {
-        showFileMsg("Select a file.");
+        ui().showFileMsg(0u, "Select a file.");
         return;
     }
     if (!mBrowser.volume().exists(path)) {
-        showFileMsg("File not found.");
-        (void)mBrowser.refresh();
+        if (!mBrowser.refresh()) {
+            ui().showFsError();
+            return;
+        }
         redrawRows();
+        ui().showFileMsg(0u, "File not found.");
         return;
     }
     if (!console.loadShow(path)) {
-        showFsError();
+        ui().showFsError();
         return;
     }
     ui().switchPage(ui().work);
@@ -331,24 +309,24 @@ void BrowserPage::finishSaveAs() noexcept
 {
     const char* name = fNameStr.txt;
     if (name[0] == '\0') {
-        showFileMsg("Enter file name.");
+        ui().showFileMsg(0u, "Enter file name.");
         return;
     }
     if (isTemplateName(name)) {
-        showFileMsg("Cannot use template name.");
+        ui().showFileMsg(0u, "Cannot use template name.");
         return;
     }
 
     char path[48]{};
     if (!mBrowser.makePath(path, sizeof(path), name)) {
-        showFileMsg("Invalid file name.");
+        ui().showFileMsg(0u, "Invalid file name.");
         return;
     }
     if (mBrowser.volume().exists(path)) {
         std::strncpy(_pendingPath, path, sizeof(_pendingPath) - 1u);
         _pendingPath[sizeof(_pendingPath) - 1u] = '\0';
         _msg = Msg::OverwriteSave;
-        showFileYesNo(kTagOverwriteSave, "Overwrite file?");
+        ui().showFileYesNo(kTagOverwriteSave, "Overwrite file?");
         return;
     }
 
@@ -358,14 +336,14 @@ void BrowserPage::finishSaveAs() noexcept
 void BrowserPage::commitSaveAs(const char* path) noexcept
 {
     if (!console.saveShow(path)) {
-        showFsError();
+        ui().showFsError();
         return;
     }
 
     _msg = Msg::None;
     _pendingPath[0] = '\0';
     if (!mBrowser.refresh()) {
-        showFsError();
+        ui().showFsError();
         return;
     }
     redrawRows();
@@ -376,37 +354,37 @@ void BrowserPage::doDelete() noexcept
 {
     const char* name = mBrowser.selectedName();
     if (name[0] == '\0') {
-        showFileMsg("Select a file.");
+        ui().showFileMsg(0u, "Select a file.");
         return;
     }
     if (isTemplateName(name)) {
-        showFileMsg("Cannot use template name.");
+        ui().showFileMsg(0u, "Cannot use template name.");
         return;
     }
 
     char path[48]{};
     if (!mBrowser.makeSelectedPath(path, sizeof(path))) {
-        showFileMsg("Select a file.");
+        ui().showFileMsg(0u, "Select a file.");
         return;
     }
     if (isOpenShowPath(path)) {
-        showFileMsg("Cannot delete opened file.");
+        ui().showFileMsg(0u, "Cannot delete opened file.");
         return;
     }
 
     _msg = Msg::ConfirmDelete;
-    showFileYesNo(kTagConfirmDelete, "Delete file?");
+    ui().showFileYesNo(kTagConfirmDelete, "Delete file?");
 }
 
 void BrowserPage::commitDelete() noexcept
 {
     if (!mBrowser.removeSelected()) {
-        showFsError();
+        ui().showFsError();
         return;
     }
 
     _msg = Msg::None;
-    showFileMsg("File deleted.");
+    ui().showFileMsg(0u, "File deleted.");
 }
 
 void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)

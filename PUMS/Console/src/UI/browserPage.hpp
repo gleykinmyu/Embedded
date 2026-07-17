@@ -89,15 +89,10 @@ private:
     void doDelete() noexcept;
     void commitDelete() noexcept;
 
-    void showFileMsg(const char* text) noexcept;
-    void showFileYesNo(uint8_t tag, const char* text) noexcept;
-    void showFsError() noexcept;
-
     Pending _pending = Pending::None;
     Msg _msg = Msg::None;
     char _pendingPath[48]{};
-    bool _forceMode = false;
-    Mode _forcedMode = Mode::Open;
+    bool _forceSaveAs = false;
 };
 
 } // namespace server
