@@ -94,7 +94,7 @@ extern "C" int _write(int file, char *ptr, int len) {
         }
 
         while (serial1TxHealthy() && board.serial1.availableForWrite() == 0) {
-            board.tick();
+            /* Пустое ожидание: без kick IWDG и без LED (printf не должен «оживлять» плату). */
         }
     }
 

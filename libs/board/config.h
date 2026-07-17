@@ -4,8 +4,13 @@
 
 namespace PHL {
 namespace IRQ {
-/** Периферийные IRQ: индекс NVIC 0 .. kNvicUserIrqCount - 1 (= FPU_IRQn). */
-inline constexpr size_t kNvicLastIRQn = static_cast<size_t>(FPU_IRQn) + 1u;
+/**
+ * Число периферийных IRQ: индексы NVIC 0 .. FPU_IRQn включительно
+ * (на F407: FPU_IRQn == 81 → 82 слота).
+ */
+inline constexpr size_t kPeripheralIrqCount = static_cast<size_t>(FPU_IRQn) + 1u;
+/** То же, что kPeripheralIrqCount (для PHL::IRQ::Vector static_assert). */
+inline constexpr size_t kNvicLastIRQn = kPeripheralIrqCount;
 
 } }
 

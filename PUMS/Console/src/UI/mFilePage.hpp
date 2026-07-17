@@ -32,6 +32,8 @@ private:
     [[nodiscard]] Application& ui() const noexcept;
 
     void doSave() noexcept;
+    void beginNew() noexcept;
+    void commitNew() noexcept;
 };
 
 } // namespace server

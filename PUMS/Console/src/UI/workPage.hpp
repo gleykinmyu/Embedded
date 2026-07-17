@@ -8,6 +8,8 @@
 
 namespace server {
 
+class Application;
+
 using namespace nex::comp;
 
 struct WorkPage : nex::Page<54> {
@@ -50,19 +52,29 @@ struct WorkPage : nex::Page<54> {
     void onTouch(const nex::msg::evTouch& e) override;
     void onLoad() override;
     void onResponse(const nex::msg::getString& response, nex::Route route, uint8_t tag) override;
+    void onMsgBox(const nex::msg::evMsgBox& e) override;
 
     [[nodiscard]] uint8_t groupIdForSlot(uint8_t index) const noexcept;
 
     void beginRename(uint8_t group_id) noexcept;
 
 private:
+    static constexpr uint8_t kTagExitShow = 1u;
+
+    [[nodiscard]] Application& ui() const noexcept;
+
     void onCellPress(uint8_t index, nex::TouchState state);
     void onGroupPress(uint8_t comp, nex::TouchState state);
+    void onAssignPress(uint8_t index) noexcept;
     void onMenuPress(uint8_t comp);
 
+    void refreshModeButtons() noexcept;
     void refreshGroupBtn(bool textModified) noexcept;
     void refreshCell(uint8_t index) noexcept;
     void refreshCells() noexcept;
+    void showBlockMsg(const char* text) noexcept;
+    void showExitShowConfirm() noexcept;
+    void applyModeChange() noexcept;
 
     void finishRename() noexcept;
 

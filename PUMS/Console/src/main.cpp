@@ -18,6 +18,7 @@
 #include "nex.hpp"
 #include "board.hpp"
 #include "core/memstat.hpp"
+#include "core/crash_dump.hpp"
 #include "fat_file.hpp"
 #include "mbrowser.hpp"
 
@@ -29,53 +30,13 @@ server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
 smcp::file::FatVolume sdVolume;
 smcp::file::FatFile showFile;
 smcp::file::FatDirectory showDir;
-MConsole console(showFile);
-MBrowser mBrowser(sdVolume, showDir);
+MConsole console;
+MBrowser mBrowser(sdVolume, showDir, showFile);
 
 namespace {
 
-/** Таймаут IWDG на время boot (SD/flash) и работы; kick — в board.tick(). */
+/** Таймаут IWDG на время boot (SD) и работы; kick — в board.tick(). */
 constexpr uint32_t kWatchdogTimeoutMs = 5000u;
-
-void tryFlashRoundtrip() noexcept
-{
-    board.watchdog.kick();
-
-    uint8_t mfr = 0, type = 0, cap = 0;
-    if (!board.flash.readJedec(mfr, type, cap)) {
-        NEX_DBG("W25Q JEDEC read failed\n");
-        return;
-    }
-    NEX_DBG("W25Q JEDEC: %02X %02X %02X\n", mfr, type, cap);
-
-    if (!board.flash.begin()) {
-        NEX_DBG("W25Q begin failed (unexpected JEDEC)\n");
-        return;
-    }
-
-    board.watchdog.kick();
-
-    constexpr uint32_t kTestAddr = decltype(board.flash)::kSize - 256U;
-    const uint8_t pattern[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04};
-    uint8_t got[8] = {};
-
-    if (!board.flash.write(kTestAddr, pattern, sizeof(pattern))) {
-        NEX_DBG("W25Q write failed\n");
-        return;
-    }
-    board.watchdog.kick();
-    if (!board.flash.read(kTestAddr, got, sizeof(got))) {
-        NEX_DBG("W25Q read failed\n");
-        return;
-    }
-
-    const bool ok = (got[0] == pattern[0] && got[1] == pattern[1] && got[2] == pattern[2] &&
-                     got[3] == pattern[3] && got[4] == pattern[4] && got[5] == pattern[5] &&
-                     got[6] == pattern[6] && got[7] == pattern[7]);
-    NEX_DBG("W25Q roundtrip @0x%06lX: %s [%02X %02X %02X %02X]\n",
-        static_cast<unsigned long>(kTestAddr), ok ? "OK" : "FAIL", got[0], got[1], got[2],
-        got[3]);
-}
 
 void tryShowFileRoundtrip() noexcept
 {
@@ -134,6 +95,29 @@ int main(void)
     if (resetByWatchdog) {
         NEX_DBG("*** Reset caused by IWDG watchdog ***\n");
     }
+    {
+        CrashDump::Record crash{};
+        if (CrashDump::take(crash)) {
+            NEX_DBG("*** Crash %s CFSR=%08lX HFSR=%08lX MMFAR=%08lX BFAR=%08lX\n"
+                    "    R0=%08lX R1=%08lX R2=%08lX R3=%08lX\n"
+                    "    R12=%08lX LR=%08lX PC=%08lX xPSR=%08lX MSP=%08lX PSP=%08lX ***\n",
+                CrashDump::kindName(crash.kind),
+                static_cast<unsigned long>(crash.cfsr),
+                static_cast<unsigned long>(crash.hfsr),
+                static_cast<unsigned long>(crash.mmfar),
+                static_cast<unsigned long>(crash.bfar),
+                static_cast<unsigned long>(crash.r0),
+                static_cast<unsigned long>(crash.r1),
+                static_cast<unsigned long>(crash.r2),
+                static_cast<unsigned long>(crash.r3),
+                static_cast<unsigned long>(crash.r12),
+                static_cast<unsigned long>(crash.lr),
+                static_cast<unsigned long>(crash.pc),
+                static_cast<unsigned long>(crash.xpsr),
+                static_cast<unsigned long>(crash.msp),
+                static_cast<unsigned long>(crash.psp));
+        }
+    }
     PHL::WatchDog::clearResetFlags();
 
     if (!board.watchdog.begin(kWatchdogTimeoutMs)) {
@@ -158,7 +142,6 @@ int main(void)
         }
     }
 
-    tryFlashRoundtrip();
     tryShowFileRoundtrip();
 
     board.watchdog.kick();

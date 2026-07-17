@@ -29,22 +29,6 @@ void formatFatStamp(char* out, std::size_t outLen, uint16_t date, uint16_t time)
         day, month, year % 100u, hour, min);
 }
 
-[[nodiscard]] bool isTemplateName(const char* name) noexcept
-{
-    static constexpr char kTemplate[] = {
-        static_cast<char>(0xFB), static_cast<char>(0xE1), static_cast<char>(0xE2),
-        static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
-        '\0',
-    };
-    return std::strncmp(name, kTemplate, sizeof(kTemplate) - 1u) == 0;
-}
-
-[[nodiscard]] bool isOpenShowPath(const char* path) noexcept
-{
-    const char* const show = console.showName();
-    return show[0] != '\0' && std::strcmp(path, show) == 0;
-}
-
 } // namespace
 
 BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
@@ -94,7 +78,7 @@ void BrowserPage::onLoad()
         mode.val = static_cast<int32_t>(Mode::SaveAs);
         _pending = Pending::None;
         if (!mBrowser.refresh()) {
-            ui().showFsError();
+            ui().showBrowserStatus();
             return;
         }
         redrawRows();
@@ -144,7 +128,7 @@ void BrowserPage::onResponse(const nex::msg::getNumeric& response, nex::Route ro
 
     _pending = Pending::None;
     if (!mBrowser.refresh()) {
-        ui().showFsError();
+        ui().showBrowserStatus();
         return;
     }
     redrawRows();
@@ -227,7 +211,6 @@ void BrowserPage::redrawRows() noexcept
             BrowserBtn::active_id = fileRows[i].id();
         }
         formatFatStamp(stamp, sizeof(stamp), entry->date, entry->time);
-        NEX_DBG("stamp: %s\n", stamp);
         fileDates[i].txt.set(stamp);
     }
 
@@ -279,23 +262,33 @@ void BrowserPage::onAction() noexcept
 void BrowserPage::doOpen() noexcept
 {
     char path[48]{};
-    if (!mBrowser.makeSelectedPath(path, sizeof(path))) {
-        ui().showFileMsg(0u, "Select a file.");
-        return;
-    }
-    if (!mBrowser.volume().exists(path)) {
-        if (!mBrowser.refresh()) {
-            ui().showFsError();
-            return;
+    if (!mBrowser.prepareOpenSelected(path, sizeof(path))) {
+        if (mBrowser.getStatus() == MBrowser::Status::NotFound) {
+            redrawRows();
         }
-        redrawRows();
-        ui().showFileMsg(0u, "File not found.");
+        ui().showBrowserStatus();
         return;
     }
-    if (!console.loadShow(path)) {
-        ui().showFsError();
+
+    if (console.isEdited()) {
+        std::strncpy(_pendingPath, path, sizeof(_pendingPath) - 1u);
+        _pendingPath[sizeof(_pendingPath) - 1u] = '\0';
+        _msg = Msg::ConfirmDiscardOpen;
+        ui().showFileYesNo(kTagDiscardOpen, "Show not saved.\nOpen anyway?");
         return;
     }
+
+    commitOpen(path);
+}
+
+void BrowserPage::commitOpen(const char* path) noexcept
+{
+    if (!console.loadShow(mBrowser, path)) {
+        ui().showConsoleStatus();
+        return;
+    }
+    _msg = Msg::None;
+    _pendingPath[0] = '\0';
     ui().switchPage(ui().work);
 }
 
@@ -308,25 +301,21 @@ void BrowserPage::beginSaveAs() noexcept
 void BrowserPage::finishSaveAs() noexcept
 {
     const char* name = fNameStr.txt;
-    if (name[0] == '\0') {
-        ui().showFileMsg(0u, "Enter file name.");
-        return;
-    }
-    if (isTemplateName(name)) {
-        ui().showFileMsg(0u, "Cannot use template name.");
+    if (!console.canMutateShowName(name)) {
+        ui().showConsoleStatus();
         return;
     }
 
     char path[48]{};
-    if (!mBrowser.makePath(path, sizeof(path), name)) {
-        ui().showFileMsg(0u, "Invalid file name.");
-        return;
-    }
-    if (mBrowser.volume().exists(path)) {
-        std::strncpy(_pendingPath, path, sizeof(_pendingPath) - 1u);
-        _pendingPath[sizeof(_pendingPath) - 1u] = '\0';
-        _msg = Msg::OverwriteSave;
-        ui().showFileYesNo(kTagOverwriteSave, "Overwrite file?");
+    if (!mBrowser.prepareSaveAs(name, path, sizeof(path))) {
+        if (mBrowser.getStatus() == MBrowser::Status::FileExists) {
+            std::strncpy(_pendingPath, path, sizeof(_pendingPath) - 1u);
+            _pendingPath[sizeof(_pendingPath) - 1u] = '\0';
+            _msg = Msg::OverwriteSave;
+            ui().showFileYesNo(kTagOverwriteSave, "Overwrite file?");
+            return;
+        }
+        ui().showBrowserStatus();
         return;
     }
 
@@ -335,15 +324,15 @@ void BrowserPage::finishSaveAs() noexcept
 
 void BrowserPage::commitSaveAs(const char* path) noexcept
 {
-    if (!console.saveShow(path)) {
-        ui().showFsError();
+    if (!console.saveShow(mBrowser, path)) {
+        ui().showConsoleStatus();
         return;
     }
 
     _msg = Msg::None;
     _pendingPath[0] = '\0';
     if (!mBrowser.refresh()) {
-        ui().showFsError();
+        ui().showBrowserStatus();
         return;
     }
     redrawRows();
@@ -352,23 +341,12 @@ void BrowserPage::commitSaveAs(const char* path) noexcept
 
 void BrowserPage::doDelete() noexcept
 {
-    const char* name = mBrowser.selectedName();
-    if (name[0] == '\0') {
-        ui().showFileMsg(0u, "Select a file.");
+    if (mBrowser.selectedName()[0] == '\0') {
+        ui().showFileMsg(0u, MBrowser::statusText(MBrowser::Status::NoSelection));
         return;
     }
-    if (isTemplateName(name)) {
-        ui().showFileMsg(0u, "Cannot use template name.");
-        return;
-    }
-
-    char path[48]{};
-    if (!mBrowser.makeSelectedPath(path, sizeof(path))) {
-        ui().showFileMsg(0u, "Select a file.");
-        return;
-    }
-    if (isOpenShowPath(path)) {
-        ui().showFileMsg(0u, "Cannot delete opened file.");
+    if (!console.canMutateShowName(mBrowser.selectedName())) {
+        ui().showConsoleStatus();
         return;
     }
 
@@ -378,8 +356,8 @@ void BrowserPage::doDelete() noexcept
 
 void BrowserPage::commitDelete() noexcept
 {
-    if (!mBrowser.removeSelected()) {
-        ui().showFsError();
+    if (!mBrowser.removeSelected(console.showName())) {
+        ui().showBrowserStatus();
         return;
     }
 
@@ -403,6 +381,9 @@ void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
         break;
     case Msg::ConfirmDelete:
         commitDelete();
+        break;
+    case Msg::ConfirmDiscardOpen:
+        commitOpen(_pendingPath);
         break;
     case Msg::None:
     default:

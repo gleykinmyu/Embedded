@@ -45,9 +45,17 @@ public:
 
     DSTATUS initialize() override
     {
+        /* Уже готов — не трогаем HAL (FatFs может звать disk_initialize повторно). */
+        if ((_stat & STA_NOINIT) == 0) {
+            return status();
+        }
+
         if (_sd.Init() != HAL_OK) {
             _stat = STA_NOINIT;
-            return STA_NOINIT;
+            if (!_sd.IsDetected()) {
+                _stat = static_cast<DSTATUS>(STA_NOINIT | STA_NODISK);
+            }
+            return _stat;
         }
         _stat = 0;
         return 0;
@@ -55,22 +63,31 @@ public:
 
     DSTATUS status() override
     {
+        if (_stat & STA_NOINIT) {
+            return _stat;
+        }
         /* GetCardState() — состояние карты (HAL_SD_CARD_*), не HAL_StatusTypeDef. */
-        if (_sd.GetCardState() == HAL_SD_CARD_ERROR) {
+        const auto card = _sd.GetCardState();
+        if (card == HAL_SD_CARD_ERROR) {
             _stat = STA_NOINIT;
             return STA_NOINIT;
         }
-        _stat = 0;
         return 0;
     }
 
     DRESULT read(BYTE* buff, DWORD sector, UINT count) override
     {
+        if (status() & STA_NOINIT) {
+            return RES_NOTRDY;
+        }
         DRESULT res = RES_ERROR;
         if (_sd.ReadBlocks(reinterpret_cast<uint32_t*>(buff), static_cast<uint32_t>(sector), count,
                            kSdDiskTimeout) == HAL_OK) {
             if (waitUntilTransfer(kSdWaitTransferTimeoutMs))
                 res = RES_OK;
+        }
+        if (res != RES_OK) {
+            _stat = STA_NOINIT;
         }
         return res;
     }
@@ -78,11 +95,17 @@ public:
 #if _USE_WRITE == 1
     DRESULT write(const BYTE* buff, DWORD sector, UINT count) override
     {
+        if (status() & STA_NOINIT) {
+            return RES_NOTRDY;
+        }
         DRESULT res = RES_ERROR;
         if (_sd.WriteBlocks(reinterpret_cast<uint32_t*>(const_cast<BYTE*>(buff)),
                             static_cast<uint32_t>(sector), count, kSdDiskTimeout) == HAL_OK) {
             if (waitUntilTransfer(kSdWaitTransferTimeoutMs))
                 res = RES_OK;
+        }
+        if (res != RES_OK) {
+            _stat = STA_NOINIT;
         }
         return res;
     }

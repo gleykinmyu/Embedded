@@ -7,7 +7,7 @@
 
 namespace server {
 
-/** Нижняя строка состояния McUI: [Status] | File (центр) | Time (справа). */
+/** Нижняя строка состояния McUI: Status слева, File по центру бара, Time справа. */
 class StatusBar : public nex::ovl::Widget {
 public:
     enum class Field : uint8_t {
@@ -30,9 +30,11 @@ public:
 
     void setStatus(const char* text) noexcept { setField(Field::Status, text); }
     void setFile(const char* text) noexcept { setField(Field::File, text); }
+    /** Имя файла; при @a edited дописывает `*` через append. */
+    void setFile(const char* text, bool edited) noexcept;
     void setTime(const char* text) noexcept { setField(Field::Time, text); }
 
-    /** Ширина колонки в пикселях; `0` — доля поровну с остальными нулевыми. */
+    /** Ширина боковой колонки (Status / Time); File всегда на всю ширину бара. */
     void setColumnWidth(Field field, uint16_t width) noexcept;
 
     void layout() noexcept override;
@@ -48,6 +50,7 @@ private:
     };
 
     void setField(Field field, const char* text) noexcept;
+    void appendField(Field field, const char* text) noexcept;
     void layoutColumns() noexcept;
     void redrawIfShown() const noexcept;
 

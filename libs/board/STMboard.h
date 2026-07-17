@@ -2,6 +2,7 @@
 #include "config.h"
 #include "boardLED.h"
 #include "core/gpio.h"
+#include "core/crash_dump.hpp"
 #include "phl/phl.h"
 
 class CHW_Core {
@@ -11,6 +12,7 @@ public:
         VectorTableRam::Init();
         HAL_Init();
         SystemClock_Config();
+        CrashDump::enableFaultTraps();
     }
     
     void Delay(uint32_t time) { HAL_Delay(time); };

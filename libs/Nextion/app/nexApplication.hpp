@@ -13,6 +13,9 @@
 /** Повторы re-TX head при `Gateway::StreamRxError` (после исходной отправки). */
 static constexpr uint8_t kMaxRxFaultRetries = 2u;
 
+/** Макс. вложенность `Application::update()`. */
+static constexpr uint8_t kMaxUpdateDepth = 2u;
+
 namespace nex {
 
 class IPage;
@@ -121,7 +124,7 @@ private:
 
     void abortSessionFault() noexcept;
     void processTransportFault(uint32_t now_ms) noexcept;
-    
+
     ScreenLayout _screen{};
 
     BIF::IByteStream& _stream;
@@ -132,6 +135,8 @@ private:
     Route _lastErrorRoute{};
     uint8_t _rxFaultRetries = 0u;
     uint8_t _currentPage = 0xFFu;
+    /** >0 внутри update(); лимит — `kMaxUpdateDepth`. */
+    uint8_t _updateDepth = 0u;
 
     ClockMsFn _clockMsFn;
     uint32_t _timeoutMs = AppTiming::kDefaultTimeoutMs;

@@ -64,10 +64,12 @@ private:
         None = 0,
         OverwriteSave,
         ConfirmDelete,
+        ConfirmDiscardOpen,
     };
 
     static constexpr uint8_t kTagOverwriteSave = 1u;
     static constexpr uint8_t kTagConfirmDelete = 2u;
+    static constexpr uint8_t kTagDiscardOpen = 3u;
 
     [[nodiscard]] Application& ui() const noexcept;
 
@@ -83,6 +85,7 @@ private:
     void onAction() noexcept;
 
     void doOpen() noexcept;
+    void commitOpen(const char* path) noexcept;
     void beginSaveAs() noexcept;
     void finishSaveAs() noexcept;
     void commitSaveAs(const char* path) noexcept;

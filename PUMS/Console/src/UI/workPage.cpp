@@ -26,6 +26,7 @@ void WorkPage::beginRename(uint8_t group_id) noexcept
 
 void WorkPage::onLoad()
 {
+    refreshModeButtons();
     refreshGroupBtn(true);
     refreshCells();
 
@@ -73,6 +74,13 @@ void WorkPage::onTouch(const nex::msg::evTouch& e)
         return;
     }
 
+    if (comp >= PW::bSa0 && comp <= PW::bSa7) {
+        if (e.state == nex::TouchState::Release) {
+            onAssignPress(static_cast<uint8_t>(comp - PW::bSa0));
+        }
+        return;
+    }
+
     if (comp == PW::bSNext || comp == PW::bSPrev
         || (comp >= PW::bS0 && comp <= PW::bS7)) {
         onGroupPress(comp, e.state);
@@ -95,8 +103,14 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         return;
     }
 
-    if (console.select(index)) {
+    const MConsole::BlockResult result = console.pressMech(index);
+    if (result == MConsole::BlockResult::Changed
+        || result == MConsole::BlockResult::Warning) {
         refreshCell(index);
+    }
+    if (result == MConsole::BlockResult::Rejected
+        || result == MConsole::BlockResult::Warning) {
+        showBlockMsg(console.blockMessage());
     }
 }
 
@@ -134,7 +148,28 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
 
     const uint8_t group_id = groupIdForSlot(index);
     const smcp::Group& grp = console.group(group_id);
-    if (grp.isEmpty() || grp.isBlocked()) {
+    if (grp.isEmpty()) {
+        return;
+    }
+
+    if (console.mode() == MConsole::Mode::Block) {
+        if (state != nex::TouchState::Release) {
+            return;
+        }
+        const MConsole::BlockResult result = console.pressGroup(group_id);
+        if (result == MConsole::BlockResult::Changed
+            || result == MConsole::BlockResult::Warning) {
+            refreshGroupBtn(false);
+            refreshCells();
+        }
+        if (result == MConsole::BlockResult::Rejected
+            || result == MConsole::BlockResult::Warning) {
+            showBlockMsg(console.blockMessage());
+        }
+        return;
+    }
+
+    if (grp.isBlocked()) {
         return;
     }
 
@@ -155,14 +190,30 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
         return;
     }
 
-    if (group_id == console.getActiveGroup()) {
-        console.clearActiveGroup();
-    } else if (!console.recallGroup(group_id)) {
+    if (console.pressGroup(group_id) == MConsole::BlockResult::NoChange) {
         return;
     }
 
     refreshGroupBtn(false);
     refreshCells();
+}
+
+void WorkPage::onAssignPress(uint8_t index) noexcept
+{
+    if (!console.allowsGroupEdit()) {
+        return;
+    }
+    if (index >= GroupAssignButtons::kCount) {
+        return;
+    }
+
+    const uint8_t group_id = groupIdForSlot(index);
+    if (group_id == MConsole::kBlockedGroupId) {
+        return;
+    }
+
+    ui().mGroup.gbid.val = static_cast<int32_t>(index);
+    ui().switchPage(ui().mGroup);
 }
 
 void WorkPage::onMenuPress(uint8_t comp)
@@ -171,13 +222,95 @@ void WorkPage::onMenuPress(uint8_t comp)
 
     switch (comp) {
     case PW::bFile:
+        if (!console.allowsFileMenu()) {
+            return;
+        }
+        ui().switchPage(ui().mFile);
         break;
+
     case PW::bBlock:
+        if (!console.allowsBlockMode()) {
+            return;
+        }
+        (void)console.toggleMode(MConsole::Mode::Block);
+        applyModeChange();
         break;
+
     case PW::bShow:
+        if (console.mode() == MConsole::Mode::Show) {
+            showExitShowConfirm();
+            return;
+        }
+        (void)console.toggleMode(MConsole::Mode::Show);
+        applyModeChange();
         break;
+
     default:
         break;
+    }
+}
+
+void WorkPage::applyModeChange() noexcept
+{
+    refreshModeButtons();
+    refreshGroupBtn(false);
+    refreshCells();
+}
+
+void WorkPage::showExitShowConfirm() noexcept
+{
+    ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
+    ui().msgBox.show("Show", nex::ovl::MsgBox::Preset::YesNo, kTagExitShow,
+        nex::ovl::MsgBox::Action::No, "Exit show mode?");
+}
+
+void WorkPage::onMsgBox(const nex::msg::evMsgBox& e)
+{
+    if (e.tag != kTagExitShow) {
+        return;
+    }
+    if (e.action != nex::msg::evMsgBox::Action::Yes) {
+        return;
+    }
+    console.setMode(MConsole::Mode::Work);
+    applyModeChange();
+}
+
+Application& WorkPage::ui() const noexcept
+{
+    return static_cast<Application&>(app);
+}
+
+void WorkPage::showBlockMsg(const char* text) noexcept
+{
+    ui().msgBox.setRoute(nex::Route{PG::kPageId, 0u});
+    ui().msgBox.show("Block", nex::ovl::MsgBox::Preset::OK, 0u,
+        nex::ovl::MsgBox::Action::Ok, "%s", text);
+}
+
+void WorkPage::refreshModeButtons() noexcept
+{
+    using State = ConsoleBtn::State;
+    const MConsole::Mode mode = console.mode();
+
+    const State fileState = console.allowsFileMenu() ? State::Active : State::Disabled;
+    if (bFile.getState() != fileState) {
+        bFile.setState(fileState);
+    }
+
+    State blockState = State::Active;
+    if (!console.allowsBlockMode()) {
+        blockState = State::Disabled;
+    } else if (mode == MConsole::Mode::Block) {
+        blockState = State::Selected;
+    }
+    if (bBlock.getState() != blockState) {
+        bBlock.setState(blockState);
+    }
+
+    const State showState = (mode == MConsole::Mode::Show) ? State::Selected : State::Active;
+    if (bShow.getState() != showState) {
+        bShow.setState(showState);
     }
 }
 
@@ -185,6 +318,7 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
 {
     using State = ConsoleBtn::State;
     const uint8_t active_id = console.getActiveGroup();
+    const bool assignOk = console.allowsGroupEdit();
 
     for (uint8_t i = 0; i < GroupButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
@@ -209,7 +343,10 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
             groupBtn[i].setState(next);
         }
 
-        const State assignNext = (next == State::Disabled) ? State::Active : next;
+        State assignNext = State::Disabled;
+        if (assignOk) {
+            assignNext = (next == State::Disabled) ? State::Active : next;
+        }
         if (groupAssignBtn[i].getState() != assignNext) {
             groupAssignBtn[i].setState(assignNext);
         }
@@ -226,7 +363,7 @@ void WorkPage::refreshCell(uint8_t index) noexcept
     using State = ConsoleBtn::State;
 
     State next = State::Disabled;
-    if (console.mechGroupMask(index, smcp::Group::Flag::Blocked) != 0ULL) {
+    if (console.isMechBlocked(index)) {
         next = State::Blocked;
     } else if (console.mech(index).status().all(smcp::IMech::Status::Selected | smcp::IMech::Status::Ready)) {
         next = State::Selected;

@@ -51,6 +51,13 @@ bool Application::tryEnqueue(Transaction tx) noexcept {
 }
 
 void Application::enqueue(Transaction tx) noexcept {
+    /* На лимите глубины — только постановка, без вложенного update(). */
+    if (_updateDepth >= kMaxUpdateDepth) {
+        if (!_session.tryEnqueue(tx))
+            onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
+        return;
+    }
+
     MsTimer stall;
     stall.start(nowMs(), _timeoutMs);
 
@@ -93,6 +100,10 @@ bool Application::pumpUntilIdle() noexcept {
 }
 
 void Application::update() noexcept {
+    if (_updateDepth >= kMaxUpdateDepth)
+        return;
+    ++_updateDepth;
+
     const uint32_t now_ms = nowMs();
 
     if (!_session.begin(_gateway) && _session.getStatus() == Session::Status::PushFailed) {
@@ -124,6 +135,8 @@ void Application::update() noexcept {
     }
 
     processTransportFault(now_ms);
+
+    --_updateDepth;
 }
 
 void Application::processTransportFault(uint32_t now_ms) noexcept {

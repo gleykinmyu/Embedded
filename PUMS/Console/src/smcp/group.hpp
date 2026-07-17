@@ -83,7 +83,12 @@ public:
 static_assert(sizeof(Selection) == sizeof(uint64_t));
 
 
-/** Группа механизмов — 64 байта. */
+/**
+ * Группа механизмов — 64 байта (wire = runtime).
+ *
+ * Layout (чётные адреса для half/double-word):
+ *   0 id(1) | 1 flag(1) | 2 crc16(2) | 4 reserved(4) | 8 mech(8) | 16 name(48)
+ */
 struct Group {
     enum class Flag : uint8_t {
         Blocked = 1u << 0,
@@ -91,19 +96,20 @@ struct Group {
     };
     uint8_t id = 0;
     REG::BitMask<Flag> flag;
+    uint16_t crc16 = 0;
+    uint8_t reserved[4]{};
     Selection mech;
     char name[kGroupNameSize]{};
-    uint8_t reserved[4]{};
-    uint16_t crc16 = 0;
 
     [[nodiscard]] constexpr bool isEmpty() const noexcept { return mech.empty(); }
 
     void clear() noexcept
     {
         mech = Selection{};
-        name[0] = '\0';
         flag = {};
         crc16 = 0;
+        std::memset(reserved, 0, sizeof(reserved));
+        std::memset(name, 0, sizeof(name));
     }
 
     void setName(const char* group_name) noexcept
@@ -130,8 +136,8 @@ struct Group {
     }
 };
 
-
-//static_assert(sizeof(Group) == kGroupWireSize);
+static_assert(sizeof(Group) == kGroupWireSize);
+static_assert(alignof(Group) == alignof(uint64_t));
 
 
 REG_BITMASK_ENUM_OPS(Group::Flag)

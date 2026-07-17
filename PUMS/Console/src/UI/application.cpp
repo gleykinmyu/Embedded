@@ -1,28 +1,11 @@
 #include "application.hpp"
 
 #include <cstdio>
-#include <cstring>
 
 #include "board.hpp"
 #include "core/memstat.hpp"
 
 namespace server {
-
-namespace {
-
-[[nodiscard]] const char* fileBaseName(const char* path) noexcept
-{
-    if (path == nullptr || path[0] == '\0') {
-        return "";
-    }
-    const char* slash = std::strrchr(path, '/');
-    if (slash == nullptr) {
-        slash = std::strrchr(path, '\\');
-    }
-    return (slash != nullptr && slash[1] != '\0') ? (slash + 1) : path;
-}
-
-} // namespace
 
 Application::Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTiming timing) noexcept
     : nex::AppUI<nex::hmi::kPageCount>(stream, screen, timing)
@@ -69,9 +52,14 @@ void Application::showFileYesNo(uint8_t tag, const char* text) noexcept
         nex::ovl::MsgBox::Action::No, "%s", text);
 }
 
-void Application::showFsError() noexcept
+void Application::showConsoleStatus(uint8_t tag) noexcept
 {
-    showFileMsg(0u, "Storage error.");
+    showFileMsg(tag, MConsole::statusText(console.getStatus()));
+}
+
+void Application::showBrowserStatus(uint8_t tag) noexcept
+{
+    showFileMsg(tag, MBrowser::statusText(mBrowser.getStatus()));
 }
 
 void Application::refreshStatusBar() noexcept
@@ -81,7 +69,7 @@ void Application::refreshStatusBar() noexcept
     statusBar.setStatus(memBuf);
     memstat::resetFreeMin();
 
-    statusBar.setFile(fileBaseName(console.showName()));
+    statusBar.setFile(MConsole::showBaseName(console.showName()), console.isEdited());
 
     char timeBuf[16]{};
     if (board.rtc.isReady()) {

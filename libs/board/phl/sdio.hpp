@@ -61,6 +61,10 @@ public:
         }
         this->EnableClock();
         this->init_sdio_gpios();
+        /* Повторный init после ошибки: сначала DeInit. */
+        if (hsd.State != HAL_SD_STATE_RESET) {
+            (void)HAL_SD_DeInit(&hsd);
+        }
         sd_state = HAL_SD_Init(&hsd);
         if (sd_state != HAL_OK)
             SDIO_DETAIL_ERRORMSG("Error HAL_SD_Init.");
@@ -68,10 +72,19 @@ public:
         if (sd_state == HAL_OK) {
             if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK) {
                 SDIO_DETAIL_ERRORMSG("Error config bus wide 4B.");
+                (void)HAL_SD_DeInit(&hsd);
                 sd_state = HAL_ERROR;
             }
         }
         return sd_state;
+    }
+
+    CHW_Status DeInit()
+    {
+        const CHW_Status st = HAL_SD_DeInit(&hsd);
+        if (st != HAL_OK)
+            SDIO_DETAIL_ERRORMSG("Error HAL_SD_DeInit.");
+        return st;
     }
 
     CHW_Status ConfigWideBus(uint32_t flag) { return HAL_SD_ConfigWideBusOperation(&hsd, flag); }

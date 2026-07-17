@@ -9,6 +9,7 @@
  * boot() — в начале main(), до глубоких вызовов: заливает watermark стека.
  * HAL_SYSTICK_Callback — в memstat.cpp, раз в 1 ms: только min MSP (без _sbrk).
  * trackFreeMin() — из main loop; resetFreeMin() — после вывода (окно 1 с).
+ * Поля minSp/minSpWindow/minGap — под CriticalSection (core/critical_section.hpp).
  *
  * Если нужен свой HAL_SYSTICK_Callback — не линкуйте memstat.cpp или вызывайте
  * memstat::trackStackMin() из своего обработчика.

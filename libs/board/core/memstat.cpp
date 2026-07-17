@@ -5,6 +5,8 @@
 
 #include <stm32f4xx.h>
 
+#include "core/critical_section.hpp"
+
 extern "C" {
 extern char end;
 extern char _sdata;
@@ -30,6 +32,7 @@ struct State {
 };
 
 State g_state{};
+
 
 uint32_t estackAddr() noexcept
 {
@@ -91,10 +94,15 @@ std::size_t stackPeakFromWatermark() noexcept
 
 std::size_t stackPeakFromMinSp() noexcept
 {
-    if (g_state.minSp == 0xFFFFFFFFu) {
+    uint32_t minSp = 0xFFFFFFFFu;
+    {
+        const CriticalSection lock{};
+        minSp = g_state.minSp;
+    }
+    if (minSp == 0xFFFFFFFFu) {
         return 0u;
     }
-    return static_cast<std::size_t>(estackAddr() - g_state.minSp);
+    return static_cast<std::size_t>(estackAddr() - minSp);
 }
 
 std::size_t stackPeakCombined() noexcept
@@ -129,12 +137,18 @@ void trackFreeMin() noexcept
 {
     std::size_t gapWorst = heapStackGapBytes();
 
-    if (g_state.minSpWindow != 0xFFFFFFFFu) {
+    uint32_t minSpWindow = 0xFFFFFFFFu;
+    {
+        const CriticalSection lock{};
+        minSpWindow = g_state.minSpWindow;
+    }
+
+    if (minSpWindow != 0xFFFFFFFFu) {
         const uint32_t heapTop =
             static_cast<uint32_t>(reinterpret_cast<uintptr_t>(heapBreak()));
-        if (g_state.minSpWindow > heapTop) {
+        if (minSpWindow > heapTop) {
             const std::size_t gapAtMinSp =
-                static_cast<std::size_t>(g_state.minSpWindow - heapTop);
+                static_cast<std::size_t>(minSpWindow - heapTop);
             if (gapAtMinSp < gapWorst) {
                 gapWorst = gapAtMinSp;
             }
@@ -143,19 +157,26 @@ void trackFreeMin() noexcept
         }
     }
 
-    if (gapWorst < g_state.minGap) {
-        g_state.minGap = gapWorst;
+    {
+        const CriticalSection lock{};
+        if (gapWorst < g_state.minGap) {
+            g_state.minGap = gapWorst;
+        }
     }
 }
 
 void resetFreeMin() noexcept
 {
-    g_state.minGap = heapStackGapBytes();
-    g_state.minSpWindow = __get_MSP();
+    const std::size_t gap = heapStackGapBytes();
+    const uint32_t sp = __get_MSP();
+    const CriticalSection lock{};
+    g_state.minGap = gap;
+    g_state.minSpWindow = sp;
 }
 
 std::size_t freeMinBytes() noexcept
 {
+    const CriticalSection lock{};
     return g_state.minGap;
 }
 

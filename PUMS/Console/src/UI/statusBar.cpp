@@ -54,6 +54,9 @@ void StatusBar::hide(nex::ovl::Overlay& ovl) noexcept
 
 void StatusBar::setColumnWidth(const Field field, const uint16_t width) noexcept
 {
+    if (field == Field::File) {
+        return;
+    }
     const auto idx = static_cast<uint8_t>(field);
     if (idx >= static_cast<uint8_t>(Field::Count)) {
         return;
@@ -79,6 +82,30 @@ void StatusBar::setField(const Field field, const char* text) noexcept
     redrawIfShown();
 }
 
+void StatusBar::appendField(const Field field, const char* text) noexcept
+{
+    const auto idx = static_cast<uint8_t>(field);
+    if (idx >= static_cast<uint8_t>(Field::Count) || text == nullptr || text[0] == '\0') {
+        return;
+    }
+
+    const std::size_t cur = std::strlen(_columns[idx].text);
+    if (cur >= kTextCap - 1u) {
+        return;
+    }
+    std::strncat(_columns[idx].text, text, kTextCap - 1u - cur);
+    _columns[idx].text[kTextCap - 1u] = '\0';
+    redrawIfShown();
+}
+
+void StatusBar::setFile(const char* text, const bool edited) noexcept
+{
+    setFile(text);
+    if (edited) {
+        appendField(Field::File, "*");
+    }
+}
+
 void StatusBar::layout() noexcept
 {
     layoutColumns();
@@ -88,32 +115,22 @@ void StatusBar::layout() noexcept
 void StatusBar::layoutColumns() noexcept
 {
     const uint16_t totalW = _screen.w;
-    uint16_t fixedW = 0u;
-    uint8_t autoCount = 0u;
-
-    for (const Column& col : _columns) {
-        if (col.width > 0u) {
-            fixedW = static_cast<uint16_t>(fixedW + col.width);
-        } else {
-            ++autoCount;
-        }
-    }
-
-    uint16_t autoW = 0u;
-    if (autoCount > 0u) {
-        const uint16_t remain = (totalW > fixedW) ? static_cast<uint16_t>(totalW - fixedW) : 0u;
-        autoW = static_cast<uint16_t>(remain / autoCount);
-    }
-
-    nex::Coord x = 0;
-    const nex::Coord y = 0;
     const uint16_t h = _barHeight;
+    const nex::Coord y = 0;
 
-    for (Column& col : _columns) {
-        const uint16_t w = (col.width > 0u) ? col.width : autoW;
-        col.region = nex::Region(nex::Point{x, y}, nex::Rect{w, h});
-        x = static_cast<nex::Coord>(x + w);
-    }
+    auto& status = _columns[static_cast<uint8_t>(Field::Status)];
+    auto& file = _columns[static_cast<uint8_t>(Field::File)];
+    auto& time = _columns[static_cast<uint8_t>(Field::Time)];
+
+    const uint16_t statusW = (status.width > 0u) ? status.width : kStatusColumnWidth;
+    const uint16_t timeW = (time.width > 0u) ? time.width : kSideColumnWidth;
+    const uint16_t timeX =
+        (totalW > timeW) ? static_cast<uint16_t>(totalW - timeW) : 0u;
+
+    /* File — на всю ширину бара: текст по центру экрана, не средней колонки. */
+    status.region = nex::Region(nex::Point{0, y}, nex::Rect{statusW, h});
+    file.region = nex::Region(nex::Point{0, y}, nex::Rect{totalW, h});
+    time.region = nex::Region(nex::Point{static_cast<nex::Coord>(timeX), y}, nex::Rect{timeW, h});
 }
 
 void StatusBar::drawBackground(const nex::AppCanvas& cs) const
@@ -121,11 +138,23 @@ void StatusBar::drawBackground(const nex::AppCanvas& cs) const
     const nex::Region bar = screenRegion();
     cs.rect_fill(bar, AppColors::kPage);
 
-    for (const Column& col : _columns) {
-        const nex::Region field = nex::Canvas::toScreen(bar, col.region);
-        cs.text_in_region(field, kFieldPad, col.text, kFontId, AppColors::kText, col.align,
-            nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
-    }
+    const auto& status = _columns[static_cast<uint8_t>(Field::Status)];
+    const auto& file = _columns[static_cast<uint8_t>(Field::File)];
+    const auto& time = _columns[static_cast<uint8_t>(Field::Time)];
+
+    const nex::Region fileField = nex::Canvas::toScreen(bar, file.region);
+    cs.text_in_region(fileField, kFieldPad, file.text, kFontId, AppColors::kText, file.align,
+        nex::VAlign::Center, AppColors::kPage, nex::BG::Transparent);
+
+    const nex::Region statusField = nex::Canvas::toScreen(bar, status.region);
+    cs.rect_fill(statusField, AppColors::kPage);
+    cs.text_in_region(statusField, kFieldPad, status.text, kFontId, AppColors::kText, status.align,
+        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
+
+    const nex::Region timeField = nex::Canvas::toScreen(bar, time.region);
+    cs.rect_fill(timeField, AppColors::kPage);
+    cs.text_in_region(timeField, kFieldPad, time.text, kFontId, AppColors::kText, time.align,
+        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
 }
 
 void StatusBar::redrawIfShown() const noexcept

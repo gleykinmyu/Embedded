@@ -10,7 +10,7 @@ struct AppColors {
     static constexpr nex::Color kPage{4258u};
     static constexpr nex::Color kDefault{10565u};
     static constexpr nex::Color kMain{64800u};
-    static constexpr nex::Color kBlocked{43370u};
+    static constexpr nex::Color kBlocked{20643u};
     static constexpr nex::Color kBorder{21130u};
 
     static constexpr nex::Color kText{61277u};

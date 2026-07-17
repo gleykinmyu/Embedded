@@ -36,7 +36,10 @@ public:
 
     void showFileMsg(uint8_t tag, const char* text) noexcept;
     void showFileYesNo(uint8_t tag, const char* text) noexcept;
-    void showFsError() noexcept;
+    /** MsgBox по текущему статусу MConsole. */
+    void showConsoleStatus(uint8_t tag = 0u) noexcept;
+    /** MsgBox по текущему статусу MBrowser. */
+    void showBrowserStatus(uint8_t tag = 0u) noexcept;
 
 private:
     void refreshStatusBar() noexcept;

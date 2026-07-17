@@ -15,24 +15,34 @@ Application& MFilePage::ui() const noexcept
 
 void MFilePage::doSave() noexcept
 {
-    if (console.saveShow(console.showName())) {
+    if (console.saveShow(mBrowser, console.showName())) {
         ui().showFileMsg(Msg::AfterSaveOk, "File saved.");
         return;
     }
 
     switch (console.getStatus()) {
     case MConsole::Status::NoShowOpen:
-        ui().showFileMsg(Msg::GoSaveAs, "No file open. Use Save As.");
+        ui().showFileMsg(Msg::GoSaveAs, MConsole::statusText(MConsole::Status::NoShowOpen));
         break;
-    case MConsole::Status::TemplateProtected:
-        ui().showFileMsg(Msg::None, "Cannot save template.");
-        break;
-    case MConsole::Status::IoError:
-    case MConsole::Status::Ok:
     default:
-        ui().showFsError();
+        ui().showConsoleStatus(Msg::None);
         break;
     }
+}
+
+void MFilePage::beginNew() noexcept
+{
+    if (console.isEdited()) {
+        ui().showFileYesNo(Msg::ConfirmNew, "Show not saved.\nCreate new anyway?");
+        return;
+    }
+    ui().showFileYesNo(Msg::ConfirmNew, "Create new show?");
+}
+
+void MFilePage::commitNew() noexcept
+{
+    console.newShow();
+    ui().switchPage(ui().work);
 }
 
 void MFilePage::onTouch(const nex::msg::evTouch& e)
@@ -43,12 +53,12 @@ void MFilePage::onTouch(const nex::msg::evTouch& e)
 
     using PM = nex::hmi::Page_mFile;
     switch (e.route.comp) {
-    case PM::bSave: 
-       doSave(); 
-       break;
+    case PM::bSave:
+        doSave();
+        break;
     case PM::bNew:
-       ui().showFileYesNo(Msg::ConfirmNew, "Create new show?");
-       break;
+        beginNew();
+        break;
     default:
         break;
     }
@@ -65,8 +75,7 @@ void MFilePage::onMsgBox(const nex::msg::evMsgBox& e)
 
     case Msg::ConfirmNew:
         if (e.action == nex::msg::evMsgBox::Action::Yes) {
-            console.newShow();
-            ui().switchPage(ui().work);
+            commitNew();
         }
         break;
 

@@ -19,6 +19,8 @@ public:
     [[nodiscard]] bool mount(const char* path, bool force = true) noexcept override;
     void unmount() noexcept override;
     [[nodiscard]] bool ensureMounted() noexcept override;
+    /** unmount + mount(force) по сохранённому path. */
+    [[nodiscard]] bool remount() noexcept override;
     [[nodiscard]] bool isMounted() const noexcept override { return _mounted; }
     [[nodiscard]] const char* path() const noexcept override { return _path; }
     [[nodiscard]] bool exists(const char* path) noexcept override;

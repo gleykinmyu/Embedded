@@ -43,6 +43,18 @@ bool FatVolume::ensureMounted() noexcept
     return mount(_path, true);
 }
 
+bool FatVolume::remount() noexcept
+{
+    if (_path == nullptr) {
+        _last = FR_INVALID_DRIVE;
+        return false;
+    }
+    if (_mounted) {
+        unmount();
+    }
+    return mount(_path, true);
+}
+
 bool FatVolume::exists(const char* path) noexcept
 {
     if (path == nullptr || path[0] == '\0') {

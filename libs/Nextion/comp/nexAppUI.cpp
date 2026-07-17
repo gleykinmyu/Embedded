@@ -47,6 +47,9 @@ void IAppUI::reportRegisterError(MISC::RegStatus st, Route route) noexcept {
 void IAppUI::onTouch(const msg::evTouch& e) {
     if (overlay.isModal())
         return;
+    /* Игнор touch со скрытой/чужой страницы (инъекция UART / рассинхрон). */
+    if (e.route.page != currentPage())
+        return;
     if (IPage* const p = getPage(e.route.page))
         p->onTouch(e);
 }

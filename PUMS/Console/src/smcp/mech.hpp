@@ -22,15 +22,14 @@ inline constexpr uint8_t kMechIdMax = 63u;
 inline constexpr uint8_t kSelectOwnerNone = 0u;
 
 /** Параметры взведённого движения (SetTarget). */
-#pragma pack(push, 1)
 struct MotionTarget {
     int32_t target_mm = 0;
     uint16_t speed_mm_s = 0;
     uint16_t accel_mm_s2 = 0;
 };
-#pragma pack(pop)
 
 static_assert(sizeof(MotionTarget) == 8u);
+static_assert(alignof(MotionTarget) == alignof(int32_t));
 
 /**
  * Абстракция одного механизма: телеметрия и управление.

@@ -86,9 +86,7 @@ enum class ParserState : uint8_t {
     CheckCrc,
 };
 
-#pragma pack(push, 1)
-
-/** Заголовок кадра — 8 байт, выровнен по границе 8. */
+/** Заголовок кадра — 8 байт. */
 struct Header {
     uint16_t sync = kSyncMarker;
     uint8_t src_id = 0;
@@ -100,6 +98,7 @@ struct Header {
 };
 
 static_assert(sizeof(Header) == kHeaderSize);
+static_assert(alignof(Header) == alignof(uint16_t));
 
 // --- 0x01..0x05: системные сообщения ---
 
@@ -123,6 +122,8 @@ struct SysInfo {
     uint8_t checker_status = 0;
 };
 
+static_assert(sizeof(SysInfo) == 4u);
+
 struct GetLog {
     static constexpr MsgId kId = MsgId::GetLog;
     uint32_t offset = 0;
@@ -145,8 +146,6 @@ struct Select {
     Selection selection;
 };
 
-static_assert(sizeof(Select) == sizeof(uint64_t) + 1u);
-
 // --- 0x12 ---
 
 struct ResetFault {
@@ -161,8 +160,6 @@ struct SetTarget {
     uint8_t local_id = 0;
     MotionTarget target;
 };
-
-static_assert(sizeof(SetTarget) == 9u);
 
 // --- 0x30: операции с шоуфайлом (классификатор действия в payload) ---
 
@@ -185,7 +182,7 @@ struct ShowFile {
 };
 
 // --- 0x36..0x37, 0x40, 0xEE: отдельные сообщения ---
-struct SetConfig {    
+struct SetConfig {
     static constexpr MsgId kId = MsgId::SetConfig;
     uint8_t local_id = 0;
 };
@@ -205,15 +202,13 @@ struct Telemetry {
     REG::BitMask<IMech::Status> status{};
 };
 
-static_assert(sizeof(Telemetry) == 9u);
-
 struct CriticalErr {
     static constexpr MsgId kId = MsgId::CriticalErr;
     ErrorCode code = ErrorCode::Safety;
     uint8_t detail = 0;
 };
 
-#pragma pack(pop)
+static_assert(sizeof(CriticalErr) == 2u);
 
 /** Разобранное тело SMCP-кадра. */
 using Message = std::variant<Ack,

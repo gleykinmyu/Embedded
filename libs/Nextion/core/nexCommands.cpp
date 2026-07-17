@@ -65,6 +65,13 @@ bool Command::printQuotedString(TxFrame& tx, const char* text) const noexcept {
         return pushBytes(tx, &dq, 1u);
     for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != 0u; ++p) {
         const unsigned char c = *p;
+        /* 0xFF — физический терминатор кадра; сырой байт рвёт инструкцию. */
+        if (c == Physical::TERM_BYTE) {
+            const uint8_t repl = static_cast<uint8_t>('?');
+            if (!pushBytes(tx, &repl, 1u))
+                return false;
+            continue;
+        }
         if (c == static_cast<unsigned char>('"')) {
             static const char esc[] = "\\\"";
             if (!pushBytes(tx, esc, 2u))

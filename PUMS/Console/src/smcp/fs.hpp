@@ -42,6 +42,12 @@ public:
     /** Повторный mount, если том ещё не смонтирован (нужен сохранённый path). */
     virtual bool ensureMounted() noexcept = 0;
 
+    /**
+     * Принудительный remount по сохранённому path (после ошибки I/O / смены карты).
+     * @return false, если path неизвестен или mount не удался.
+     */
+    virtual bool remount() noexcept = 0;
+
     [[nodiscard]] virtual bool isMounted() const noexcept = 0;
 
     /** Путь тома, переданный в последний успешный `mount`. */

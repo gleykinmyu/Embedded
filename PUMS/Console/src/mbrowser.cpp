@@ -28,15 +28,100 @@ bool appendPath(char* out, std::size_t outLen, const char* root, const char* nam
     return true;
 }
 
+/** Только одно 8.3-имя: без путей, `..`, управляющих и запрещённых символов FAT. */
+[[nodiscard]] bool isValidShowBaseName(const char* name) noexcept
+{
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    if (name[0] == '.' && (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) {
+        return false;
+    }
+
+    std::size_t len = 0u;
+    std::size_t dot = static_cast<std::size_t>(-1);
+    for (const char* p = name; *p != '\0'; ++p, ++len) {
+        const auto c = static_cast<unsigned char>(*p);
+        if (c < 0x20u || c == 0x7Fu) {
+            return false;
+        }
+        switch (*p) {
+        case '/':
+        case '\\':
+        case ':':
+        case '*':
+        case '?':
+        case '"':
+        case '<':
+        case '>':
+        case '|':
+            return false;
+        case '.':
+            if (dot != static_cast<std::size_t>(-1)) {
+                return false;
+            }
+            dot = len;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (len >= smcp::file::kDirNameSize) {
+        return false;
+    }
+    if (dot == static_cast<std::size_t>(-1)) {
+        return len <= 8u;
+    }
+    if (dot == 0u || dot > 8u) {
+        return false;
+    }
+    const std::size_t ext = len - dot - 1u;
+    return ext >= 1u && ext <= 3u;
+}
+
 } // namespace
 
 MBrowser::MBrowser(smcp::file::IVolume& volume,
                    smcp::file::IDirectory& dir,
+                   smcp::file::IFile& file,
                    const char* root) noexcept
     : _volume(volume)
     , _dir(dir)
+    , _file(file)
     , _rootOverride(root)
 {}
+
+const char* MBrowser::statusText(Status status) noexcept
+{
+    switch (status) {
+    case Status::Ok:
+        return "OK";
+    case Status::NotMounted:
+        return "SD card not ready.";
+    case Status::OpenDirFailed:
+        return "Cannot open folder.";
+    case Status::InvalidName:
+        return "Invalid file name.";
+    case Status::NoSelection:
+        return "Select a file.";
+    case Status::NotFound:
+        return "File not found.";
+    case Status::FileExists:
+        return "File already exists.";
+    case Status::PathTooLong:
+        return "Path too long.";
+    case Status::OpenFileProtected:
+        return "Cannot delete opened file.";
+    case Status::RemoveFailed:
+        return "Cannot delete file.";
+    case Status::RenameFailed:
+        return "Cannot rename file.";
+    case Status::IoError:
+    default:
+        return "Storage error.";
+    }
+}
 
 const char* MBrowser::root() const noexcept
 {
@@ -76,18 +161,25 @@ void MBrowser::setPageRows(std::size_t rows) noexcept
 bool MBrowser::refresh() noexcept
 {
     clear();
+    clearError();
 
     if (!_volume.ensureMounted()) {
+        _status = Status::NotMounted;
         return false;
     }
 
     const char* const rootPath = root();
     if (rootPath == nullptr || rootPath[0] == '\0') {
+        _status = Status::NotMounted;
         return false;
     }
 
     if (!_dir.open(rootPath)) {
-        return false;
+        /* Возможна «залипшая» сессия после ошибки карты — один remount. */
+        if (!_volume.remount() || !_dir.open(rootPath)) {
+            _status = Status::OpenDirFailed;
+            return false;
+        }
     }
 
     smcp::file::DirEntry entry{};
@@ -99,6 +191,7 @@ bool MBrowser::refresh() noexcept
     }
 
     _dir.close();
+    _status = Status::Ok;
     return true;
 }
 
@@ -185,35 +278,108 @@ bool MBrowser::selectRow(std::size_t row) noexcept
     return selectIndex(_page * _pageRows + row);
 }
 
-bool MBrowser::makePath(char* out, std::size_t outLen, const char* name) const noexcept
+bool MBrowser::makePath(char* out, std::size_t outLen, const char* name) noexcept
 {
-    return appendPath(out, outLen, root(), name);
+    clearError();
+    if (!isValidShowBaseName(name)) {
+        _status = Status::InvalidName;
+        return false;
+    }
+    if (!appendPath(out, outLen, root(), name)) {
+        _status = Status::PathTooLong;
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
 }
 
-bool MBrowser::makeSelectedPath(char* out, std::size_t outLen) const noexcept
+bool MBrowser::makeSelectedPath(char* out, std::size_t outLen) noexcept
 {
+    clearError();
     const char* name = selectedName();
     if (name[0] == '\0') {
+        _status = Status::NoSelection;
         return false;
     }
     return makePath(out, outLen, name);
 }
 
-bool MBrowser::removeSelected() noexcept
+bool MBrowser::pathExists(const char* path) noexcept
+{
+    return path != nullptr && path[0] != '\0' && _volume.exists(path);
+}
+
+bool MBrowser::prepareOpenSelected(char* out, std::size_t outLen) noexcept
+{
+    if (!makeSelectedPath(out, outLen)) {
+        return false;
+    }
+    if (pathExists(out)) {
+        _status = Status::Ok;
+        return true;
+    }
+
+    char name[smcp::file::kDirNameSize]{};
+    std::strncpy(name, selectedName(), sizeof(name) - 1u);
+    name[sizeof(name) - 1u] = '\0';
+
+    /* Список мог устареть — один refresh, путь тот же. */
+    if (!refresh()) {
+        return false;
+    }
+    if (!pathExists(out)) {
+        _status = Status::NotFound;
+        return false;
+    }
+    for (std::size_t i = 0; i < _count; ++i) {
+        if (std::strcmp(_files[i].name, name) == 0) {
+            _selected = i;
+            break;
+        }
+    }
+    _status = Status::Ok;
+    return true;
+}
+
+bool MBrowser::prepareSaveAs(const char* name, char* out, std::size_t outLen) noexcept
+{
+    if (!makePath(out, outLen, name)) {
+        return false;
+    }
+    if (pathExists(out)) {
+        _status = Status::FileExists;
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
+}
+
+bool MBrowser::removeSelected(const char* protectedPath) noexcept
 {
     char path[48]{};
     if (!makeSelectedPath(path, sizeof(path))) {
         return false;
     }
-    if (!_volume.remove(path)) {
+    if (protectedPath != nullptr && protectedPath[0] != '\0'
+        && std::strcmp(path, protectedPath) == 0) {
+        _status = Status::OpenFileProtected;
         return false;
     }
-    return refresh();
+    if (!_volume.remove(path)) {
+        _status = Status::RemoveFailed;
+        return false;
+    }
+    if (!refresh()) {
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
 }
 
 bool MBrowser::renameSelected(const char* newName) noexcept
 {
     if (newName == nullptr || newName[0] == '\0') {
+        _status = Status::InvalidName;
         return false;
     }
 
@@ -226,7 +392,12 @@ bool MBrowser::renameSelected(const char* newName) noexcept
         return false;
     }
     if (!_volume.rename(from, to)) {
+        _status = Status::RenameFailed;
         return false;
     }
-    return refresh();
+    if (!refresh()) {
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
 }

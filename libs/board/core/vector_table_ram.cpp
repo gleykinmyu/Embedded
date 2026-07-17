@@ -1,5 +1,7 @@
 #include <string.h>
 #include <stm32f4xx.h>
+
+#include "core/critical_section.hpp"
 #include "vector_table_ram.hpp"
 
 extern "C" {
@@ -20,15 +22,11 @@ namespace VectorTableRam {
 
 void Init() noexcept
 {
-    const bool irq_unlock = (__get_PRIMASK() == 0U);
-    __disable_irq();
+    const CriticalSection lock{};
     memcpy(s_ram_vectors, g_pfnVectors, sizeof(s_ram_vectors));
     SCB->VTOR = reinterpret_cast<uint32_t>(s_ram_vectors);
     __DSB();
     __ISB();
-    if (irq_unlock) {
-        __enable_irq();
-    }
 }
 
 void SetIrqHandler(IRQn_Type irqn, void (*handler)()) noexcept
@@ -40,14 +38,10 @@ void SetIrqHandler(IRQn_Type irqn, void (*handler)()) noexcept
     if (idx >= kWords) {
         return;
     }
-    const bool irq_unlock = (__get_PRIMASK() == 0U);
-    __disable_irq();
+    const CriticalSection lock{};
     s_ram_vectors[idx] = reinterpret_cast<uint32_t>(handler);
     __DSB();
     __ISB();
-    if (irq_unlock) {
-        __enable_irq();
-    }
 }
 
 void RestoreDefaultIrqHandler(IRQn_Type irqn) noexcept
@@ -59,14 +53,10 @@ void RestoreDefaultIrqHandler(IRQn_Type irqn) noexcept
     if (idx >= kWords) {
         return;
     }
-    const bool irq_unlock = (__get_PRIMASK() == 0U);
-    __disable_irq();
+    const CriticalSection lock{};
     s_ram_vectors[idx] = g_pfnVectors[idx];
     __DSB();
     __ISB();
-    if (irq_unlock) {
-        __enable_irq();
-    }
 }
 
 void SetWord(size_t index, uint32_t value) noexcept
@@ -74,14 +64,10 @@ void SetWord(size_t index, uint32_t value) noexcept
     if (index >= kWords) {
         return;
     }
-    const bool irq_unlock = (__get_PRIMASK() == 0U);
-    __disable_irq();
+    const CriticalSection lock{};
     s_ram_vectors[index] = value;
     __DSB();
     __ISB();
-    if (irq_unlock) {
-        __enable_irq();
-    }
 }
 
 } // namespace VectorTableRam

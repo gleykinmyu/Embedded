@@ -1,6 +1,7 @@
 #pragma once
 #include "iserial.hpp"
 #include "phl/spi.hpp"
+#include "core/critical_section.hpp"
 
 namespace PHL {
 
@@ -178,13 +179,9 @@ protected:
         return st.any(SR::OVR | SR::MODF);
     }
 
-    void lock() override
-    {
-        _primaskSave = __get_PRIMASK();
-        __disable_irq();
-    }
+    void lock() override { _primaskSave = CriticalSection::saveAndDisable(); }
 
-    void unlock() override { __set_PRIMASK(_primaskSave); }
+    void unlock() override { CriticalSection::restore(_primaskSave); }
 };
 
 } // namespace PHL
