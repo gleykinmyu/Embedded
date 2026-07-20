@@ -5,7 +5,10 @@
 
 #include "mconsole.hpp"
 
+#include "board.hpp"
+#include "core/nexDebug.hpp"
 #include "mbrowser.hpp"
+#include "UI/uiMessages.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -17,40 +20,330 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 } // namespace
 
-const char* MConsole::showBaseName(const char* path) noexcept
+
+/* ========== Конструктор ========== */
+
+MConsole::MConsole(MBrowser& browser, uint8_t max_active_mechs, uint8_t console_id) noexcept
+    : _browser(browser)
+    , _console_id(console_id)
+    , _maxActiveMechs(max_active_mechs)
 {
-    if (path == nullptr || path[0] == '\0') {
-        return "";
+    for (std::size_t i = 0; i < kMechCount; ++i) {
+        _mechs[i] = smcp::Mech(static_cast<uint8_t>(i));
     }
-    const char* base = path;
-    for (const char* p = path; *p != '\0'; ++p) {
-        if (*p == '/' || *p == '\\') {
-            base = p + 1;
+
+    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        _groups[i].id = static_cast<uint8_t>(i);
+        _groups[i].clear();
+    }
+
+    initBlockedGroup();
+
+    _showName[0] = '\0';
+}
+
+
+/* ========== Статус ========== */
+
+const char* MConsole::statusText(Status status) noexcept
+{
+    switch (status) {
+    case Status::Ok:
+        return uiMsg::kOk;
+    case Status::NoShowOpen:
+        return uiMsg::kConsoleNoShowOpen;
+    case Status::TemplateProtected:
+        return uiMsg::kConsoleTemplateProtected;
+    case Status::BadMagic:
+        return uiMsg::kConsoleBadMagic;
+    case Status::BadVersion:
+        return uiMsg::kConsoleBadVersion;
+    case Status::BadHeaderCrc:
+    case Status::BadBodyCrc:
+        return uiMsg::kConsoleBadCrc;
+    case Status::BadLayout:
+        return uiMsg::kConsoleBadLayout;
+    case Status::Truncated:
+        return uiMsg::kConsoleTruncated;
+    case Status::MissingGrup:
+        return uiMsg::kConsoleMissingGrup;
+    case Status::BadGroups:
+        return uiMsg::kConsoleBadGroups;
+    case Status::InvalidGroup:
+        return uiMsg::kConsoleInvalidGroup;
+    case Status::NoSelection:
+        return uiMsg::kConsoleNoSelection;
+    case Status::GroupOccupied:
+        return uiMsg::kConsoleGroupOccupied;
+    case Status::BrowserFault:
+        return uiMsg::kStorageError; /**< UI: брать текст у MBrowser. */
+    case Status::InvalidName:
+        return uiMsg::kBrowserInvalidName;
+    case Status::IoError:
+    default:
+        return uiMsg::kStorageError;
+    }
+}
+
+
+/* ========== Режим ========== */
+
+void MConsole::setMode(Mode mode) noexcept
+{
+    _mode = mode;
+}
+
+
+MConsole::Mode MConsole::toggleMode(Mode mode) noexcept
+{
+    if (mode == Mode::Work || _mode == mode) {
+        _mode = Mode::Work;
+    } else {
+        _mode = mode;
+    }
+    return _mode;
+}
+
+
+MConsole::BlockResult MConsole::pressMech(uint8_t id) noexcept
+{
+    switch (_mode) {
+    case Mode::Block:
+        return toggleMechBlocked(id);
+    case Mode::Work:
+    case Mode::Show:
+    default:
+        return mechSelect(id) ? BlockResult::Changed : BlockResult::NoChange;
+    }
+}
+
+
+MConsole::BlockResult MConsole::pressGroup(uint8_t id) noexcept
+{
+    switch (_mode) {
+    case Mode::Block:
+        return toggleGroupBlocked(id);
+    case Mode::Work:
+    case Mode::Show:
+    default:
+        if (!validGroupId(id) || _groups[id].isEmpty() || _groups[id].isBlocked()) {
+            return BlockResult::NoChange;
         }
+        if (id == _activeGroup) {
+            clearActiveGroup();
+            return BlockResult::Changed;
+        }
+        return recallGroup(id) ? BlockResult::Changed : BlockResult::NoChange;
     }
-    return base;
 }
 
-bool MConsole::isTemplateName(const char* name) noexcept
-{
-    static constexpr char kTemplate[] = {
-        static_cast<char>(0xFB), static_cast<char>(0xE1), static_cast<char>(0xE2),
-        static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
-        '\0',
-    };
-    return name != nullptr && std::strncmp(name, kTemplate, sizeof(kTemplate) - 1u) == 0;
-}
 
-bool MConsole::canMutateShowName(const char* name) noexcept
+/* ========== Механизмы ========== */
+
+bool MConsole::mechSelect(uint8_t id) noexcept
 {
-    clearError();
-    if (isTemplateName(showBaseName(name))) {
-        _status = Status::TemplateProtected;
+    if (!validMechId(id) || mechGroupMask(id, smcp::Group::Flag::Blocked) != 0ULL) {
         return false;
     }
+
+    smcp::Mech& mech = _mechs[id];
+
+    if (mech.status().any(smcp::IMech::Status::Selected)) {
+        return mech.select(smcp::kSelectOwnerNone);
+    }
+
+    if (isMechIsolated(id) || selectedCount() >= _maxActiveMechs) {
+        return false;
+    }
+
+    return mech.select(_console_id);
+}
+
+
+void MConsole::clearSelection() noexcept
+{
+    for (smcp::Mech& mech : _mechs) {
+        if (mech.status().any(smcp::IMech::Status::Selected)) {
+            mech.select(smcp::kSelectOwnerNone);
+        }
+    }
+}
+
+
+uint64_t MConsole::mechGroupMask(uint8_t mech_id, REG::BitMask<smcp::Group::Flag> group_flags) const noexcept
+{
+    if (!validMechId(mech_id)) {
+        return 0ULL;
+    }
+
+    uint64_t mask = 0ULL;
+    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        const smcp::Group& grp = _groups[i];
+        if (grp.flag.all(group_flags) && grp.mech.contains(mech_id)) {
+            mask |= (1ULL << i);
+        }
+    }
+    return mask;
+}
+
+
+std::size_t MConsole::selectedCount() const noexcept
+{
+    std::size_t count = 0;
+    for (const smcp::Mech& mech : _mechs) {
+        if (mech.status().any(smcp::IMech::Status::Selected)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+
+smcp::Selection MConsole::selectionFromMechs() const noexcept
+{
+    smcp::Selection selection;
+    for (std::size_t i = 0; i < kMechCount; ++i) {
+        if (_mechs[i].status().any(smcp::IMech::Status::Selected)) {
+            selection.add(static_cast<uint8_t>(i));
+        }
+    }
+    return selection;
+}
+
+
+/* ========== Группы ========== */
+
+bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcept
+{
+    if (!validGroupId(id) || id == kBlockedGroupId) {
+        _status = Status::InvalidGroup;
+        return false;
+    }
+
+    const smcp::Selection selection = selectionFromMechs();
+    if (selection.empty()) {
+        _status = Status::NoSelection;
+        return false;
+    }
+
+    smcp::Group& grp = _groups[id];
+    const bool occupied = !grp.isEmpty();
+    if (occupied && !confirmed) {
+        _status = Status::GroupOccupied;
+        return false;
+    }
+
+    grp.id = id;
+    grp.setSelection(selection);
+
+    if (name != nullptr && name[0] != '\0') {
+        grp.setName(name);
+    } else if (!occupied) {
+        grp.setName(kDefaultGroupName);
+    }
+
+    markEdited();
+    clearActiveGroup();
     _status = Status::Ok;
     return true;
 }
+
+
+bool MConsole::renameGroup(uint8_t id, const char* name) noexcept
+{
+    if (!validGroupId(id) || id == kBlockedGroupId || name == nullptr || name[0] == '\0') {
+        return false;
+    }
+
+    if (_groups[id].isEmpty()) {
+        return false;
+    }
+
+    _groups[id].setName(name);
+    markEdited();
+    return true;
+}
+
+
+bool MConsole::clearGroup(uint8_t id, bool confirmed) noexcept
+{
+    if (!validGroupId(id) || id == kBlockedGroupId) {
+        _status = Status::InvalidGroup;
+        return false;
+    }
+
+    if (_groups[id].isEmpty()) {
+        _status = Status::Ok;
+        return true;
+    }
+
+    if (!confirmed) {
+        _status = Status::GroupOccupied;
+        return false;
+    }
+
+    _groups[id].clear();
+    markEdited();
+    _status = Status::Ok;
+    return true;
+}
+
+
+bool MConsole::recallGroup(uint8_t id) noexcept
+{
+    if (!validGroupId(id) || _groups[id].isEmpty()) {
+        return false;
+    }
+
+    clearSelection();
+
+    const smcp::Selection& group_sel = _groups[id].mech;
+    for (std::size_t i = 0; i < kMechCount; ++i) {
+        if (group_sel.contains(static_cast<uint8_t>(i))) {
+            _mechs[i].select(_console_id);
+        }
+    }
+
+    _activeGroup = id;
+    return true;
+}
+
+
+void MConsole::clearActiveGroup() noexcept
+{
+    clearSelection();
+    _activeGroup = kBlockedGroupId;
+}
+
+
+void MConsole::setSettings(const Settings& settings) noexcept
+{
+    if (std::memcmp(&_settings, &settings, sizeof(Settings)) == 0) {
+        return;
+    }
+    _settings = settings;
+    markEdited();
+}
+
+
+bool MConsole::isMechIsolated(uint8_t id) const noexcept
+{
+    if (!_settings.isolateGroup || _activeGroup == kBlockedGroupId || !validMechId(id)) {
+        return false;
+    }
+    return !_groups[_activeGroup].mech.contains(id);
+}
+
+
+void MConsole::initBlockedGroup() noexcept
+{
+    smcp::Group& grp = _groups[kBlockedGroupId];
+    grp.clear();
+    grp.id = kBlockedGroupId;
+    grp.setBlocked(true);
+    grp.setName(kBlockedGroupName);
+}
+
 
 bool MConsole::groupsValid(const smcp::Group* groups, std::size_t count) noexcept
 {
@@ -73,291 +366,14 @@ bool MConsole::groupsValid(const smcp::Group* groups, std::size_t count) noexcep
     return true;
 }
 
-MConsole::Status MConsole::mapFileStatus(smcp::file::Status status) noexcept
-{
-    switch (status) {
-    case smcp::file::Status::Ok:
-        return Status::Ok;
-    case smcp::file::Status::BadMagic:
-        return Status::BadMagic;
-    case smcp::file::Status::BadVersion:
-        return Status::BadVersion;
-    case smcp::file::Status::BadHeaderCrc:
-        return Status::BadHeaderCrc;
-    case smcp::file::Status::BadBodyCrc:
-        return Status::BadBodyCrc;
-    case smcp::file::Status::BadLayout:
-        return Status::BadLayout;
-    case smcp::file::Status::Truncated:
-        return Status::Truncated;
-    case smcp::file::Status::IoError:
-    default:
-        return Status::IoError;
-    }
-}
 
-const char* MConsole::statusText(Status status) noexcept
-{
-    switch (status) {
-    case Status::Ok:
-        return "OK";
-    case Status::NoShowOpen:
-        return "No file open. Use Save As.";
-    case Status::TemplateProtected:
-        return "Cannot save template.";
-    case Status::BadMagic:
-        return "Invalid show file.";
-    case Status::BadVersion:
-        return "Unsupported file version.";
-    case Status::BadHeaderCrc:
-    case Status::BadBodyCrc:
-        return "File checksum error.";
-    case Status::BadLayout:
-        return "Corrupt show file.";
-    case Status::Truncated:
-        return "Incomplete show file.";
-    case Status::MissingGrup:
-        return "Show file has no groups.";
-    case Status::BadGroups:
-        return "Invalid group data.";
-    case Status::IoError:
-    default:
-        return "Storage error.";
-    }
-}
-
-void MConsole::initBlockedGroup() noexcept
-{
-    smcp::Group& grp = _groups[kBlockedGroupId];
-    grp.clear();
-    grp.id = kBlockedGroupId;
-    grp.setBlocked(true);
-    grp.setName(kBlockedGroupName);
-}
-
-MConsole::MConsole(uint8_t max_active_mechs, uint8_t console_id) noexcept
-    : _console_id(console_id)
-    , _maxActiveMechs(max_active_mechs)
-{
-    for (std::size_t i = 0; i < kMechCount; ++i) {
-        _mechs[i] = smcp::Mech(static_cast<uint8_t>(i));
-    }
-
-    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        _groups[i].id = static_cast<uint8_t>(i);
-        _groups[i].clear();
-    }
-
-    initBlockedGroup();
-
-    _showName[0] = '\0';
-}
-
-std::size_t MConsole::selectedCount() const noexcept
-{
-    std::size_t count = 0;
-    for (const smcp::Mech& mech : _mechs) {
-        if (mech.status().any(smcp::IMech::Status::Selected)) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-smcp::Selection MConsole::selectionFromMechs() const noexcept
-{
-    smcp::Selection selection;
-    for (std::size_t i = 0; i < kMechCount; ++i) {
-        if (_mechs[i].status().any(smcp::IMech::Status::Selected)) {
-            selection.add(static_cast<uint8_t>(i));
-        }
-    }
-    return selection;
-}
-
-uint64_t MConsole::mechGroupMask(uint8_t mech_id, REG::BitMask<smcp::Group::Flag> group_flags) const noexcept
-{
-    if (!validMechId(mech_id)) {
-        return 0ULL;
-    }
-
-    uint64_t mask = 0ULL;
-    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        const smcp::Group& grp = _groups[i];
-        if (grp.flag.all(group_flags) && grp.mech.contains(mech_id)) {
-            mask |= (1ULL << i);
-        }
-    }
-    return mask;
-}
-
-void MConsole::clearSelection() noexcept
-{
-    for (smcp::Mech& mech : _mechs) {
-        if (mech.status().any(smcp::IMech::Status::Selected)) {
-            mech.select(smcp::kSelectOwnerNone);
-        }
-    }
-}
-
-bool MConsole::select(uint8_t id) noexcept
-{
-    if (!validMechId(id) || mechGroupMask(id, smcp::Group::Flag::Blocked) != 0ULL) {
-        return false;
-    }
-
-    smcp::Mech& mech = _mechs[id];
-
-    if (mech.status().any(smcp::IMech::Status::Selected)) {
-        return mech.select(smcp::kSelectOwnerNone);
-    }
-
-    if (selectedCount() >= _maxActiveMechs) {
-        return false;
-    }
-
-    return mech.select(_console_id);
-}
-
-bool MConsole::createGroup(uint8_t id, const char* name) noexcept
-{
-    const smcp::Selection selection = selectionFromMechs();
-    if (!validGroupId(id) || selection.empty()) {
-        return false;
-    }
-
-    smcp::Group& grp = _groups[id];
-    const bool overwrite = !grp.isEmpty();
-    grp.id = id;
-    grp.setSelection(selection);
-
-    if (id == kBlockedGroupId) {
-        grp.setBlocked(true);
-        grp.setName(kBlockedGroupName);
-        markEdited();
-        return true;
-    }
-
-    if (name != nullptr && name[0] != '\0') {
-        grp.setName(name);
-    } else if (!overwrite) {
-        grp.setName(kDefaultGroupName);
-    }
-
-    markEdited();
-    return true;
-}
-
-bool MConsole::renameGroup(uint8_t id, const char* name) noexcept
-{
-    if (!validGroupId(id) || id == kBlockedGroupId || name == nullptr || name[0] == '\0') {
-        return false;
-    }
-
-    if (_groups[id].isEmpty()) {
-        return false;
-    }
-
-    _groups[id].setName(name);
-    markEdited();
-    return true;
-}
-
-bool MConsole::clearGroup(uint8_t id) noexcept
-{
-    if (!validGroupId(id)) {
-        return false;
-    }
-
-    if (id == kBlockedGroupId) {
-        _groups[id].mech = smcp::Selection{};
-        markEdited();
-        return true;
-    }
-
-    _groups[id].clear();
-    markEdited();
-    return true;
-}
-
-bool MConsole::recallGroup(uint8_t id) noexcept
-{
-    if (!validGroupId(id) || _groups[id].isEmpty()) {
-        return false;
-    }
-
-    clearSelection();
-
-    const smcp::Selection& group_sel = _groups[id].mech;
-    for (std::size_t i = 0; i < kMechCount; ++i) {
-        if (group_sel.contains(static_cast<uint8_t>(i))) {
-            _mechs[i].select(_console_id);
-        }
-    }
-
-    _activeGroup = id;
-    return true;
-}
-
-void MConsole::clearActiveGroup() noexcept
-{
-    clearSelection();
-    _activeGroup = kBlockedGroupId;
-}
-
-void MConsole::setMode(Mode mode) noexcept
-{
-    _mode = mode;
-}
-
-MConsole::Mode MConsole::toggleMode(Mode mode) noexcept
-{
-    if (mode == Mode::Work || _mode == mode) {
-        _mode = Mode::Work;
-    } else {
-        _mode = mode;
-    }
-    return _mode;
-}
+/* ========== Блокировка ========== */
 
 bool MConsole::isMechBlocked(uint8_t id) const noexcept
 {
     return validMechId(id) && mechGroupMask(id, smcp::Group::Flag::Blocked) != 0ULL;
 }
 
-void MConsole::clearBlockMessage() noexcept
-{
-    _blockMsg[0] = '\0';
-}
-
-bool MConsole::formatIdList(char* out,
-                            std::size_t outLen,
-                            const uint8_t* ids,
-                            std::size_t count,
-                            uint8_t displayBias) noexcept
-{
-    if (out == nullptr || outLen == 0u) {
-        return false;
-    }
-    out[0] = '\0';
-    if (ids == nullptr || count == 0u) {
-        return false;
-    }
-
-    std::size_t pos = 0u;
-    for (std::size_t i = 0; i < count; ++i) {
-        const unsigned shown = static_cast<unsigned>(ids[i]) + static_cast<unsigned>(displayBias);
-        const int n = (pos == 0u)
-            ? std::snprintf(out + pos, outLen - pos, "%u", shown)
-            : std::snprintf(out + pos, outLen - pos, ", %u", shown);
-        if (n <= 0 || static_cast<std::size_t>(n) >= outLen - pos) {
-            out[outLen - 1u] = '\0';
-            return pos > 0u;
-        }
-        pos += static_cast<std::size_t>(n);
-    }
-    return true;
-}
 
 MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
 {
@@ -388,7 +404,7 @@ MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
         char list[96]{};
         (void)formatIdList(list, sizeof(list), groupIds, groupCount);
         std::snprintf(_blockMsg, sizeof(_blockMsg),
-            "Cannot block manually.\nGroups: %s", list);
+            uiMsg::kBlockManualFmt, list);
         return BlockResult::Rejected;
     }
 
@@ -400,6 +416,7 @@ MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
     return BlockResult::Changed;
 }
 
+
 MConsole::BlockResult MConsole::toggleGroupBlocked(uint8_t id) noexcept
 {
     clearBlockMessage();
@@ -408,82 +425,146 @@ MConsole::BlockResult MConsole::toggleGroupBlocked(uint8_t id) noexcept
         return BlockResult::NoChange;
     }
 
-    const bool block = !_groups[id].isBlocked();
-    if (!block) {
-        _groups[id].setBlocked(false);
+    if (_groups[id].isBlocked()) {
+        setGroupBlocked(id, false);
         markEdited();
         return BlockResult::Changed;
     }
 
-    /* Пересечение мехов только с уже заблокированными группами. */
-    uint8_t mechIds[kMechCount]{};
-    std::size_t mechCount = 0u;
+    /* Лебёдки, уже входящие в другие blocked-группы — для Warning. */
+    uint8_t sharedIds[kMechCount]{};
+    std::size_t sharedCount = 0u;
     const smcp::Selection& self = _groups[id].mech;
     for (std::size_t m = 0; m < kMechCount; ++m) {
         if (!self.contains(static_cast<uint8_t>(m))) {
             continue;
         }
-        bool shared = false;
-        for (std::size_t g = 0; g < smcp::kGroupMaxCount; ++g) {
-            if (g == id || !_groups[g].isBlocked() || _groups[g].isEmpty()) {
-                continue;
-            }
-            if (_groups[g].mech.contains(static_cast<uint8_t>(m))) {
-                shared = true;
-                break;
-            }
-        }
-        if (shared) {
-            mechIds[mechCount++] = static_cast<uint8_t>(m);
+        if (mechGroupMask(static_cast<uint8_t>(m), smcp::Group::Flag::Blocked) != 0ULL) {
+            sharedIds[sharedCount++] = static_cast<uint8_t>(m);
         }
     }
 
-    _groups[id].setBlocked(true);
-    if (_activeGroup == id) {
-        clearActiveGroup();
-    }
+    setGroupBlocked(id, true);
     markEdited();
 
-    if (mechCount > 0u) {
+    if (sharedCount > 0u) {
         char list[96]{};
-        (void)formatIdList(list, sizeof(list), mechIds, mechCount, 1u);
+        (void)formatIdList(list, sizeof(list), sharedIds, sharedCount, 1u);
         std::snprintf(_blockMsg, sizeof(_blockMsg),
-            "Blocked with shared winches:\n%s", list);
+            uiMsg::kBlockSharedWinchesFmt, list);
         return BlockResult::Warning;
     }
     return BlockResult::Changed;
 }
 
-MConsole::BlockResult MConsole::pressMech(uint8_t id) noexcept
+void MConsole::setGroupBlocked(uint8_t id, bool blocked) noexcept
 {
-    switch (_mode) {
-    case Mode::Block:
-        return toggleMechBlocked(id);
-    case Mode::Work:
-    case Mode::Show:
-    default:
-        return select(id) ? BlockResult::Changed : BlockResult::NoChange;
+    _groups[id].setBlocked(blocked);
+    if (!blocked) {
+        return;
+    }
+
+    const smcp::Selection& sel = _groups[id].mech;
+    for (std::size_t m = 0; m < kMechCount; ++m) {
+        if (!sel.contains(static_cast<uint8_t>(m))) {
+            continue;
+        }
+        if (_mechs[m].status().any(smcp::IMech::Status::Selected)) {
+            (void)_mechs[m].select(smcp::kSelectOwnerNone);
+        }
+    }
+    if (_activeGroup == id) {
+        _activeGroup = kBlockedGroupId;
     }
 }
 
-MConsole::BlockResult MConsole::pressGroup(uint8_t id) noexcept
+
+void MConsole::clearBlockMessage() noexcept
 {
-    switch (_mode) {
-    case Mode::Block:
-        return toggleGroupBlocked(id);
-    case Mode::Work:
-    case Mode::Show:
-    default:
-        if (!validGroupId(id) || _groups[id].isEmpty() || _groups[id].isBlocked()) {
-            return BlockResult::NoChange;
-        }
-        if (id == _activeGroup) {
-            clearActiveGroup();
-            return BlockResult::Changed;
-        }
-        return recallGroup(id) ? BlockResult::Changed : BlockResult::NoChange;
-    }
+    _blockMsg[0] = '\0';
 }
+
+
+bool MConsole::formatIdList(char* out,
+                            std::size_t outLen,
+                            const uint8_t* ids,
+                            std::size_t count,
+                            uint8_t displayBias) noexcept
+{
+    if (out == nullptr || outLen == 0u) {
+        return false;
+    }
+    out[0] = '\0';
+    if (ids == nullptr || count == 0u) {
+        return false;
+    }
+
+    std::size_t pos = 0u;
+    for (std::size_t i = 0; i < count; ++i) {
+        const unsigned shown = static_cast<unsigned>(ids[i]) + static_cast<unsigned>(displayBias);
+        const int n = (pos == 0u)
+            ? std::snprintf(out + pos, outLen - pos, "%u", shown)
+            : std::snprintf(out + pos, outLen - pos, ", %u", shown);
+        if (n <= 0 || static_cast<std::size_t>(n) >= outLen - pos) {
+            out[outLen - 1u] = '\0';
+            return pos > 0u;
+        }
+        pos += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+
+/* ========== Шоуфайл ========== */
+
+const char* MConsole::showBaseName(const char* path) noexcept
+{
+    if (path == nullptr || path[0] == '\0') {
+        return "";
+    }
+    const char* base = path;
+    for (const char* p = path; *p != '\0'; ++p) {
+        if (*p == '/' || *p == '\\') {
+            base = p + 1;
+        }
+    }
+    return base;
+}
+
+
+bool MConsole::isTemplateName(const char* name) noexcept
+{
+    static constexpr char kTemplate[] = {
+        static_cast<char>(0xFB), static_cast<char>(0xE1), static_cast<char>(0xE2),
+        static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
+        '\0',
+    };
+    return name != nullptr && std::strncmp(name, kTemplate, sizeof(kTemplate) - 1u) == 0;
+}
+
+
+bool MConsole::canMutateShowName(const char* name) noexcept
+{
+    clearError();
+    if (isTemplateName(showBaseName(name))) {
+        _status = Status::TemplateProtected;
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
+}
+
+
+void MConsole::setShowName(const char* name) noexcept
+{
+    if (name == nullptr) {
+        _showName[0] = '\0';
+        return;
+    }
+    std::strncpy(_showName, name, sizeof(_showName) - 1u);
+    _showName[sizeof(_showName) - 1u] = '\0';
+}
+
 
 void MConsole::newShow() noexcept
 {
@@ -492,12 +573,67 @@ void MConsole::newShow() noexcept
     }
     initBlockedGroup();
     clearActiveGroup();
+    _settings = Settings{};
     _mode = Mode::Work;
     _showName[0] = '\0';
     clearEdited();
 }
 
-bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
+
+bool MConsole::openShow() noexcept
+{
+    char path[smcp::file::kPathSize]{};
+    if (!_browser.prepareOpenSelected(path, sizeof(path))) {
+        _status = Status::BrowserFault;
+        return false;
+    }
+    if (path[0] == '\0') {
+        _status = Status::NoShowOpen;
+        return false;
+    }
+    if (!importShow(_browser.file(), path)) {
+        return false;
+    }
+    persistMirror();
+    return true;
+}
+
+
+bool MConsole::saveShow() noexcept
+{
+    return saveShowPath(_showName);
+}
+
+
+bool MConsole::saveShowAs(const char* name, bool confirmed) noexcept
+{
+    if (name != nullptr && name[0] != '\0') {
+        std::strncpy(_saveAsName, name, sizeof(_saveAsName) - 1u);
+        _saveAsName[sizeof(_saveAsName) - 1u] = '\0';
+    }
+
+    if (_saveAsName[0] == '\0') {
+        _status = Status::InvalidName;
+        return false;
+    }
+
+    if (!canMutateShowName(_saveAsName)) {
+        return false;
+    }
+
+    char path[smcp::file::kPathSize]{};
+    if (!_browser.prepareSaveAs(_saveAsName, path, sizeof(path))) {
+        _status = Status::BrowserFault;
+        if (_browser.getStatus() != MBrowser::Status::FileExists || !confirmed) {
+            return false;
+        }
+    }
+
+    return saveShowPath(path);
+}
+
+
+bool MConsole::saveShowPath(const char* path) noexcept
 {
     clearError();
 
@@ -506,11 +642,85 @@ bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
         return false;
     }
 
-    smcp::file::SectionDesc catalog[1]{};
-    smcp::file::Reader reader(browser.file(), catalog, 1u);
-    if (!reader.open(path)) {
+    if (isTemplateName(showBaseName(path))) {
+        _status = Status::TemplateProtected;
+        return false;
+    }
+
+    /* --- Атомарная подмена через tmp на томе --- */
+    static constexpr char kTempBaseName[] = "tmp";
+    char tempPath[smcp::file::kPathSize]{};
+    if (!_browser.makePath(tempPath, sizeof(tempPath), kTempBaseName)) {
+        _status = Status::BrowserFault;
+        return false;
+    }
+
+    BIF::IVolume& volume = _browser.volume();
+    (void)volume.remove(tempPath);
+
+    /* Имя в заголовке — финальный путь (openPath при записи = tmp). */
+    char prevName[smcp::file::kPathSize]{};
+    std::strncpy(prevName, _showName, sizeof(prevName) - 1u);
+    setShowName(path);
+
+    if (!exportShow(_browser.file(), tempPath)) {
+        setShowName(prevName);
+        (void)volume.remove(tempPath);
+        return false;
+    }
+
+    if (std::strcmp(tempPath, path) != 0) {
+        if (volume.exists(path) && !volume.remove(path)) {
+            setShowName(prevName);
+            (void)volume.remove(tempPath);
+            _status = Status::IoError;
+            return false;
+        }
+        if (!volume.rename(tempPath, path)) {
+            setShowName(prevName);
+            (void)volume.remove(tempPath);
+            _status = Status::IoError;
+            return false;
+        }
+    }
+
+    clearEdited();
+    _status = Status::Ok;
+    persistMirror();
+    return true;
+}
+
+
+bool MConsole::importShow(BIF::IFile& io, const char* openPath) noexcept
+{
+    clearError();
+
+    if (openPath == nullptr) {
+        openPath = "";
+    }
+
+    /* --- Открыть шоуфайл: SETT (пульт, опц.) + GRUP --- */
+    smcp::file::SectionDesc catalog[2]{};
+    smcp::file::Reader reader(io, catalog, 2u);
+    if (!reader.open(openPath)) {
         _status = mapFileStatus(reader.status());
         return false;
+    }
+
+    Settings loadedSettings{};
+    const smcp::file::SectionDesc* sett = reader.find(kSettingsSectionTag);
+    if (sett != nullptr) {
+        if (sett->record_count != 1u
+            || static_cast<std::size_t>(sett->byte_size) != kSettingsWireSize) {
+            reader.close();
+            _status = Status::BadLayout;
+            return false;
+        }
+        if (!reader.readSection(kSettingsSectionTag, &loadedSettings, sizeof(loadedSettings))) {
+            _status = mapFileStatus(reader.status());
+            reader.close();
+            return false;
+        }
     }
 
     const smcp::file::SectionDesc* desc = reader.find(smcp::kGroupSectionTag);
@@ -534,6 +744,7 @@ bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
         return false;
     }
 
+    /* --- Прочитать payload групп и проверить целостность записей --- */
     smcp::Group loaded[smcp::kGroupMaxCount]{};
     if (!reader.readSection(smcp::kGroupSectionTag, loaded, byte_size)) {
         _status = mapFileStatus(reader.status());
@@ -541,6 +752,8 @@ bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
         return false;
     }
 
+    char nameFromHdr[smcp::file::kPathSize]{};
+    std::strncpy(nameFromHdr, reader.header().name, sizeof(nameFromHdr) - 1u);
     reader.close();
 
     if (!groupsValid(loaded, desc->record_count)) {
@@ -548,7 +761,16 @@ bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
         return false;
     }
 
-    newShow();
+    /* --- Применить в память: сброс шоу, затем копия групп ---
+       count == Max-1 → файл без Blocked (слоты 1..N); иначе полный массив. */
+    for (smcp::Group& grp : _groups) {
+        grp.clear();
+    }
+    initBlockedGroup();
+    clearActiveGroup();
+    _settings = loadedSettings;
+    _mode = Mode::Work;
+
     if (desc->record_count == smcp::kGroupMaxCount - 1u) {
         for (std::size_t i = 0; i < desc->record_count; ++i) {
             _groups[i + 1u] = loaded[i];
@@ -566,34 +788,35 @@ bool MConsole::loadShow(MBrowser& browser, const char* path) noexcept
         }
     }
 
-    std::strncpy(_showName, path, sizeof(_showName) - 1u);
-    _showName[sizeof(_showName) - 1u] = '\0';
+    setShowName(openPath[0] != '\0' ? openPath : nameFromHdr);
+    clearEdited();
     _status = Status::Ok;
     return true;
 }
 
-bool MConsole::saveShow(MBrowser& browser, const char* path) noexcept
+
+bool MConsole::exportShow(BIF::IFile& io, const char* openPath) noexcept
 {
     clearError();
 
-    if (path == nullptr || path[0] == '\0') {
-        _status = Status::NoShowOpen;
-        return false;
+    if (openPath == nullptr) {
+        openPath = "";
     }
 
-    if (isTemplateName(showBaseName(path))) {
-        _status = Status::TemplateProtected;
-        return false;
-    }
-
-    /* Прямая запись в целевой путь (FatFs без LFN). */
-    smcp::file::SectionDesc catalog[1]{};
-    smcp::file::Writer writer(browser.file(), 1u, catalog);
-    if (!writer.open(path)) {
+    smcp::file::SectionDesc catalog[2]{};
+    smcp::file::Writer writer(io, 2u, catalog);
+    if (!writer.open(openPath)) {
         _status = mapFileStatus(writer.status());
         return false;
     }
-
+    if (!writer.writeSection(kSettingsSectionTag,
+                             &_settings,
+                             sizeof(Settings),
+                             1u)) {
+        writer.close();
+        _status = mapFileStatus(writer.status());
+        return false;
+    }
     if (!writer.writeSection(smcp::kGroupSectionTag,
                              _groups,
                              sizeof(smcp::Group),
@@ -603,23 +826,70 @@ bool MConsole::saveShow(MBrowser& browser, const char* path) noexcept
         return false;
     }
 
+    writer.setName(_showName);
+
     if (!writer.finalize()) {
         _status = mapFileStatus(writer.status());
         return false;
     }
 
-    setShowName(path);
-    clearEdited();
     _status = Status::Ok;
     return true;
 }
 
-void MConsole::setShowName(const char* name) noexcept
+
+void MConsole::persistMirror() noexcept
 {
-    if (name == nullptr) {
-        _showName[0] = '\0';
+    if (_mirror == nullptr) {
         return;
     }
-    std::strncpy(_showName, name, sizeof(_showName) - 1u);
-    _showName[sizeof(_showName) - 1u] = '\0';
+    /* SD уже сохранён — не затирать Ok ошибкой зеркала. */
+    const Status saved = _status;
+    board.watchdog.kick();
+    if (!exportShow(*_mirror, "")) {
+        NEX_DBG("persistMirror failed: %s (name='%s')\n", statusText(_status), _showName);
+        _status = saved;
+        return;
+    }
+    _status = saved;
+    NEX_DBG("persistMirror OK: '%s'\n", _showName);
+}
+
+
+bool MConsole::restoreMirror() noexcept
+{
+    if (_mirror == nullptr) {
+        return false;
+    }
+    board.watchdog.kick();
+    /* Пустой openPath → имя из Header::name (хвост сектора не используется). */
+    if (!importShow(*_mirror, "")) {
+        NEX_DBG("restoreMirror failed: %s\n", statusText(_status));
+        return false;
+    }
+    return true;
+}
+
+
+MConsole::Status MConsole::mapFileStatus(smcp::file::Status status) noexcept
+{
+    switch (status) {
+    case smcp::file::Status::Ok:
+        return Status::Ok;
+    case smcp::file::Status::BadMagic:
+        return Status::BadMagic;
+    case smcp::file::Status::BadVersion:
+        return Status::BadVersion;
+    case smcp::file::Status::BadHeaderCrc:
+        return Status::BadHeaderCrc;
+    case smcp::file::Status::BadBodyCrc:
+        return Status::BadBodyCrc;
+    case smcp::file::Status::BadLayout:
+        return Status::BadLayout;
+    case smcp::file::Status::Truncated:
+        return Status::Truncated;
+    case smcp::file::Status::IoError:
+    default:
+        return Status::IoError;
+    }
 }

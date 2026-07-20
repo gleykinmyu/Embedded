@@ -1,12 +1,67 @@
 #include "nexApplication.hpp"
 #include "../core/nexTimeout.hpp"
 #include "../core/nexStatusMask.hpp"
+#include "../core/nexProtocol.hpp"
 
+#include <cstdio>
 #include <variant>
 
 #include "../core/nexDebug.hpp"
 
 namespace nex {
+
+namespace {
+
+#if defined(NEX_DEBUG)
+constexpr std::size_t kQueueDumpSteps = 5u;
+
+const char* cstr(Transaction::Kind kind) noexcept {
+    switch (kind) {
+    case Transaction::Kind::Command: return "Cmd";
+    case Transaction::Kind::GetNumeric: return "GetN";
+    case Transaction::Kind::GetString: return "GetS";
+    case Transaction::Kind::TransparentTx: return "TxRaw";
+    case Transaction::Kind::RawDataRx: return "RxRaw";
+    default: return "?";
+    }
+}
+
+void debugDumpSessionQueue(const Session& session, std::size_t maxSteps = kQueueDumpSteps) noexcept {
+    const std::size_t n = session.queuedCount();
+    detail::nexLogPrint("QueueFull dump count=%u active=%u cap=%u:\n",
+        static_cast<unsigned>(n), session.isActive() ? 1u : 0u,
+        static_cast<unsigned>(detail::TransactionQueue::kCapacity));
+
+    const std::size_t steps = (n < maxSteps) ? n : maxSteps;
+    for (std::size_t i = 0u; i < steps; ++i) {
+        const Transaction* const tx = session.queuedAt(i);
+        if (tx == nullptr)
+            break;
+
+        TxFrame frame{};
+        const bool ok = tx->command().serialize(frame);
+        detail::nexLogPrint("  [%u] %s p%u c%u tag=%u \"", static_cast<unsigned>(i), cstr(tx->kind),
+            static_cast<unsigned>(tx->route.page), static_cast<unsigned>(tx->route.comp),
+            static_cast<unsigned>(tx->tag));
+        if (ok) {
+            for (uint16_t j = 0u; j < frame.length; ++j) {
+                const uint8_t b = frame.payload[j];
+                if (b >= 0x20u && b < 0x7Fu)
+                    std::printf("%c", static_cast<char>(b));
+                else
+                    std::printf("\\x%02X", static_cast<unsigned>(b));
+            }
+        } else {
+            std::printf("<serialize fail %s>", cstr(tx->command().getStatus()));
+        }
+        std::printf("\"\n");
+    }
+    if (n > maxSteps)
+        detail::nexLogPrint("  ... +%u more\n", static_cast<unsigned>(n - maxSteps));
+}
+#endif
+
+} // namespace
 
 Application::Application(BIF::IByteStream& stream, Rect screen, AppTiming timing) noexcept
     : cs(*this)
@@ -44,17 +99,19 @@ bool Application::tryEnqueue(Transaction tx) noexcept {
     if (_session.tryEnqueue(tx))
         return true;
 
-    const Session::Status st = _session.getStatus();
-    if (st != Session::Status::QueueFull)
-        onStatus(appErrorFrom(st), tx.route);
+    /* Полнота — по очереди: при Active + Full getStatus() остаётся Active. */
+    if (!_session.isQueueFull())
+        onStatus(appErrorFrom(_session.getStatus()), tx.route);
     return false;
 }
 
 void Application::enqueue(Transaction tx) noexcept {
     /* На лимите глубины — только постановка, без вложенного update(). */
     if (_updateDepth >= kMaxUpdateDepth) {
-        if (!_session.tryEnqueue(tx))
+        if (!_session.tryEnqueue(tx)) {
+            _session.noteQueueFull();
             onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
+        }
         return;
     }
 
@@ -65,9 +122,8 @@ void Application::enqueue(Transaction tx) noexcept {
         if (_session.tryEnqueue(tx))
             return;
 
-        const Session::Status st = _session.getStatus();
-        if (st != Session::Status::QueueFull) {
-            onStatus(appErrorFrom(st), tx.route);
+        if (!_session.isQueueFull()) {
+            onStatus(appErrorFrom(_session.getStatus()), tx.route);
             return;
         }
 
@@ -80,6 +136,7 @@ void Application::enqueue(Transaction tx) noexcept {
             break;
     }
 
+    _session.noteQueueFull();
     onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
 }
 
@@ -315,6 +372,13 @@ void Application::onStatus(const msg::Status& status, Route route) noexcept {
     _lastError = status;
     _lastErrorRoute = route;
     printStatusError(status, route);
+
+#if defined(NEX_DEBUG)
+    if (status.isAppError() && appErrorReporter(status) == AppError::Session
+        && static_cast<Session::Status>(appErrorDetail(status) & 0xFFu) == Session::Status::QueueFull) {
+        debugDumpSessionQueue(_session);
+    }
+#endif
 }
 
 void Application::onResponse(const msg::getNumeric& response, Route route, uint8_t tag) noexcept

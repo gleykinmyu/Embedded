@@ -1,5 +1,7 @@
 #include "mbrowser.hpp"
 
+#include "UI/uiMessages.hpp"
+
 #include <cstring>
 
 namespace {
@@ -28,7 +30,7 @@ bool appendPath(char* out, std::size_t outLen, const char* root, const char* nam
     return true;
 }
 
-/** Только одно 8.3-имя: без путей, `..`, управляющих и запрещённых символов FAT. */
+/** Одно имя файла (LFN ≤ `_MAX_LFN`): без путей, `..`, запрещённых символов FAT. */
 [[nodiscard]] bool isValidShowBaseName(const char* name) noexcept
 {
     if (name == nullptr || name[0] == '\0') {
@@ -39,8 +41,10 @@ bool appendPath(char* out, std::size_t outLen, const char* root, const char* nam
     }
 
     std::size_t len = 0u;
-    std::size_t dot = static_cast<std::size_t>(-1);
     for (const char* p = name; *p != '\0'; ++p, ++len) {
+        if (len >= BIF::kDirNameSize - 1u) {
+            return false;
+        }
         const auto c = static_cast<unsigned char>(*p);
         if (c < 0x20u || c == 0x7Fu) {
             return false;
@@ -56,35 +60,20 @@ bool appendPath(char* out, std::size_t outLen, const char* root, const char* nam
         case '>':
         case '|':
             return false;
-        case '.':
-            if (dot != static_cast<std::size_t>(-1)) {
-                return false;
-            }
-            dot = len;
-            break;
         default:
             break;
         }
     }
 
-    if (len >= smcp::file::kDirNameSize) {
-        return false;
-    }
-    if (dot == static_cast<std::size_t>(-1)) {
-        return len <= 8u;
-    }
-    if (dot == 0u || dot > 8u) {
-        return false;
-    }
-    const std::size_t ext = len - dot - 1u;
-    return ext >= 1u && ext <= 3u;
+    /* Windows/FAT: имя не должно заканчиваться пробелом или точкой. */
+    return name[len - 1u] != ' ' && name[len - 1u] != '.';
 }
 
 } // namespace
 
-MBrowser::MBrowser(smcp::file::IVolume& volume,
-                   smcp::file::IDirectory& dir,
-                   smcp::file::IFile& file,
+MBrowser::MBrowser(BIF::IVolume& volume,
+                   BIF::IDirectory& dir,
+                   BIF::IFile& file,
                    const char* root) noexcept
     : _volume(volume)
     , _dir(dir)
@@ -96,30 +85,28 @@ const char* MBrowser::statusText(Status status) noexcept
 {
     switch (status) {
     case Status::Ok:
-        return "OK";
+        return uiMsg::kOk;
     case Status::NotMounted:
-        return "SD card not ready.";
+        return uiMsg::kBrowserNotMounted;
     case Status::OpenDirFailed:
-        return "Cannot open folder.";
+        return uiMsg::kBrowserOpenDirFailed;
     case Status::InvalidName:
-        return "Invalid file name.";
+        return uiMsg::kBrowserInvalidName;
     case Status::NoSelection:
-        return "Select a file.";
+        return uiMsg::kBrowserNoSelection;
     case Status::NotFound:
-        return "File not found.";
+        return uiMsg::kBrowserNotFound;
     case Status::FileExists:
-        return "File already exists.";
+        return uiMsg::kBrowserFileExists;
     case Status::PathTooLong:
-        return "Path too long.";
+        return uiMsg::kBrowserPathTooLong;
     case Status::OpenFileProtected:
-        return "Cannot delete opened file.";
+        return uiMsg::kBrowserOpenProtected;
     case Status::RemoveFailed:
-        return "Cannot delete file.";
-    case Status::RenameFailed:
-        return "Cannot rename file.";
+        return uiMsg::kBrowserRemoveFailed;
     case Status::IoError:
     default:
-        return "Storage error.";
+        return uiMsg::kStorageError;
     }
 }
 
@@ -182,7 +169,7 @@ bool MBrowser::refresh() noexcept
         }
     }
 
-    smcp::file::DirEntry entry{};
+    BIF::DirEntry entry{};
     while (_count < kMaxFiles && _dir.next(entry)) {
         if (entry.isDir() || entry.name[0] == '\0' || entry.name[0] == '.') {
             continue;
@@ -241,12 +228,6 @@ const MBrowser::Entry* MBrowser::entryAt(std::size_t row) const noexcept
     return &_files[index];
 }
 
-const char* MBrowser::nameAt(std::size_t row) const noexcept
-{
-    const Entry* e = entryAt(row);
-    return (e != nullptr) ? e->name : "";
-}
-
 const MBrowser::Entry* MBrowser::selected() const noexcept
 {
     if (_selected >= _count) {
@@ -293,6 +274,19 @@ bool MBrowser::makePath(char* out, std::size_t outLen, const char* name) noexcep
     return true;
 }
 
+bool MBrowser::prepareSaveAs(const char* name, char* out, std::size_t outLen) noexcept
+{
+    if (!makePath(out, outLen, name)) {
+        return false;
+    }
+    if (out[0] != '\0' && _volume.exists(out)) {
+        _status = Status::FileExists;
+        return false;
+    }
+    _status = Status::Ok;
+    return true;
+}
+
 bool MBrowser::makeSelectedPath(char* out, std::size_t outLen) noexcept
 {
     clearError();
@@ -304,33 +298,30 @@ bool MBrowser::makeSelectedPath(char* out, std::size_t outLen) noexcept
     return makePath(out, outLen, name);
 }
 
-bool MBrowser::pathExists(const char* path) noexcept
-{
-    return path != nullptr && path[0] != '\0' && _volume.exists(path);
-}
-
 bool MBrowser::prepareOpenSelected(char* out, std::size_t outLen) noexcept
 {
+    /* Собрать полный путь выбранного имени. */
     if (!makeSelectedPath(out, outLen)) {
         return false;
     }
-    if (pathExists(out)) {
+    if (out[0] != '\0' && _volume.exists(out)) {
         _status = Status::Ok;
         return true;
     }
 
-    char name[smcp::file::kDirNameSize]{};
+    /* На томе нет — список мог устареть: один refresh, путь тот же. */
+    char name[BIF::kDirNameSize]{};
     std::strncpy(name, selectedName(), sizeof(name) - 1u);
     name[sizeof(name) - 1u] = '\0';
 
-    /* Список мог устареть — один refresh, путь тот же. */
     if (!refresh()) {
         return false;
     }
-    if (!pathExists(out)) {
+    if (out[0] == '\0' || !_volume.exists(out)) {
         _status = Status::NotFound;
         return false;
     }
+    /* Восстановить выделение по имени после refresh. */
     for (std::size_t i = 0; i < _count; ++i) {
         if (std::strcmp(_files[i].name, name) == 0) {
             _selected = i;
@@ -341,25 +332,13 @@ bool MBrowser::prepareOpenSelected(char* out, std::size_t outLen) noexcept
     return true;
 }
 
-bool MBrowser::prepareSaveAs(const char* name, char* out, std::size_t outLen) noexcept
-{
-    if (!makePath(out, outLen, name)) {
-        return false;
-    }
-    if (pathExists(out)) {
-        _status = Status::FileExists;
-        return false;
-    }
-    _status = Status::Ok;
-    return true;
-}
-
 bool MBrowser::removeSelected(const char* protectedPath) noexcept
 {
-    char path[48]{};
+    char path[kPathSize]{};
     if (!makeSelectedPath(path, sizeof(path))) {
         return false;
     }
+    /* Нельзя стереть файл, который сейчас открыт как шоу. */
     if (protectedPath != nullptr && protectedPath[0] != '\0'
         && std::strcmp(path, protectedPath) == 0) {
         _status = Status::OpenFileProtected;
@@ -367,32 +346,6 @@ bool MBrowser::removeSelected(const char* protectedPath) noexcept
     }
     if (!_volume.remove(path)) {
         _status = Status::RemoveFailed;
-        return false;
-    }
-    if (!refresh()) {
-        return false;
-    }
-    _status = Status::Ok;
-    return true;
-}
-
-bool MBrowser::renameSelected(const char* newName) noexcept
-{
-    if (newName == nullptr || newName[0] == '\0') {
-        _status = Status::InvalidName;
-        return false;
-    }
-
-    char from[48]{};
-    char to[48]{};
-    if (!makeSelectedPath(from, sizeof(from))) {
-        return false;
-    }
-    if (!makePath(to, sizeof(to), newName)) {
-        return false;
-    }
-    if (!_volume.rename(from, to)) {
-        _status = Status::RenameFailed;
         return false;
     }
     if (!refresh()) {

@@ -2,16 +2,15 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stm32f4xx_hal.h>
-#include "ibyte_stream.hpp"
+#include "iex_byte_stream.hpp"
 #include "core/gpio.h"
 
 namespace PHL {
 
 /**
- * Winbond W25Q16 (16 Mbit = 2 MiB) поверх BIF::IByteStream (SPI full-duplex) + soft CS.
+ * Winbond W25Q16 (16 Mbit = 2 MiB) поверх BIF::IExByteStream (SPI full-duplex) + soft CS.
  *
- * Каждый write() на SPI-потоке тактирует MOSI и кладёт MISO в RX —
- * обмен: purge → write → flush → read (чанками, чтобы не переполнить RX-кольцо).
+ * Обмен через `IExByteStream::exchange()` (polling SPI).
  *
  * write() стирает затронутые 4K-секторы целиком (остальные байты сектора → 0xFF).
  * program() пишет только в уже стёртую область (биты только 1→0).
@@ -37,17 +36,17 @@ public:
     static constexpr uint8_t kJedecType = 0x40U;
     static constexpr uint8_t kJedecCap  = 0x15U;
 
-    static constexpr uint32_t kTimeoutPageMs   = 10U;
+    static constexpr uint32_t kTimeoutPageMs   = 50U;
     static constexpr uint32_t kTimeoutSectorMs = 500U;
 
-    /// Чанк обмена ≤ типичного RX-кольца SpiStream (256); запас от overrun.
-    static constexpr size_t kXferChunk = 128U;
+    /// Fallback-чанк для write/flush/read, если exchange() недоступен.
+    static constexpr size_t kXferChunk = 64U;
 
     /**
-     * @param stream SPI ByteStream (полный дуплекс), уже open().
+     * @param stream SPI ExByteStream (полный дуплекс + exchange), уже open().
      * @param cs     soft CS, active low; должен жить не меньше драйвера (PortX::pin<N>).
      */
-    W25Q(BIF::IByteStream& stream, const GPIO::Pin& cs) noexcept
+    W25Q(BIF::IExByteStream& stream, const GPIO::Pin& cs) noexcept
         : _stream(stream)
         , _cs(cs)
     {
@@ -55,7 +54,7 @@ public:
         deselect();
     }
 
-    BIF::IByteStream& stream() noexcept { return _stream; }
+    BIF::IExByteStream& stream() noexcept { return _stream; }
     const GPIO::Pin& cs() const noexcept { return _cs; }
 
     bool begin() noexcept
@@ -200,7 +199,7 @@ public:
     }
 
 private:
-    BIF::IByteStream& _stream;
+    BIF::IExByteStream& _stream;
     const GPIO::Pin& _cs;
 
     void select() noexcept
@@ -212,18 +211,19 @@ private:
 
     void deselect() noexcept
     {
-        _stream.flush();
         _cs.Set();
     }
 
     /**
-     * Полный дуплекс через ByteStream: write тактирует, flush ждёт TX, read забирает MISO.
-     * tx == nullptr → на шину 0xFF; rx == nullptr → ответ отбрасывается.
+     * Полный дуплекс: `exchange()`; иначе write/flush/read маленькими чанками.
      */
     bool transfer(const uint8_t* tx, uint8_t* rx, size_t n) noexcept
     {
         if (!_stream.isOpen() || n == 0U)
             return n == 0U;
+
+        if (_stream.exchange(tx, rx, n))
+            return true;
 
         uint8_t txBuf[kXferChunk];
         uint8_t rxBuf[kXferChunk];
@@ -236,6 +236,7 @@ private:
             const uint8_t* tptr = tx ? (tx + off) : txBuf;
             uint8_t* rptr = rx ? (rx + off) : rxBuf;
 
+            _stream.purge();
             if (!writeAll(tptr, chunk))
                 return false;
             _stream.flush();
@@ -250,11 +251,13 @@ private:
     bool writeAll(const uint8_t* data, size_t n) noexcept
     {
         size_t done = 0;
+        const uint32_t t0 = HAL_GetTick();
         while (done < n) {
             const size_t w = _stream.write(data + done, n - done);
             if (w == 0U) {
-                // Backpressure: ждём место в TX (IRQ опустошает кольцо).
                 if (!_stream.isOpen())
+                    return false;
+                if ((HAL_GetTick() - t0) >= kTimeoutPageMs)
                     return false;
                 continue;
             }

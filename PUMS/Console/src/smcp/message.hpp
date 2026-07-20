@@ -176,7 +176,7 @@ struct ShowFile {
     };
 
     Action action = Action::Load;
-    char name[file::kShowFileNameSize]{};
+    char name[file::kPathSize]{};
     uint16_t show_id = 0;
     uint32_t crc32 = 0;
 };

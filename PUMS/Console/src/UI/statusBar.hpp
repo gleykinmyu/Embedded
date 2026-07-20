@@ -7,7 +7,7 @@
 
 namespace server {
 
-/** Нижняя строка состояния McUI: Status слева, File по центру бара, Time справа. */
+/** Нижняя строка состояния McUI: Status | File (середина, с усечением) | Time. */
 class StatusBar : public nex::ovl::Widget {
 public:
     enum class Field : uint8_t {
@@ -19,7 +19,8 @@ public:
 
     static constexpr uint16_t kDefaultHeight = 48u;
     static constexpr nex::Coord kOriginY = 974;
-    static constexpr uint16_t kStatusColumnWidth = 260u;
+    /** Хватает под `min NNNk`; остаток ширины — имени файла. */
+    static constexpr uint16_t kStatusColumnWidth = 140u;
     static constexpr uint16_t kSideColumnWidth = 120u;
     static constexpr size_t kTextCap = 64u;
 
@@ -30,11 +31,11 @@ public:
 
     void setStatus(const char* text) noexcept { setField(Field::Status, text); }
     void setFile(const char* text) noexcept { setField(Field::File, text); }
-    /** Имя файла; при @a edited дописывает `*` через append. */
+    /** Имя файла; при @a edited дописывает `*` и при необходимости усекает. */
     void setFile(const char* text, bool edited) noexcept;
     void setTime(const char* text) noexcept { setField(Field::Time, text); }
 
-    /** Ширина боковой колонки (Status / Time); File всегда на всю ширину бара. */
+    /** Ширина боковой колонки (Status / Time); File занимает оставшуюся середину. */
     void setColumnWidth(Field field, uint16_t width) noexcept;
 
     void layout() noexcept override;

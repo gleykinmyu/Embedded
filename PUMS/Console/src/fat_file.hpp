@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "smcp/fs.hpp"
+#include "iFileSystem.hpp"
 
 extern "C" {
 #include "ff.h"
@@ -14,7 +14,14 @@ extern "C" {
 namespace smcp {
 namespace file {
 
-class FatVolume : public IVolume {
+#if _USE_LFN
+static_assert(BIF::kDirNameSize == static_cast<std::size_t>(_MAX_LFN) + 1u,
+              "kDirNameSize must match FatFs FILINFO::fname");
+#else
+static_assert(BIF::kDirNameSize == 13u, "kDirNameSize must be 8.3+NUL when LFN is off");
+#endif
+
+class FatVolume : public BIF::IVolume {
 public:
     [[nodiscard]] bool mount(const char* path, bool force = true) noexcept override;
     void unmount() noexcept override;
@@ -36,7 +43,7 @@ private:
     FRESULT _last = FR_INVALID_OBJECT;
 };
 
-class FatDirectory : public IDirectory {
+class FatDirectory : public BIF::IDirectory {
 public:
     FatDirectory() = default;
     ~FatDirectory() override { close(); }
@@ -46,7 +53,7 @@ public:
 
     [[nodiscard]] bool open(const char* path) noexcept override;
     void close() noexcept override;
-    [[nodiscard]] bool next(DirEntry& out) noexcept override;
+    [[nodiscard]] bool next(BIF::DirEntry& out) noexcept override;
     [[nodiscard]] bool isOpen() const noexcept override { return _open; }
 
     [[nodiscard]] FRESULT lastResult() const noexcept { return _last; }
@@ -57,7 +64,7 @@ private:
     FRESULT _last = FR_INVALID_OBJECT;
 };
 
-class FatFile : public IFile {
+class FatFile : public BIF::IFile {
 public:
     FatFile() = default;
     ~FatFile() override { close(); }

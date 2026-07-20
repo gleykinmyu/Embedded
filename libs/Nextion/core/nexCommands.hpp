@@ -272,6 +272,34 @@ namespace assign {
     };
 
     /**
+     * **Global** — квалификатор страницы: `pageName.` + полезная нагрузка вложенной команды.
+     * Вложенная `Command` копируется через `emplaceIn` во внутренний слот (как в очереди Session).
+     * Пример: `Global(workPage, assign::Numeric({comp, attr}, 1))` → `work.comp.attr=1`.
+     */
+    class Global final : public Command {
+    public:
+        /** Вместимость вложенной команды; `sizeof(Global)` ≤ слот очереди (128). */
+        static constexpr std::size_t kInnerCapacity = 96u;
+
+        Global(const Literal& pageName, const Command& inner) noexcept;
+        Global(const Global& other) noexcept;
+        Global(Global&&) = delete;
+        Global& operator=(const Global&) = delete;
+        Global& operator=(Global&&) = delete;
+        ~Global() override;
+
+        bool serialize(TxFrame& tx) const noexcept override;
+        NEX_COMMAND_SLOT(Global)
+
+    private:
+        const Literal& _pageName;
+        Command* _inner = nullptr;
+        alignas(std::max_align_t) unsigned char _storage[kInnerCapacity]{};
+    };
+
+    static_assert(sizeof(Global) <= 128u, "cmd::Global must fit TransactionQueue slot");
+
+    /**
      * **Cfgpio** — привязка GPIO к компоненту (NIS `cfgpio`).
      */
     class Cfgpio final : public Command {

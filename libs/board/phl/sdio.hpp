@@ -49,7 +49,8 @@ public:
         hsd.Init.ClockPowerSave      = SDIO_CLOCK_POWER_SAVE_DISABLE;
         hsd.Init.BusWide             = SDIO_BUS_WIDE_1B;
         hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-        hsd.Init.ClockDiv            = 0;
+        /* Transfer: SDIO_CK = 48 MHz / (0+2) = 24 MHz. Init ≤400 kHz — внутри HAL_SD_Init. */
+        hsd.Init.ClockDiv            = 0u;
     }
 
     CHW_Status Init()

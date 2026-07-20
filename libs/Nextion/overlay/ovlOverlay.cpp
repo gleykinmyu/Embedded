@@ -22,8 +22,9 @@ void Overlay::showWidget(Widget& widget, const bool modal) noexcept {
     widget.layout();
     widget.setVisible(true);
     _root.addChildTop(widget);
-    widget.draw(app.cs);
+    /* tsw/sendxy до draw: иначе панель перерисует компоненты поверх canvas. */
     updateInputState();
+    widget.draw(app.cs);
 }
 
 void Overlay::hideWidget(Widget& widget) noexcept {

@@ -1,12 +1,13 @@
 #pragma once
 
-#include "browserPage.hpp"
+#include "pages/browserPage.hpp"
 #include "buttons.hpp"
-#include "mFilePage.hpp"
-#include "mGroupPage.hpp"
+#include "pages/mFilePage.hpp"
+#include "pages/mGroupPage.hpp"
+#include "pages/settingsPage.hpp"
 #include "statusBar.hpp"
-#include "waitPage.hpp"
-#include "workPage.hpp"
+#include "pages/waitPage.hpp"
+#include "pages/workPage.hpp"
 #include "nex.hpp"
 #include "overlay/ovl.hpp"
 
@@ -33,13 +34,26 @@ public:
     MGroupPage mGroup;
     MFilePage mFile;
     BrowserPage browser;
+    SettingsPage settings;
 
     void showFileMsg(uint8_t tag, const char* text) noexcept;
     void showFileYesNo(uint8_t tag, const char* text) noexcept;
+    void showGroupMsg(uint8_t tag, const char* text) noexcept;
+    void showGroupYesNo(uint8_t tag, const char* text) noexcept;
+    /**
+     * MsgBox: @a titleUtf8 / @a textUtf8 в UTF-8 (как в редакторе) → KOI8-R на панель.
+     * Не передавать сюда имена с SD — они уже OEM.
+     */
+    void showUtf8Msg(const char* titleUtf8, nex::ovl::MsgBox::Preset preset, uint8_t tag,
+        nex::ovl::MsgBox::Action defaultAction, const char* textUtf8) noexcept;
     /** MsgBox по текущему статусу MConsole. */
     void showConsoleStatus(uint8_t tag = 0u) noexcept;
+    /** MsgBox по статусу MConsole с заголовком «Группа». */
+    void showGroupStatus(uint8_t tag = 0u) noexcept;
     /** MsgBox по текущему статусу MBrowser. */
     void showBrowserStatus(uint8_t tag = 0u) noexcept;
+
+    void onPageChange(const nex::msg::evPage& e) noexcept override;
 
 private:
     void refreshStatusBar() noexcept;

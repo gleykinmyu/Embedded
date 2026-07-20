@@ -109,7 +109,7 @@ void FatDirectory::close() noexcept
     _open = false;
 }
 
-bool FatDirectory::next(DirEntry& out) noexcept
+bool FatDirectory::next(BIF::DirEntry& out) noexcept
 {
     out = {};
     if (!_open) {
@@ -123,8 +123,8 @@ bool FatDirectory::next(DirEntry& out) noexcept
         return false;
     }
 
-    std::strncpy(out.name, info.fname, kDirNameSize - 1u);
-    out.name[kDirNameSize - 1u] = '\0';
+    std::strncpy(out.name, info.fname, BIF::kDirNameSize - 1u);
+    out.name[BIF::kDirNameSize - 1u] = '\0';
     out.size = static_cast<uint32_t>(info.fsize);
     out.date = info.fdate;
     out.time = info.ftime;

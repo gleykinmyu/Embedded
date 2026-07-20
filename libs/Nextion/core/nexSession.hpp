@@ -93,6 +93,8 @@ public:
     [[nodiscard]] std::size_t count() const noexcept { return count_; }
     [[nodiscard]] bool push(Transaction tr) noexcept;
     [[nodiscard]] const Transaction* peek() const noexcept;
+    /** `index` от головы (0 = head); `nullptr` если `index >= count()`. */
+    [[nodiscard]] const Transaction* at(std::size_t index) const noexcept;
     void pop() noexcept;
     void clear() noexcept;
 
@@ -182,15 +184,25 @@ public:
         _queue.clearError();
     }
 
-    [[nodiscard]] inline bool isActive() const noexcept { return _status == Status::Active; }
+    /** Отказ постановки после stall / без spin — не гасит TX (`isActive` на `_txActive`). */
+    void noteQueueFull() noexcept { _status = Status::QueueFull; }
+
+    /** TX в полёте (`begin`…`end`); не зависит от `_status` (может быть `QueueFull` параллельно). */
+    [[nodiscard]] inline bool isActive() const noexcept { return _txActive; }
     [[nodiscard]] inline bool hasQueued() const noexcept { return !_queue.isEmpty(); }
+    [[nodiscard]] inline bool isQueueFull() const noexcept { return _queue.isFull(); }
     [[nodiscard]] inline std::size_t queuedCount() const noexcept { return _queue.count(); }
     [[nodiscard]] inline const Transaction* current() const noexcept { return _queue.peek(); }
+    /** `index` от головы очереди (0 = current); `nullptr` если вне диапазона. */
+    [[nodiscard]] inline const Transaction* queuedAt(std::size_t index) const noexcept {
+        return _queue.at(index);
+    }
 
 private:
     detail::TransactionQueue _queue;
     Status _status = Status::Idle;
-    
+    bool _txActive = false;
+
     MsTimer _responseTimer{};
 };
 

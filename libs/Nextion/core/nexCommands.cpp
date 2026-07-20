@@ -317,6 +317,54 @@ bool Page::serialize(TxFrame& tx) const noexcept {
     }
 }
 
+Global::Global(const Literal& pageName, const Command& inner) noexcept
+    : _pageName(pageName)
+{
+    if (!inner.emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
+        _status = inner.getStatus();
+        if (_status == Status::OK)
+            _status = Status::SlotTooSmall;
+        return;
+    }
+    _inner = reinterpret_cast<Command*>(_storage);
+}
+
+Global::Global(const Global& other) noexcept
+    : _pageName(other._pageName)
+{
+    if (other._inner == nullptr) {
+        _status = (other._status != Status::OK) ? other._status : Status::NullPointer;
+        return;
+    }
+    if (!other._inner->emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
+        _status = other._inner->getStatus();
+        if (_status == Status::OK)
+            _status = Status::SlotTooSmall;
+        return;
+    }
+    _inner = reinterpret_cast<Command*>(_storage);
+}
+
+Global::~Global() {
+    if (_inner != nullptr) {
+        _inner->destroyIn(_storage);
+        _inner = nullptr;
+    }
+}
+
+bool Global::serialize(TxFrame& tx) const noexcept {
+    _status = Status::OK;
+    if (_inner == nullptr)
+        return fail(Status::NullPointer);
+    if (!printLiteral(tx, _pageName) || !printDot(tx))
+        return false;
+    if (!_inner->serialize(tx)) {
+        _status = _inner->getStatus();
+        return false;
+    }
+    return true;
+}
+
 bool Get::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (!NEX_CMD_PRINT_LIT(tx, "get") || !printSpace(tx))

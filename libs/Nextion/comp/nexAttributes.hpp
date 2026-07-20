@@ -98,6 +98,7 @@ protected:
     const Component& _parent;
 
     void pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept;
+    void pushCmdAssignTextGlobal(const char* text, cmd::assign::Text::Op op) const noexcept;
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
@@ -132,6 +133,15 @@ public:
         const cmd::assign::Numeric cmd(target, wire::toWire(v));
         enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
         return *this;
+    }
+
+    /** Как `operator=`, но кадр `pageName.comp.attr=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const T& v) noexcept {
+        _val = v;
+        const AttrRef target{ _parent.name, name() };
+        const cmd::assign::Numeric inner(target, wire::toWire(v));
+        enqueueTransaction(cmd::Global(_parent.page.name, inner), Transaction::Kind::Command,
+            msg::kAwaitingNone);
     }
 
     void get() noexcept {
@@ -215,6 +225,18 @@ public:
         pushCmdAssignText(buf, cmd::assign::Text::Op::Assign);
     }
 
+    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const char* text) noexcept {
+        if (text == nullptr) {
+            buf[0] = '\0';
+            pushCmdAssignTextGlobal("", cmd::assign::Text::Op::Assign);
+            return;
+        }
+        std::strncpy(buf, text, static_cast<std::size_t>(MaxL));
+        buf[MaxL - 1u] = '\0';
+        pushCmdAssignTextGlobal(buf, cmd::assign::Text::Op::Assign);
+    }
+
     void clear() noexcept { set(""); }
 
     void subtract(uint32_t n) noexcept {
@@ -289,6 +311,12 @@ public:
     void set(const char* text) const noexcept {
         const char* const p = text != nullptr ? text : "";
         pushCmdAssignText(p, cmd::assign::Text::Op::Assign);
+    }
+
+    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const char* text) const noexcept {
+        const char* const p = text != nullptr ? text : "";
+        pushCmdAssignTextGlobal(p, cmd::assign::Text::Op::Assign);
     }
 
     void clear() const noexcept { set(""); }

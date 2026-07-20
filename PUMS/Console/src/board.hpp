@@ -14,10 +14,10 @@ class CBoard : public CBaseBoard
 {
 public:
     PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
-    PHL::Serial<PHL::ID::SERIAL2, 1024, 128> serial2;
+    PHL::Serial<PHL::ID::SERIAL2, 512, 128> serial2;
 
-    /** W25Q16: SCK=PB3, MISO=PB4, MOSI=PB5 (SPI3), CS=PA15 soft. */
-    PHL::SpiStream<PHL::ID::SPI3, 256, 256> flashSpi;
+    /** W25Q16: SCK=PB3, MISO=PB4, MOSI=PB5 (SPI3), CS=PA15 soft. Polling SPI. */
+    PHL::SpiStream<PHL::ID::SPI3> flashSpi;
     PHL::W25Q flash{flashSpi, GPIO::PortA::pin<15>};
     PHL::SdDisk SD;
     PHL::Rtc rtc;

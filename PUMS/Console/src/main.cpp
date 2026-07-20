@@ -21,6 +21,7 @@
 #include "core/crash_dump.hpp"
 #include "fat_file.hpp"
 #include "mbrowser.hpp"
+#include "w25q_show_file.hpp"
 
 nex::AppTiming timing = {boardClockMs, 500u};
 
@@ -30,16 +31,30 @@ server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
 smcp::file::FatVolume sdVolume;
 smcp::file::FatFile showFile;
 smcp::file::FatDirectory showDir;
-MConsole console;
+smcp::file::W25qShowFile flashShow(board.flash);
 MBrowser mBrowser(sdVolume, showDir, showFile);
+MConsole console(mBrowser);
 
 namespace {
 
 /** Таймаут IWDG на время boot (SD) и работы; kick — в board.tick(). */
 constexpr uint32_t kWatchdogTimeoutMs = 5000u;
+/** Пауза после питания: карта успевает выйти из power-up до HAL_SD_Init. */
+constexpr uint32_t kSdPowerSettleMs = 100u;
+
+void settleSdPower() noexcept
+{
+    NEX_DBG("SD power settle %lu ms...\n", static_cast<unsigned long>(kSdPowerSettleMs));
+    const uint32_t t0 = HAL_GetTick();
+    while ((HAL_GetTick() - t0) < kSdPowerSettleMs) {
+        board.watchdog.kick();
+    }
+}
 
 void tryShowFileRoundtrip() noexcept
 {
+    board.watchdog.kick();
+    settleSdPower();
     board.watchdog.kick();
 
     if (!sdVolume.mount(board.SD.volumePath())) {
@@ -92,6 +107,12 @@ int main(void)
     board.setLedAlive(true);
 
     NEX_DBG("PUMS Console boot: log=serial1 Nextion=serial2 250000 flashSpi=SPI3 8MHz\n");
+    if (!board.flash.begin()) {
+        NEX_DBG("W25Q begin failed\n");
+    } else {
+        NEX_DBG("W25Q OK, show mirror sector @ 0x%06lX\n",
+            static_cast<unsigned long>(smcp::file::W25qShowFile::kSectorAddr));
+    }
     if (resetByWatchdog) {
         NEX_DBG("*** Reset caused by IWDG watchdog ***\n");
     }
@@ -143,6 +164,15 @@ int main(void)
     }
 
     tryShowFileRoundtrip();
+
+    board.watchdog.kick();
+    console.setMirror(&flashShow);
+    if (console.restoreMirror()) {
+        NEX_DBG("Restored show from W25Q: '%s'\n", console.showName());
+    } else {
+        NEX_DBG("No valid show mirror in W25Q (%s)\n",
+            MConsole::statusText(console.getStatus()));
+    }
 
     board.watchdog.kick();
     app.boot();
