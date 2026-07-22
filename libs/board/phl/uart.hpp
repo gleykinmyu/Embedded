@@ -9,22 +9,6 @@ namespace UART {
 
 namespace detail {
 
-/// Частота тактирования USART по PHL::ID (как HAL UART_SetConfig: USART1/USART6 — APB2, остальные — APB1).
-template <PHL::ID Id>
-inline uint32_t usart_input_clock_hz() noexcept
-{
-    constexpr uintptr_t base = static_cast<uintptr_t>(Id);
-#ifdef USART1_BASE
-    if (base == USART1_BASE)
-        return HAL_RCC_GetPCLK2Freq();
-#endif
-#ifdef USART6_BASE
-    if (base == USART6_BASE)
-        return HAL_RCC_GetPCLK2Freq();
-#endif
-    return HAL_RCC_GetPCLK1Freq();
-}
-
 /// BRR при передискретизации 16× (логика UART_BRR_SAMPLING16 из stm32f4xx_hal_uart.h).
 inline uint32_t brr_sampling16(uint32_t pclk_hz, uint32_t baud) noexcept
 {
@@ -296,7 +280,7 @@ public:
         if (baud_hz == 0U)
             return false;
 
-        const uint32_t pclk = detail::usart_input_clock_hz<UartId>();
+        const uint32_t pclk = this->InputClockHz();
         if (pclk == 0U)
             return false;
 

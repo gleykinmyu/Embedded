@@ -24,6 +24,32 @@ public:
     Word read() const noexcept { return *addr(); }
 
     void write(Word value) noexcept { *addr() = value; }
+
+    /// Прочитать бит с номером `bit` (0 = LSB). При bit вне [0, width) — false.
+    bool readBit(uint8_t bit) const noexcept
+    {
+        constexpr uint8_t width = static_cast<uint8_t>(sizeof(Word) * 8U);
+        if (bit >= width)
+            return false;
+        return (read() & static_cast<Word>(Word{1} << bit)) != Word{};
+    }
+
+    /// Записать бит с номером `bit` (0 = LSB): true → 1, false → 0.
+    /// При bit вне [0, width) — no-op, возвращает false.
+    bool writeBit(uint8_t bit, bool value) noexcept
+    {
+        constexpr uint8_t width = static_cast<uint8_t>(sizeof(Word) * 8U);
+        if (bit >= width)
+            return false;
+        const Word mask = static_cast<Word>(Word{1} << bit);
+        Word v = read();
+        if (value)
+            v = static_cast<Word>(v | mask);
+        else
+            v = static_cast<Word>(v & static_cast<Word>(~mask));
+        write(v);
+        return true;
+    }
 };
 
 /**

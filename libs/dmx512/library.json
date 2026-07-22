@@ -1,0 +1,12 @@
+{
+  "name": "dmx512",
+  "version": "1.0.0",
+  "description": "DMX512 stream (Transmitter/Receiver) over IHardwareSerial",
+  "dependencies": {
+    "Interfaces": "*",
+    "board": "*"
+  },
+  "build": {
+    "libArchive": false
+  }
+}

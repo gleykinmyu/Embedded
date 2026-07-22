@@ -1,7 +1,7 @@
 {
   "name": "Interfaces",
   "version": "1.0.0",
-  "description": "Shared interfaces (IDisk, IFileSystem, serial, ObjRegistry, BitMask, …)",
+  "description": "Shared interfaces (IDisk, IFileSystem, ISerial, ICAN, ObjRegistry, BitMask, …)",
   "build": {
     "libArchive": false,
     "srcFilter": "+<idisk/*.cpp>"

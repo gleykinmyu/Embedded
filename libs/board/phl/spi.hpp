@@ -9,18 +9,6 @@ namespace SPI {
 
 namespace detail {
 
-/// Частота тактирования SPI по PHL::ID (SPI1 — APB2, SPI2/SPI3 — APB1).
-template <PHL::ID Id>
-inline uint32_t spi_input_clock_hz() noexcept
-{
-    constexpr uintptr_t base = static_cast<uintptr_t>(Id);
-#ifdef SPI1_BASE
-    if (base == SPI1_BASE)
-        return HAL_RCC_GetPCLK2Freq();
-#endif
-    return HAL_RCC_GetPCLK1Freq();
-}
-
 /**
  * Поле CR1.BR[2:0]: делитель SCK = 2<<(BR).
  * Выбираем наибольший делитель, при котором actual = pclk/div не выше baud_hz;
@@ -93,30 +81,54 @@ enum class DataBits : uint8_t {
     Bits16 = 16,
 };
 
+/// CPOL: уровень SCK в idle.
+enum class ClockPolarity : uint8_t {
+    IdleLow  = 0, ///< CPOL=0: SCK низкий в простое.
+    IdleHigh = 1, ///< CPOL=1: SCK высокий в простое.
+};
+
+/// CPHA: фронт выборки данных.
+enum class ClockPhase : uint8_t {
+    FirstEdge  = 0, ///< CPHA=0: выборка по первому фронту.
+    SecondEdge = 1, ///< CPHA=1: выборка по второму фронту.
+};
+
 /**
  * Режим SPI (CPOL/CPHA + порядок бит + ширина).
  * Пресеты Mode0..Mode3 — как у Winbond W25Q (обычно Mode0 или Mode3).
  */
 struct Mode {
-    bool cpol;
-    bool cpha;
-    bool lsb_first;
+    ClockPolarity clock_polarity;
+    ClockPhase clock_phase;
+    bool lsb_first; ///< LSBFIRST: младший бит первым.
     DataBits data_bits;
 
-    static constexpr Mode make(bool cpol_, bool cpha_, bool lsb = false,
+    static constexpr Mode make(ClockPolarity polarity, ClockPhase phase, bool lsb = false,
                                DataBits d = DataBits::Bits8) noexcept
     {
-        return {cpol_, cpha_, lsb, d};
+        return {polarity, phase, lsb, d};
     }
 
     /// CPOL=0, CPHA=0.
-    static constexpr Mode Mode0() noexcept { return make(false, false); }
+    static constexpr Mode Mode0() noexcept
+    {
+        return make(ClockPolarity::IdleLow, ClockPhase::FirstEdge);
+    }
     /// CPOL=0, CPHA=1.
-    static constexpr Mode Mode1() noexcept { return make(false, true); }
+    static constexpr Mode Mode1() noexcept
+    {
+        return make(ClockPolarity::IdleLow, ClockPhase::SecondEdge);
+    }
     /// CPOL=1, CPHA=0.
-    static constexpr Mode Mode2() noexcept { return make(true, false); }
+    static constexpr Mode Mode2() noexcept
+    {
+        return make(ClockPolarity::IdleHigh, ClockPhase::FirstEdge);
+    }
     /// CPOL=1, CPHA=1.
-    static constexpr Mode Mode3() noexcept { return make(true, true); }
+    static constexpr Mode Mode3() noexcept
+    {
+        return make(ClockPolarity::IdleHigh, ClockPhase::SecondEdge);
+    }
 };
 
 /**
@@ -158,7 +170,7 @@ public:
         if (baud_hz == 0U)
             return false;
 
-        const uint32_t pclk = detail::spi_input_clock_hz<SpiId>();
+        const uint32_t pclk = this->InputClockHz();
         if (pclk == 0U)
             return false;
 
@@ -166,9 +178,9 @@ public:
 
         const uint32_t br = detail::br_bits_for_baud(pclk, baud_hz);
         REG::BitMask<CR1> cfg = CR1::MSTR | CR1::SSM | CR1::SSI;
-        if (fmt.cpha)
+        if (fmt.clock_phase == ClockPhase::SecondEdge)
             cfg = cfg | CR1::CPHA;
-        if (fmt.cpol)
+        if (fmt.clock_polarity == ClockPolarity::IdleHigh)
             cfg = cfg | CR1::CPOL;
         if (fmt.lsb_first)
             cfg = cfg | CR1::LSBFIRST;
@@ -196,7 +208,7 @@ public:
         return true;
     }
 
-    /// Выключить SPI (SPE=0). Прерывания в CR2 снимает вызывающий.
+    /// Выключить               ЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁЁ     (SPE=0). Прерывания в CR2 снимает вызывающий.
     void Shutdown() noexcept { cr1.clear(CR1::SPE); }
 
     /**
