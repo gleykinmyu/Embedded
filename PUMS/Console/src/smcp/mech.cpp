@@ -47,62 +47,20 @@ bool IMech::isSelectedBy(uint8_t console_id) const noexcept
     return console_id != kSelectOwnerNone && _select_owner_id == console_id;
 }
 
+bool IMech::isBlocked() const noexcept
+{
+    return _status.any(Status::Blocked);
+}
+
 void IMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {
-    if (!msg::isServerId(src_id) || telemetry.local_id != _id) {
+    if (!msg::isServerId(src_id) || telemetry.mech_id != _id) {
         return;
     }
 
     _select_owner_id = telemetry.select_owner_id;
     _position = telemetry.position_mm;
     _status = telemetry.status;
-}
-
-Mech::Mech() noexcept : IMech(0), _type(Type::Rope)
-{
-    _status.set(Status::Ready);
-}
-
-Mech::Mech(uint8_t id, Type type) noexcept : IMech(id), _type(type)
-{
-    _status.set(Status::Ready);
-}
-
-Mech::Type Mech::type() const noexcept
-{
-    return _type;
-}
-
-bool Mech::select(uint8_t console_id) noexcept
-{
-    if (console_id == kSelectOwnerNone) {
-        _select_owner_id = kSelectOwnerNone;
-        _status.clear(Status::Selected);
-        return true;
-    }
-
-    if (isSelected()) {
-        return isSelectedBy(console_id);
-    }
-
-    if (!_status.any(Status::Ready)) {
-        return false;
-    }
-
-    _select_owner_id = console_id;
-    _status.set(Status::Selected);
-    return true;
-}
-
-bool Mech::setTarget(const MotionTarget& target) noexcept
-{
-    (void)target;
-    return false;
-}
-
-bool Mech::resetFault() noexcept
-{
-    return false;
 }
 
 } // namespace smcp

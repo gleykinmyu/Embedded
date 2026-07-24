@@ -86,6 +86,12 @@ void StatusBar::show(nex::ovl::Overlay& ovl) noexcept
     Widget::show(ovl);
 }
 
+void StatusBar::endUpdate() noexcept
+{
+    _suspendRedraw = false;
+    redrawIfShown();
+}
+
 void StatusBar::hide(nex::ovl::Overlay& ovl) noexcept
 {
     Widget::hide(ovl);
@@ -238,7 +244,7 @@ void StatusBar::drawBackground(const nex::AppCanvas& cs) const
 
 void StatusBar::redrawIfShown() const noexcept
 {
-    if (_overlay == nullptr || !isVisible()) {
+    if (_suspendRedraw || _overlay == nullptr || !isVisible()) {
         return;
     }
     // Не перебивать modal MsgBox; время догонит после закрытия.

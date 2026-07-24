@@ -15,60 +15,61 @@ namespace smcp {
 
 inline constexpr std::size_t kGroupWireSize = 64u;
 inline constexpr std::size_t kGroupNameSize = 48u;
-inline constexpr std::size_t kMechCount = 64u;
+/** Осей на один server ID. Физический сервер на 64 оси → два SMCP ID. */
+inline constexpr std::size_t kMechCount = 32u;
 inline constexpr std::size_t kGroupMaxCount = 33u;
 
 /** FourCC-тег секции групп в шоуфайле — "GRUP". */
 inline constexpr uint32_t kGroupSectionTag = 0x50555247u;
 
-/** Выбор штанкетов 0..63 — бит N означает «механизм N включён». */
+/** Выбор штанкетов 0..31 — бит N означает «механизм N включён» (один server ID). */
 class Selection {
-    uint64_t bits_ = 0;
+    uint32_t bits_ = 0;
 
-    constexpr explicit Selection(uint64_t raw) noexcept : bits_(raw) {}
+    constexpr explicit Selection(uint32_t raw) noexcept : bits_(raw) {}
 
 public:
     constexpr Selection() noexcept = default;
 
-    static constexpr Selection from_raw(uint64_t raw) noexcept { return Selection(raw); }
+    static constexpr Selection from_raw(uint32_t raw) noexcept { return Selection(raw); }
 
-    [[nodiscard]] constexpr uint64_t raw() const noexcept { return bits_; }
+    [[nodiscard]] constexpr uint32_t raw() const noexcept { return bits_; }
 
-    [[nodiscard]] constexpr bool empty() const noexcept { return bits_ == 0ULL; }
+    [[nodiscard]] constexpr bool empty() const noexcept { return bits_ == 0u; }
 
     [[nodiscard]] constexpr bool any() const noexcept { return !empty(); }
 
     [[nodiscard]] constexpr bool contains(uint8_t id) const noexcept
     {
-        return id < kMechCount && ((bits_ >> id) & 1ULL) != 0ULL;
+        return id < kMechCount && ((bits_ >> id) & 1u) != 0u;
     }
 
     constexpr void add(uint8_t id) noexcept
     {
         if (id < kMechCount) {
-            bits_ |= (1ULL << id);
+            bits_ |= (1u << id);
         }
     }
 
     constexpr void remove(uint8_t id) noexcept
     {
         if (id < kMechCount) {
-            bits_ &= ~(1ULL << id);
+            bits_ &= ~(1u << id);
         }
     }
 
     constexpr void toggle(uint8_t id) noexcept
     {
         if (id < kMechCount) {
-            bits_ ^= (1ULL << id);
+            bits_ ^= (1u << id);
         }
     }
 
-    [[nodiscard]] constexpr std::size_t count() const noexcept
+    [[nodiscard]] constexpr uint8_t count() const noexcept
     {
-        std::size_t n = 0;
-        for (uint64_t v = bits_; v != 0ULL; v >>= 1) {
-            n += static_cast<std::size_t>(v & 1ULL);
+        uint8_t n = 0;
+        for (uint32_t v = bits_; v != 0u; v >>= 1) {
+            n = static_cast<uint8_t>(n + (v & 1u));
         }
         return n;
     }
@@ -80,14 +81,14 @@ public:
     constexpr Selection operator~() const noexcept { return Selection(~bits_); }
 };
 
-static_assert(sizeof(Selection) == sizeof(uint64_t));
+static_assert(sizeof(Selection) == sizeof(uint32_t));
 
 
 /**
  * Группа механизмов — 64 байта (wire = runtime).
  *
- * Layout (чётные адреса для half/double-word):
- *   0 id(1) | 1 flag(1) | 2 crc16(2) | 4 reserved(4) | 8 mech(8) | 16 name(48)
+ * Layout:
+ *   0 id(1) | 1 flag(1) | 2 crc16(2) | 4 reserved(4) | 8 mech(4) | 12 pad(4) | 16 name(48)
  */
 struct Group {
     enum class Flag : uint8_t {
@@ -99,6 +100,7 @@ struct Group {
     uint16_t crc16 = 0;
     uint8_t reserved[4]{};
     Selection mech;
+    uint8_t pad[4]{};
     char name[kGroupNameSize]{};
 
     [[nodiscard]] constexpr bool isEmpty() const noexcept { return mech.empty(); }
@@ -109,6 +111,7 @@ struct Group {
         flag = {};
         crc16 = 0;
         std::memset(reserved, 0, sizeof(reserved));
+        std::memset(pad, 0, sizeof(pad));
         std::memset(name, 0, sizeof(name));
     }
 
@@ -137,7 +140,7 @@ struct Group {
 };
 
 static_assert(sizeof(Group) == kGroupWireSize);
-static_assert(alignof(Group) == alignof(uint64_t));
+static_assert(alignof(Group) == alignof(uint32_t));
 
 
 REG_BITMASK_ENUM_OPS(Group::Flag)

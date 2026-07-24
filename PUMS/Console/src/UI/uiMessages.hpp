@@ -65,9 +65,16 @@ inline constexpr const char* kConsoleInvalidGroup = "Нельзя изменит
 inline constexpr const char* kConsoleNoSelection = "Сначала выберите лебёдки.";
 inline constexpr const char* kConsoleGroupOccupied = "В группе уже есть данные.";
 
-/* --- Блокировка (printf %s = список id) --- */
-inline constexpr const char* kBlockManualFmt =
-    "Ручная блокировка недоступна.\rЛебедка заблокирована в группах: %s";
+/* --- Блокировка (%s = kWinchMark, %u = номер с 1, %s = список) --- */
+/**
+ * Маркер номера лебёдки. «№» (U+2116) нет в KOI8-R/шрифте панели → «?».
+ * Используем ASCII «#».
+ */
+inline constexpr const char* kWinchMark = "#";
+inline constexpr const char* kBlockByManualFmt =
+    "Лебёдка %s%u заблокирована в ручном режиме.";
+inline constexpr const char* kBlockByGroupsFmt =
+    "Лебёдка %s%u заблокирована в группах: %s";
 inline constexpr const char* kBlockSharedWinchesFmt =
     "Внимание: пересечение с заблокированными группами!\rЛебёдки: %s";
 

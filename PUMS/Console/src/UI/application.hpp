@@ -11,8 +11,8 @@
 #include "nex.hpp"
 #include "overlay/ovl.hpp"
 
-#include "mconsole.hpp"
-#include "mbrowser.hpp"
+#include "model/mconsole.hpp"
+#include "model/mbrowser.hpp"
 
 namespace server {
 
@@ -54,6 +54,9 @@ public:
     void showBrowserStatus(uint8_t tag = 0u) noexcept;
 
     void onPageChange(const nex::msg::evPage& e) noexcept override;
+
+    /** После console.poll(): перерисовать ячейки по takeTelemetryDirty(). */
+    void applyTelemetryUi() noexcept;
 
 private:
     void refreshStatusBar() noexcept;

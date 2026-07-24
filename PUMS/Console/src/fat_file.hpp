@@ -23,6 +23,9 @@ static_assert(BIF::kDirNameSize == 13u, "kDirNameSize must be 8.3+NUL when LFN i
 
 class FatVolume : public BIF::IVolume {
 public:
+    /** @a path — путь FatFs (`"0:/"`, `board.SD.volumePath()`); mount ленивый. */
+    explicit FatVolume(const char* path = nullptr) noexcept : _path(path) {}
+
     [[nodiscard]] bool mount(const char* path, bool force = true) noexcept override;
     void unmount() noexcept override;
     [[nodiscard]] bool ensureMounted() noexcept override;

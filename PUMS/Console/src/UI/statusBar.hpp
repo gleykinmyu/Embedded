@@ -35,6 +35,10 @@ public:
     void setFile(const char* text, bool edited) noexcept;
     void setTime(const char* text) noexcept { setField(Field::Time, text); }
 
+    /** Несколько set* без промежуточных redraw; endUpdate() — один draw. */
+    void beginUpdate() noexcept { _suspendRedraw = true; }
+    void endUpdate() noexcept;
+
     /** Ширина боковой колонки (Status / Time); File занимает оставшуюся середину. */
     void setColumnWidth(Field field, uint16_t width) noexcept;
 
@@ -59,6 +63,7 @@ private:
     uint16_t _barHeight;
     Column _columns[static_cast<uint8_t>(Field::Count)]{};
     nex::ovl::Overlay* _overlay{nullptr};
+    bool _suspendRedraw{false};
 };
 
 } // namespace server

@@ -101,12 +101,18 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         return;
     }
 
-    /* Block: Release — сначала отпустить кнопку на панели, потом redraw + MsgBox. */
     if (console.mode() == MConsole::Mode::Block) {
-        if (state != nex::TouchState::Release) {
-            return;
+        if (state == nex::TouchState::Release) {
+            applyBlockResult(console.pressMech(index));
         }
-        applyBlockResult(console.pressMech(index));
+        return;
+    }
+
+    /* Work: заблокированная лебёдка — MsgBox на Release. */
+    if (console.mode() == MConsole::Mode::Work && console.isMechBlocked(index)) {
+        if (state == nex::TouchState::Release && console.fillMechBlockMessage(index)) {
+            showBlockMsg(console.blockMessage());
+        }
         return;
     }
 
@@ -160,10 +166,9 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     if (console.mode() == MConsole::Mode::Block) {
-        if (state != nex::TouchState::Release) {
-            return;
+        if (state == nex::TouchState::Release) {
+            applyBlockResult(console.pressGroup(group_id));
         }
-        applyBlockResult(console.pressGroup(group_id));
         return;
     }
 
@@ -263,6 +268,12 @@ void WorkPage::showExitShowConfirm() noexcept
 
 void WorkPage::onMsgBox(const nex::msg::evMsgBox& e)
 {
+    if (e.tag == kTagBlockMsg) {
+        /* После refreshPage из MsgBox::onClick — вернуть цвета кнопок. */
+        refreshGroupBtn(false);
+        refreshCells();
+        return;
+    }
     if (e.tag != kTagExitShow) {
         return;
     }
@@ -280,22 +291,29 @@ Application& WorkPage::ui() const noexcept
 
 void WorkPage::applyBlockResult(MConsole::BlockResult result) noexcept
 {
-    if (result == MConsole::BlockResult::Changed
-        || result == MConsole::BlockResult::Warning) {
-        refreshGroupBtn(false);
-        refreshCells();
-    }
+    const bool modelChanged = (result == MConsole::BlockResult::Changed
+        || result == MConsole::BlockResult::Warning);
 
     if (result == MConsole::BlockResult::Rejected
         || result == MConsole::BlockResult::Warning) {
-        showBlockMsg(console.blockMessage());
+        const char* msg = console.blockMessage();
+        if (msg != nullptr && msg[0] != '\0') {
+            /* Без redraw до диалога — иначе setState рисует поверх canvas MsgBox. */
+            showBlockMsg(msg);
+            return;
+        }
+    }
+
+    if (modelChanged) {
+        refreshGroupBtn(false);
+        refreshCells();
     }
 }
 
 void WorkPage::showBlockMsg(const char* text) noexcept
 {
     /* text — UTF-8 литерал из прошивки (не имя с SD). */
-    ui().showUtf8Msg(uiMsg::kTitleBlock, nex::ovl::MsgBox::Preset::OK, 0u,
+    ui().showUtf8Msg(uiMsg::kTitleBlock, nex::ovl::MsgBox::Preset::OK, kTagBlockMsg,
         nex::ovl::MsgBox::Action::Ok, text);
 }
 
@@ -361,7 +379,7 @@ void WorkPage::refreshAssignBtn() noexcept
 {
     using State = ConsoleBtn::State;
     const bool assignOk = console.allowsGroupEdit();
-    const bool hasSelection = console.selectedCount() > 0u;
+    const bool hasSelection = console.hasSelection();
     const uint8_t active_id = console.getActiveGroup();
 
     for (uint8_t i = 0; i < GroupAssignButtons::kCount; ++i) {
@@ -417,6 +435,12 @@ void WorkPage::refreshCells() noexcept
     for (uint8_t i = 0; i < CellButtons::kCount; ++i) {
         refreshCell(i);
     }
+}
+
+void WorkPage::onMechTelemetry(uint8_t mech_id) noexcept
+{
+    refreshCell(mech_id);
+    refreshAssignBtn();
 }
 
 } // namespace server

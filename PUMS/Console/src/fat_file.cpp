@@ -1,5 +1,7 @@
 #include "fat_file.hpp"
 
+#include "Debug.h"
+
 #include <cstring>
 
 namespace smcp {
@@ -9,6 +11,7 @@ bool FatVolume::mount(const char* path, bool force) noexcept
 {
     if (path == nullptr || path[0] == '\0') {
         _last = FR_INVALID_DRIVE;
+        SD_DBG("f_mount: invalid path\n");
         return false;
     }
 
@@ -19,6 +22,8 @@ bool FatVolume::mount(const char* path, bool force) noexcept
     _path = path;
     _last = f_mount(&_fs, path, force ? 1u : 0u);
     _mounted = (_last == FR_OK);
+    SD_DBG("f_mount('%s', force=%u) -> %d%s\n",
+        path, force ? 1u : 0u, static_cast<int>(_last), _mounted ? " OK" : "");
     return _mounted;
 }
 
@@ -28,6 +33,8 @@ void FatVolume::unmount() noexcept
         return;
     }
     _last = f_mount(nullptr, _path != nullptr ? _path : "", 0u);
+    SD_DBG("f_unmount('%s') -> %d\n",
+        _path != nullptr ? _path : "", static_cast<int>(_last));
     _mounted = false;
 }
 
@@ -40,6 +47,7 @@ bool FatVolume::ensureMounted() noexcept
         _last = FR_INVALID_DRIVE;
         return false;
     }
+    SD_DBG("ensureMounted...\n");
     return mount(_path, true);
 }
 
@@ -49,6 +57,7 @@ bool FatVolume::remount() noexcept
         _last = FR_INVALID_DRIVE;
         return false;
     }
+    SD_DBG("remount('%s')...\n", _path);
     if (_mounted) {
         unmount();
     }
@@ -63,6 +72,7 @@ bool FatVolume::exists(const char* path) noexcept
     }
     FILINFO info{};
     _last = f_stat(path, &info);
+    SD_DBG("f_stat('%s') -> %d\n", path, static_cast<int>(_last));
     return _last == FR_OK;
 }
 
@@ -73,6 +83,7 @@ bool FatVolume::remove(const char* path) noexcept
         return false;
     }
     _last = f_unlink(path);
+    SD_DBG("f_unlink('%s') -> %d\n", path, static_cast<int>(_last));
     return _last == FR_OK;
 }
 
@@ -83,6 +94,7 @@ bool FatVolume::rename(const char* from, const char* to) noexcept
         return false;
     }
     _last = f_rename(from, to);
+    SD_DBG("f_rename('%s' -> '%s') -> %d\n", from, to, static_cast<int>(_last));
     return _last == FR_OK;
 }
 
@@ -97,6 +109,7 @@ bool FatDirectory::open(const char* path) noexcept
 
     _last = f_opendir(&_dir, path);
     _open = (_last == FR_OK);
+    SD_DBG("f_opendir('%s') -> %d\n", path, static_cast<int>(_last));
     return _open;
 }
 
@@ -147,6 +160,8 @@ bool FatFile::open(const char* path, bool for_write) noexcept
 
     _last = f_open(&_fil, path, mode);
     _open = (_last == FR_OK);
+    SD_DBG("f_open('%s', %s) -> %d\n",
+        path, for_write ? "write" : "read", static_cast<int>(_last));
     return _open;
 }
 
@@ -157,6 +172,7 @@ void FatFile::close() noexcept
     }
     (void)f_sync(&_fil);
     _last = f_close(&_fil);
+    SD_DBG("f_close -> %d\n", static_cast<int>(_last));
     _open = false;
 }
 
@@ -168,7 +184,12 @@ bool FatFile::read(uint8_t* data, std::size_t size) noexcept
 
     UINT br = 0u;
     _last = f_read(&_fil, data, static_cast<UINT>(size), &br);
-    return _last == FR_OK && static_cast<std::size_t>(br) == size;
+    const bool ok = _last == FR_OK && static_cast<std::size_t>(br) == size;
+    if (!ok) {
+        SD_DBG("f_read(%u) -> %d br=%u\n",
+            static_cast<unsigned>(size), static_cast<int>(_last), static_cast<unsigned>(br));
+    }
+    return ok;
 }
 
 bool FatFile::write(const uint8_t* data, std::size_t size) noexcept
@@ -179,7 +200,12 @@ bool FatFile::write(const uint8_t* data, std::size_t size) noexcept
 
     UINT bw = 0u;
     _last = f_write(&_fil, data, static_cast<UINT>(size), &bw);
-    return _last == FR_OK && static_cast<std::size_t>(bw) == size;
+    const bool ok = _last == FR_OK && static_cast<std::size_t>(bw) == size;
+    if (!ok) {
+        SD_DBG("f_write(%u) -> %d bw=%u\n",
+            static_cast<unsigned>(size), static_cast<int>(_last), static_cast<unsigned>(bw));
+    }
+    return ok;
 }
 
 bool FatFile::seek(std::size_t offset) noexcept
@@ -189,6 +215,10 @@ bool FatFile::seek(std::size_t offset) noexcept
     }
 
     _last = f_lseek(&_fil, static_cast<FSIZE_t>(offset));
+    if (_last != FR_OK) {
+        SD_DBG("f_lseek(%u) -> %d\n",
+            static_cast<unsigned>(offset), static_cast<int>(_last));
+    }
     return _last == FR_OK;
 }
 
@@ -198,6 +228,9 @@ bool FatFile::sync() noexcept
         return false;
     }
     _last = f_sync(&_fil);
+    if (_last != FR_OK) {
+        SD_DBG("f_sync -> %d\n", static_cast<int>(_last));
+    }
     return _last == FR_OK;
 }
 

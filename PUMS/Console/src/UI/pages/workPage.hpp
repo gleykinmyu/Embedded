@@ -4,7 +4,7 @@
 
 #include "UI/buttons.hpp"
 #include "UI/nexHmiConfig.hpp"
-#include "mconsole.hpp"
+#include "model/mconsole.hpp"
 #include "nex.hpp"
 
 namespace server {
@@ -57,8 +57,12 @@ struct WorkPage : nex::Page<54> {
 
     void beginRename(uint8_t group_id) noexcept;
 
+    /** Mech telemetry callback → обновить ячейку / assign. */
+    void onMechTelemetry(uint8_t mech_id) noexcept;
+
 private:
     static constexpr uint8_t kTagExitShow = 1u;
+    static constexpr uint8_t kTagBlockMsg = 2u;
 
     [[nodiscard]] Application& ui() const noexcept;
 
@@ -67,7 +71,7 @@ private:
     void onAssignPress(uint8_t index) noexcept;
     void onMenuPress(uint8_t comp);
 
-    /** Сначала redraw кнопок, затем MsgBox (иначе overlay перекрывается обновлениями панели). */
+    /** Block на Release: модель → MsgBox при необходимости → redraw после закрытия. */
     void applyBlockResult(MConsole::BlockResult result) noexcept;
 
     void refreshModeButtons() noexcept;

@@ -25,7 +25,7 @@ void MGroupPage::refreshActionButtons() noexcept
 {
     using State = ConsoleBtn::State;
 
-    const bool canRecord = console.selectedCount() > 0u;
+    const bool canRecord = console.hasSelection();
     bRec.setState(canRecord ? State::Active : State::Disabled);
 
     const uint8_t group_id = resolveGroupId();

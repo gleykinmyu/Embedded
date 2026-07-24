@@ -15,8 +15,8 @@ namespace msg {
 struct Telemetry;
 }
 
-/** Локальный идентификатор механизма в сегменте (0..63). */
-inline constexpr uint8_t kMechIdMax = 63u;
+/** Идентификатор механизма в сегменте одного server ID (0..31). */
+inline constexpr uint8_t kMechIdMax = 31u;
 
 /** Механизм не выделен ни одной консолью. */
 inline constexpr uint8_t kSelectOwnerNone = 0u;
@@ -33,7 +33,7 @@ static_assert(alignof(MotionTarget) == alignof(int32_t));
 
 /**
  * Абстракция одного механизма: телеметрия и управление.
- * Реализация — на стороне драйвера сегмента / StageNet.
+ * Реализация — на стороне консоли (model/Mech) или сегмента (DriveMech).
  */
 class IMech {
 public:
@@ -45,7 +45,7 @@ public:
     enum class Status : uint8_t {
         Ready    = 1u << 0, /**< Привод готов к пуску. */
         Selected = 1u << 1, /**< Выделен консолью (select). */
-        Inhibit  = 1u << 2, /**< Внешний запрет движения (E-stop, блокировка сцены). */
+        Blocked  = 1u << 2, /**< Заблокирован (ручная / blocked-группа шоу). */
         Moving   = 1u << 3, /**< Выполняется подвод к цели. */
         Limit1   = 1u << 5, /**< Активен концевик / датчик границы 1. */
         Limit2   = 1u << 6, /**< Активен концевик / датчик границы 2. */
@@ -56,7 +56,7 @@ public:
 
     virtual ~IMech();
 
-    /** Локальный ID механизма в сегменте. */
+    /** ID механизма в сегменте server ID (mech_id, 0..31). */
     [[nodiscard]] uint8_t id() const noexcept;
 
     /** Текущая позиция, мм. */
@@ -77,6 +77,14 @@ public:
 
     [[nodiscard]] bool isSelectedBy(uint8_t console_id) const noexcept;
 
+    [[nodiscard]] bool isBlocked() const noexcept;
+
+    /**
+     * Заблокировать механизм (Blocked) или снять блокировку.
+     * @return false — операция отклонена реализацией.
+     */
+    virtual bool block(bool blocked) noexcept = 0;
+
     /**
      * Выделить механизм консолью (Select) или снять выделение (Deselect).
      * @param console_id ID консоли (SRC_ID); 0 — сброс выделения.
@@ -86,7 +94,7 @@ public:
     /** Задать целевую позицию, мм. */
     virtual bool setTarget(const MotionTarget& target) noexcept = 0;
 
-    /** Сбросить локальный бит Fault (после ResetFault с сервера). */
+    /** Сбросить локальный бит Fault. */
     virtual bool resetFault() noexcept = 0;
 
     /** Обновить состояние из телеметрии (@a src_id — SRC_ID кадра, обычно сервер). */
@@ -97,27 +105,6 @@ protected:
     uint8_t _select_owner_id = kSelectOwnerNone;
     int32_t _position = 0;
     REG::BitMask<Status> _status{};
-};
-
-/** Локальная реализация механизма консоли. */
-class Mech : public IMech {
-public:
-    enum class Type : uint8_t {
-        Rope,
-        Chain,
-    };
-
-    Mech() noexcept;
-    Mech(uint8_t id, Type type = Type::Rope) noexcept;
-
-    [[nodiscard]] Type type() const noexcept;
-
-    bool select(uint8_t console_id) noexcept override;
-    bool setTarget(const MotionTarget& target) noexcept override;
-    bool resetFault() noexcept override;
-
-private:
-    Type _type;
 };
 
 REG_BITMASK_ENUM_OPS(IMech::Status)

@@ -234,10 +234,12 @@ void MsgBox::onClick(Object* const target) noexcept {
         return;
     _ev.action = btn->action();
     Widget::hide(_app.overlay);
-    _app.onMsgBox(_ev);
+    /* refreshPage до onMsgBox: иначе setState из обработчика уходит в очередь
+       раньше page refresh и панель затирает цвета обратно в HMI-defaults. */
     if (!_app.overlay.isModal()) {
         _app.refreshPage();
     }
+    _app.onMsgBox(_ev);
 }
 
 void MsgBox::setTitle(const char* title) noexcept {

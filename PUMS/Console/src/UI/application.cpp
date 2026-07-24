@@ -40,6 +40,23 @@ void Application::onPageChange(const nex::msg::evPage& e) noexcept
     nex::AppUI<nex::hmi::kPageCount>::onPageChange(e);
 }
 
+void Application::applyTelemetryUi() noexcept
+{
+    const uint32_t dirty = console.takeTelemetryDirty();
+    if (dirty == 0u) {
+        return;
+    }
+    if (currentPage() != nex::hmi::Page_work::kPageId) {
+        return;
+    }
+
+    for (uint8_t id = 0; id < MConsole::kMechCount; ++id) {
+        if ((dirty & (1u << id)) != 0u) {
+            work.onMechTelemetry(id);
+        }
+    }
+}
+
 void Application::update() noexcept
 {
     nex::AppUI<nex::hmi::kPageCount>::update();
@@ -104,6 +121,8 @@ void Application::showBrowserStatus(uint8_t tag) noexcept
 
 void Application::refreshStatusBar() noexcept
 {
+    statusBar.beginUpdate();
+
     char memBuf[16]{};
     memstat::formatFreeMin(memBuf, sizeof memBuf);
     statusBar.setStatus(memBuf);
@@ -122,6 +141,8 @@ void Application::refreshStatusBar() noexcept
         }
     }
     statusBar.setTime(timeBuf);
+
+    statusBar.endUpdate();
 }
 
 } // namespace server

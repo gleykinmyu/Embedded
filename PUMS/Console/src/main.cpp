@@ -20,68 +20,44 @@
 #include "core/memstat.hpp"
 #include "core/crash_dump.hpp"
 #include "fat_file.hpp"
-#include "mbrowser.hpp"
+#include "model/mbrowser.hpp"
+#include "model/mconsole.hpp"
+#include "model/mserver.hpp"
 #include "w25q_show_file.hpp"
 
-nex::AppTiming timing = {boardClockMs, 500u};
 
-
-server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
-
-smcp::file::FatVolume sdVolume;
+smcp::file::FatVolume sdVolume(board.SD.volumePath());
 smcp::file::FatFile showFile;
 smcp::file::FatDirectory showDir;
 smcp::file::W25qShowFile flashShow(board.flash);
 MBrowser mBrowser(sdVolume, showDir, showFile);
 MConsole console(mBrowser);
+MServer mServer(smcp::msg::kServerIdMin);
+
+nex::AppTiming timing = {boardClockMs, 500u};
+server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
 
 namespace {
 
 /** Таймаут IWDG на время boot (SD) и работы; kick — в board.tick(). */
 constexpr uint32_t kWatchdogTimeoutMs = 5000u;
-/** Пауза после питания: карта успевает выйти из power-up до HAL_SD_Init. */
-constexpr uint32_t kSdPowerSettleMs = 100u;
 
-void settleSdPower() noexcept
+/** Буфер stdout в BSS — setvbuf без malloc (newlib иначе выделяет кучу). */
+char g_stdoutBuf[256];
+
+/** console.tx → server.rx → poll → server.tx → console.rx → poll → UI */
+void pumpSmcpLoopback() noexcept
 {
-    NEX_DBG("SD power settle %lu ms...\n", static_cast<unsigned long>(kSdPowerSettleMs));
-    const uint32_t t0 = HAL_GetTick();
-    while ((HAL_GetTick() - t0) < kSdPowerSettleMs) {
-        board.watchdog.kick();
+    smcp::msg::Packet pkt;
+    while (console.tx().pop(pkt)) {
+        (void)mServer.rx().push(pkt);
     }
-}
-
-void tryShowFileRoundtrip() noexcept
-{
-    board.watchdog.kick();
-    settleSdPower();
-    board.watchdog.kick();
-
-    if (!sdVolume.mount(board.SD.volumePath())) {
-        NEX_DBG("SD mount failed: %d (%s)\n", static_cast<int>(sdVolume.lastResult()),
-            board.SD.volumePath());
-        return;
+    mServer.poll();
+    while (mServer.tx().pop(pkt)) {
+        (void)console.rx().push(pkt);
     }
-    NEX_DBG("SD mounted: %s\n", board.SD.volumePath());
-
-    board.watchdog.kick();
-
-    if (!mBrowser.refresh()) {
-        NEX_DBG("MBrowser::refresh failed\n");
-        return;
-    }
-    NEX_DBG("MBrowser: %u files, %u pages\n",
-        static_cast<unsigned>(mBrowser.fileCount()),
-        static_cast<unsigned>(mBrowser.pageCount()));
-    for (std::size_t row = 0; row < mBrowser.pageRows(); ++row) {
-        board.watchdog.kick();
-        const MBrowser::Entry* e = mBrowser.entryAt(row);
-        if (e == nullptr) {
-            break;
-        }
-        NEX_DBG("  [%u] %s  %lu\n", static_cast<unsigned>(row), e->name,
-            static_cast<unsigned long>(e->size));
-    }
+    console.poll();
+    app.applyTelemetryUi();
 }
 
 } // namespace
@@ -103,15 +79,16 @@ int main(void)
     board.flashSpi.open(8'000'000);
 
     setSerial1LogEnabled(true);
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    /* _IOLBF: сброс на '\n' — удобно для NEX_DBG; буфер свой, не heap. */
+    std::setvbuf(stdout, g_stdoutBuf, _IOLBF, sizeof(g_stdoutBuf));
     board.setLedAlive(true);
 
     NEX_DBG("PUMS Console boot: log=serial1 Nextion=serial2 250000 flashSpi=SPI3 8MHz\n");
     if (!board.flash.begin()) {
         NEX_DBG("W25Q begin failed\n");
     } else {
-        NEX_DBG("W25Q OK, show mirror sector @ 0x%06lX\n",
-            static_cast<unsigned long>(smcp::file::W25qShowFile::kSectorAddr));
+        NEX_DBG("W25Q OK, show mirror sector @ 0x%06X\n",
+            smcp::file::W25qShowFile::kSectorAddr);
     }
     if (resetByWatchdog) {
         NEX_DBG("*** Reset caused by IWDG watchdog ***\n");
@@ -119,36 +96,25 @@ int main(void)
     {
         CrashDump::Record crash{};
         if (CrashDump::take(crash)) {
-            NEX_DBG("*** Crash %s CFSR=%08lX HFSR=%08lX MMFAR=%08lX BFAR=%08lX\n"
-                    "    R0=%08lX R1=%08lX R2=%08lX R3=%08lX\n"
-                    "    R12=%08lX LR=%08lX PC=%08lX xPSR=%08lX MSP=%08lX PSP=%08lX ***\n",
+            NEX_DBG("*** Crash %s CFSR=%08X HFSR=%08X MMFAR=%08X BFAR=%08X\n"
+                    "    R0=%08X R1=%08X R2=%08X R3=%08X\n"
+                    "    R12=%08X LR=%08X PC=%08X xPSR=%08X MSP=%08X PSP=%08X ***\n",
                 CrashDump::kindName(crash.kind),
-                static_cast<unsigned long>(crash.cfsr),
-                static_cast<unsigned long>(crash.hfsr),
-                static_cast<unsigned long>(crash.mmfar),
-                static_cast<unsigned long>(crash.bfar),
-                static_cast<unsigned long>(crash.r0),
-                static_cast<unsigned long>(crash.r1),
-                static_cast<unsigned long>(crash.r2),
-                static_cast<unsigned long>(crash.r3),
-                static_cast<unsigned long>(crash.r12),
-                static_cast<unsigned long>(crash.lr),
-                static_cast<unsigned long>(crash.pc),
-                static_cast<unsigned long>(crash.xpsr),
-                static_cast<unsigned long>(crash.msp),
-                static_cast<unsigned long>(crash.psp));
+                crash.cfsr, crash.hfsr, crash.mmfar, crash.bfar,
+                crash.r0, crash.r1, crash.r2, crash.r3,
+                crash.r12, crash.lr, crash.pc, crash.xpsr,
+                crash.msp, crash.psp);
         }
     }
     PHL::WatchDog::clearResetFlags();
 
     if (!board.watchdog.begin(kWatchdogTimeoutMs)) {
-        NEX_DBG("IWDG begin failed (timeout=%lu ms)\n",
-            static_cast<unsigned long>(kWatchdogTimeoutMs));
+        NEX_DBG("IWDG begin failed (timeout=%u ms)\n", kWatchdogTimeoutMs);
     } else {
-        NEX_DBG("IWDG started: %lu ms (PR=%lu RLR=%lu)\n",
-            static_cast<unsigned long>(board.watchdog.timeoutMs()),
-            static_cast<unsigned long>(board.watchdog.prescaler()),
-            static_cast<unsigned long>(board.watchdog.reload()));
+        NEX_DBG("IWDG started: %u ms (PR=%u RLR=%u)\n",
+            board.watchdog.timeoutMs(),
+            board.watchdog.prescaler(),
+            board.watchdog.reload());
     }
 
     board.watchdog.kick();
@@ -163,10 +129,9 @@ int main(void)
         }
     }
 
-    tryShowFileRoundtrip();
-
     board.watchdog.kick();
     console.setMirror(&flashShow);
+    console.setFlushHook(pumpSmcpLoopback);
     if (console.restoreMirror()) {
         NEX_DBG("Restored show from W25Q: '%s'\n", console.showName());
     } else {
@@ -177,9 +142,11 @@ int main(void)
     board.watchdog.kick();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
+    NEX_DBG("SMCP loopback: server id=0x%02X\n", static_cast<unsigned>(mServer.id()));
 
     while (1) {
         board.tick();
+        pumpSmcpLoopback();
         app.update();
     }
 }

@@ -8,7 +8,11 @@
 #include "Debug.h"
 #include <stm32f4xx_hal_sd.h>
 
-#define SDIO_DETAIL_ERRORMSG(m) errorMSG(m)
+#if defined(SD_DEBUG)
+#  define SDIO_DETAIL_ERRORMSG(m) errorMSG(m)
+#else
+#  define SDIO_DETAIL_ERRORMSG(m) ((void)0)
+#endif
 
 namespace SDIO {
 
@@ -56,6 +60,7 @@ public:
     CHW_Status Init()
     {
         CHW_Status sd_state = HAL_OK;
+        SD_DBG("SDIO Init...\n");
         if (!IsDetected()) {
             SDIO_DETAIL_ERRORMSG("SD isn't present in slot.");
             return HAL_ERROR;
@@ -64,6 +69,8 @@ public:
         this->init_sdio_gpios();
         /* Повторный init после ошибки: сначала DeInit. */
         if (hsd.State != HAL_SD_STATE_RESET) {
+            SD_DBG("SDIO re-init: DeInit first (state=%lu)\n",
+                static_cast<unsigned long>(hsd.State));
             (void)HAL_SD_DeInit(&hsd);
         }
         sd_state = HAL_SD_Init(&hsd);
@@ -77,6 +84,7 @@ public:
                 sd_state = HAL_ERROR;
             }
         }
+        SD_DBG("SDIO Init -> %s\n", sd_state == HAL_OK ? "OK" : "FAIL");
         return sd_state;
     }
 
