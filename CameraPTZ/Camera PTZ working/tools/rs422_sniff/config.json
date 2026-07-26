@@ -1,0 +1,38 @@
+{
+  "baud": 9600,
+  "bytesize": 8,
+  "parity": "N",
+  "stopbits": 1,
+  "flush_timeout_ms": 80,
+  "show_hex": true,
+  "show_ascii": true,
+  "log_dir": "logs",
+  "channels": [
+    {
+      "name": "line_a",
+      "port": "COM3",
+      "tx_from": "controller",
+      "enabled": true,
+      "comment": "Слушаем TX контроллера"
+    },
+    {
+      "name": "line_b",
+      "port": "COM4",
+      "tx_from": "device",
+      "enabled": true,
+      "comment": "Слушаем TX исполнителя"
+    },
+    {
+      "name": "line_c",
+      "port": "COM5",
+      "tx_from": "controller",
+      "enabled": false
+    },
+    {
+      "name": "line_d",
+      "port": "COM6",
+      "tx_from": "device",
+      "enabled": false
+    }
+  ]
+}
