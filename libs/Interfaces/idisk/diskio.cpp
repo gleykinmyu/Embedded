@@ -25,8 +25,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 {
     if (!BIF::fatfs_disk_volumes.slotOk(pdrv))
         return STA_NOINIT;
-    if (!BIF::fatfs_disk_volumes.consumeFirstInit(pdrv))
-        return 0;
+    /* Всегда делегируем драйверу: повторный init после STA_NOINIT (карта/ошибка I/O). */
     return BIF::fatfs_disk_volumes.Driver(pdrv)->initialize();
 }
 

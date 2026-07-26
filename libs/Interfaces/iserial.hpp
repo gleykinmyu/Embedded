@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include "ibyte_stream.hpp"
 #include "ringbuffer.hpp"
+#include "ilockable.hpp"
 
 namespace BIF {
 
@@ -11,7 +12,7 @@ namespace BIF {
 // IByteStream — публичный контракт; ниже — то, что реализует драйвер платы.
 // =================================================================
 
-class IHardwareSerial : public BIF::IByteStream
+class IHardwareSerial : public BIF::IByteStream, public BIF::ILockable
 {
 public:
     //Открытие и закрытие порта.
@@ -38,26 +39,8 @@ protected:
     /// Прочитать флаги ошибок RX (ISR/SR); выставить `_dataError` / `_hwOverrunRx` при необходимости.
     /// Возвращает true, если байт после readHardware() не следует класть в кольцо.
     virtual bool checkErrors() = 0;
-
-    friend class SGuard;
-    //Захват и освобождение критической секции.
-    virtual void lock() = 0;
-    virtual void unlock() = 0;
-
 };
 
-
-    //RAII guard для синхронизации доступа к аппаратному UART.
-    class SGuard
-    {
-        IHardwareSerial& _s;
-
-    public:
-        explicit SGuard(IHardwareSerial& s) : _s(s) { _s.lock(); }
-        ~SGuard() { _s.unlock(); }
-        SGuard(const SGuard&) = delete;
-        SGuard& operator=(const SGuard&) = delete;
-    };
 
 // =================================================================
 // Базовая реализация (ISerial)
@@ -80,7 +63,7 @@ protected:
 public:
     bool isOpen() override { return _isOpen; }
 
-    /// Краткий снимок без SGuard (флаги и счётчики переполнения RX-кольца).
+    /// Краткий снимок без LockGuard (флаги и счётчики переполнения RX-кольца).
     IByteStream::Status getStatus() override
     {
         if (!_isOpen)
@@ -98,7 +81,7 @@ public:
         if (!_isOpen || !data || size == 0)
             return 0;
 
-        SGuard guard(*this);
+        LockGuard guard(*this);
         size_t n = 0;
         while (n < size && _txBuf.push(data[n])) {
             ++n;
@@ -110,7 +93,7 @@ public:
 
     size_t read(uint8_t* buffer, size_t maxSize) override {
         if (!buffer) return 0;
-        SGuard guard(*this);
+        LockGuard guard(*this);
         size_t count = 0;
         while (count < maxSize && _rxBuf.pop(buffer[count])) {
             count++;
@@ -123,12 +106,12 @@ public:
 
     /// Сбрасывает приёмный буфер; счётчик переполнений rx не трогаем (см. getStatus / clearErrors).
     void purge() override {
-        SGuard guard(*this);
+        LockGuard guard(*this);
         _rxBuf.clearData();
     }
 
     void purgeOutput() override {
-        SGuard guard(*this);
+        LockGuard guard(*this);
         _txBuf.clearData();
         IRQ_TX_Disable();
     }

@@ -131,47 +131,56 @@ void TranslateMessage(const RxFrame& f, Message& out)
         return;
     }
 
-    // NIS §10 — числовой ответ.
+    // NIS §10 — числовой ответ (ровно 4 байта LE int32).
     if (h == msg::getNumeric::Header) {
+        if (f.length != 4u) {
+            out = msg::Status{msg::Status::Code::Unrecognized_Header};
+            return;
+        }
         msg::getNumeric n{};
-        n.value = 0;
-        if (f.length >= 4u)
-            std::memcpy(&n.value, f.payload, 4u);
+        std::memcpy(&n.value, f.payload, 4u);
         out = n;
         return;
     }
 
-    // NIS §11 — событие нажатия на компонент.
+    // NIS §11 — событие нажатия на компонент (page, id, event).
     if (h == msg::evTouch::Header) {
+        if (f.length != 3u) {
+            out = msg::Status{msg::Status::Code::Unrecognized_Header};
+            return;
+        }
         msg::evTouch t{};
-        t.route.page = f.length > 0u ? f.payload[0] : 0u;
-        t.route.comp = f.length > 1u ? f.payload[1] : 0u;
-        t.state = f.length > 2u ? static_cast<TouchState>(f.payload[2]) : TouchState::Release;
+        t.route.page = f.payload[0];
+        t.route.comp = f.payload[1];
+        t.state = static_cast<TouchState>(f.payload[2]);
         out = t;
         return;
     }
 
-    // NIS §12 — событие нажатия на экран.
+    // NIS §12 — событие нажатия на экран (Xhi,Xlo,Yhi,Ylo,event).
     if (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake) || h == static_cast<uint8_t>(msg::evTouchXY::Mode::Sleep)) {
+        if (f.length != 5u) {
+            out = msg::Status{msg::Status::Code::Unrecognized_Header};
+            return;
+        }
         msg::evTouchXY e{};
         e.mode = (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake)) ? msg::evTouchXY::Mode::Awake : msg::evTouchXY::Mode::Sleep;
-        if (f.length >= 5u) {
-            const Coord rx = static_cast<Coord>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
-            const Coord ry = static_cast<Coord>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
-            e.pos.x = rx;
-            e.pos.y = ry;
-            e.state = static_cast<TouchState>(f.payload[4]);
-        } else {
-            e.pos = {};
-            e.state = TouchState::Release;
-        }
+        const Coord rx = static_cast<Coord>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
+        const Coord ry = static_cast<Coord>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
+        e.pos.x = rx;
+        e.pos.y = ry;
+        e.state = static_cast<TouchState>(f.payload[4]);
         out = e;
         return;
     }
 
-    // NIS §13 — событие смены страницы.
+    // NIS §13 — событие смены страницы (1 байт page id).
     if (h == msg::evPage::Header) {
-        out = msg::evPage{.page = static_cast<uint8_t>(f.length > 0u ? f.payload[0] : 0u)};
+        if (f.length != 1u) {
+            out = msg::Status{msg::Status::Code::Unrecognized_Header};
+            return;
+        }
+        out = msg::evPage{.page = f.payload[0]};
         return;
     }
 

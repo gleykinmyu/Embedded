@@ -67,7 +67,7 @@
 / Locale and Namespace Configurations
 /-----------------------------------------------------------------------------*/
 
-#define _CODE_PAGE         850
+#define _CODE_PAGE         20866
 /* This option specifies the OEM code page to be used on the target system.
 /  Incorrect setting of the code page can cause a file open failure.
 /
@@ -93,10 +93,11 @@
 /   936 - Simplified Chinese (DBCS)
 /   949 - Korean (DBCS)
 /   950 - Traditional Chinese (DBCS)
+/ 20866 - KOI8-R (custom; matches Nextion project encoding)
 */
 
-#define _USE_LFN     0    /* 0 to 3 */
-#define _MAX_LFN     255  /* Maximum LFN length to handle (12 to 255) */
+#define _USE_LFN     1    /* 0 to 3 */
+#define _MAX_LFN     31   /* Maximum LFN length to handle (12 to 255) */
 /* The _USE_LFN switches the support of long file name (LFN).
 /
 /   0: Disable support of LFN. _MAX_LFN has no effect.

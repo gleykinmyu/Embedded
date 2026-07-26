@@ -37,6 +37,17 @@ inline void assignText(const Component& parent, attr::Id id, const char* text) n
         parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
+/** MCU: `append` строкового атрибута без зеркала (NIS `+=`, только исходящая команда). */
+inline void appendText(const Component& parent, attr::Id id, const char* text) noexcept
+{
+    if (text == nullptr || *text == '\0')
+        return;
+    const AttrRef target{parent.name, attr::literal(id)};
+    parent.page.app.enqueue(Transaction{
+        cmd::assign::Text(target, text, cmd::assign::Text::Op::Append),
+        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+}
+
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
 inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString& response) noexcept {
     if (buf_cap == 0u)
@@ -87,6 +98,7 @@ protected:
     const Component& _parent;
 
     void pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept;
+    void pushCmdAssignTextGlobal(const char* text, cmd::assign::Text::Op op) const noexcept;
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
@@ -121,6 +133,15 @@ public:
         const cmd::assign::Numeric cmd(target, wire::toWire(v));
         enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
         return *this;
+    }
+
+    /** Как `operator=`, но кадр `pageName.comp.attr=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const T& v) noexcept {
+        _val = v;
+        const AttrRef target{ _parent.name, name() };
+        const cmd::assign::Numeric inner(target, wire::toWire(v));
+        enqueueTransaction(cmd::Global(_parent.page.name, inner), Transaction::Kind::Command,
+            msg::kAwaitingNone);
     }
 
     void get() noexcept {
@@ -190,6 +211,9 @@ public:
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
     [[nodiscard]] char* operator*() noexcept { return buf; }
 
+    [[nodiscard]] operator const char*() const noexcept { return buf; }
+
+
     void set(const char* text) noexcept {
         if (text == nullptr) {
             buf[0] = '\0';
@@ -199,6 +223,18 @@ public:
         std::strncpy(buf, text, static_cast<std::size_t>(MaxL));
         buf[MaxL - 1u] = '\0';
         pushCmdAssignText(buf, cmd::assign::Text::Op::Assign);
+    }
+
+    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const char* text) noexcept {
+        if (text == nullptr) {
+            buf[0] = '\0';
+            pushCmdAssignTextGlobal("", cmd::assign::Text::Op::Assign);
+            return;
+        }
+        std::strncpy(buf, text, static_cast<std::size_t>(MaxL));
+        buf[MaxL - 1u] = '\0';
+        pushCmdAssignTextGlobal(buf, cmd::assign::Text::Op::Assign);
     }
 
     void clear() noexcept { set(""); }
@@ -245,6 +281,8 @@ public:
 
     [[nodiscard]] const char* operator*() const noexcept { return buf; }
 
+    [[nodiscard]] operator const char*() const noexcept { return buf; }
+
     void applyResponse(const msg::getString& response) noexcept {
         attr_detail::copy_string_mirror(buf, MaxL, response);
     }
@@ -273,6 +311,12 @@ public:
     void set(const char* text) const noexcept {
         const char* const p = text != nullptr ? text : "";
         pushCmdAssignText(p, cmd::assign::Text::Op::Assign);
+    }
+
+    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
+    void setGlobal(const char* text) const noexcept {
+        const char* const p = text != nullptr ? text : "";
+        pushCmdAssignTextGlobal(p, cmd::assign::Text::Op::Assign);
     }
 
     void clear() const noexcept { set(""); }

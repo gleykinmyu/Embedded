@@ -13,7 +13,13 @@
 /** Повторы re-TX head при `Gateway::StreamRxError` (после исходной отправки). */
 static constexpr uint8_t kMaxRxFaultRetries = 2u;
 
+/** Макс. вложенность `Application::update()`. */
+static constexpr uint8_t kMaxUpdateDepth = 2u;
+
 namespace nex {
+
+class IPage;
+
 /** clock + session timeout. */
 struct AppTiming {
     using ClockMsFn = uint32_t (*)() noexcept;
@@ -65,6 +71,8 @@ public:
     /** Команды shell экрана (`rest`, `page`, `sendme`, `ref_*`) — без реестра `IAppUI`. */
     void restartScreen() noexcept;
     void switchPage(uint8_t pageId) noexcept;
+    void switchPage(const Literal& pageName) noexcept;
+    void switchPage(IPage& page) noexcept;
     void requestCurrentPage() noexcept;
     void refreshPage() noexcept;
 
@@ -77,6 +85,9 @@ public:
     void setAddress(uint16_t address) noexcept;
     void setBrightness(uint8_t level) noexcept;
     void setBrightnessDefault(uint8_t level) noexcept;
+
+    /** Числовое присваивание глобальной переменной NIS (`keybdA.loadpageid.val`, …). */
+    void setGlobalVar(const Literal& path, int32_t value) noexcept;
 
     /** Фасады NIS и MCU-виджеты; дружественные поля, не наследуют `Application`. */
     AppCanvas cs;
@@ -113,7 +124,7 @@ private:
 
     void abortSessionFault() noexcept;
     void processTransportFault(uint32_t now_ms) noexcept;
-    
+
     ScreenLayout _screen{};
 
     BIF::IByteStream& _stream;
@@ -124,6 +135,8 @@ private:
     Route _lastErrorRoute{};
     uint8_t _rxFaultRetries = 0u;
     uint8_t _currentPage = 0xFFu;
+    /** >0 внутри update(); лимит — `kMaxUpdateDepth`. */
+    uint8_t _updateDepth = 0u;
 
     ClockMsFn _clockMsFn;
     uint32_t _timeoutMs = AppTiming::kDefaultTimeoutMs;

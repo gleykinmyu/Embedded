@@ -8,7 +8,11 @@
 #include "Debug.h"
 #include <stm32f4xx_hal_sd.h>
 
-#define SDIO_DETAIL_ERRORMSG(m) errorMSG(m)
+#if defined(SD_DEBUG)
+#  define SDIO_DETAIL_ERRORMSG(m) errorMSG(m)
+#else
+#  define SDIO_DETAIL_ERRORMSG(m) ((void)0)
+#endif
 
 namespace SDIO {
 
@@ -49,18 +53,26 @@ public:
         hsd.Init.ClockPowerSave      = SDIO_CLOCK_POWER_SAVE_DISABLE;
         hsd.Init.BusWide             = SDIO_BUS_WIDE_1B;
         hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-        hsd.Init.ClockDiv            = 0;
+        /* Transfer: SDIO_CK = 48 MHz / (0+2) = 24 MHz. Init ≤400 kHz — внутри HAL_SD_Init. */
+        hsd.Init.ClockDiv            = 0u;
     }
 
     CHW_Status Init()
     {
         CHW_Status sd_state = HAL_OK;
+        SD_DBG("SDIO Init...\n");
         if (!IsDetected()) {
             SDIO_DETAIL_ERRORMSG("SD isn't present in slot.");
             return HAL_ERROR;
         }
         this->EnableClock();
         this->init_sdio_gpios();
+        /* Повторный init после ошибки: сначала DeInit. */
+        if (hsd.State != HAL_SD_STATE_RESET) {
+            SD_DBG("SDIO re-init: DeInit first (state=%lu)\n",
+                static_cast<unsigned long>(hsd.State));
+            (void)HAL_SD_DeInit(&hsd);
+        }
         sd_state = HAL_SD_Init(&hsd);
         if (sd_state != HAL_OK)
             SDIO_DETAIL_ERRORMSG("Error HAL_SD_Init.");
@@ -68,10 +80,20 @@ public:
         if (sd_state == HAL_OK) {
             if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK) {
                 SDIO_DETAIL_ERRORMSG("Error config bus wide 4B.");
+                (void)HAL_SD_DeInit(&hsd);
                 sd_state = HAL_ERROR;
             }
         }
+        SD_DBG("SDIO Init -> %s\n", sd_state == HAL_OK ? "OK" : "FAIL");
         return sd_state;
+    }
+
+    CHW_Status DeInit()
+    {
+        const CHW_Status st = HAL_SD_DeInit(&hsd);
+        if (st != HAL_OK)
+            SDIO_DETAIL_ERRORMSG("Error HAL_SD_DeInit.");
+        return st;
     }
 
     CHW_Status ConfigWideBus(uint32_t flag) { return HAL_SD_ConfigWideBusOperation(&hsd, flag); }

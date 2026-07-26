@@ -11,6 +11,7 @@
 #elif _CODE_PAGE == 950	/* Traditional Chinese Big5 */
 #include "cc950.c"
 #else					/* Single Byte Character-Set */
+#define FF_INCLUDE_CCSBCS 1
 #include "ccsbcs.c"
 #endif
 

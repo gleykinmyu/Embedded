@@ -34,4 +34,11 @@ extern void DBG_printlnMsg(const char* MSG);
 
 #endif
 
+/** SD / FatFs (`-DSD_DEBUG` в build_flags). */
+#if defined(SD_DEBUG)
+#  define SD_DBG(...) printf(__VA_ARGS__)
+#else
+#  define SD_DBG(...) ((void)0)
+#endif
+
 #endif

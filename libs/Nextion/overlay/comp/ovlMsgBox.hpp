@@ -46,6 +46,21 @@ struct MsgBoxButtonStyles {
     ButtonStyle highlighted;
 };
 
+/** Цветовая схема MsgBox. */
+struct MsgBoxColors {
+    Color frameBg;
+    Color frameBorder;
+    Color title;
+    Color body;
+    Color errorTitle;
+    Color btnNormalBg;
+    Color btnNormalBorder;
+    Color btnNormalText;
+    Color btnPressedBg;
+    Color btnHighlightBg;
+    Color btnHighlightBorder;
+};
+
 inline constexpr MsgBoxButtonLayout kMsgBoxBtn{
     56u,
     10u,
@@ -93,6 +108,20 @@ inline constexpr MsgBoxButtonStyles kMsgBoxBtnStyles{
     },
 };
 
+inline constexpr MsgBoxColors kMsgBoxColors{
+    kMsgBoxFrame.bg,
+    kMsgBoxFrame.border.color,
+    kMsgBoxFrame.font.color,
+    kMsgBoxFrame.font.color,
+    Color::std::Yellow,
+    kMsgBoxBtnStyles.normal.normal.bg,
+    kMsgBoxBtnStyles.normal.normal.border.color,
+    kMsgBoxBtnStyles.normal.normal.font.color,
+    kMsgBoxBtnStyles.normal.pressed.bg,
+    kMsgBoxBtnStyles.highlighted.normal.bg,
+    kMsgBoxBtnStyles.highlighted.normal.border.color,
+};
+
 } // namespace ovl
 } // namespace nex
 
@@ -112,6 +141,7 @@ public:
     using ButtonLabels = MsgBoxButtonLabels;
     using TitleLabels = MsgBoxTitleLabels;
     using ButtonStyles = MsgBoxButtonStyles;
+    using Colors = MsgBoxColors;
 
     static constexpr uint16_t kTextCap = 80u;
     static constexpr uint16_t kTitleCap = 32u;
@@ -129,7 +159,7 @@ public:
     [[nodiscard]] static const char* actionCstr(Action action) noexcept;
     [[nodiscard]] static const char* presetCstr(Preset preset) noexcept;
 
-    explicit MsgBox(OvlApp& app) noexcept;
+    explicit MsgBox(OvlApp& app, const MsgBoxColors& colors = kMsgBoxColors) noexcept;
 
     /** Title `"Message"`, `Preset::OK`, `tag` 0. */
     void show(const char* fmt, ...) noexcept;
@@ -142,6 +172,8 @@ public:
 
     void showError(Preset preset = Preset::OK, uint8_t tag = msg::evMsgBox::kTagError) noexcept;
     void showError(Preset preset, Action defaultAction, uint8_t tag = msg::evMsgBox::kTagError) noexcept;
+
+    [[nodiscard]] const MsgBoxColors& colors() const noexcept { return _colors; }
 
     void setRoute(Route route) noexcept;
 
@@ -158,6 +190,10 @@ private:
         va_list ap) noexcept;
     void present() noexcept;
 
+    [[nodiscard]] MsgBoxFrameStyle resolvedFrame() const noexcept;
+    [[nodiscard]] MsgBoxButtonStyles resolvedButtonStyles() const noexcept;
+    [[nodiscard]] Color resolvedTitleColor() const noexcept;
+
     void fit(const Rect& screen) noexcept;
     [[nodiscard]] bool hasScreen() const noexcept { return _screenSize.w != 0u && _screenSize.h != 0u; }
 
@@ -169,6 +205,8 @@ private:
     Preset _preset = Preset::OK;
     Action _defaultAction = Action::Ok;
     bool _routePinned = false;
+
+    MsgBoxColors _colors;
 
     char _title[kTitleCap]{};
     char _text[kTextCap]{};

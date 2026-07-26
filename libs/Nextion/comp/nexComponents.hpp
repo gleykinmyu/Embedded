@@ -365,6 +365,11 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
+    void onResponse(const msg::getNumeric& response, uint8_t tag) override
+    {
+        TouchArea::onResponse(response, tag);
+    }
+
     Text(IPage& owner, const Literal& name, uint8_t id = 0)
         : Textual<S>(owner, name, Component::Type::Text, id)
         , txt{*this, attr::Id::Txt}

@@ -52,6 +52,12 @@ const Transaction* TransactionQueue::peek() const noexcept {
     return &slots_[head_].data;
 }
 
+const Transaction* TransactionQueue::at(std::size_t index) const noexcept {
+    if (index >= count_)
+        return nullptr;
+    return &slots_[(head_ + index) % kCapacity].data;
+}
+
 void TransactionQueue::pop() noexcept {
     if (isEmpty())
         return;
@@ -135,11 +141,16 @@ Session::Status queueToSession(detail::TransactionQueue::Status st) noexcept {
 
 bool Session::tryEnqueue(Transaction tx) noexcept {
     if (_queue.push(tx)) {
-        if (_status != Status::Active)
+        if (!_txActive)
             _status = Status::Idle;
         return true;
     }
-    _status = queueToSession(_queue.getStatus());
+    const Status fail = queueToSession(_queue.getStatus());
+    /* Full не пишем здесь — noteQueueFull() после stall в Application. */
+    if (fail == Status::QueueFull)
+        return false;
+    if (!_txActive)
+        _status = fail;
     return false;
 }
 
@@ -156,6 +167,7 @@ bool Session::begin(Gateway& gateway) noexcept {
     }
 
     clearTimeout();
+    _txActive = true;
     _status = Status::Active;
     return true;
 }
@@ -173,6 +185,7 @@ bool Session::transmit(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms) n
 
 void Session::end(bool success) noexcept {
     clearTimeout();
+    _txActive = false;
     _queue.pop();
     if (success)
         clearError();
@@ -216,6 +229,7 @@ bool Session::retryActive(Gateway& gateway, BkCmd bkcmd) noexcept {
     }
 
     clearTimeout();
+    _txActive = true;
     _status = Status::Active;
     return true;
 }
@@ -262,6 +276,7 @@ void Session::clearTimeout() noexcept {
 
 void Session::resetActive() noexcept {
     clearTimeout();
+    _txActive = false;
     if (_status == Status::Active)
         _status = Status::Idle;
 }

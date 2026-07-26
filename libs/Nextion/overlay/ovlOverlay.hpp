@@ -9,7 +9,7 @@ class Application;
 
 namespace ovl {
 
-/** McUI-слой: стек `Widget` (могут перекрываться), `sendxy` / `touch.setAllTouchable`, блок `evTouch` при modal. */
+/** McUI-слой: стек `Widget` (могут перекрываться), `sendxy` / `tsw`, блок `evTouch` при modal. */
 class Overlay {
 public:
     explicit Overlay(Application& app) noexcept;

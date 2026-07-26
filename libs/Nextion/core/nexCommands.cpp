@@ -65,6 +65,13 @@ bool Command::printQuotedString(TxFrame& tx, const char* text) const noexcept {
         return pushBytes(tx, &dq, 1u);
     for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != 0u; ++p) {
         const unsigned char c = *p;
+        /* 0xFF — физический терминатор кадра; сырой байт рвёт инструкцию. */
+        if (c == Physical::TERM_BYTE) {
+            const uint8_t repl = static_cast<uint8_t>('?');
+            if (!pushBytes(tx, &repl, 1u))
+                return false;
+            continue;
+        }
         if (c == static_cast<unsigned char>('"')) {
             static const char esc[] = "\\\"";
             if (!pushBytes(tx, esc, 2u))
@@ -183,16 +190,16 @@ void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
 }
 
 void printRxLine(const RxFrame& wire, const Message& parsed) noexcept {
-    NEX_DBG_TRACE_RX("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
+    NEX_DBG_TRACE_RX_WIRE("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
         static_cast<unsigned>(wire.length));
     if (wire.length > 0u) {
-        NEX_DBG_TRACE_RX(" [");
+        NEX_DBG_TRACE_RX_WIRE(" [");
         for (uint16_t i = 0u; i < wire.length; ++i)
-            NEX_DBG_TRACE_RX("%s0x%02X", (i != 0u) ? " " : "",
+            NEX_DBG_TRACE_RX_WIRE("%s0x%02X", (i != 0u) ? " " : "",
                 static_cast<unsigned>(wire.payload[i]));
-        NEX_DBG_TRACE_RX("]\n");
+        NEX_DBG_TRACE_RX_WIRE("]\n");
     } else {
-        NEX_DBG_TRACE_RX("\n");
+        NEX_DBG_TRACE_RX_WIRE("\n");
     }
 
     std::visit([](auto&& m) {
@@ -297,6 +304,10 @@ bool Page::serialize(TxFrame& tx) const noexcept {
         if (!NEX_CMD_PRINT_LIT(tx, "page") || !printSpace(tx))
             return false;
         return printUint32(tx, _pageId);
+    case Kind::SwitchByName:
+        if (!NEX_CMD_PRINT_LIT(tx, "page") || !printSpace(tx))
+            return false;
+        return _pageName != nullptr && printLiteral(tx, *_pageName);
     case Kind::Refresh:
         if (!NEX_CMD_PRINT_LIT(tx, "ref") || !printSpace(tx))
             return false;
@@ -304,6 +315,54 @@ bool Page::serialize(TxFrame& tx) const noexcept {
     default:
         return fail(Status::UnknownKind);
     }
+}
+
+Global::Global(const Literal& pageName, const Command& inner) noexcept
+    : _pageName(pageName)
+{
+    if (!inner.emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
+        _status = inner.getStatus();
+        if (_status == Status::OK)
+            _status = Status::SlotTooSmall;
+        return;
+    }
+    _inner = reinterpret_cast<Command*>(_storage);
+}
+
+Global::Global(const Global& other) noexcept
+    : _pageName(other._pageName)
+{
+    if (other._inner == nullptr) {
+        _status = (other._status != Status::OK) ? other._status : Status::NullPointer;
+        return;
+    }
+    if (!other._inner->emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
+        _status = other._inner->getStatus();
+        if (_status == Status::OK)
+            _status = Status::SlotTooSmall;
+        return;
+    }
+    _inner = reinterpret_cast<Command*>(_storage);
+}
+
+Global::~Global() {
+    if (_inner != nullptr) {
+        _inner->destroyIn(_storage);
+        _inner = nullptr;
+    }
+}
+
+bool Global::serialize(TxFrame& tx) const noexcept {
+    _status = Status::OK;
+    if (_inner == nullptr)
+        return fail(Status::NullPointer);
+    if (!printLiteral(tx, _pageName) || !printDot(tx))
+        return false;
+    if (!_inner->serialize(tx)) {
+        _status = _inner->getStatus();
+        return false;
+    }
+    return true;
 }
 
 bool Get::serialize(TxFrame& tx) const noexcept {

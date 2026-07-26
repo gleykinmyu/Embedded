@@ -64,7 +64,7 @@ python lib/Nextion/syncHMI/hmi2config.py --update `
 1. **`summary`** — модель панели, число страниц.
 2. **`pages`** — для каждой страницы:
    - `#define HMI_PAGE_<objname>(X)` — единый список компонентов;
-   - `struct Page_<objname>` с `kPageId`, `enum class Id`, `kNames[]`.
+   - `struct Page_<objname>` с `kPageId`, `enum Id : uint8_t`, `kNames[]`.
 
 Пример:
 
@@ -78,7 +78,7 @@ python lib/Nextion/syncHMI/hmi2config.py --update `
 struct Page_pgWork {
     static constexpr uint8_t kPageId = 5u;
 
-    enum class Id : uint8_t {
+    enum Id : uint8_t {
         HMI_PAGE_pgWork(HMI_ENUM_ITEM)   // pgWork = 0, tc = 1, b0 = 2, ...
     };
 
@@ -115,7 +115,7 @@ using namespace nex::hmi;
 const char* obj = name<Page_pgWork>(e.route.comp);
 
 // через enum
-const char* obj2 = name<Page_pgWork>(Page_pgWork::Id::b0);
+const char* obj2 = name<Page_pgWork>(Page_pgWork::b0);
 ```
 
 ### Виджеты на `nex::Page<>`

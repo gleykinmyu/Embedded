@@ -10,6 +10,45 @@
 #include "core/irq.hpp"
 
 namespace PHL {
+
+namespace detail {
+
+/**
+ * Частота шины периферии (PCLK1/PCLK2) по PHL::ID — F4:
+ * APB2: USART1/6, SPI1, SDIO; остальное из списка — APB1 (в т.ч. CAN, I2C).
+ */
+template <ID Id>
+inline uint32_t input_clock_hz() noexcept
+{
+    constexpr uintptr_t base = static_cast<uintptr_t>(Id);
+    constexpr Type type = GetType<Id>::value;
+
+    if constexpr (type == Type::UART) {
+#ifdef USART1_BASE
+        if (base == USART1_BASE)
+            return HAL_RCC_GetPCLK2Freq();
+#endif
+#ifdef USART6_BASE
+        if (base == USART6_BASE)
+            return HAL_RCC_GetPCLK2Freq();
+#endif
+        return HAL_RCC_GetPCLK1Freq();
+    } else if constexpr (type == Type::SPI) {
+#ifdef SPI1_BASE
+        if (base == SPI1_BASE)
+            return HAL_RCC_GetPCLK2Freq();
+#endif
+        return HAL_RCC_GetPCLK1Freq();
+    } else if constexpr (type == Type::SDIO) {
+        return HAL_RCC_GetPCLK2Freq();
+    } else {
+        // CAN, I2C, …
+        return HAL_RCC_GetPCLK1Freq();
+    }
+}
+
+} // namespace detail
+
     template <ID _id>
     class IBase;
 
@@ -24,6 +63,7 @@ namespace PHL {
         static inline constexpr ::PHL::IRQ::Vector<ID::NAME, ORIG##_IRQn> IRQ{}; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 
 #define M_IBASE_UART(NAME, T_, A_, ORIG)  M_IBASE_SINGLE_IRQ(NAME, UART, A_, ORIG)
@@ -44,6 +84,7 @@ namespace PHL {
         }; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 
 #define M_IBASE_CAN(NAME, T_, A_, ORIG) \
@@ -62,6 +103,7 @@ namespace PHL {
         }; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 
 #define M_IBASE_DISPATCH(NAME, T_, A_, ORIG) M_IBASE_##T_(NAME, T_, A_, ORIG)

@@ -22,8 +22,9 @@ void Overlay::showWidget(Widget& widget, const bool modal) noexcept {
     widget.layout();
     widget.setVisible(true);
     _root.addChildTop(widget);
-    widget.draw(app.cs);
+    /* tsw/sendxy до draw: иначе панель перерисует компоненты поверх canvas. */
     updateInputState();
+    widget.draw(app.cs);
 }
 
 void Overlay::hideWidget(Widget& widget) noexcept {
@@ -51,6 +52,9 @@ void Overlay::updateInputState() noexcept {
 
     if (_modalWidget != nullptr && !_touchOff) {
         _touchOff = true;
+        // `rest` / смена страницы могла сбросить sendxy на панели, пока _sendXY в MCU ещё true.
+        _sendXY = true;
+        app.touch.sendXY(true);
         app.touch.setAllTouchable(false);
     } else if (_modalWidget == nullptr && _touchOff) {
         _touchOff = false;

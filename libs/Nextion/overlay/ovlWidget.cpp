@@ -75,6 +75,8 @@ void Widget::drawBackgroundRegion(const AppCanvas& cs, const Region clip) const 
 }
 
 void Widget::redrawObject(const Object& obj, const AppCanvas& cs) const noexcept {
+    if (!obj.isVisible())
+        return;
     drawBackgroundRegion(cs, obj.screenRegion());
     obj.draw(cs);
 }
@@ -139,6 +141,7 @@ bool Widget::onTouchXY(const msg::evTouchXY& e) noexcept {
             if (target->screenRegion().contains(e.pos))
                 onClick(target);
             _pressedChild = nullptr;
+            _redrawTarget = nullptr;
         }
         return consumed;
     }

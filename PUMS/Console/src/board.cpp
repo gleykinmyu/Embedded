@@ -1,7 +1,39 @@
 #include "board.hpp"
+
 #include <errno.h>
 
+#include "ff.h"
+
 CBoard board;
+
+extern "C" DWORD get_fattime(void)
+{
+    return board.rtc.fatTime();
+}
+
+
+void CBoard::tick() noexcept
+{
+    watchdog.kick();
+
+    if (!_ledAlive) {
+        return;
+    }
+
+    const uint32_t now = GetTick();
+    if ((now - _ledBlinkMs) >= 1000u) {
+        _ledBlinkMs = now;
+        led.Toggle();
+    }
+}
+
+void CBoard::setLedAlive(bool alive) noexcept
+{
+    _ledAlive = alive;
+    if (!alive) {
+        led.Off();
+    }
+}
 
 uint32_t boardClockMs() noexcept
 {
@@ -62,6 +94,7 @@ extern "C" int _write(int file, char *ptr, int len) {
         }
 
         while (serial1TxHealthy() && board.serial1.availableForWrite() == 0) {
+            /* Пустое ожидание: без kick IWDG и без LED (printf не должен «оживлять» плату). */
         }
     }
 
