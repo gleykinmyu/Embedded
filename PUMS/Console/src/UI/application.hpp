@@ -19,6 +19,8 @@ namespace server {
 /** HMI UI: страницы приложения + служебные клавиатуры keybdA/keybdB. */
 class Application : public nex::AppUI<nex::hmi::kPageCount> {
 public:
+    using AppUI = nex::AppUI<nex::hmi::kPageCount>;
+
     explicit Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTiming timing) noexcept;
 
     /** Показать overlay UI (статус-бар и т.п.). */

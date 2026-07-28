@@ -10,7 +10,7 @@
 namespace server {
 
 Application::Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTiming timing) noexcept
-    : nex::AppUI<nex::hmi::kPageCount>(stream, screen, timing)
+    : AppUI(stream, screen, timing)
     , statusBar(screen)
     , wait(*this)
     , work(*this)
@@ -37,7 +37,9 @@ void Application::onPageChange(const nex::msg::evPage& e) noexcept
         settings.noteReturnFromKeybd();
     }
 
-    nex::AppUI<nex::hmi::kPageCount>::onPageChange(e);
+    AppUI::onPageChange(e);
+    _statusBarTickMs = nowMs();
+    refreshStatusBar();
 }
 
 void Application::applyTelemetryUi() noexcept
@@ -59,7 +61,7 @@ void Application::applyTelemetryUi() noexcept
 
 void Application::update() noexcept
 {
-    nex::AppUI<nex::hmi::kPageCount>::update();
+    AppUI::update();
     memstat::trackFreeMin();
 
     const uint32_t now = nowMs();

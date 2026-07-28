@@ -203,29 +203,29 @@ struct Page_browser {
 
 #define HMI_PAGE_settings(X, ...) \
     X(settings, 0, ##__VA_ARGS__) \
-    X(title, 1, ##__VA_ARGS__) \
-    X(mBack, 2, ##__VA_ARGS__) \
-    X(t0, 3, ##__VA_ARGS__) \
-    X(t6, 4, ##__VA_ARGS__) \
-    X(bAction, 5, ##__VA_ARGS__) \
-    X(bCancel, 6, ##__VA_ARGS__) \
-    X(swGr0, 7, ##__VA_ARGS__) \
-    X(t1, 8, ##__VA_ARGS__) \
-    X(nThour, 9, ##__VA_ARGS__) \
-    X(nTmin, 10, ##__VA_ARGS__) \
-    X(t2, 11, ##__VA_ARGS__) \
-    X(t3, 12, ##__VA_ARGS__) \
-    X(t4, 13, ##__VA_ARGS__) \
-    X(nTsec, 14, ##__VA_ARGS__) \
-    X(nDday, 15, ##__VA_ARGS__) \
-    X(nDmon, 16, ##__VA_ARGS__) \
-    X(t5, 17, ##__VA_ARGS__) \
-    X(t7, 18, ##__VA_ARGS__) \
-    X(nDyear, 19, ##__VA_ARGS__) \
-    X(t8, 20, ##__VA_ARGS__) \
-    X(t9, 21, ##__VA_ARGS__) \
-    X(t10, 22, ##__VA_ARGS__) \
-    X(t11, 23, ##__VA_ARGS__)
+    X(t5, 1, ##__VA_ARGS__) \
+    X(t3, 2, ##__VA_ARGS__) \
+    X(t2, 3, ##__VA_ARGS__) \
+    X(t0, 4, ##__VA_ARGS__) \
+    X(title, 5, ##__VA_ARGS__) \
+    X(mBack, 6, ##__VA_ARGS__) \
+    X(t6, 7, ##__VA_ARGS__) \
+    X(bAction, 8, ##__VA_ARGS__) \
+    X(bCancel, 9, ##__VA_ARGS__) \
+    X(swGr0, 10, ##__VA_ARGS__) \
+    X(t1, 11, ##__VA_ARGS__) \
+    X(t4, 12, ##__VA_ARGS__) \
+    X(t7, 13, ##__VA_ARGS__) \
+    X(nThour, 14, ##__VA_ARGS__) \
+    X(nTmin, 15, ##__VA_ARGS__) \
+    X(nTsec, 16, ##__VA_ARGS__) \
+    X(t10, 17, ##__VA_ARGS__) \
+    X(t11, 18, ##__VA_ARGS__) \
+    X(nDday, 19, ##__VA_ARGS__) \
+    X(nDmon, 20, ##__VA_ARGS__) \
+    X(nDyear, 21, ##__VA_ARGS__) \
+    X(t8, 22, ##__VA_ARGS__) \
+    X(t9, 23, ##__VA_ARGS__)
 
 /** Page "settings" (panel page id 5). */
 struct Page_settings {

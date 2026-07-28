@@ -46,6 +46,24 @@ python lib/Nextion/syncHMI/hmi2config.py --update `
   -o src/nexHmiConfig.hpp
 ```
 
+## PlatformIO script
+
+`pio_hmi_gen.py` подключается из `Nextion/library.json` (`build.extraScript`, путь относительно корня Nextion) и вызывает `hmi2config.py --update`.
+
+В проекте достаточно опций (по умолчанию генерация выключена):
+
+```ini
+custom_hmi_gen  = onchange   ; off | onchange | always  (или 0 | 1 | 2)
+custom_hmi_file = src/MyPanel.HMI
+; custom_hmi_out = src/UI/nexHmiConfig.hpp
+```
+
+| `custom_hmi_gen` | Поведение |
+|------------------|-----------|
+| `off` / `0` | пропуск |
+| `onchange` / `1` | если `.HMI` новее выхода (или файла нет) |
+| `always` / `2` | каждый `pio run` |
+
 ## Аргументы `hmi2config.py`
 
 | Флаг | Описание |

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "build": {
     "libArchive": false,
+    "extraScript": "syncHMI/pio_hmi_gen.py",
     "srcFilter": "+<app/*.cpp> +<comp/*.cpp> +<core/*.cpp> +<smartApp/*.cpp> +<overlay/*.cpp> +<overlay/comp/*.cpp>"
   }
 }

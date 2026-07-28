@@ -482,7 +482,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8", newline="\n") as f:
             f.write(text)
-        print(f"Wrote {output_path} ({len(pages)} page(s), source {hmi_path.name})")
+        print(
+            f"Wrote {output_path} ({len(pages)} page(s), source {hmi_path.name})",
+            file=sys.stderr,
+        )
 
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
