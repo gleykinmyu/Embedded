@@ -1,27 +1,24 @@
 /**
  * @file drive_mech.cpp
- * @brief DriveMech: локальный select/deselect для MServer.
  */
 
 #include "model/drive_mech.hpp"
 
 uint8_t DriveMech::s_selectedCount = 0u;
 
-DriveMech::DriveMech() noexcept : IMech(0), _type(Type::Rope)
+DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
+    : IMech(id)
+    , _type(type)
 {
-    _status.set(Status::Ready);
-}
-
-DriveMech::DriveMech(uint8_t id, Type type) noexcept : IMech(id), _type(type)
-{
+    smcp::detail::registerMech(owner, *this);
     _status.set(Status::Ready);
 }
 
 bool DriveMech::select(uint8_t console_id) noexcept
 {
-    if (console_id == smcp::kSelectOwnerNone) {
+    if (console_id == smcp::kHolderNone) {
         if (isSelected()) {
-            _select_owner_id = smcp::kSelectOwnerNone;
+            _holder = smcp::kHolderNone;
             _status.clear(Status::Selected);
             if (s_selectedCount > 0u) {
                 --s_selectedCount;
@@ -42,7 +39,7 @@ bool DriveMech::select(uint8_t console_id) noexcept
         return false;
     }
 
-    _select_owner_id = console_id;
+    _holder = console_id;
     _status.set(Status::Selected);
     ++s_selectedCount;
     return true;
@@ -52,7 +49,7 @@ bool DriveMech::block(bool blocked) noexcept
 {
     if (blocked) {
         if (isSelected()) {
-            (void)select(smcp::kSelectOwnerNone);
+            (void)select(smcp::kHolderNone);
         }
         _status.set(Status::Blocked);
     } else {

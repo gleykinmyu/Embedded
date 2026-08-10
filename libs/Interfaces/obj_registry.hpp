@@ -38,15 +38,9 @@ protected:
 
     Id _registered = Id{};
 
-    virtual size_t capacity() const noexcept = 0;
-    virtual Id firstId() const noexcept = 0;
     virtual T*& slotAt(Id id) noexcept = 0;
 
     T* slotAt(Id id) const { return const_cast<ObjRegistry*>(this)->slotAt(id); }
-
-    [[nodiscard]] Id endId() const noexcept {
-        return static_cast<Id>(static_cast<size_t>(firstId()) + capacity());
-    }
 
     [[nodiscard]] bool idInRange(Id id) const noexcept {
         if (id < firstId())
@@ -72,6 +66,13 @@ protected:
     }
 
 public:
+    [[nodiscard]] virtual size_t capacity() const noexcept = 0;
+    [[nodiscard]] virtual Id firstId() const noexcept = 0;
+
+    [[nodiscard]] Id endId() const noexcept {
+        return static_cast<Id>(static_cast<size_t>(firstId()) + capacity());
+    }
+
     [[nodiscard]] Id registeredCount() const noexcept { return _registered; }
 
     /**
@@ -223,14 +224,11 @@ class ObjStorage : public ObjRegistry<T, Id> {
 public:
     ObjStorage() = default;
 
-protected:
-    size_t capacity() const noexcept override { return Capacity; }
-    Id firstId() const noexcept override { return FirstId; }
-    T*& slotAt(Id id) noexcept override { return _slots[this->slotIndex(id)]; }
+    [[nodiscard]] size_t capacity() const noexcept override { return Capacity; }
+    [[nodiscard]] Id firstId() const noexcept override { return FirstId; }
 
-public:
-    static constexpr size_t staticCapacity() noexcept { return Capacity; }
-    static constexpr Id staticFirstId() noexcept { return FirstId; }
+protected:
+    T*& slotAt(Id id) noexcept override { return _slots[this->slotIndex(id)]; }
 };
 
 inline const char* cstr(RegStatus v) noexcept {

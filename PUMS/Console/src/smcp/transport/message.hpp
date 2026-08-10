@@ -2,9 +2,11 @@
  * @file message.hpp
  * @brief Транспорт SMCP по CAN: extended ID + data[0..7], MSG_ID и payload.
  *
+ * Правила обмена MVP: PROTOCOL.md
+ *
  * CAN ID (29 bit): prio[28:24] | dst[23:16] | src[15:8] | msg_id[7:0]
- * data[0] = pkt_id всегда (ACK и детект пропусков в цепочке);
- * тело сообщения дописывает payload с data[1].
+ * data[]: для request/reply — [pkt_id | payload…]; pkt_id в Packet (сессия), не в body.
+ * Heartbeat / Telemetry — только payload (без pkt_id).
  */
 
 #pragma once
@@ -14,14 +16,16 @@
 #include <variant>
 
 #include "ican.hpp"
-#include "group.hpp"
-#include "mech.hpp"
+#include "smcp/Console/group.hpp"
+#include "smcp/mech.hpp"
 
 namespace smcp {
 namespace msg {
 
 inline constexpr uint8_t kConsoleIdMin = 0x01u;
 inline constexpr uint8_t kConsoleIdMax = 0x0Fu;
+/** Сколько консолей / сессий на сервере (id 0x01…0x0F). */
+inline constexpr std::size_t kMaxConsoles = kConsoleIdMax - kConsoleIdMin + 1u;
 inline constexpr uint8_t kServerIdMin = 0x10u;
 inline constexpr uint8_t kServerIdMax = 0xEFu;
 inline constexpr uint8_t kBroadcastId = 0xFFu;
@@ -35,44 +39,34 @@ inline constexpr unsigned kCanIdDstPos = 16;
 inline constexpr unsigned kCanIdPrioPos = 24;
 
 inline constexpr uint16_t kAckTimeoutControlMs = 100u;
-inline constexpr uint16_t kAckTimeoutConfigMs = 200u;
 inline constexpr uint8_t kAckRetryControl = 3u;
-inline constexpr uint8_t kAckRetryConfig = 2u;
 inline constexpr uint16_t kHeartbeatTimeoutMs = 500u;
 
+/** MVP wire set: Ack/Nack, Heartbeat, Select, SetTarget, Telemetry. */
 enum class MsgId : uint8_t {
-    Ack          = 0x01,
-    Nack         = 0x02,
-    Heartbeat    = 0x03,
-    SysInfo      = 0x04,
-    GetLog       = 0x05,
+    Ack       = 0x01,
+    Nack      = 0x02,
+    Heartbeat = 0x03,
 
-    Select       = 0x10,
-    ResetFault   = 0x12,
+    Select    = 0x10,
+    SetTarget = 0x20,
 
-    SetTarget    = 0x20,
-
-    SetConfig    = 0x36,
-    GetConfig    = 0x37,
-
-    Telemetry    = 0x40,
-
-    CriticalErr  = 0xEE,
+    Telemetry = 0x40,
 };
 
 enum class ErrorCode : uint8_t {
-    Busy   = 0x01,
-    Limits = 0x02,
-    Crc    = 0x03,
-    Safety = 0x05,
+    Ok           = 0x00, /**< Успех (не в Nack; возврат политики acceptSelect). */
+    Busy         = 0x01, /**< Ось уже выделена другой консолью. */
+    Limits       = 0x02, /**< Концевики / пределы хода (SetTarget). */
+    Crc          = 0x03, /**< Ошибка CRC / целостности. */
+    MechNotFound = 0x04, /**< Нет механизма с таким id. */
+    Safety       = 0x05, /**< Blocked / запрет безопасности. */
+    NotReady     = 0x06, /**< Привод не Ready. */
+    SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
 };
 
-/** data[0] всегда pkt_id (монотонный счётчик TX на узле). */
-inline constexpr uint8_t kPktIdOffset = 0u;
-inline constexpr uint8_t kPayloadOffset = 1u;
-
 /**
- * Логический заголовок SMCP на CAN.
+ * Логический заголовок SMCP = только CAN ID (без data).
  * prio — 5 бит (0 = высший приоритет арбитража).
  *
  *   CAN ID (29 bit, IDE=1):
@@ -81,15 +75,12 @@ inline constexpr uint8_t kPayloadOffset = 1u;
  *   | 5 bit | 8 bit  | 8 bit  | 8 bit  |
  *   +-------+--------+--------+--------+
  *   [28:24]  [23:16]  [15:8]   [7:0]
- *
- *   data[0] = pkt_id (всегда).
  */
 struct Header {
     uint8_t prio = 15;
     uint8_t src_id = 0;
     uint8_t dst_id = 0;
     MsgId msg_id = MsgId::Heartbeat;
-    uint8_t pkt_id = 0;
 
     /** Кадр адресован этому узлу (или broadcast). */
     [[nodiscard]] constexpr bool isAddressedTo(uint8_t node_id) const noexcept
@@ -97,19 +88,14 @@ struct Header {
         return dst_id == node_id || dst_id == kBroadcastId;
     }
 
-    /** ID + data[0]=pkt_id (dlc >= 1). */
+    /** Только CAN ID; data пишет body. */
     [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    /** Разбор ID и pkt_id. */
+    /** Разбор ID. */
     [[nodiscard]] bool deserialize(const BIF::CAN::Frame& frame) noexcept;
 };
 
 /**
- * Ack — DLC=1
- *   ID: … | msg=0x01
- *   +--------+
- *   | pkt_id |
- *   +--------+
- *    data[0]
+ * Ack — DLC=1: data[0]=pkt_id (поле Packet, не body).
  */
 struct Ack {
     static constexpr MsgId kId = MsgId::Ack;
@@ -120,11 +106,10 @@ struct Ack {
 
 /**
  * Nack — DLC=2
- *   ID: … | msg=0x02
  *   +--------+------+
  *   | pkt_id | code |
  *   +--------+------+
- *    data[0]  data[1]
+ *    data[0]  data[1]   (pkt_id → Packet)
  */
 struct Nack {
     static constexpr MsgId kId = MsgId::Nack;
@@ -135,12 +120,7 @@ struct Nack {
 };
 
 /**
- * Heartbeat — DLC=1
- *   ID: … | msg=0x03
- *   +--------+
- *   | pkt_id |
- *   +--------+
- *    data[0]
+ * Heartbeat — DLC=0 (только ID).
  */
 struct Heartbeat {
     static constexpr MsgId kId = MsgId::Heartbeat;
@@ -150,53 +130,11 @@ struct Heartbeat {
 };
 
 /**
- * SysInfo — DLC=5
- *   ID: … | msg=0x04
- *   +--------+-----------+--------+---------+
- *   | pkt_id | fw_ver LE | master | checker |
- *   |  u8    |   u16     |  u8    |   u8    |
- *   +--------+-----------+--------+---------+
- *    data[0]  data[1..2]  data[3]  data[4]
- */
-struct SysInfo {
-    static constexpr MsgId kId = MsgId::SysInfo;
-    uint16_t fw_version = 0;
-    uint8_t master_status = 0;
-    uint8_t checker_status = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, SysInfo& out) noexcept;
-};
-
-static_assert(sizeof(SysInfo) == 4u);
-
-/**
- * GetLog — DLC=7
- *   ID: … | msg=0x05
- *   +--------+------------+----------+
- *   | pkt_id | offset LE  | count LE |
- *   |  u8    |   u32      |   u16    |
- *   +--------+------------+----------+
- *    data[0]  data[1..4]   data[5..6]
- */
-struct GetLog {
-    static constexpr MsgId kId = MsgId::GetLog;
-    uint32_t offset = 0;
-    uint16_t count = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, GetLog& out) noexcept;
-};
-
-static_assert(sizeof(Nack) == 1u);
-
-/**
  * Select — DLC=6
- *   ID: … | msg=0x10
  *   +--------+--------+-------------+
  *   | pkt_id | action | mask LE u32 |
  *   +--------+--------+-------------+
- *    data[0]  data[1]  data[2..5]
+ *    data[0]  data[1]  data[2..5]   (pkt_id → Packet)
  *
  * Action::Select / Deselect — дельта по битам маски.
  * Action::Set — полная маска владения этой консоли на сегменте
@@ -219,29 +157,12 @@ struct Select {
 };
 
 /**
- * ResetFault — DLC=2
- *   ID: … | msg=0x12
- *   +--------+---------+
- *   | pkt_id | mech_id |
- *   +--------+---------+
- *    data[0]  data[1]
- */
-struct ResetFault {
-    static constexpr MsgId kId = MsgId::ResetFault;
-    uint8_t mech_id = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, ResetFault& out) noexcept;
-};
-
-/**
  * SetTarget — DLC=8 (accel на шину не кладётся)
- *   ID: … | msg=0x20
  *   +--------+---------+--------------+------------+
  *   | pkt_id | mech_id | target_mm LE | speed LE   |
  *   |  u8    |   u8    |    i32       | u16 mm/s   |
  *   +--------+---------+--------------+------------+
- *    data[0]  data[1]   data[2..5]     data[6..7]
+ *    data[0]  data[1]   data[2..5]     data[6..7]  (pkt_id → Packet)
  */
 struct SetTarget {
     static constexpr MsgId kId = MsgId::SetTarget;
@@ -253,51 +174,18 @@ struct SetTarget {
 };
 
 /**
- * SetConfig — DLC=2
- *   ID: … | msg=0x36
- *   +--------+---------+
- *   | pkt_id | mech_id |
- *   +--------+---------+
- *    data[0]  data[1]
- */
-struct SetConfig {
-    static constexpr MsgId kId = MsgId::SetConfig;
-    uint8_t mech_id = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, SetConfig& out) noexcept;
-};
-
-/**
- * GetConfig — DLC=2
- *   ID: … | msg=0x37
- *   +--------+---------+
- *   | pkt_id | mech_id |
- *   +--------+---------+
- *    data[0]  data[1]
- */
-struct GetConfig {
-    static constexpr MsgId kId = MsgId::GetConfig;
-    uint8_t mech_id = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, GetConfig& out) noexcept;
-};
-
-/**
- * Telemetry — DLC=8
- *   ID: … | msg=0x40
- *   +--------+---------+--------+--------------+--------+
- *   | pkt_id | mech_id | owner  | position LE  | status |
- *   |  u8    |   u8    |  u8    |    i32       |   u8   |
- *   +--------+---------+--------+--------------+--------+
- *    data[0]  data[1]   data[2]  data[3..6]     data[7]
+ * Telemetry — DLC=7 (broadcast, без pkt_id)
+ *   +---------+--------+--------------+--------+
+ *   | mech_id | holder | position LE  | status |
+ *   |   u8    |  u8    |    i32       |   u8   |
+ *   +---------+--------+--------------+--------+
+ *    data[0]   data[1]  data[2..5]     data[6]
  */
 struct Telemetry {
     static constexpr MsgId kId = MsgId::Telemetry;
 
     uint8_t mech_id = 0;
-    uint8_t select_owner_id = kSelectOwnerNone;
+    uint8_t holder_id = kHolderNone;
     int32_t position_mm = 0;
     REG::BitMask<IMech::Status> status{};
 
@@ -305,42 +193,25 @@ struct Telemetry {
     [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, Telemetry& out) noexcept;
 };
 
-/**
- * CriticalErr — DLC=3
- *   ID: … | msg=0xEE
- *   +--------+------+--------+
- *   | pkt_id | code | detail |
- *   +--------+------+--------+
- *    data[0]  data[1] data[2]
- */
-struct CriticalErr {
-    static constexpr MsgId kId = MsgId::CriticalErr;
-    ErrorCode code = ErrorCode::Safety;
-    uint8_t detail = 0;
-
-    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
-    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, CriticalErr& out) noexcept;
-};
-
-static_assert(sizeof(CriticalErr) == 2u);
-
 using Message = std::variant<Ack,
                              Nack,
                              Heartbeat,
-                             SysInfo,
-                             GetLog,
                              Select,
-                             ResetFault,
                              SetTarget,
-                             SetConfig,
-                             GetConfig,
-                             Telemetry,
-                             CriticalErr>;
+                             Telemetry>;
 
+/**
+ * Кадр SMCP: Header (CAN ID) + опциональный session pkt_id + body.
+ * pkt_id значим только если helpers::carriesPktId(msg_id); иначе 0.
+ */
 struct Packet {
     Header hdr{};
+    uint8_t pkt_id = 0;
     Message body{};
 };
+
+/** Свободные хелперы wire/правил (не поля body). */
+namespace helpers {
 
 namespace detail {
 
@@ -382,66 +253,57 @@ template <typename T>
     return static_cast<uint8_t>(global_id % kMechCount);
 }
 
+/** Request: ждёт Ack/Nack. */
 [[nodiscard]] constexpr bool requiresAck(MsgId id) noexcept
+{
+    switch (id) {
+    case MsgId::Select:
+    case MsgId::SetTarget:
+        return true;
+    case MsgId::Ack:
+    case MsgId::Nack:
+    case MsgId::Heartbeat:
+    case MsgId::Telemetry:
+    default:
+        return false;
+    }
+}
+
+/** На wire data[0]=pkt_id (request/reply); body без этого поля. */
+[[nodiscard]] constexpr bool carriesPktId(MsgId id) noexcept
 {
     switch (id) {
     case MsgId::Ack:
     case MsgId::Nack:
-    case MsgId::Heartbeat:
-    case MsgId::SysInfo:
-    case MsgId::Telemetry:
-    case MsgId::CriticalErr:
-        return false;
-    default:
+    case MsgId::Select:
+    case MsgId::SetTarget:
         return true;
+    case MsgId::Heartbeat:
+    case MsgId::Telemetry:
+    default:
+        return false;
     }
 }
 
 [[nodiscard]] constexpr uint16_t ackTimeoutMs(MsgId id) noexcept
 {
-    switch (id) {
-    case MsgId::SetConfig:
-    case MsgId::GetConfig:
-        return kAckTimeoutConfigMs;
-    default:
-        return requiresAck(id) ? kAckTimeoutControlMs : 0u;
-    }
+    return requiresAck(id) ? kAckTimeoutControlMs : 0u;
 }
 
 [[nodiscard]] constexpr uint8_t ackRetryCount(MsgId id) noexcept
 {
-    switch (id) {
-    case MsgId::SetConfig:
-    case MsgId::GetConfig:
-        return kAckRetryConfig;
-    case MsgId::Select:
-    case MsgId::ResetFault:
-    case MsgId::SetTarget:
-    case MsgId::GetLog:
-        return kAckRetryControl;
-    default:
-        return 0u;
-    }
+    return requiresAck(id) ? kAckRetryControl : 0u;
 }
 
 [[nodiscard]] constexpr uint8_t defaultPrio(MsgId id) noexcept
 {
     switch (id) {
-    case MsgId::CriticalErr:
-        return 0u;
     case MsgId::Select:
-    case MsgId::ResetFault:
     case MsgId::SetTarget:
         return 2u;
     case MsgId::Ack:
     case MsgId::Nack:
         return 4u;
-    case MsgId::GetLog:
-    case MsgId::SetConfig:
-    case MsgId::GetConfig:
-        return 10u;
-    case MsgId::SysInfo:
-        return 16u;
     case MsgId::Telemetry:
         return 20u;
     case MsgId::Heartbeat:
@@ -459,14 +321,13 @@ template <typename T>
          | static_cast<uint32_t>(hdr.msg_id);
 }
 
-[[nodiscard]] constexpr Header unpackCanId(uint32_t can_id, uint8_t pkt_id = 0) noexcept
+[[nodiscard]] constexpr Header unpackCanId(uint32_t can_id) noexcept
 {
     Header hdr{};
     hdr.prio = static_cast<uint8_t>((can_id >> kCanIdPrioPos) & kPrioMax);
     hdr.dst_id = static_cast<uint8_t>((can_id >> kCanIdDstPos) & 0xFFu);
     hdr.src_id = static_cast<uint8_t>((can_id >> kCanIdSrcPos) & 0xFFu);
     hdr.msg_id = static_cast<MsgId>(can_id & 0xFFu);
-    hdr.pkt_id = pkt_id;
     return hdr;
 }
 
@@ -474,6 +335,8 @@ template <typename T>
 
 [[nodiscard]] bool toCanFrame(Packet packet, BIF::CAN::Frame& out) noexcept;
 [[nodiscard]] bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept;
+
+} // namespace helpers
 
 } // namespace msg
 } // namespace smcp

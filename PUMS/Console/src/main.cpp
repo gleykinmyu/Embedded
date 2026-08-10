@@ -23,6 +23,7 @@
 #include "model/mbrowser.hpp"
 #include "model/mconsole.hpp"
 #include "model/mserver.hpp"
+#include "smcp/mock_can.hpp"
 #include "w25q_show_file.hpp"
 
 
@@ -31,8 +32,11 @@ smcp::file::FatFile showFile;
 smcp::file::FatDirectory showDir;
 smcp::file::W25qShowFile flashShow(board.flash);
 MBrowser mBrowser(sdVolume, showDir, showFile);
-MConsole console(mBrowser);
-MServer mServer(smcp::msg::kServerIdMin);
+
+smcp::MockCan canConsole;
+smcp::MockCan canServer;
+MConsole console(mBrowser, canConsole, 1u);
+MServer mServer(canServer, smcp::msg::kServerIdMin);
 
 nex::AppTiming timing = {boardClockMs, 500u};
 server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
@@ -45,19 +49,14 @@ constexpr uint32_t kWatchdogTimeoutMs = 5000u;
 /** Буфер stdout в BSS — setvbuf без malloc (newlib иначе выделяет кучу). */
 char g_stdoutBuf[256];
 
-/** console.tx → server.rx → poll → server.tx → console.rx → poll → UI */
-void pumpSmcpLoopback() noexcept
+/**
+ * Два «чипа» на одном MCU: каждый poll'ит свой Link/CAN.
+ * Связь — MockCan::connect; Heartbeat — PROTOCOL.md.
+ */
+void tickSmcpNodes() noexcept
 {
-    smcp::msg::Packet pkt;
-    while (console.tx().pop(pkt)) {
-        (void)mServer.rx().push(pkt);
-    }
-    mServer.poll();
-    while (mServer.tx().pop(pkt)) {
-        (void)console.rx().push(pkt);
-    }
-    console.poll();
-    app.applyTelemetryUi();
+    mServer.update();
+    console.update();
 }
 
 } // namespace
@@ -130,8 +129,15 @@ int main(void)
     }
 
     board.watchdog.kick();
+
+    (void)canConsole.open(1'000'000);
+    (void)canServer.open(1'000'000);
+    canConsole.connect(canServer);
+
+    console.setClock(boardClockMs);
+    mServer.setClock(boardClockMs);
+
     console.setMirror(&flashShow);
-    console.setFlushHook(pumpSmcpLoopback);
     if (console.restoreMirror()) {
         NEX_DBG("Restored show from W25Q: '%s'\n", console.showName());
     } else {
@@ -142,11 +148,11 @@ int main(void)
     board.watchdog.kick();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
-    NEX_DBG("SMCP loopback: server id=0x%02X\n", static_cast<unsigned>(mServer.id()));
+    NEX_DBG("SMCP mock CAN loopback: server id=0x%02X\n", static_cast<unsigned>(mServer.id()));
 
     while (1) {
         board.tick();
-        pumpSmcpLoopback();
+        tickSmcpNodes();
         app.update();
     }
 }

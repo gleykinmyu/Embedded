@@ -4,7 +4,7 @@
  */
 
 #include "mech.hpp"
-#include "message.hpp"
+#include "smcp/transport/message.hpp"
 
 namespace smcp {
 
@@ -32,19 +32,19 @@ bool IMech::isIdle() const noexcept
     return !_status.any(Status::Ready | Status::Moving);
 }
 
-uint8_t IMech::select_owner_id() const noexcept
+uint8_t IMech::holder() const noexcept
 {
-    return _select_owner_id;
+    return _holder;
 }
 
 bool IMech::isSelected() const noexcept
 {
-    return _select_owner_id != kSelectOwnerNone;
+    return _holder != kHolderNone;
 }
 
 bool IMech::isSelectedBy(uint8_t console_id) const noexcept
 {
-    return console_id != kSelectOwnerNone && _select_owner_id == console_id;
+    return console_id != kHolderNone && _holder == console_id;
 }
 
 bool IMech::isBlocked() const noexcept
@@ -54,11 +54,11 @@ bool IMech::isBlocked() const noexcept
 
 void IMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {
-    if (!msg::isServerId(src_id) || telemetry.mech_id != _id) {
+    if (!msg::helpers::isServerId(src_id) || telemetry.mech_id != _id) {
         return;
     }
 
-    _select_owner_id = telemetry.select_owner_id;
+    _holder = telemetry.holder_id;
     _position = telemetry.position_mm;
     _status = telemetry.status;
 }

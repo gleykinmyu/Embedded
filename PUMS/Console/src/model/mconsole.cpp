@@ -12,7 +12,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <variant>
 
 namespace {
 
@@ -21,18 +20,16 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 } // namespace
 
-
 /* ========== Конструктор ========== */
 
-MConsole::MConsole(MBrowser& browser, uint8_t console_id) noexcept
-    : _browser(browser)
-    , _console_id(console_id)
+MConsole::MConsole(MBrowser& browser, BIF::CAN::ICAN& can, uint8_t console_id) noexcept
+    : smcp::Console<kMechCount>(can, console_id)
+    , _session(*this, 0)
+    , _browser(browser)
+    , _mechs(*this)
 {
-    Mech::setOwner(this);
-
-    for (std::size_t i = 0; i < kMechCount; ++i) {
-        _mechs[i] = Mech(static_cast<uint8_t>(i));
-    }
+    setServerId(smcp::msg::kServerIdMin);
+    startSession();
 
     for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
         _groups[i].id = static_cast<uint8_t>(i);
@@ -42,82 +39,6 @@ MConsole::MConsole(MBrowser& browser, uint8_t console_id) noexcept
     initBlockedGroup();
 
     _showName[0] = '\0';
-}
-
-
-void MConsole::poll() noexcept
-{
-    smcp::msg::Packet pkt;
-    while (_rx.pop(pkt)) {
-        handlePacket(pkt);
-    }
-}
-
-
-void MConsole::handlePacket(const smcp::msg::Packet& pkt) noexcept
-{
-    if (!pkt.hdr.isAddressedTo(_console_id)) {
-        return;
-    }
-
-    if (const auto* tel = std::get_if<smcp::msg::Telemetry>(&pkt.body)) {
-        handleTelemetry(pkt.hdr, *tel);
-    }
-}
-
-
-void MConsole::handleTelemetry(const smcp::msg::Header& hdr,
-                               const smcp::msg::Telemetry& body) noexcept
-{
-    if (!validMechId(body.mech_id)) {
-        return;
-    }
-    _mechs[body.mech_id].onTelemetry(hdr.src_id, body);
-    _telemetryDirty |= (1u << body.mech_id);
-}
-
-
-uint32_t MConsole::takeTelemetryDirty() noexcept
-{
-    const uint32_t dirty = _telemetryDirty;
-    _telemetryDirty = 0;
-    return dirty;
-}
-
-
-bool MConsole::pushSelect(smcp::msg::Select::Action action,
-                          smcp::Selection selection) noexcept
-{
-    /* Set с пустой маской = снять всё наше; Select/Deselect без битов — noop. */
-    if (selection.empty() && action != smcp::msg::Select::Action::Set) {
-        return false;
-    }
-
-    smcp::msg::Select body{};
-    body.action = action;
-    body.selection = selection;
-
-    smcp::msg::Packet pkt{};
-    pkt.hdr.prio = smcp::msg::defaultPrio(smcp::msg::MsgId::Select);
-    pkt.hdr.src_id = _console_id;
-    pkt.hdr.dst_id = smcp::msg::kServerIdMin; /* mechs 0..23 → первый сегмент */
-    pkt.hdr.msg_id = smcp::msg::MsgId::Select;
-    pkt.hdr.pkt_id = nextPktId();
-    pkt.body = body;
-
-    if (!_tx.push(pkt)) {
-        return false;
-    }
-    requestFlush();
-    return true;
-}
-
-
-void MConsole::requestFlush() noexcept
-{
-    if (_flush != nullptr) {
-        _flush();
-    }
 }
 
 
@@ -237,20 +158,20 @@ bool MConsole::mechSelect(uint8_t id) noexcept
     Mech& mech = _mechs[id];
 
     if (mech.isSelected()) {
-        return mech.select(smcp::kSelectOwnerNone);
+        return mech.select(smcp::kHolderNone);
     }
 
     if (isMechIsolated(id)) {
         return false;
     }
 
-    return mech.select(_console_id);
+    return mech.select(Console::id());
 }
 
 
 void MConsole::clearSelection() noexcept
 {
-    (void)pushSelect(smcp::msg::Select::Action::Set, smcp::Selection{});
+    (void)Console::clearSelection();
 }
 
 
@@ -268,7 +189,7 @@ bool MConsole::recallGroup(uint8_t id) noexcept
         }
     }
 
-    (void)pushSelect(smcp::msg::Select::Action::Set, group_sel);
+    (void)Console::setSelection(group_sel);
 
     _activeGroup = id;
     return true;
@@ -516,7 +437,7 @@ MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
     }
 
     if (_mechs[id].isSelected()) {
-        (void)_mechs[id].select(smcp::kSelectOwnerNone);
+        (void)_mechs[id].select(smcp::kHolderNone);
     }
     blk.mech.add(id);
     markEdited();
@@ -580,7 +501,7 @@ void MConsole::setGroupBlocked(uint8_t id, bool blocked) noexcept
             /* Ручная блокировка сбрасывается — источник теперь группа. */
             manual.mech.remove(static_cast<uint8_t>(m));
             if (_mechs[m].isSelected()) {
-                (void)_mechs[m].select(smcp::kSelectOwnerNone);
+                (void)_mechs[m].select(smcp::kHolderNone);
             }
         }
         if (_activeGroup == id) {

@@ -3,7 +3,7 @@
  * @brief Сериализация SMCP Packet ↔ BIF::CAN::Frame.
  */
 
-#include "message.hpp"
+#include "smcp/transport/message.hpp"
 
 namespace smcp {
 namespace msg {
@@ -57,9 +57,9 @@ void store_le32(uint8_t* p, uint32_t v) noexcept
     return push(frame, tmp[0]) && push(frame, tmp[1]) && push(frame, tmp[2]) && push(frame, tmp[3]);
 }
 
-[[nodiscard]] bool expectBody(const BIF::CAN::Frame& frame, uint8_t body_len) noexcept
+[[nodiscard]] bool expectDlc(const BIF::CAN::Frame& frame, uint8_t dlc) noexcept
 {
-    return frame.dlc == static_cast<uint8_t>(kPayloadOffset + body_len);
+    return frame.dlc == dlc;
 }
 
 } // namespace
@@ -73,21 +73,22 @@ bool Header::serialize(BIF::CAN::Frame& frame) const noexcept
 
     frame = {};
     frame.id.setExtended(true);
-    frame.id.set(packCanId(hdr));
+    frame.id.set(helpers::packCanId(hdr));
     frame.dlc = 0;
-    return push(frame, hdr.pkt_id);
+    return true;
 }
 
 bool Header::deserialize(const BIF::CAN::Frame& frame) noexcept
 {
-    if (!frame.id.extended || frame.dlc < 1 || frame.dlc > BIF::CAN::kMaxDataLength) {
+    if (!frame.id.extended || frame.dlc > BIF::CAN::kMaxDataLength) {
         return false;
     }
 
-    *this = unpackCanId(frame.id.get());
-    pkt_id = frame.data[kPktIdOffset];
+    *this = helpers::unpackCanId(frame.id.get());
     return true;
 }
+
+namespace helpers {
 
 Header headerFromCanFrame(const BIF::CAN::Frame& frame) noexcept
 {
@@ -102,6 +103,9 @@ bool toCanFrame(Packet packet, BIF::CAN::Frame& out) noexcept
     if (!packet.hdr.serialize(out)) {
         return false;
     }
+    if (carriesPktId(packet.hdr.msg_id) && !push(out, packet.pkt_id)) {
+        return false;
+    }
     return std::visit([&](const auto& body) noexcept { return body.serialize(out); }, packet.body);
 }
 
@@ -109,6 +113,14 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
 {
     if (!packet.hdr.deserialize(frame)) {
         return false;
+    }
+
+    packet.pkt_id = 0;
+    if (carriesPktId(packet.hdr.msg_id)) {
+        if (frame.dlc < 1u) {
+            return false;
+        }
+        packet.pkt_id = frame.data[0];
     }
 
     switch (packet.hdr.msg_id) {
@@ -136,33 +148,9 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
         packet.body = body;
         return true;
     }
-    case MsgId::SysInfo: {
-        SysInfo body{};
-        if (!SysInfo::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
-    case MsgId::GetLog: {
-        GetLog body{};
-        if (!GetLog::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
     case MsgId::Select: {
         Select body{};
         if (!Select::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
-    case MsgId::ResetFault: {
-        ResetFault body{};
-        if (!ResetFault::deserialize(frame, body)) {
             return false;
         }
         packet.body = body;
@@ -176,33 +164,9 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
         packet.body = body;
         return true;
     }
-    case MsgId::SetConfig: {
-        SetConfig body{};
-        if (!SetConfig::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
-    case MsgId::GetConfig: {
-        GetConfig body{};
-        if (!GetConfig::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
     case MsgId::Telemetry: {
         Telemetry body{};
         if (!Telemetry::deserialize(frame, body)) {
-            return false;
-        }
-        packet.body = body;
-        return true;
-    }
-    case MsgId::CriticalErr: {
-        CriticalErr body{};
-        if (!CriticalErr::deserialize(frame, body)) {
             return false;
         }
         packet.body = body;
@@ -213,16 +177,16 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
     }
 }
 
-// --- body serialize / deserialize (payload с data[kPayloadOffset]) ---
+} // namespace helpers
 
 bool Ack::serialize(BIF::CAN::Frame& /*frame*/) const noexcept
 {
-    return true;
+    return true; /* pkt_id уже в Packet / helpers::toCanFrame */
 }
 
 bool Ack::deserialize(const BIF::CAN::Frame& frame, Ack& /*out*/) noexcept
 {
-    return expectBody(frame, 0);
+    return expectDlc(frame, 1);
 }
 
 bool Nack::serialize(BIF::CAN::Frame& frame) const noexcept
@@ -232,10 +196,10 @@ bool Nack::serialize(BIF::CAN::Frame& frame) const noexcept
 
 bool Nack::deserialize(const BIF::CAN::Frame& frame, Nack& out) noexcept
 {
-    if (!expectBody(frame, 1)) {
+    if (!expectDlc(frame, 2)) {
         return false;
     }
-    out.code = static_cast<ErrorCode>(frame.data[kPayloadOffset]);
+    out.code = static_cast<ErrorCode>(frame.data[1]);
     return true;
 }
 
@@ -246,40 +210,7 @@ bool Heartbeat::serialize(BIF::CAN::Frame& /*frame*/) const noexcept
 
 bool Heartbeat::deserialize(const BIF::CAN::Frame& frame, Heartbeat& /*out*/) noexcept
 {
-    return expectBody(frame, 0);
-}
-
-bool SysInfo::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push_le16(frame, fw_version) && push(frame, master_status) && push(frame, checker_status);
-}
-
-bool SysInfo::deserialize(const BIF::CAN::Frame& frame, SysInfo& out) noexcept
-{
-    if (!expectBody(frame, 4)) {
-        return false;
-    }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.fw_version = load_le16(p);
-    out.master_status = p[2];
-    out.checker_status = p[3];
-    return true;
-}
-
-bool GetLog::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push_le32(frame, offset) && push_le16(frame, count);
-}
-
-bool GetLog::deserialize(const BIF::CAN::Frame& frame, GetLog& out) noexcept
-{
-    if (!expectBody(frame, 6)) {
-        return false;
-    }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.offset = load_le32(p);
-    out.count = load_le16(p + 4);
-    return true;
+    return expectDlc(frame, 0);
 }
 
 bool Select::serialize(BIF::CAN::Frame& frame) const noexcept
@@ -289,26 +220,15 @@ bool Select::serialize(BIF::CAN::Frame& frame) const noexcept
 
 bool Select::deserialize(const BIF::CAN::Frame& frame, Select& out) noexcept
 {
-    if (!expectBody(frame, 5)) {
+    if (!expectDlc(frame, 6)) {
         return false;
     }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.action = static_cast<Action>(p[0]);
-    out.selection = Selection::from_raw(load_le32(p + 1));
-    return true;
-}
-
-bool ResetFault::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push(frame, mech_id);
-}
-
-bool ResetFault::deserialize(const BIF::CAN::Frame& frame, ResetFault& out) noexcept
-{
-    if (!expectBody(frame, 1)) {
+    const auto action = static_cast<Action>(frame.data[1]);
+    if (action != Action::Select && action != Action::Deselect && action != Action::Set) {
         return false;
     }
-    out.mech_id = frame.data[kPayloadOffset];
+    out.action = action;
+    out.selection = Selection::from_raw(load_le32(frame.data + 2));
     return true;
 }
 
@@ -320,78 +240,32 @@ bool SetTarget::serialize(BIF::CAN::Frame& frame) const noexcept
 
 bool SetTarget::deserialize(const BIF::CAN::Frame& frame, SetTarget& out) noexcept
 {
-    if (!expectBody(frame, 7)) {
+    if (!expectDlc(frame, 8)) {
         return false;
     }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.mech_id = p[0];
-    out.target.target_mm = static_cast<int32_t>(load_le32(p + 1));
-    out.target.speed_mm_s = load_le16(p + 5);
+    out.mech_id = frame.data[1];
+    out.target.target_mm = static_cast<int32_t>(load_le32(frame.data + 2));
+    out.target.speed_mm_s = load_le16(frame.data + 6);
     out.target.accel_mm_s2 = 0;
-    return true;
-}
-
-bool SetConfig::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push(frame, mech_id);
-}
-
-bool SetConfig::deserialize(const BIF::CAN::Frame& frame, SetConfig& out) noexcept
-{
-    if (!expectBody(frame, 1)) {
-        return false;
-    }
-    out.mech_id = frame.data[kPayloadOffset];
-    return true;
-}
-
-bool GetConfig::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push(frame, mech_id);
-}
-
-bool GetConfig::deserialize(const BIF::CAN::Frame& frame, GetConfig& out) noexcept
-{
-    if (!expectBody(frame, 1)) {
-        return false;
-    }
-    out.mech_id = frame.data[kPayloadOffset];
     return true;
 }
 
 bool Telemetry::serialize(BIF::CAN::Frame& frame) const noexcept
 {
-    return push(frame, mech_id) && push(frame, select_owner_id)
+    return push(frame, mech_id) && push(frame, holder_id)
         && push_le32(frame, static_cast<uint32_t>(position_mm))
         && push(frame, static_cast<uint8_t>(status.raw()));
 }
 
 bool Telemetry::deserialize(const BIF::CAN::Frame& frame, Telemetry& out) noexcept
 {
-    if (!expectBody(frame, 7)) {
+    if (!expectDlc(frame, 7)) {
         return false;
     }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.mech_id = p[0];
-    out.select_owner_id = p[1];
-    out.position_mm = static_cast<int32_t>(load_le32(p + 2));
-    out.status = REG::BitMask<IMech::Status>::from_raw(p[6]);
-    return true;
-}
-
-bool CriticalErr::serialize(BIF::CAN::Frame& frame) const noexcept
-{
-    return push(frame, static_cast<uint8_t>(code)) && push(frame, detail);
-}
-
-bool CriticalErr::deserialize(const BIF::CAN::Frame& frame, CriticalErr& out) noexcept
-{
-    if (!expectBody(frame, 2)) {
-        return false;
-    }
-    const uint8_t* p = frame.data + kPayloadOffset;
-    out.code = static_cast<ErrorCode>(p[0]);
-    out.detail = p[1];
+    out.mech_id = frame.data[0];
+    out.holder_id = frame.data[1];
+    out.position_mm = static_cast<int32_t>(load_le32(frame.data + 2));
+    out.status = REG::BitMask<IMech::Status>::from_raw(frame.data[6]);
     return true;
 }
 

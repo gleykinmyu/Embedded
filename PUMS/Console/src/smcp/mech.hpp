@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "bitmask.hpp"
+#include "obj_registry.hpp"
 
 namespace smcp {
 
@@ -19,7 +20,7 @@ struct Telemetry;
 inline constexpr uint8_t kMechIdMax = 31u;
 
 /** Механизм не выделен ни одной консолью. */
-inline constexpr uint8_t kSelectOwnerNone = 0u;
+inline constexpr uint8_t kHolderNone = 0u;
 
 /** Параметры взведённого движения (SetTarget). */
 struct MotionTarget {
@@ -33,7 +34,7 @@ static_assert(alignof(MotionTarget) == alignof(int32_t));
 
 /**
  * Абстракция одного механизма: телеметрия и управление.
- * Реализация — на стороне консоли (model/Mech) или сегмента (DriveMech).
+ * Реализация — на стороне проекта (model/Mech, model/DriveMech).
  */
 class IMech {
 public:
@@ -68,10 +69,10 @@ public:
     [[nodiscard]] bool isIdle() const noexcept;
 
     /**
-     * ID консоли, выделившей механизм.
+     * ID консоли, держащей Select.
      * @return 0 — механизм свободен.
      */
-    [[nodiscard]] uint8_t select_owner_id() const noexcept;
+    [[nodiscard]] uint8_t holder() const noexcept;
 
     [[nodiscard]] bool isSelected() const noexcept;
 
@@ -100,9 +101,16 @@ public:
     /** Обновить состояние из телеметрии (@a src_id — SRC_ID кадра, обычно сервер). */
     virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept;
 
+private:
+    template <typename, typename>
+    friend class MISC::ObjRegistry;
+
+    /** Только из ObjRegistry при registerAt / registerAuto. */
+    void set_id(uint8_t id) noexcept { _id = id; }
+
 protected:
     uint8_t _id;
-    uint8_t _select_owner_id = kSelectOwnerNone;
+    uint8_t _holder = kHolderNone;
     int32_t _position = 0;
     REG::BitMask<Status> _status{};
 };

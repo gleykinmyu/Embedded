@@ -52,8 +52,8 @@ template <size_t TxSize, size_t RxSize>
 class ISerial : public IHardwareSerial
 {
 private:
-    MISC::RingBuffer<TxSize> _txBuf;
-    MISC::RingBuffer<RxSize> _rxBuf;
+    MISC::RingBuffer<uint8_t, TxSize> _txBuf;
+    MISC::RingBuffer<uint8_t, RxSize> _rxBuf;
 
 protected:
     volatile bool _isOpen = false;
@@ -140,8 +140,9 @@ public:
     {
         const bool discardByte = checkErrors();
         const uint8_t byte = readHardware();
-        if (!discardByte)
-            _rxBuf.push(byte);
+        if (!discardByte && !_rxBuf.push(byte)) {
+            _hwOverrunRx = true;
+        }
     }
 
     /// Выгрузка TX-кольца в периферию; при пустом кольце отключает TX IRQ.

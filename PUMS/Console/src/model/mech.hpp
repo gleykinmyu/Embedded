@@ -1,18 +1,19 @@
 /**
  * @file mech.hpp
- * @brief Mech консоли: Select/SetTarget/… → static owner (MConsole).
+ * @brief Конкретный IMech пульта: register в smcp::IConsole.
  */
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <utility>
 
+#include "smcp/Console/console.hpp"
 #include "smcp/mech.hpp"
-#include "smcp/message.hpp"
+#include "smcp/transport/message.hpp"
 
-class MConsole;
-
-/** Реализация IMech на пульте: запросы через static owner; UI — через MConsole. */
+/** IMech на пульте: Select TX через IConsole; Selected из Telemetry. */
 class Mech : public smcp::IMech {
 public:
     enum class Type : uint8_t {
@@ -20,27 +21,45 @@ public:
         Chain,
     };
 
-    Mech() noexcept;
-    Mech(uint8_t id, Type type = Type::Rope) noexcept;
+    Mech(smcp::IConsole& console, uint8_t id, Type type = Type::Rope) noexcept;
 
     [[nodiscard]] Type type() const noexcept;
+    [[nodiscard]] smcp::IConsole& console() noexcept { return *_console; }
+    [[nodiscard]] const smcp::IConsole& console() const noexcept { return *_console; }
 
-    static void setOwner(MConsole* owner) noexcept { s_owner = owner; }
-    [[nodiscard]] static MConsole* owner() noexcept { return s_owner; }
-
-    /**
-     * console_id != 0 → Select; 0 → Deselect.
-     * При установленном owner — только TX (Selected из Telemetry).
-     */
     bool select(uint8_t console_id) noexcept override;
     bool block(bool blocked) noexcept override;
     bool setTarget(const smcp::MotionTarget& target) noexcept override;
     bool resetFault() noexcept override;
 
-    /** Применить телеметрию; show-Blocked на консоли не снимается. */
     void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& telemetry) noexcept override;
 
 private:
+    smcp::IConsole* _console;
     Type _type;
-    static MConsole* s_owner;
+};
+
+/** Банк Mech[N]: ctor регистрирует каждый в owner. */
+template <std::size_t N>
+class MechBank {
+public:
+    explicit MechBank(smcp::IConsole& owner) noexcept
+        : MechBank(owner, std::make_index_sequence<N>{})
+    {}
+
+    [[nodiscard]] Mech& operator[](std::size_t i) noexcept { return _items[i]; }
+    [[nodiscard]] const Mech& operator[](std::size_t i) const noexcept { return _items[i]; }
+
+    [[nodiscard]] Mech* begin() noexcept { return _items; }
+    [[nodiscard]] Mech* end() noexcept { return _items + N; }
+    [[nodiscard]] const Mech* begin() const noexcept { return _items; }
+    [[nodiscard]] const Mech* end() const noexcept { return _items + N; }
+
+private:
+    template <std::size_t... I>
+    MechBank(smcp::IConsole& owner, std::index_sequence<I...>) noexcept
+        : _items{Mech{owner, static_cast<uint8_t>(I)}...}
+    {}
+
+    Mech _items[N];
 };

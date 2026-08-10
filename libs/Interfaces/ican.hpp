@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "ilockable.hpp"
+#include "ringbuffer.hpp"
 
 namespace BIF {
 namespace CAN {
@@ -174,64 +175,6 @@ protected:
     virtual void checkErrors() = 0;
 };
 
-template <typename T, size_t Size>
-class ObjectRingBuffer
-{
-    static_assert(Size >= 2, "ObjectRingBuffer: Size >= 2");
-
-    T _buffer[Size];
-    volatile size_t _head = 0;
-    volatile size_t _tail = 0;
-    volatile size_t _ovfCount = 0;
-
-public:
-    bool push(const T& item) noexcept
-    {
-        const size_t next = (_head + 1) % Size;
-        if (next == _tail) {
-            ++_ovfCount;
-            return false;
-        }
-        _buffer[_head] = item;
-        _head = next;
-        return true;
-    }
-
-    bool pop(T& item) noexcept
-    {
-        if (_head == _tail)
-            return false;
-        item = _buffer[_tail];
-        _tail = (_tail + 1) % Size;
-        return true;
-    }
-
-    [[nodiscard]] const T* peek() const noexcept
-    {
-        if (_head == _tail)
-            return nullptr;
-        return &_buffer[_tail];
-    }
-
-    void drop() noexcept
-    {
-        if (_head != _tail)
-            _tail = (_tail + 1) % Size;
-    }
-
-    size_t size() const noexcept
-    {
-        return (_head >= _tail) ? (_head - _tail) : (Size - _tail + _head);
-    }
-
-    size_t space() const noexcept { return (Size - 1) - size(); }
-
-    void clearData() noexcept { _head = _tail = 0; }
-
-    size_t overflows() const noexcept { return _ovfCount; }
-    void clearOverflows() noexcept { _ovfCount = 0; }
-};
-
 // =================================================================
 // BufferedCAN: SW-очереди + реализация IRQ TX/RX0 поверх IHardwareCAN
 // Драйвер платы наследует BufferedCAN и реализует open/close/try*Hardware/…
@@ -241,8 +184,8 @@ public:
 template <size_t TxFrames, size_t RxFrames>
 class BufferedCAN : public IHardwareCAN
 {
-    ObjectRingBuffer<Frame, TxFrames> _txQ;
-    ObjectRingBuffer<Frame, RxFrames> _rxQ;
+    MISC::RingBuffer<Frame, TxFrames> _txQ;
+    MISC::RingBuffer<Frame, RxFrames> _rxQ;
 
 protected:
     volatile bool _isOpen = false;

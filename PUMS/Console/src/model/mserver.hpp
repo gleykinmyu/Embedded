@@ -1,55 +1,54 @@
 /**
  * @file mserver.hpp
- * @brief Модель сервера сегмента: Select → mechs, Telemetry → TX-очередь.
- *
- * Пока без CAN: входящие пакеты кладут в rx(), poll() обрабатывает Select
- * и ставит Telemetry в tx(). Консоль/loopback читает tx().
+ * @brief Сервер сегмента проекта: smcp::Server + SessionBank + DriveMechBank.
  */
 
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-
+#include "ican.hpp"
 #include "model/drive_mech.hpp"
-#include "smcp/message.hpp"
-#include "smcp/packet_queue.hpp"
+#include "smcp/Console/group.hpp"
+#include "smcp/Server/server.hpp"
+#include "smcp/transport/session.hpp"
 
-class MServer {
+class MServer : public smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles> {
 public:
-    static constexpr std::size_t kRxDepth = 16u;
-    static constexpr std::size_t kTxDepth = 32u;
+    using Base = smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles>;
+    using Base::kSessionCount;
 
-    explicit MServer(uint8_t server_id = smcp::msg::kServerIdMin) noexcept;
+    explicit MServer(BIF::CAN::ICAN& can,
+                     uint8_t server_id = smcp::msg::kServerIdMin) noexcept
+        : Base(can, server_id)
+        , _sessionBank(*this)
+        , _mechs(*this)
+    {
+        for (smcp::Session& s : _sessionBank) {
+            s.start();
+        }
+    }
 
-    [[nodiscard]] uint8_t id() const noexcept { return _server_id; }
+    [[nodiscard]] smcp::Session& sessionAt(uint8_t slot) noexcept { return _sessionBank[slot]; }
+    [[nodiscard]] const smcp::Session& sessionAt(uint8_t slot) const noexcept
+    {
+        return _sessionBank[slot];
+    }
 
-    [[nodiscard]] smcp::msg::PacketQueue<kRxDepth>& rx() noexcept { return _rx; }
-    [[nodiscard]] smcp::msg::PacketQueue<kTxDepth>& tx() noexcept { return _tx; }
-    [[nodiscard]] const smcp::msg::PacketQueue<kRxDepth>& rx() const noexcept { return _rx; }
-    [[nodiscard]] const smcp::msg::PacketQueue<kTxDepth>& tx() const noexcept { return _tx; }
+    [[nodiscard]] DriveMech& mech(uint8_t id) noexcept { return _mechs[id]; }
+    [[nodiscard]] const DriveMech& mech(uint8_t id) const noexcept { return _mechs[id]; }
 
-    [[nodiscard]] DriveMech& mech(uint8_t mech_id) noexcept;
-    [[nodiscard]] const DriveMech& mech(uint8_t mech_id) const noexcept;
-
-    /**
-     * Разобрать все пакеты из rx (Select), обновить mechs,
-     * при изменениях положить Telemetry в tx.
-     */
-    void poll() noexcept;
-
-    /** Положить Telemetry по одной оси в tx (если есть место). */
-    [[nodiscard]] bool pushTelemetry(uint8_t mech_id) noexcept;
+protected:
+    [[nodiscard]] smcp::msg::ErrorCode acceptSelect(uint8_t console_id,
+                                                    smcp::Selection selected) const noexcept override
+    {
+        (void)console_id;
+        if (selected.count() > DriveMech::kMaxSelected) {
+            return smcp::msg::ErrorCode::SelectLimit;
+        }
+        return smcp::msg::ErrorCode::Ok;
+    }
 
 private:
-    void handlePacket(const smcp::msg::Packet& pkt) noexcept;
-    void handleSelect(const smcp::msg::Header& hdr, const smcp::msg::Select& body) noexcept;
-
-    [[nodiscard]] uint8_t nextPktId() noexcept { return _pkt_tx++; }
-
-    uint8_t _server_id;
-    uint8_t _pkt_tx = 0;
-    DriveMech _mechs[smcp::kMechCount];
-    smcp::msg::PacketQueue<kRxDepth> _rx;
-    smcp::msg::PacketQueue<kTxDepth> _tx;
+    /* После Base registry: SessionBank регистрирует объекты в Node::sessions(). */
+    smcp::SessionBank<kSessionCount> _sessionBank;
+    DriveMechBank<smcp::kMechCount> _mechs;
 };

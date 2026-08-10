@@ -1,70 +1,83 @@
-#pragma once
-#include <stdint.h>
-#include <stddef.h>
+/**
+ * @file ringbuffer.hpp
+ * @brief Типизированный кольцевой буфер (1 слот всегда свободен).
+ */
 
-// =================================================================
-// КОЛЬЦЕВОЙ БУФЕР
-// =================================================================
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
 
 namespace MISC {
 
-template <size_t Size> 
-class RingBuffer 
-{
-  uint8_t _buffer[Size];
-  // Указатель на голову буфера
-  volatile size_t _head = 0;
-  // Указатель на хвост буфера
-  volatile size_t _tail = 0;
-  // Счетчик переполнений
-  volatile size_t _ovfCount = 0;
+template <typename T, std::size_t Size>
+class RingBuffer {
+    static_assert(Size >= 2, "RingBuffer: Size >= 2");
+
+    T _buffer[Size];
+    volatile std::size_t _head = 0;
+    volatile std::size_t _tail = 0;
+    volatile std::size_t _ovfCount = 0;
 
 public:
-
-// Добавление элемента в буфер
-  bool push(uint8_t data) {
-    size_t next = (_head + 1) % Size;
-    if (next == _tail) {
-      _ovfCount++;
-      return false;
+    [[nodiscard]] bool push(const T& item) noexcept
+    {
+        const std::size_t next = (_head + 1u) % Size;
+        if (next == _tail) {
+            ++_ovfCount;
+            return false;
+        }
+        _buffer[_head] = item;
+        _head = next;
+        return true;
     }
-    _buffer[_head] = data;
-    _head = next;
-    return true;
-  }
 
-  // Извлечение элемента из буфера
-  bool pop(uint8_t &data) {
-    if (_head == _tail)
-      return false;
-    data = _buffer[_tail];
-    _tail = (_tail + 1) % Size;
-    return true;
-  }
+    [[nodiscard]] bool pop(T& item) noexcept
+    {
+        if (_head == _tail) {
+            return false;
+        }
+        item = _buffer[_tail];
+        _tail = (_tail + 1u) % Size;
+        return true;
+    }
 
-  // Количество элементов в буфере
-  size_t size() const {
-    return (_head >= _tail) ? (_head - _tail) : (Size - _tail + _head);
-  }
+    /** Указатель на голову (для retry без копии); nullptr если пусто. */
+    [[nodiscard]] const T* peek() const noexcept
+    {
+        if (_head == _tail) {
+            return nullptr;
+        }
+        return &_buffer[_tail];
+    }
 
-  // Свободное место в буфере
-  size_t space() const { return (Size - 1) - size(); }
+    /** Снять голову без копирования (после успешной обработки peek). */
+    void drop() noexcept
+    {
+        if (_head != _tail) {
+            _tail = (_tail + 1u) % Size;
+        }
+    }
 
-  // Очистка буфера
-  void clear() {
-    _head = _tail = 0;
-    _ovfCount = 0;
-  }
+    [[nodiscard]] std::size_t size() const noexcept
+    {
+        return (_head >= _tail) ? (_head - _tail) : (Size - _tail + _head);
+    }
 
-  // Очистка данных в буфере
-  void clearData() {
-    _head = _tail = 0;
-  }
+    [[nodiscard]] std::size_t space() const noexcept { return (Size - 1u) - size(); }
 
-  // Количество переполнений буфера
-  size_t overflows() const { return _ovfCount; }
-  // Очистка счетчика переполнений
-  void clearOverflows() { _ovfCount = 0; }
+    [[nodiscard]] bool empty() const noexcept { return _head == _tail; }
+
+    void clear() noexcept
+    {
+        _head = _tail = 0;
+        _ovfCount = 0;
+    }
+
+    void clearData() noexcept { _head = _tail = 0; }
+
+    [[nodiscard]] std::size_t overflows() const noexcept { return _ovfCount; }
+    void clearOverflows() noexcept { _ovfCount = 0; }
 };
 
 } // namespace MISC

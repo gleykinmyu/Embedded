@@ -12,7 +12,7 @@
 #include <cstdint>
 
 #include "iFileSystem.hpp"
-#include "smcp/show_file.hpp"
+#include "smcp/Console/show_file.hpp"
 
 class MBrowser {
 public:

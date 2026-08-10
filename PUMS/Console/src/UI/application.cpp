@@ -42,23 +42,6 @@ void Application::onPageChange(const nex::msg::evPage& e) noexcept
     refreshStatusBar();
 }
 
-void Application::applyTelemetryUi() noexcept
-{
-    const uint32_t dirty = console.takeTelemetryDirty();
-    if (dirty == 0u) {
-        return;
-    }
-    if (currentPage() != nex::hmi::Page_work::kPageId) {
-        return;
-    }
-
-    for (uint8_t id = 0; id < MConsole::kMechCount; ++id) {
-        if ((dirty & (1u << id)) != 0u) {
-            work.onMechTelemetry(id);
-        }
-    }
-}
-
 void Application::update() noexcept
 {
     AppUI::update();

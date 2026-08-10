@@ -57,9 +57,6 @@ public:
 
     void onPageChange(const nex::msg::evPage& e) noexcept override;
 
-    /** После console.poll(): перерисовать ячейки по takeTelemetryDirty(). */
-    void applyTelemetryUi() noexcept;
-
 private:
     void refreshStatusBar() noexcept;
 

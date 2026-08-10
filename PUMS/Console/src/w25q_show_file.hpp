@@ -12,9 +12,9 @@
 #include "board.hpp"
 #include "impl/w25q.hpp"
 #include "iFileSystem.hpp"
-#include "smcp/debug.hpp"
-#include "smcp/group.hpp"
-#include "smcp/show_file.hpp"
+#include "smcp/Console/debug.hpp"
+#include "smcp/Console/show_file.hpp"
+#include "smcp/Console/group.hpp"
 
 namespace smcp {
 namespace file {
