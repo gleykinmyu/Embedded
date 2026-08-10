@@ -122,13 +122,14 @@ void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint
             && ((action == msg::Select::Action::Deselect && in_mask)
                 || (action == msg::Select::Action::Set && !in_mask));
 
-        bool selected = m->isSelected();
+        /* Итог владения этой консоли (не сегментный Selected). */
+        bool ours = was_ours;
         if (take) {
-            selected = true;
+            ours = true;
         } else if (drop) {
-            selected = false;
+            ours = false;
         }
-        if (selected) {
+        if (ours) {
             next_selected.add(mid);
         }
     }
@@ -157,9 +158,12 @@ void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint
                 || (action == msg::Select::Action::Set && !in_mask));
 
         if (take) {
+            // TODO: при проверках снаружи + атомарном commit — в каких случаях select() ещё
+            // вернёт false/Busy? Кажется, bool у IMech::select уже бессмысленен.
             (void)m->select(src);
             pushTelemetry(mid);
         } else if (drop) {
+            // TODO: то же для select(kHolderNone) — отказ после внешних проверок?
             (void)m->select(kHolderNone);
             pushTelemetry(mid);
         }

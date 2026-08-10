@@ -69,8 +69,9 @@ protected:
     void handleSelect(const msg::Header& hdr, const msg::Select& body, uint8_t pkt_id) noexcept;
 
     /**
-     * Политика сегмента: можно ли перейти к маске Selected после запроса.
-     * @a selected — итоговая маска Selected на сегменте (после take/drop, без commit).
+     * Политика: можно ли консоли @a console_id держать маску @a selected после запроса.
+     * @a selected — итоговое владение этой консоли (после take/drop, без commit).
+     * Leaf при общем лимите сам сливает с текущим Selected сегмента (чужие ∪ selected).
      * @return ErrorCode::Ok или причина отказа (SelectLimit / …).
      */
     [[nodiscard]] virtual msg::ErrorCode acceptSelect(uint8_t console_id,

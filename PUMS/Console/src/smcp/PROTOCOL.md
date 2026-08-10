@@ -3,7 +3,7 @@
 Канал: CAN extended ID, `smcp::msg` (см. `message.hpp`).  
 Wire set: **Ack, Nack, Heartbeat, Select, SetTarget, Telemetry**.
 
-Лимит одновременного Select — `acceptSelect` → Nack **SelectLimit**; **Limits** — концевики/`SetTarget`.
+Лимит Select на сегменте — leaf в `acceptSelect`: слияние (чужие Selected ∪ маска консоли) → **SelectLimit**.
 
 ---
 

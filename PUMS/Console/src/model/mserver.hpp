@@ -40,8 +40,15 @@ protected:
     [[nodiscard]] smcp::msg::ErrorCode acceptSelect(uint8_t console_id,
                                                     smcp::Selection selected) const noexcept override
     {
-        (void)console_id;
-        if (selected.count() > DriveMech::kMaxSelected) {
+        /* Сегмент после запроса: чужие Selected ∪ предлагаемая маска этой консоли. */
+        smcp::Selection merged = selected;
+        for (uint8_t mid = 0; mid < smcp::kMechCount; ++mid) {
+            const DriveMech& m = _mechs[mid];
+            if (m.isSelected() && !m.isSelectedBy(console_id)) {
+                merged.add(mid);
+            }
+        }
+        if (merged.count() > DriveMech::kMaxSelected) {
             return smcp::msg::ErrorCode::SelectLimit;
         }
         return smcp::msg::ErrorCode::Ok;
