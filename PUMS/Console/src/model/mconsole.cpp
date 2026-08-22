@@ -22,8 +22,8 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 /* ========== Конструктор ========== */
 
-MConsole::MConsole(MBrowser& browser, BIF::CAN::ICAN& can, uint8_t console_id) noexcept
-    : smcp::Console<kMechCount>(can, console_id)
+MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
+    : smcp::Console<kMechCount>(link, clock)
     , _session(*this, 0)
     , _browser(browser)
     , _mechs(*this)

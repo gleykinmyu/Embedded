@@ -1,9 +1,9 @@
 /**
  * @file session.hpp
- * @brief Сессия к одному peer: Heartbeat, session pkt_id (PROTOCOL.md).
+ * @brief Сессия к одному peer: Heartbeat, session pkt_id, своя TX-очередь (PROTOCOL.md).
  *
- * TX через Node::send. IdConflict / dst — у Node::acceptRx.
- * Объекты Session владеет наследник Node (Console/Server leaf); в Node — только registry*.
+ * Unicast TX — в Session::_tx (`isTxFull`); Node drain'ит started-сессии. Broadcast — Node::send.
+ * IdConflict / dst — у Node::acceptRx.
  */
 
 #pragma once
@@ -14,11 +14,13 @@
 
 #include "ms_timer.hpp"
 #include "obj_registry.hpp"
-#include "smcp/transport/message.hpp"
+#include "smcp/transport/node.hpp"
 
 namespace smcp {
 
-class Node;
+#ifndef SMCP_SESSION_TX_CAPACITY
+#define SMCP_SESSION_TX_CAPACITY 16u
+#endif
 
 class Session {
 public:
@@ -38,6 +40,8 @@ public:
     [[nodiscard]] bool isStarted() const noexcept { return _started; }
     [[nodiscard]] uint8_t peerId() const noexcept { return _peer_id; }
     [[nodiscard]] bool isOpen() const noexcept { return _open; }
+    /** Session::_tx Full после stall; не поднимается в Node::TxQueueFull. */
+    [[nodiscard]] bool isTxFull() const noexcept { return _tx.isFull(); }
 
     /** Unicast к peer. При requiresAck — pkt_id = ++TX. Без bool. */
     void send(const msg::Message& body) noexcept;
@@ -55,15 +59,22 @@ public:
 private:
     template <typename, typename>
     friend class MISC::ObjRegistry;
+    friend class Node;
 
     void set_id(uint8_t id) noexcept { _id = id; }
 
     void sendPing() noexcept;
-    void transmit(const msg::Message& body, uint8_t pkt_id = 0) noexcept;
+    /** @return true — в Session::_tx; при Full — stall Node::update. */
+    [[nodiscard]] bool transmit(const msg::Message& body, uint8_t pkt_id = 0) noexcept;
     void onHeartbeat(const msg::Header& hdr) noexcept;
     void markDown() noexcept;
 
     [[nodiscard]] bool nodeOk() const noexcept;
+
+    [[nodiscard]] const TxSlot* peekTx() const noexcept { return _tx.peek(); }
+    void dropTx() noexcept { _tx.drop(); }
+    /** Wire-результат головы (задел под pending/Ack). */
+    void onTxResult(bool ok) noexcept;
 
     Node& _node;
     uint8_t _id = 0;
@@ -74,6 +85,7 @@ private:
     bool _awaiting = false;
 
     MISC::MsTimer _timer{};
+    TxQueue<SMCP_SESSION_TX_CAPACITY> _tx;
 };
 
 /** Банк Session[N]: ctor регистрирует каждый в Node::sessions() (слот = индекс). */

@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "ican.hpp"
 #include "model/drive_mech.hpp"
 #include "smcp/Console/group.hpp"
 #include "smcp/Server/server.hpp"
+#include "smcp/transport/ilink.hpp"
 #include "smcp/transport/session.hpp"
 
 class MServer : public smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles> {
@@ -16,9 +16,8 @@ public:
     using Base = smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles>;
     using Base::kSessionCount;
 
-    explicit MServer(BIF::CAN::ICAN& can,
-                     uint8_t server_id = smcp::msg::kServerIdMin) noexcept
-        : Base(can, server_id)
+    explicit MServer(smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
+        : Base(link, clock)
         , _sessionBank(*this)
         , _mechs(*this)
     {

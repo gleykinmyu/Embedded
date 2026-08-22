@@ -17,8 +17,8 @@ void registerMech(IConsole& cons, IMech& mech) noexcept
 
 } // namespace detail
 
-IConsole::IConsole(BIF::CAN::ICAN& can, uint8_t console_id) noexcept
-    : Node(can, console_id)
+IConsole::IConsole(ILink& link, ClockFn clock) noexcept
+    : Node(link, clock)
 {}
 
 void IConsole::setServerId(uint8_t server_id) noexcept

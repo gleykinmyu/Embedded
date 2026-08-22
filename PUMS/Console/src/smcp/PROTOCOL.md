@@ -68,10 +68,11 @@ timer: нет pong / тишина / пора keep-alive → open=false;
 - «Сессия открыта» = успешный обмен HB, не отдельное сообщение.
 
 API: `setServerId`/`setConsoleId`, `startSession`/`stopSession`, `update`, `linkUp`,
-`Node::getStatus`/`clearError`, `setClock` (для stall при TxQueueFull).
+`Node::getStatus`/`clearError`; часы — в ctor `Node` (stall при TxQueueFull).
 
-RX любого кадра с `src_id == мой id` → **`Node::Status::IdConflict`**, TX стоп
-(детект в `Node::acceptRx` с первого RX — до открытия сессий).
+RX любого кадра с `src_id == мой id` → **`Node::Status::IdConflict`**:
+не demux RX и не TX (`send` / `sendWire` / drain), пока `clearError()`.
+(Стоп сессий — позже.)
 
 `Node::send` при полной TX-очереди крутит `update()` до `SMCP_TX_STALL_MS` (как nex enqueue).
 
@@ -79,9 +80,9 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 | | |
 |--|--|
-| **Link** | CAN ↔ encode; один shot `send` |
-| **Node** | Link + TX + registry Session*; pump RX/`acceptRx`/session/`onPacket` + TX; **IdConflict** |
-| **Session** | peer HB/`isOpen`, pkt_id; TX через `Node::send` (молчает при IdConflict) |
+| **ILink / CanLink** | среда ↔ Packet; один shot `send`/`receive` |
+| **Node** | bus TX + registry Session*; pump RX/`acceptRx`/session/`onPacket` + RR Session::_tx + Node::_tx; **IdConflict** |
+| **Session** | peer HB/`isOpen`, pkt_id, **своя TX-очередь**; markDown чистит очередь |
 
 `IConsole` / `IServer` наследуют **Node**, держат `ObjStorage<Session*>`;
 объекты `Session` владеет leaf (`MConsole` — одна, `MServer` — `SessionBank` до `kMaxConsoles`).
@@ -93,8 +94,8 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 Правило на консоли (first-wins), всё на **Node**:
 1. Перед первым своим Heartbeat — **слушать** шину ~`kHeartbeatTimeoutMs` (`update`/`acceptRx`).
-2. Увидела любой кадр с `src_id == мой id` → `Node::IdConflict` → **не выходить в TX**.
-3. Уже в сессии: то же — Node ставит IdConflict, `Session::stop()`.
+2. Увидела любой кадр с `src_id == мой id` → `Node::IdConflict` → **не RX-demux и не TX**.
+3. Уже в сессии: то же (стоп сессий — позже).
 
 Тот же пункт у сервера — для **своего** id.
 
@@ -103,8 +104,13 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 ## Очереди
 
 - Очередь **кадров** — в `ICAN` (драйвер / `MockCan`).
-- Очередь **исходящих SMCP** `(body, dst, pkt_id)` — `MISC::RingBuffer<Outbound>` в **Node**.
-- Очередь надёжной доставки / окно Ack — **в Session** (запросы `requiresAck`).
+- Очередь **bus / broadcast** `(body, dst, pkt_id)` — `Node::_tx` (`Node::send`, класс **D**).
+  `TxQueue::isFull` после stall → `Node::Status::TxQueueFull` (только эта очередь).
+- Очередь **session unicast** — `Session::_tx` (A/B/C/E).
+  `TxQueue::isFull` / `Session::isTxFull()`; **не** поднимать в `Node::TxQueueFull`
+  (на сервере Full одной консоли ≠ ошибка всего узла).
+- Drain: один RR на `sessionCapacity + 1` (слоты сессий + bus), **по одному кадру** за заход.
+- Окно Ack / pending retry — **в Session** (класс **A**, позже поверх той же очереди).
 - Dual-axis Telemetry — **не** в MVP.
 
 ---

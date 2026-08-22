@@ -3,6 +3,7 @@
  */
 
 #include "smcp/transport/node.hpp"
+#include "smcp/transport/session.hpp"
 
 namespace smcp {
 
@@ -12,15 +13,36 @@ void registerSession(Node& node, Session& session, uint8_t slot_id) noexcept
 {
     const MISC::RegStatus st = node.sessions().registerAt(slot_id, &session);
     if (st != MISC::RegStatus::Ok) {
-        node._status = Node::Status::RegisterFailed;
+        node.setStatus(Node::Status::RegisterFailed);
     }
 }
 
 } // namespace detail
 
-Node::Node(BIF::CAN::ICAN& can, uint8_t node_id) noexcept
-    : _link(can, node_id)
+Node::Node(ILink& link, ClockFn clock) noexcept
+    : _link(link)
+    , _clock(clock)
 {}
+
+void Node::clearError() noexcept
+{
+    _link.clearError();
+    setStatus(Status::OK);
+}
+
+void Node::setStatus(Status status) noexcept
+{
+    if (status == _status) {
+        return;
+    }
+    /* clearError → OK всегда; иначе не понижаем (порядок Status = жёсткость). */
+    if (status != Status::OK && status <= _status) {
+        return;
+    }
+
+    _status = status;
+    onStatus(_status);
+}
 
 Session* Node::sessionByPeer(uint8_t peer_id) noexcept
 {
@@ -45,120 +67,136 @@ void Node::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexce
         return;
     }
 
-    Outbound item{};
+    TxSlot item{};
     item.body = body;
     item.dst_id = dst_id;
     item.pkt_id = pkt_id;
 
-    if (_tx.push(item)) {
-        if (_status == Status::TxQueueFull) {
-            _status = Status::OK;
+    if (!_tx.enqueue(item, *this)) {
+        if (_tx.isFull()) {
+            setStatus(Status::TxQueueFull);
         }
         return;
     }
 
-    /* Как nex::Application::enqueue: на лимите глубины — без вложенного update. */
-    if (_updateDepth >= SMCP_MAX_UPDATE_DEPTH) {
-        _status = Status::TxQueueFull;
-        return;
+    if (_status == Status::TxQueueFull) {
+        setStatus(Status::OK);
     }
-
-    MISC::MsTimer stall{};
-    stall.start(clockMs(), SMCP_TX_STALL_MS);
-
-    for (;;) {
-        const std::size_t space_before = _tx.space();
-        update();
-
-        if (_tx.push(item)) {
-            if (_status == Status::TxQueueFull) {
-                _status = Status::OK;
-            }
-            return;
-        }
-
-        if (_tx.space() > space_before) {
-            stall.start(clockMs(), SMCP_TX_STALL_MS);
-        }
-
-        if (stall.timedOut(clockMs())) {
-            break;
-        }
-    }
-
-    _status = Status::TxQueueFull;
-}
-
-bool Node::receive(msg::Packet& out) noexcept
-{
-    return _link.receive(out);
 }
 
 bool Node::acceptRx(const msg::Packet& pkt) noexcept
 {
     /* Слушаем эфир с первого RX — до и после открытия сессий. */
     if (pkt.hdr.src_id == id()) {
-        _status = Status::IdConflict;
-        auto& reg = sessions();
-        const uint8_t end = reg.endId();
-        for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
-            Session* s = reg.get(sid);
-            if (s != nullptr) {
-                s->stop();
-            }
-        }
+        setStatus(Status::IdConflict);
+        return false;
+    }
+
+    if (_status == Status::IdConflict) {
         return false;
     }
 
     return pkt.hdr.isAddressedTo(id());
 }
 
+bool Node::sendWire(const TxSlot& item) noexcept
+{
+    if (_status == Status::IdConflict) {
+        return false;
+    }
+
+    if (!_link.send(item.body, item.dst_id, item.pkt_id)) {
+        setStatus(Status::LinkError);
+        return false;
+    }
+    if (_status == Status::LinkError) {
+        setStatus(Status::OK);
+    }
+    return true;
+}
+
+void Node::pumpTx(bool do_tick) noexcept
+{
+    auto& reg = sessions();
+    const uint8_t first = reg.firstId();
+    const std::size_t cap = reg.capacity();
+    const std::size_t ring = cap + 1u; /* сессии + bus */
+
+    for (std::size_t tried = 0; tried < ring; ++tried) {
+        const std::size_t slot = _drainCursor % ring;
+        _drainCursor = static_cast<uint8_t>((_drainCursor + 1u) % ring);
+
+        if (slot == cap) {
+            if (_status == Status::IdConflict) {
+                continue;
+            }
+            const TxSlot* item = _tx.peek();
+            if (item == nullptr) {
+                continue;
+            }
+            if (!sendWire(*item)) {
+                return;
+            }
+            _tx.drop();
+            continue;
+        }
+
+        Session* s = reg.get(static_cast<uint8_t>(first + slot));
+        if (s == nullptr) {
+            continue;
+        }
+
+        if (do_tick) {
+            s->tick();
+        }
+
+        if (_status == Status::IdConflict || !s->isStarted()) {
+            continue;
+        }
+
+        const TxSlot* item = s->peekTx();
+        if (item == nullptr) {
+            continue;
+        }
+
+        if (!sendWire(*item)) {
+            s->onTxResult(false);
+            return;
+        }
+        s->dropTx();
+        s->onTxResult(true);
+    }
+}
+
 void Node::update() noexcept
 {
-    if (_clock != nullptr) {
-        _now_ms = _clock();
-    }
+    _now_ms = clockMs();
 
     if (_updateDepth < SMCP_MAX_UPDATE_DEPTH) {
         ++_updateDepth;
 
         msg::Packet pkt;
-        while (receive(pkt)) {
+        while (_link.receive(pkt)) {
             if (!acceptRx(pkt)) {
                 continue;
             }
 
             Session* s = sessionByPeer(pkt.hdr.src_id);
-            if (s != nullptr && s->onPacket(pkt)) {
-                continue;
+            if (s != nullptr) {
+                if (s->onPacket(pkt)) {
+                    continue;
+                }
             }
 
             onPacket(pkt);
         }
 
-        auto& reg = sessions();
-        const uint8_t end = reg.endId();
-        for (uint8_t id = reg.firstId(); id < end; ++id) {
-            Session* s = reg.get(id);
-            if (s != nullptr) {
-                s->tick();
-            }
-        }
+        pumpTx(/*do_tick=*/true);
 
         --_updateDepth;
-    }
-
-    while (const Outbound* item = _tx.peek()) {
-        // TODO: приоритет / fairness между сессиями; таймаут головы при длительном LinkError
-        if (!_link.send(item->body, item->dst_id, item->pkt_id)) {
-            _status = Status::LinkError;
-            return;
-        }
-        _tx.drop();
-    }
-
-    if (_status == Status::LinkError && _link.getStatus() == Link::Status::OK) {
-        _status = Status::OK;
+    } else {
+        /* Вложенный update на лимите глубины — только TX, без tick/RX. */
+        pumpTx(/*do_tick=*/false);
     }
 }
 

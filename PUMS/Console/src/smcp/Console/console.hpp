@@ -10,9 +10,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ican.hpp"
 #include "obj_registry.hpp"
 #include "smcp/mech.hpp"
+#include "smcp/transport/ilink.hpp"
 #include "smcp/transport/message.hpp"
 #include "smcp/transport/node.hpp"
 #include "smcp/transport/session.hpp"
@@ -59,7 +59,7 @@ public:
 protected:
     friend void detail::registerMech(IConsole& cons, IMech& mech) noexcept;
 
-    explicit IConsole(BIF::CAN::ICAN& can, uint8_t console_id) noexcept;
+    explicit IConsole(ILink& link, ClockFn clock) noexcept;
 
     [[nodiscard]] virtual MISC::ObjRegistry<IMech, uint8_t>& storage() noexcept = 0;
 
@@ -73,8 +73,8 @@ public:
     static constexpr std::size_t kMechCount = MaxMechs;
     static constexpr std::size_t kSessionCount = MaxSessions;
 
-    explicit Console(BIF::CAN::ICAN& can, uint8_t console_id = 1u) noexcept
-        : IConsole(can, console_id)
+    explicit Console(ILink& link, ClockFn clock) noexcept
+        : IConsole(link, clock)
     {}
 
 protected:

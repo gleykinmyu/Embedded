@@ -10,10 +10,10 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ican.hpp"
 #include "smcp/Console/console.hpp"
 #include "smcp/Console/show_file.hpp"
 #include "smcp/Console/group.hpp"
+#include "smcp/transport/ilink.hpp"
 #include "model/mech.hpp"
 
 class MBrowser;
@@ -74,8 +74,8 @@ public:
 
     /* ========== Конструктор / зеркало ========== */
     explicit MConsole(MBrowser& browser,
-                      BIF::CAN::ICAN& can,
-                      uint8_t console_id = 1u) noexcept;
+                      smcp::ILink& link,
+                      smcp::Node::ClockFn clock) noexcept;
 
     /** Опциональное зеркало (любой IFile: W25Q-сектор, …). */
     void setMirror(BIF::IFile* mirror) noexcept { _mirror = mirror; }

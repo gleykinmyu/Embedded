@@ -24,6 +24,7 @@
 #include "model/mconsole.hpp"
 #include "model/mserver.hpp"
 #include "smcp/mock_can.hpp"
+#include "smcp/transport/can_link.hpp"
 #include "w25q_show_file.hpp"
 
 
@@ -35,8 +36,10 @@ MBrowser mBrowser(sdVolume, showDir, showFile);
 
 smcp::MockCan canConsole;
 smcp::MockCan canServer;
-MConsole console(mBrowser, canConsole, 1u);
-MServer mServer(canServer, smcp::msg::kServerIdMin);
+smcp::CanLink linkConsole(canConsole, 1u);
+smcp::CanLink linkServer(canServer, smcp::msg::kServerIdMin);
+MConsole console(mBrowser, linkConsole, boardClockMs);
+MServer mServer(linkServer, boardClockMs);
 
 nex::AppTiming timing = {boardClockMs, 500u};
 server::Application app(board.serial2, nex::Rect(600u, 1024u), timing);
@@ -50,7 +53,7 @@ constexpr uint32_t kWatchdogTimeoutMs = 5000u;
 char g_stdoutBuf[256];
 
 /**
- * Два «чипа» на одном MCU: каждый poll'ит свой Link/CAN.
+ * Два «чипа» на одном MCU: каждый poll'ит свой ILink/CAN.
  * Связь — MockCan::connect; Heartbeat — PROTOCOL.md.
  */
 void tickSmcpNodes() noexcept
@@ -133,9 +136,6 @@ int main(void)
     (void)canConsole.open(1'000'000);
     (void)canServer.open(1'000'000);
     canConsole.connect(canServer);
-
-    console.setClock(boardClockMs);
-    mServer.setClock(boardClockMs);
 
     console.setMirror(&flashShow);
     if (console.restoreMirror()) {
