@@ -154,6 +154,7 @@ public:
     /* ========== Шоуфайл ========== */
     [[nodiscard]] const char* showName() const noexcept { return _showName; }
     [[nodiscard]] bool isEdited() const noexcept { return _edited; }
+    void setOnShowChanged(void (*fn)() noexcept) noexcept { _onShowChanged = fn; }
 
     void newShow() noexcept;
     [[nodiscard]] bool openShow() noexcept;
@@ -224,8 +225,9 @@ private:
 
     /* --- Шоуфайл (I/O) --- */
     void setShowName(const char* name) noexcept;
-    void markEdited() noexcept { _edited = true; }
-    void clearEdited() noexcept { _edited = false; }
+    void markEdited() noexcept;
+    void clearEdited() noexcept;
+    void notifyShowChanged() noexcept;
     [[nodiscard]] static bool isTemplateName(const char* name) noexcept;
     /**
      * Импорт/экспорт SMCP через IFile (SD, зеркало, …).
@@ -255,4 +257,5 @@ private:
     char _saveAsName[BIF::kDirNameSize]{};
     char _blockMsg[160]{};
     bool _edited = false;
+    void (*_onShowChanged)() noexcept = nullptr;
 };

@@ -24,7 +24,7 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
     : smcp::Console<kMechCount>(link, clock)
-    , _session(*this, 0)
+    , _session(*this)
     , _browser(browser)
     , _mechs(*this)
 {
@@ -633,11 +633,44 @@ bool MConsole::canMutateShowName(const char* name) noexcept
 void MConsole::setShowName(const char* name) noexcept
 {
     if (name == nullptr) {
+        if (_showName[0] == '\0') {
+            return;
+        }
         _showName[0] = '\0';
+        notifyShowChanged();
+        return;
+    }
+    if (std::strcmp(_showName, name) == 0) {
         return;
     }
     std::strncpy(_showName, name, sizeof(_showName) - 1u);
     _showName[sizeof(_showName) - 1u] = '\0';
+    notifyShowChanged();
+}
+
+void MConsole::markEdited() noexcept
+{
+    if (_edited) {
+        return;
+    }
+    _edited = true;
+    notifyShowChanged();
+}
+
+void MConsole::clearEdited() noexcept
+{
+    if (!_edited) {
+        return;
+    }
+    _edited = false;
+    notifyShowChanged();
+}
+
+void MConsole::notifyShowChanged() noexcept
+{
+    if (_onShowChanged != nullptr) {
+        _onShowChanged();
+    }
 }
 
 
@@ -650,7 +683,7 @@ void MConsole::newShow() noexcept
     clearActiveGroup();
     _settings = Settings{};
     _mode = Mode::Work;
-    _showName[0] = '\0';
+    setShowName(nullptr);
     clearEdited();
     rebuildBlockedMechs();
 }

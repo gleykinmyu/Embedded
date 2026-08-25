@@ -2,8 +2,8 @@
  * @file node.hpp
  * @brief Базовый узел SMCP: ILink + TxQueue + registry Session*.
  *
- * Session unicast — в Session::_tx (Full → Session::isTxFull);
- * Node::send — broadcast / без сессии (Full → Node::TxQueueFull).
+ * Session unicast — в Session::_tx (Full → Session::isTxFull, edge Node::onTxFull).
+ * Node drain сессии, пока не Idle. Node::send — broadcast / без сессии (Full → onTxFull(nullptr)).
  * Объекты Session создаёт наследник и регистрирует (как IMech).
  */
 
@@ -77,8 +77,8 @@ private:
 };
 
 namespace detail {
-/** Регистрация в Node::sessions(); fail → Node::Status::RegisterFailed. */
-void registerSession(Node& node, Session& session, uint8_t slot_id) noexcept;
+/** Регистрация в Node::sessions() (первый свободный слот); fail → Node::Status::RegisterFailed. */
+void registerSession(Node& node, Session& session) noexcept;
 } // namespace detail
 
 /**
@@ -90,13 +90,12 @@ class Node {
 public:
     /**
      * Порядок значений = жёсткость (setStatus не понижает, кроме clearError→OK).
-     * OK < TxQueueFull < LinkError < RegisterFailed < IdConflict.
+     * OK < LinkError < RegisterFailed < IdConflict.
      */
     enum class Status : uint8_t {
         OK = 0,
-        TxQueueFull,
         LinkError, /**< Encode / Send / Closed — см. link().getStatus() */
-        RegisterFailed, /**< registerSession: слот занят / id вне диапазона */
+        RegisterFailed, /**< registerSession: нет свободного слота */
         IdConflict, /**< На шине кадр с src == наш node id */
     };
 
@@ -140,8 +139,8 @@ public:
 
     /**
      * Non-session TX (обычно broadcast). Unicast сессий — Session::send.
-     * При Full — stall update() до SMCP_TX_STALL_MS, иначе TxQueueFull.
-     * TxQueueFull снимается при успешном enqueue; LinkError — успешный wire или clearError().
+     * При Full — stall update() до SMCP_TX_STALL_MS, иначе onTxFull(nullptr).
+     * LinkError снимается успешным wire или clearError().
      */
     void send(const msg::Message& body,
               uint8_t dst_id = msg::kBroadcastId,
@@ -160,7 +159,8 @@ public:
     uint8_t updateDepth() const noexcept { return _updateDepth; }
 
 protected:
-    friend void detail::registerSession(Node& node, Session& session, uint8_t slot_id) noexcept;
+    friend void detail::registerSession(Node& node, Session& session) noexcept;
+    friend class Session;
 
     [[nodiscard]] virtual MISC::ObjRegistry<Session, uint8_t>& sessions() noexcept = 0;
 
@@ -169,6 +169,21 @@ protected:
 
     /** Переход Node::Status (edge). Сессии не трогать — только app/UI/диагностика. */
     virtual void onStatus(Status status) noexcept { (void)status; }
+
+    /** Отказ enqueue: очередь Full. nullptr — Node::_tx. */
+    virtual void onTxFull(Session* session) noexcept
+    {
+        (void)session;
+    }
+
+    /**
+     * Wire-результат головы Node::_tx.
+     * По умолчанию drop (класс D, без окна Ack). Session на fail голову держит.
+     */
+    virtual void onTxResult(bool ok) noexcept
+    {
+        if (!ok) _tx.drop();
+    }
 
 private:
     /** Смена статуса: OK всегда; иначе только «жёстче». Edge → onStatus. */

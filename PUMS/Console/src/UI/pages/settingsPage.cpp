@@ -175,6 +175,7 @@ void SettingsPage::commitApply() noexcept
 
     if (board.rtc.isReady()) {
         (void)board.rtc.set(dt);
+        ui().syncStatusBarTime();
     }
 
     {

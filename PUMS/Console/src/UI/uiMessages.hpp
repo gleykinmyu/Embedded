@@ -7,6 +7,12 @@
 
 namespace uiMsg {
 
+/* --- Кнопки MsgBox (UTF-8 → OEM при boot) --- */
+inline constexpr const char* kBtnOk = "ОК";
+inline constexpr const char* kBtnYes = "Да";
+inline constexpr const char* kBtnNo = "Нет";
+inline constexpr const char* kBtnCancel = "Отмена";
+
 /* --- Заголовки MsgBox --- */
 inline constexpr const char* kTitleFile = "Файл";
 inline constexpr const char* kTitleGroup = "Группа";

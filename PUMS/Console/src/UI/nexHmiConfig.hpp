@@ -20,7 +20,9 @@ inline constexpr bool kHaskeybdCPage = false;
 
 // GENERATED-HMI-BEGIN:pages
 #define HMI_PAGE_wait(X, ...) \
-    X(wait, 0, ##__VA_ARGS__)
+    X(wait, 0, ##__VA_ARGS__) \
+    X(p0, 1, ##__VA_ARGS__) \
+    X(t0, 2, ##__VA_ARGS__)
 
 /** Page "wait" (panel page id 0). */
 struct Page_wait {
@@ -90,7 +92,8 @@ struct Page_wait {
     X(b24, 51, ##__VA_ARGS__) \
     X(t6, 52, ##__VA_ARGS__) \
     X(tc, 53, ##__VA_ARGS__) \
-    X(gName, 54, ##__VA_ARGS__)
+    X(gName, 54, ##__VA_ARGS__) \
+    X(bSettings, 55, ##__VA_ARGS__)
 
 /** Page "work" (panel page id 1). */
 struct Page_work {
@@ -136,8 +139,7 @@ struct Page_mGroup {
     X(bNew, 5, ##__VA_ARGS__) \
     X(bFile, 6, ##__VA_ARGS__) \
     X(bSaveAs, 7, ##__VA_ARGS__) \
-    X(bDel, 8, ##__VA_ARGS__) \
-    X(bSettings, 9, ##__VA_ARGS__)
+    X(bDel, 8, ##__VA_ARGS__)
 
 /** Page "mFile" (panel page id 3). */
 struct Page_mFile {
@@ -154,8 +156,8 @@ struct Page_mFile {
 
 #define HMI_PAGE_browser(X, ...) \
     X(browser, 0, ##__VA_ARGS__) \
-    X(bF7, 1, ##__VA_ARGS__) \
-    X(fName, 2, ##__VA_ARGS__) \
+    X(fName, 1, ##__VA_ARGS__) \
+    X(bF7, 2, ##__VA_ARGS__) \
     X(title, 3, ##__VA_ARGS__) \
     X(mBack, 4, ##__VA_ARGS__) \
     X(t0, 5, ##__VA_ARGS__) \

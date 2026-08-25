@@ -9,9 +9,10 @@ namespace smcp {
 
 namespace detail {
 
-void registerSession(Node& node, Session& session, uint8_t slot_id) noexcept
+void registerSession(Node& node, Session& session) noexcept
 {
-    const MISC::RegStatus st = node.sessions().registerAt(slot_id, &session);
+    uint8_t id = 0;
+    const MISC::RegStatus st = node.sessions().registerAuto(&session, id);
     if (st != MISC::RegStatus::Ok) {
         node.setStatus(Node::Status::RegisterFailed);
     }
@@ -72,15 +73,8 @@ void Node::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexce
     item.dst_id = dst_id;
     item.pkt_id = pkt_id;
 
-    if (!_tx.enqueue(item, *this)) {
-        if (_tx.isFull()) {
-            setStatus(Status::TxQueueFull);
-        }
-        return;
-    }
-
-    if (_status == Status::TxQueueFull) {
-        setStatus(Status::OK);
+    if (!_tx.enqueue(item, *this) && _tx.isFull()) {
+        onTxFull(nullptr);
     }
 }
 
@@ -135,9 +129,11 @@ void Node::pumpTx(bool do_tick) noexcept
                 continue;
             }
             if (!sendWire(*item)) {
+                onTxResult(false);
                 return;
             }
             _tx.drop();
+            onTxResult(true);
             continue;
         }
 
@@ -150,7 +146,7 @@ void Node::pumpTx(bool do_tick) noexcept
             s->tick();
         }
 
-        if (_status == Status::IdConflict || !s->isStarted()) {
+        if (_status == Status::IdConflict || s->getStatus() == Session::Status::Idle) {
             continue;
         }
 

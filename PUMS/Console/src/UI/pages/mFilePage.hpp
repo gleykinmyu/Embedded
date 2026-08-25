@@ -15,7 +15,6 @@ struct MFilePage : nex::Page<10> {
 
     HMI_COMP(ConsoleBtn, bSave);
     HMI_COMP(ConsoleBtn, bNew);
-    HMI_COMP(ConsoleBtn, bSettings);
 
     explicit MFilePage(nex::IAppUI& app) noexcept;
 

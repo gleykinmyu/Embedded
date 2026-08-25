@@ -18,7 +18,7 @@ namespace enc {
  * @return число записанных байт без NUL; при нехватке места — усечение.
  * Неизвестные/битые последовательности → `'?'`.
  */
-[[nodiscard]] std::size_t utf8ToOem(char* out, std::size_t outCap, const char* utf8) noexcept;
+std::size_t utf8ToOem(char* out, std::size_t outCap, const char* utf8) noexcept;
 
 /** Стек-буфер: `msgBox.show(OemString("Файл"), …, "%s", OemString("Готово."));` */
 class OemString {

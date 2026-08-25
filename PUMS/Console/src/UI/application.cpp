@@ -1,13 +1,20 @@
 #include "application.hpp"
 
-#include <cstdio>
-
 #include "board.hpp"
 #include "core/memstat.hpp"
 #include "enc.hpp"
 #include "UI/uiMessages.hpp"
 
 namespace server {
+
+namespace {
+
+void onConsoleShowChanged() noexcept
+{
+    app.syncStatusBarFile();
+}
+
+} // namespace
 
 Application::Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTiming timing) noexcept
     : AppUI(stream, screen, timing)
@@ -24,8 +31,22 @@ void Application::boot() noexcept
 {
     restartScreen();
     switchPage(0);
+
+    static char ok[12]{};
+    static char yes[12]{};
+    static char no[12]{};
+    static char cancel[12]{};
+    enc::utf8ToOem(ok, sizeof ok, uiMsg::kBtnOk);
+    enc::utf8ToOem(yes, sizeof yes, uiMsg::kBtnYes);
+    enc::utf8ToOem(no, sizeof no, uiMsg::kBtnNo);
+    enc::utf8ToOem(cancel, sizeof cancel, uiMsg::kBtnCancel);
+    msgBox.setLabels({ok, yes, no, cancel});
+
     statusBar.show(overlay);
-    refreshStatusBar();
+    console.setOnShowChanged(&onConsoleShowChanged);
+    syncStatusBarFile();
+    syncStatusBarMem();
+    syncStatusBarTime();
 }
 
 void Application::onPageChange(const nex::msg::evPage& e) noexcept
@@ -38,8 +59,7 @@ void Application::onPageChange(const nex::msg::evPage& e) noexcept
     }
 
     AppUI::onPageChange(e);
-    _statusBarTickMs = nowMs();
-    refreshStatusBar();
+    overlay.redrawShownWidgets();
 }
 
 void Application::update() noexcept
@@ -52,7 +72,8 @@ void Application::update() noexcept
         return;
     }
     _statusBarTickMs = now;
-    refreshStatusBar();
+    syncStatusBarMem();
+    syncStatusBarTime();
 }
 
 void Application::showUtf8Msg(const char* titleUtf8, nex::ovl::MsgBox::Preset preset, uint8_t tag,
@@ -104,30 +125,25 @@ void Application::showBrowserStatus(uint8_t tag) noexcept
     showFileMsg(tag, MBrowser::statusText(mBrowser.getStatus()));
 }
 
-void Application::refreshStatusBar() noexcept
+void Application::syncStatusBarFile() noexcept
 {
-    statusBar.beginUpdate();
+    statusBar.setFile(MConsole::showBaseName(console.showName()), console.isEdited());
+}
 
+void Application::syncStatusBarMem() noexcept
+{
     char memBuf[16]{};
     memstat::formatFreeMin(memBuf, sizeof memBuf);
     statusBar.setStatus(memBuf);
     memstat::resetFreeMin();
+}
 
-    statusBar.setFile(MConsole::showBaseName(console.showName()), console.isEdited());
-
-    char timeBuf[16]{};
-    if (board.rtc.isReady()) {
-        PHL::DateTime dt{};
-        if (board.rtc.get(dt)) {
-            std::snprintf(timeBuf, sizeof(timeBuf), "%02u:%02u:%02u",
-                static_cast<unsigned>(dt.hour),
-                static_cast<unsigned>(dt.minute),
-                static_cast<unsigned>(dt.second));
-        }
+void Application::syncStatusBarTime() noexcept
+{
+    PHL::DateTime dt{};
+    if (board.rtc.isReady() && board.rtc.get(dt)) {
+        statusBar.setTime(dt);
     }
-    statusBar.setTime(timeBuf);
-
-    statusBar.endUpdate();
 }
 
 } // namespace server

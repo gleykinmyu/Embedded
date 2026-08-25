@@ -51,7 +51,7 @@ void IServer::stopSession() noexcept
 bool IServer::linkUp() const noexcept
 {
     const Session* s = primarySession();
-    return s != nullptr && s->isOpen();
+    return s != nullptr && s->getStatus() == Session::Status::Open;
 }
 
 void IServer::onPacket(const msg::Packet& pkt) noexcept

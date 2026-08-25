@@ -9,10 +9,10 @@
 
 namespace smcp {
 
-Session::Session(Node& node, uint8_t slot_id) noexcept
+Session::Session(Node& node) noexcept
     : _node(node)
 {
-    detail::registerSession(node, *this, slot_id);
+    detail::registerSession(node, *this);
 }
 
 bool Session::nodeOk() const noexcept
@@ -20,18 +20,30 @@ bool Session::nodeOk() const noexcept
     return _node.getStatus() != Node::Status::IdConflict;
 }
 
-void Session::markDown() noexcept
+void Session::setStatus(Status status) noexcept
 {
-    _open = false;
+    if (status == _status) {
+        return;
+    }
+    _status = status;
+}
+
+void Session::closeLink() noexcept
+{
     _awaiting = false;
     _timer.stop();
     _tx.clear();
+
+    /* stop() уже Idle — не поднимать Connecting. */
+    if (_status != Status::Idle) {
+        setStatus(Status::Connecting);
+    }
 }
 
 void Session::setPeerId(uint8_t peer_id) noexcept
 {
     _peer_id = peer_id;
-    markDown();
+    closeLink();
 }
 
 void Session::start() noexcept
@@ -39,13 +51,15 @@ void Session::start() noexcept
     if (!nodeOk()) {
         return;
     }
-    _started = true;
+    if (_status == Status::Idle) {
+        setStatus(Status::Connecting);
+    }
 }
 
 void Session::stop() noexcept
 {
-    _started = false;
-    markDown();
+    setStatus(Status::Idle); /* до closeLink, иначе reconnect */
+    closeLink();
 }
 
 bool Session::transmit(const msg::Message& body, uint8_t pkt_id) noexcept
@@ -58,7 +72,11 @@ bool Session::transmit(const msg::Message& body, uint8_t pkt_id) noexcept
     item.body = body;
     item.dst_id = _peer_id;
     item.pkt_id = pkt_id;
-    return _tx.enqueue(item, _node);
+    const bool ok = _tx.enqueue(item, _node);
+    if (!ok && _tx.isFull()) {
+        _node.onTxFull(this); /* каждая попытка, не только первый вход */
+    }
+    return ok;
 }
 
 void Session::send(const msg::Message& body) noexcept
@@ -67,7 +85,7 @@ void Session::send(const msg::Message& body) noexcept
     const bool need_ack = msg::helpers::requiresAck(id);
     const uint8_t pkt_id = need_ack ? _pkt_tx : uint8_t{0};
     if (transmit(body, pkt_id) && need_ack) {
-        ++_pkt_tx;
+        ++_pkt_tx; /* отказ enqueue не сжигает id */
     }
 }
 
@@ -108,7 +126,7 @@ bool Session::onPacket(const msg::Packet& pkt) noexcept
 void Session::sendPing() noexcept
 {
     if (!transmit(msg::Heartbeat{})) {
-        return;
+        return; /* без awaiting/timer — tick повторит ping */
     }
     _awaiting = true;
     _timer.start(_node.clockMs(), msg::kHeartbeatTimeoutMs);
@@ -126,15 +144,15 @@ void Session::onHeartbeat(const msg::Header& hdr) noexcept
         return;
     }
 
-    _open = true;
+    setStatus(Status::Open);
     _timer.start(_node.clockMs(), msg::kHeartbeatTimeoutMs);
 
     if (_awaiting) {
-        _awaiting = false;
+        _awaiting = false; /* pong на наш ping — не отвечать */
         return;
     }
 
-    (void)transmit(msg::Heartbeat{});
+    (void)transmit(msg::Heartbeat{}); /* чужой ping → один pong */
 }
 
 void Session::tick() noexcept
@@ -146,15 +164,16 @@ void Session::tick() noexcept
     const uint32_t now_ms = _node.clockMs();
 
     if (_timer.timedOut(now_ms)) {
-        markDown();
+        closeLink();
 
-        if (_started && _peer_id != 0u) {
-            sendPing();
+        if (_status != Status::Idle && _peer_id != 0u) {
+            sendPing(); /* reconnect */
         }
         return;
     }
 
-    if (_started && _peer_id != 0u && !_timer.isRunning() && !_awaiting) {
+    /* start() не шлёт сам: нет таймера и не ждём pong. */
+    if (_status != Status::Idle && _peer_id != 0u && !_timer.isRunning() && !_awaiting) {
         sendPing();
     }
 }

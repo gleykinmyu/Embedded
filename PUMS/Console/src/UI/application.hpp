@@ -57,9 +57,11 @@ public:
 
     void onPageChange(const nex::msg::evPage& e) noexcept override;
 
-private:
-    void refreshStatusBar() noexcept;
+    void syncStatusBarFile() noexcept;
+    void syncStatusBarMem() noexcept;
+    void syncStatusBarTime() noexcept;
 
+private:
     uint32_t _statusBarTickMs = 0u;
 };
 
@@ -67,3 +69,4 @@ private:
 
 extern MConsole console;
 extern MBrowser mBrowser;
+extern server::Application app;

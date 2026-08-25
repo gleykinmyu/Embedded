@@ -117,6 +117,17 @@ MsgBox::MsgBox(OvlApp& app, const MsgBoxColors& colors) noexcept
         addChildTop(_btns[idx]);
 }
 
+void MsgBox::setLabels(const MsgBoxButtonLabels& labels) noexcept {
+    if (labels.ok != nullptr)
+        _btns[0].setLabel(labels.ok);
+    if (labels.cancel != nullptr)
+        _btns[1].setLabel(labels.cancel);
+    if (labels.yes != nullptr)
+        _btns[2].setLabel(labels.yes);
+    if (labels.no != nullptr)
+        _btns[3].setLabel(labels.no);
+}
+
 void MsgBox::setRoute(const Route route) noexcept {
     _ev.route = route;
     _routePinned = true;

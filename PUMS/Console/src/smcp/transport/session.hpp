@@ -2,7 +2,7 @@
  * @file session.hpp
  * @brief Сессия к одному peer: Heartbeat, session pkt_id, своя TX-очередь (PROTOCOL.md).
  *
- * Unicast TX — в Session::_tx (`isTxFull`); Node drain'ит started-сессии. Broadcast — Node::send.
+ * Unicast TX — в Session::_tx (`isTxFull`); Node drain'ит, пока не Idle. Broadcast — Node::send.
  * IdConflict / dst — у Node::acceptRx.
  */
 
@@ -25,29 +25,44 @@ namespace smcp {
 class Session {
 public:
     /**
-     * Регистрируется в Node::sessions() по @a slot_id (вызывать после storage сессий).
+     * Линк, не шкала жёсткости (в отличие от Node::Status).
+     * start: Idle→Connecting (первый исходящий ping). RX HB → Open.
+     * closeLink: Open/Connecting→Connecting (reconnect). stop → Idle.
      */
-    explicit Session(Node& node, uint8_t slot_id = 0) noexcept;
+    enum class Status : uint8_t {
+        Idle = 0,    /**< нет сессии / stop */
+        Connecting,  /**< ждём первый HB / reconnect */
+        Open,        /**< обмен HB */
+    };
 
-    /** Слот в Node::sessions() (ObjRegistry). */
+    /**
+     * Регистрируется в Node::sessions() в первый свободный слот
+     * (вызывать после storage сессий).
+     */
+    explicit Session(Node& node) noexcept;
+
+    /** Слот в Node::sessions() (ObjRegistry), не peer на шине. */
     [[nodiscard]] uint8_t id() const noexcept { return _id; }
 
+    /** Сменить peer; closeLink (очередь/таймер, Connecting если не Idle). */
     void setPeerId(uint8_t peer_id) noexcept;
 
+    /** Idle→Connecting. Первый ping — из tick, когда есть peer. */
     void start() noexcept;
+    /** Idle + closeLink (без reconnect). */
     void stop() noexcept;
 
-    [[nodiscard]] bool isStarted() const noexcept { return _started; }
+    [[nodiscard]] Status getStatus() const noexcept { return _status; }
     [[nodiscard]] uint8_t peerId() const noexcept { return _peer_id; }
-    [[nodiscard]] bool isOpen() const noexcept { return _open; }
-    /** Session::_tx Full после stall; не поднимается в Node::TxQueueFull. */
+    /** Sticky Full после stall; каждая неудачная постановка → Node::onTxFull(this). */
     [[nodiscard]] bool isTxFull() const noexcept { return _tx.isFull(); }
 
-    /** Unicast к peer. При requiresAck — pkt_id = ++TX. Без bool. */
+    /** Unicast к peer. requiresAck: pkt_id = _pkt_tx, ++ только если кадр в очереди. */
     void send(const msg::Message& body) noexcept;
     void sendAck(uint8_t req_pkt_id) noexcept;
     void sendNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept;
 
+    /** Keep-alive: timeout → closeLink + ping; иначе первый ping после start. */
     void tick() noexcept;
 
     /**
@@ -64,10 +79,12 @@ private:
     void set_id(uint8_t id) noexcept { _id = id; }
 
     void sendPing() noexcept;
-    /** @return true — в Session::_tx; при Full — stall Node::update. */
+    /** @return true — в Session::_tx; при Full — stall Node::update, затем onTxFull. */
     [[nodiscard]] bool transmit(const msg::Message& body, uint8_t pkt_id = 0) noexcept;
     void onHeartbeat(const msg::Header& hdr) noexcept;
-    void markDown() noexcept;
+    /** Сброс очереди/таймера/_awaiting. Не Idle → Connecting (reconnect). */
+    void closeLink() noexcept;
+    void setStatus(Status status) noexcept;
 
     [[nodiscard]] bool nodeOk() const noexcept;
 
@@ -77,18 +94,17 @@ private:
     void onTxResult(bool ok) noexcept;
 
     Node& _node;
-    uint8_t _id = 0;
-    uint8_t _peer_id = 0;
-    uint8_t _pkt_tx = 0;
-    bool _started = false;
-    bool _open = false;
-    bool _awaiting = false;
+    uint8_t _id = 0;       /**< слот registry */
+    uint8_t _peer_id = 0;  /**< SRC удалённого узла (шина) */
+    uint8_t _pkt_tx = 0;   /**< следующий pkt_id для requiresAck */
+    Status _status = Status::Idle;
+    bool _awaiting = false; /**< ждём pong на наш ping (не отвечать эхом) */
 
-    MISC::MsTimer _timer{};
+    MISC::MsTimer _timer{}; /**< ping: дедлайн pong; RX HB: тишина до timeout */
     TxQueue<SMCP_SESSION_TX_CAPACITY> _tx;
 };
 
-/** Банк Session[N]: ctor регистрирует каждый в Node::sessions() (слот = индекс). */
+/** Банк Session[N]: ctor регистрирует каждый в Node::sessions() подряд. */
 template <std::size_t N>
 class SessionBank {
 public:
@@ -107,7 +123,7 @@ public:
 private:
     template <std::size_t... I>
     SessionBank(Node& node, std::index_sequence<I...>) noexcept
-        : _items{Session{node, static_cast<uint8_t>(I)}...}
+        : _items{((void)I, Session{node})...}
     {}
 
     Session _items[N];

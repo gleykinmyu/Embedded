@@ -175,6 +175,9 @@ public:
 
     [[nodiscard]] const MsgBoxColors& colors() const noexcept { return _colors; }
 
+    /** Подписи кнопок. Указатели должны жить, пока диалог может показаться (строка не копируется). */
+    void setLabels(const MsgBoxButtonLabels& labels) noexcept;
+
     void setRoute(Route route) noexcept;
 
 private:

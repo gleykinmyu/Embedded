@@ -51,7 +51,7 @@ void IConsole::stopSession() noexcept
 bool IConsole::linkUp() const noexcept
 {
     const Session* s = primarySession();
-    return s != nullptr && s->isOpen();
+    return s != nullptr && s->getStatus() == Session::Status::Open;
 }
 
 void IConsole::select(msg::Select::Action action, Selection selection) noexcept

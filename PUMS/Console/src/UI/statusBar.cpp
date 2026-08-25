@@ -1,8 +1,10 @@
 #include "statusBar.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 #include "buttons.hpp"
+#include "phl/rtc.hpp"
 
 namespace server {
 
@@ -69,27 +71,30 @@ StatusBar::StatusBar(const nex::Rect screen, const uint16_t barHeight) noexcept
     : _screen(screen)
     , _barHeight(barHeight)
 {
-    _columns[static_cast<uint8_t>(Field::Status)].width = kStatusColumnWidth;
-    _columns[static_cast<uint8_t>(Field::Status)].align = nex::HAlign::Left;
-    _columns[static_cast<uint8_t>(Field::File)].width = 0u;
-    _columns[static_cast<uint8_t>(Field::File)].align = nex::HAlign::Center;
-    _columns[static_cast<uint8_t>(Field::Time)].width = kSideColumnWidth;
-    _columns[static_cast<uint8_t>(Field::Time)].align = nex::HAlign::Right;
-
     setRegion(nex::Region(nex::Point{0, kOriginY}, nex::Rect{screen.w, barHeight}));
-    layoutColumns();
+
+    auto& status = column(Field::Status);
+    status.width = kStatusColumnWidth;
+    status.align = nex::HAlign::Left;
+
+    auto& file = column(Field::File);
+    file.fit = true;
+    file.align = nex::HAlign::Center;
+
+    auto& time = column(Field::Time);
+    time.width = kSideColumnWidth;
+    time.align = nex::HAlign::Right;
+
+    addChildTop(status);
+    addChildTop(file);
+    addChildTop(time);
+    layout();
 }
 
 void StatusBar::show(nex::ovl::Overlay& ovl) noexcept
 {
     _overlay = &ovl;
     Widget::show(ovl);
-}
-
-void StatusBar::endUpdate() noexcept
-{
-    _suspendRedraw = false;
-    redrawIfShown();
 }
 
 void StatusBar::hide(nex::ovl::Overlay& ovl) noexcept
@@ -102,81 +107,75 @@ void StatusBar::hide(nex::ovl::Overlay& ovl) noexcept
 
 void StatusBar::setColumnWidth(const Field field, const uint16_t width) noexcept
 {
-    if (field == Field::File) {
+    if (field == Field::File || field >= kFieldCount) {
         return;
     }
-    const auto idx = static_cast<uint8_t>(field);
-    if (idx >= static_cast<uint8_t>(Field::Count)) {
-        return;
-    }
-    _columns[idx].width = width;
-    layoutColumns();
-    redrawIfShown();
+    column(field).setWidth(width);
 }
 
-void StatusBar::setField(const Field field, const char* text) noexcept
+void StatusBar::Column::setText(const char* const src) noexcept
 {
-    const auto idx = static_cast<uint8_t>(field);
-    if (idx >= static_cast<uint8_t>(Field::Count)) {
-        return;
-    }
-
     char buf[kTextCap]{};
-    if (field == Field::File) {
-        const auto& file = _columns[idx];
-        const uint16_t textW = (file.region.size.w > 2u * kFieldPad)
-            ? static_cast<uint16_t>(file.region.size.w - 2u * kFieldPad)
+    if (fit) {
+        const uint16_t textW = (region().size.w > 2u * kFieldPad)
+            ? static_cast<uint16_t>(region().size.w - 2u * kFieldPad)
             : 0u;
-        fitFieldText(buf, kTextCap, text, textW);
+        fitFieldText(buf, kTextCap, src, textW);
     } else {
-        copyFieldText(buf, kTextCap, text);
+        copyFieldText(buf, kTextCap, src);
     }
-    if (std::strcmp(_columns[idx].text, buf) == 0) {
+    if (std::strcmp(text, buf) == 0) {
         return;
     }
-    std::memcpy(_columns[idx].text, buf, kTextCap);
-    redrawIfShown();
+    std::memcpy(text, buf, kTextCap);
+
+    auto* const bar = static_cast<StatusBar*>(parent());
+    if (bar != nullptr) {
+        bar->present(*this);
+    }
 }
 
-void StatusBar::appendField(const Field field, const char* text) noexcept
+void StatusBar::Column::append(const char* const src) noexcept
 {
-    const auto idx = static_cast<uint8_t>(field);
-    if (idx >= static_cast<uint8_t>(Field::Count) || text == nullptr || text[0] == '\0') {
+    if (src == nullptr || src[0] == '\0') {
         return;
     }
 
     char buf[kTextCap]{};
-    copyFieldText(buf, kTextCap, _columns[idx].text);
+    copyFieldText(buf, kTextCap, text);
     const std::size_t cur = std::strlen(buf);
     if (cur < kTextCap - 1u) {
-        std::strncat(buf, text, kTextCap - 1u - cur);
+        std::strncat(buf, src, kTextCap - 1u - cur);
         buf[kTextCap - 1u] = '\0';
     }
+    setText(buf);
+}
 
-    if (field == Field::File) {
-        const auto& file = _columns[idx];
-        const uint16_t textW = (file.region.size.w > 2u * kFieldPad)
-            ? static_cast<uint16_t>(file.region.size.w - 2u * kFieldPad)
-            : 0u;
-        char fitted[kTextCap]{};
-        fitFieldText(fitted, kTextCap, buf, textW);
-        if (std::strcmp(_columns[idx].text, fitted) == 0) {
-            return;
-        }
-        std::memcpy(_columns[idx].text, fitted, kTextCap);
-    } else {
-        if (std::strcmp(_columns[idx].text, buf) == 0) {
-            return;
-        }
-        std::memcpy(_columns[idx].text, buf, kTextCap);
+void StatusBar::Column::setWidth(const uint16_t w) noexcept
+{
+    if (width == w) {
+        return;
     }
-    redrawIfShown();
+    width = w;
+    auto* const bar = static_cast<StatusBar*>(parent());
+    if (bar != nullptr) {
+        bar->onColumnWidthChanged();
+    }
+}
+
+void StatusBar::Column::draw(const nex::AppCanvas& cs) const
+{
+    if (text[0] == '\0') {
+        return;
+    }
+    cs.text_in_region(screenRegion(), kFieldPad, text, kFontId, AppColors::kText, align,
+        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
 }
 
 void StatusBar::setFile(const char* text, const bool edited) noexcept
 {
     if (!edited) {
-        setFile(text);
+        column(Field::File).setText(text);
         return;
     }
 
@@ -187,24 +186,28 @@ void StatusBar::setFile(const char* text, const bool edited) noexcept
         withMark[cur] = '*';
         withMark[cur + 1u] = '\0';
     }
-    setFile(withMark);
+    column(Field::File).setText(withMark);
+}
+
+void StatusBar::setTime(const PHL::DateTime& dt) noexcept
+{
+    char buf[16]{};
+    std::snprintf(buf, sizeof(buf), "%02u:%02u:%02u",
+        static_cast<unsigned>(dt.hour),
+        static_cast<unsigned>(dt.minute),
+        static_cast<unsigned>(dt.second));
+    column(Field::Time).setText(buf);
 }
 
 void StatusBar::layout() noexcept
-{
-    layoutColumns();
-    Widget::layout();
-}
-
-void StatusBar::layoutColumns() noexcept
 {
     const uint16_t totalW = _screen.w;
     const uint16_t h = _barHeight;
     const nex::Coord y = 0;
 
-    auto& status = _columns[static_cast<uint8_t>(Field::Status)];
-    auto& file = _columns[static_cast<uint8_t>(Field::File)];
-    auto& time = _columns[static_cast<uint8_t>(Field::Time)];
+    auto& status = column(Field::Status);
+    auto& file = column(Field::File);
+    auto& time = column(Field::Time);
 
     const uint16_t statusW = (status.width > 0u) ? status.width : kStatusColumnWidth;
     const uint16_t timeW = (time.width > 0u) ? time.width : kSideColumnWidth;
@@ -215,40 +218,40 @@ void StatusBar::layoutColumns() noexcept
         ? static_cast<uint16_t>(totalW - statusW - timeW)
         : 0u;
 
-    status.region = nex::Region(nex::Point{0, y}, nex::Rect{statusW, h});
-    file.region = nex::Region(nex::Point{static_cast<nex::Coord>(fileX), y}, nex::Rect{fileW, h});
-    time.region = nex::Region(nex::Point{static_cast<nex::Coord>(timeX), y}, nex::Rect{timeW, h});
+    status.setRegion(nex::Region(nex::Point{0, y}, nex::Rect{statusW, h}));
+    file.setRegion(nex::Region(nex::Point{static_cast<nex::Coord>(fileX), y}, nex::Rect{fileW, h}));
+    time.setRegion(nex::Region(nex::Point{static_cast<nex::Coord>(timeX), y}, nex::Rect{timeW, h}));
+
+    Widget::layout();
 }
 
 void StatusBar::drawBackground(const nex::AppCanvas& cs) const
 {
-    const nex::Region bar = screenRegion();
-    cs.rect_fill(bar, AppColors::kPage);
-
-    const auto& status = _columns[static_cast<uint8_t>(Field::Status)];
-    const auto& file = _columns[static_cast<uint8_t>(Field::File)];
-    const auto& time = _columns[static_cast<uint8_t>(Field::Time)];
-
-    const nex::Region statusField = nex::Canvas::toScreen(bar, status.region);
-    cs.text_in_region(statusField, kFieldPad, status.text, kFontId, AppColors::kText, status.align,
-        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
-
-    const nex::Region fileField = nex::Canvas::toScreen(bar, file.region);
-    cs.text_in_region(fileField, kFieldPad, file.text, kFontId, AppColors::kText, file.align,
-        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
-
-    const nex::Region timeField = nex::Canvas::toScreen(bar, time.region);
-    cs.text_in_region(timeField, kFieldPad, time.text, kFontId, AppColors::kText, time.align,
-        nex::VAlign::Center, AppColors::kPage, nex::BG::Color);
+    //cs.rect_fill(screenRegion(), AppColors::kPage);
 }
 
-void StatusBar::redrawIfShown() const noexcept
+void StatusBar::drawBackgroundRegion(const nex::AppCanvas& cs, const nex::Region clip) const
 {
-    if (_suspendRedraw || _overlay == nullptr || !isVisible()) {
+    //cs.rect_fill(clip, AppColors::kPage);
+}
+
+void StatusBar::onColumnWidthChanged() noexcept
+{
+    layout();
+    presentAll();
+}
+
+void StatusBar::present(const nex::ovl::Object& obj) noexcept
+{
+    if (_overlay == nullptr || !isVisible() || _overlay->isModal()) {
         return;
     }
-    // Не перебивать modal MsgBox; время догонит после закрытия.
-    if (_overlay->isModal()) {
+    redrawObject(obj, _overlay->app.cs);
+}
+
+void StatusBar::presentAll() noexcept
+{
+    if (_overlay == nullptr || !isVisible() || _overlay->isModal()) {
         return;
     }
     draw(_overlay->app.cs);

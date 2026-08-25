@@ -42,33 +42,32 @@ Telemetry при **движении** — отдельно: по Δposition / ra
 
 ## Heartbeat (линк + регистрация)
 
-Ролей в `Session` нет; Open/Close на wire нет. Локально: `isOpen()` / `linkUp()`.
+Ролей в `Session` нет; Open/Close на wire нет. Локально: `Session::Status` / `linkUp()`.
 
-Исходящий keep-alive **не** стартует сам: слой снаружи вызывает `startSession()` /
-`Session::start()` (консоль — после `setServerId`). Дальше `tick` шлёт ping раз в T.
-Сервер в MVP обычно **не** вызывает `start` — только отвечает; при желании может
-`startSession()` и сам пинговать (тот же код).
+Исходящий keep-alive **не** стартует сам из Idle: слой снаружи вызывает `startSession()` /
+`Session::start()` (консоль — после `setServerId`) → Connecting, `tick` шлёт ping.
+Сервер может не вызывать `start`: RX HB сам переводит в Open (и дальше keep-alive).
 
 Сервер может узнать `console_id` с первого RX (`src` → peer).
 
 ```text
-Слой:     startSession()          (один раз / после смены peer)
-Session:  HB → peer               один timer = T (kHeartbeatTimeoutMs), awaiting
+Слой:     startSession()          Idle → Connecting
+Session:  HB → peer               timer = T, awaiting
 Peer:     HB → back               (pong, если сам не ждал ответ)
-Session:  open; awaiting=false; timer заново = T
+Session:  → Open; awaiting=false; timer заново = T
 …
-timer: нет pong / тишина / пора keep-alive → open=false;
-       если start() — сразу новый ping
+timer: closeLink → Connecting; сразу новый ping
+RX HB без start: Idle → Open (pong; дальше как обычная сессия)
 ```
 
 Правила (симметрично, **один** `MsTimer`):
-- RX HB и **ждём** → pong: `open`, `awaiting=false`, timer restart, **не** отвечать.
-- RX HB и **не** ждём → чужой ping: `open`, timer restart, **один** pong.
-- Timeout: down; при `start()` — reconnect/keep-alive ping.
-- «Сессия открыта» = успешный обмен HB, не отдельное сообщение.
+- RX HB и **ждём** → pong: `Open`, `awaiting=false`, timer restart, **не** отвечать.
+- RX HB и **не** ждём → чужой ping: `Open`, timer restart, **один** pong.
+- Timeout: `closeLink` → Connecting + reconnect ping (пока не `stop`).
+- «Сессия открыта» = `Open`, не отдельное сообщение.
 
 API: `setServerId`/`setConsoleId`, `startSession`/`stopSession`, `update`, `linkUp`,
-`Node::getStatus`/`clearError`; часы — в ctor `Node` (stall при TxQueueFull).
+`Node::getStatus`/`clearError`; часы — в ctor `Node` (stall enqueue).
 
 RX любого кадра с `src_id == мой id` → **`Node::Status::IdConflict`**:
 не demux RX и не TX (`send` / `sendWire` / drain), пока `clearError()`.
@@ -82,7 +81,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 |--|--|
 | **ILink / CanLink** | среда ↔ Packet; один shot `send`/`receive` |
 | **Node** | bus TX + registry Session*; pump RX/`acceptRx`/session/`onPacket` + RR Session::_tx + Node::_tx; **IdConflict** |
-| **Session** | peer HB/`isOpen`, pkt_id, **своя TX-очередь**; markDown чистит очередь |
+| **Session** | peer, `Status`, pkt_id, **своя TX-очередь**; closeLink чистит очередь |
 
 `IConsole` / `IServer` наследуют **Node**, держат `ObjStorage<Session*>`;
 объекты `Session` владеет leaf (`MConsole` — одна, `MServer` — `SessionBank` до `kMaxConsoles`).
@@ -105,10 +104,9 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 - Очередь **кадров** — в `ICAN` (драйвер / `MockCan`).
 - Очередь **bus / broadcast** `(body, dst, pkt_id)` — `Node::_tx` (`Node::send`, класс **D**).
-  `TxQueue::isFull` после stall → `Node::Status::TxQueueFull` (только эта очередь).
+  `TxQueue::isFull` после stall → `onTxFull(nullptr)`.
 - Очередь **session unicast** — `Session::_tx` (A/B/C/E).
-  `TxQueue::isFull` / `Session::isTxFull()`; **не** поднимать в `Node::TxQueueFull`
-  (на сервере Full одной консоли ≠ ошибка всего узла).
+  `TxQueue::isFull` / `Session::isTxFull()`; edge → `onTxFull(session)`.
 - Drain: один RR на `sessionCapacity + 1` (слоты сессий + bus), **по одному кадру** за заход.
 - Окно Ack / pending retry — **в Session** (класс **A**, позже поверх той же очереди).
 - Dual-axis Telemetry — **не** в MVP.

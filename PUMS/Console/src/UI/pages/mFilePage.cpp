@@ -78,9 +78,6 @@ void MFilePage::onTouch(const nex::msg::evTouch& e)
     case PM::bNew:
         beginNew();
         break;
-    case PM::bSettings:
-        ui().switchPage(ui().settings);
-        break;
     default:
         break;
     }
