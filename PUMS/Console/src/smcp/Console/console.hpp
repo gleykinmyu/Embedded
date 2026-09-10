@@ -44,10 +44,9 @@ public:
     [[nodiscard]] Session* primarySession() noexcept { return session(0); }
     [[nodiscard]] const Session* primarySession() const noexcept { return session(0); }
 
-    void setServerId(uint8_t server_id) noexcept;
     [[nodiscard]] uint8_t serverId() const noexcept;
 
-    void startSession() noexcept;
+    void startSession(uint8_t server_id) noexcept;
     void stopSession() noexcept;
 
     [[nodiscard]] bool linkUp() const noexcept;

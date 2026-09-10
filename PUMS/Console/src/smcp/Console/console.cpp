@@ -21,37 +21,30 @@ IConsole::IConsole(ILink& link, ClockFn clock) noexcept
     : Node(link, clock)
 {}
 
-void IConsole::setServerId(uint8_t server_id) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->setPeerId(server_id);
-    }
-}
-
 uint8_t IConsole::serverId() const noexcept
 {
     const Session* s = primarySession();
     return s != nullptr ? s->peerId() : uint8_t{0};
 }
 
-void IConsole::startSession() noexcept
+void IConsole::startSession(uint8_t server_id) noexcept
 {
     if (Session* s = primarySession()) {
-        s->start();
+        s->start(server_id);
     }
 }
 
 void IConsole::stopSession() noexcept
 {
     if (Session* s = primarySession()) {
-        s->stop();
+        s->close();
     }
 }
 
 bool IConsole::linkUp() const noexcept
 {
     const Session* s = primarySession();
-    return s != nullptr && s->getStatus() == Session::Status::Open;
+    return s != nullptr && s->isOpen();
 }
 
 void IConsole::select(msg::Select::Action action, Selection selection) noexcept

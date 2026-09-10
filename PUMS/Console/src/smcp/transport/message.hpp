@@ -41,6 +41,8 @@ inline constexpr unsigned kCanIdPrioPos = 24;
 inline constexpr uint16_t kAckTimeoutControlMs = 100u;
 inline constexpr uint8_t kAckRetryControl = 3u;
 inline constexpr uint16_t kHeartbeatTimeoutMs = 500u;
+/** Сколько интервалов T без RX HB до down (1 = сразу при первом timeout). */
+inline constexpr uint8_t kHeartbeatMissMax = 3u;
 
 /** MVP wire set: Ack/Nack, Heartbeat, Select, SetTarget, Telemetry. */
 enum class MsgId : uint8_t {
@@ -63,6 +65,7 @@ enum class ErrorCode : uint8_t {
     Safety       = 0x05, /**< Blocked / запрет безопасности. */
     NotReady     = 0x06, /**< Привод не Ready. */
     SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
+    Timeout      = 0x08, /**< Локально: исчерпан retry Ack (не с шины). */
 };
 
 /**

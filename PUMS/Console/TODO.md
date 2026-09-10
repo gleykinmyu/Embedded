@@ -63,13 +63,15 @@
 - **Нет связи / нет телеметрии:** высота «—», клетка не Active.
 - Обновление высоты **с порогом** (Δ мм или ≤10 Гц на клетку), иначе 24 оси забьют UART 250000.
 
-### F2. Nack до UI
+### F2. Nack / session callbacks до UI
 
 Select уходит в CAN; Busy / NotReady / SelectLimit на экране нет.
 
-- Пробросить Nack в MsgBox или в состояние клетки (не ждать, пока телеметрия «откатит» цвет).
-- SelectLimit (на сервере `kMaxSelected = 3`) — явный текст, не молчание.
-- По возможности `Node::Status` (IdConflict, LinkError) — в StatusBar / MsgBox.
+- Перекрыть `Node::onReply` на консоли → MsgBox / состояние клетки (не ждать телеметрию).
+- SelectLimit (`kMaxSelected = 3`) — явный текст.
+- `Node::onStatus`: IdConflict / LinkError → StatusBar / MsgBox; close сессий по политике app.
+- Listen ~T до первого ping (`MConsole`), затем `startSession` (PROTOCOL IdConflict).
+- Позже diag: `onPktIdGap` — RX class A не previous+1 (только `requiresAck`; флаг/sentinel «первый кадр»; лог, сессию не рвать). Сейчас есть только `onPktIdMismatch`.
 
 ### F3. StatusBar
 

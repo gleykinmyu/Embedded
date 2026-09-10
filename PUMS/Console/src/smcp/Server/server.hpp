@@ -1,9 +1,9 @@
 /**
  * @file server.hpp
- * @brief IServer + Server<N>: Select→Ack + Telemetry(on change).
+ * @brief IServer + Server<N> + SessionConsole: Select→Ack + Telemetry(on change).
  *
- * Наследует Node. Session* — в registry; объекты Session владеет leaf (напр. MServer).
- * Сервер: много сессий (до kMaxConsoles); консоль — обычно одна.
+ * Наследует Node. SessionConsole* — в registry; объекты владеет leaf (MServer).
+ * Сервер: много сессий (до kMaxConsoles).
  */
 
 #pragma once
@@ -22,6 +22,7 @@
 namespace smcp {
 
 class IServer;
+class SessionConsole;
 
 namespace detail {
 void registerMech(IServer& server, IMech& mech) noexcept;
@@ -30,6 +31,8 @@ void registerMech(IServer& server, IMech& mech) noexcept;
 class IServer : public Node {
 public:
     virtual ~IServer() = default;
+
+    // --- механизмы (lookup) ---
 
     [[nodiscard]] std::size_t mechCapacity() const noexcept
     {
@@ -42,36 +45,27 @@ public:
         return const_cast<IServer*>(this)->storage().get(id);
     }
 
-    /** Слот 0 — первая сессия; на сервере смотри sessionByPeer / SessionBank. */
-    [[nodiscard]] Session* primarySession() noexcept { return session(0); }
-    [[nodiscard]] const Session* primarySession() const noexcept { return session(0); }
+    // --- исходящие PDU ---
 
-    void setConsoleId(uint8_t console_id) noexcept;
-    [[nodiscard]] uint8_t consoleId() const noexcept;
-
-    void startSession() noexcept;
-    void stopSession() noexcept;
-
-    [[nodiscard]] bool linkUp() const noexcept;
-
+    /** Broadcast Telemetry (класс D) по текущему состоянию mech. */
     void pushTelemetry(uint8_t mech_id) noexcept;
-    void pushAck(uint8_t req_pkt_id) noexcept;
-    void pushNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept;
 
 protected:
     friend void detail::registerMech(IServer& server, IMech& mech) noexcept;
+    friend class SessionConsole;
+
+    // --- ctor / storage ---
 
     explicit IServer(ILink& link, ClockFn clock) noexcept;
 
     [[nodiscard]] virtual MISC::ObjRegistry<IMech, uint8_t>& storage() noexcept = 0;
 
-    void onPacket(const msg::Packet& pkt) noexcept override;
-    void handleSelect(const msg::Header& hdr, const msg::Select& body, uint8_t pkt_id) noexcept;
+    // --- политика (leaf) ---
 
     /**
-     * Политика: можно ли консоли @a console_id держать маску @a selected после запроса.
+     * Можно ли консоли @a console_id держать маску @a selected после запроса.
      * @a selected — итоговое владение этой консоли (после take/drop, без commit).
-     * Leaf при общем лимите сам сливает с текущим Selected сегмента (чужие ∪ selected).
+     * Leaf при общем лимите сам сливает с Selected сегмента (чужие ∪ selected).
      * @return ErrorCode::Ok или причина отказа (SelectLimit / …).
      */
     [[nodiscard]] virtual msg::ErrorCode acceptSelect(uint8_t console_id,
@@ -81,6 +75,19 @@ protected:
         (void)selected;
         return msg::ErrorCode::Ok;
     }
+};
+
+/** Сессия консоли на сервере: class A (Select) + reply. */
+class SessionConsole : public Session {
+public:
+    explicit SessionConsole(IServer& server) noexcept;
+
+protected:
+    [[nodiscard]] bool onPacket(const msg::Packet& pkt) noexcept override;
+    void onSelect(const msg::Select& body, uint8_t pkt_id) noexcept;
+
+private:
+    IServer& _server;
 };
 
 template <std::size_t MaxMechs, std::size_t MaxSessions = msg::kMaxConsoles>

@@ -17,80 +17,74 @@ void registerMech(IServer& server, IMech& mech) noexcept
 
 } // namespace detail
 
+// --- ctor ---
+
 IServer::IServer(ILink& link, ClockFn clock) noexcept
     : Node(link, clock)
 {}
 
-void IServer::setConsoleId(uint8_t console_id) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->setPeerId(console_id);
-    }
-}
+// --- исходящие PDU ---
 
-uint8_t IServer::consoleId() const noexcept
+void IServer::pushTelemetry(uint8_t mech_id) noexcept
 {
-    const Session* s = primarySession();
-    return s != nullptr ? s->peerId() : uint8_t{0};
-}
-
-void IServer::startSession() noexcept
-{
-    if (Session* s = primarySession()) {
-        s->start();
-    }
-}
-
-void IServer::stopSession() noexcept
-{
-    if (Session* s = primarySession()) {
-        s->stop();
-    }
-}
-
-bool IServer::linkUp() const noexcept
-{
-    const Session* s = primarySession();
-    return s != nullptr && s->getStatus() == Session::Status::Open;
-}
-
-void IServer::onPacket(const msg::Packet& pkt) noexcept
-{
-    if (const auto* sel = std::get_if<msg::Select>(&pkt.body)) {
-        handleSelect(pkt.hdr, *sel, pkt.pkt_id);
-    }
-}
-
-void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint8_t pkt_id) noexcept
-{
-    if (!msg::helpers::isConsoleId(hdr.src_id)) {
+    const IMech* m = mech(mech_id);
+    if (m == nullptr) {
         return;
     }
 
-    Session* sess = sessionByPeer(hdr.src_id);
-    if (sess == nullptr) {
+    msg::Telemetry tel{};
+    tel.mech_id = mech_id;
+    tel.holder_id = m->holder();
+    tel.position_mm = m->position();
+    tel.status = m->status();
+
+    send(tel, msg::kBroadcastId);
+}
+
+// --- SessionConsole ---
+
+SessionConsole::SessionConsole(IServer& server) noexcept
+    : Session(server)
+    , _server(server)
+{}
+
+bool SessionConsole::onPacket(const msg::Packet& pkt) noexcept
+{
+    if (Session::onPacket(pkt)) {
+        return true;
+    }
+    if (const auto* sel = std::get_if<msg::Select>(&pkt.body)) {
+        onSelect(*sel, pkt.pkt_id);
+        return true;
+    }
+    return false;
+}
+
+void SessionConsole::onSelect(const msg::Select& body, uint8_t pkt_id) noexcept
+{
+    if (!msg::helpers::isConsoleId(peerId())) {
         return;
     }
 
     const auto action = body.action;
-    const uint8_t src = hdr.src_id;
-    const std::size_t cap = mechCapacity();
+    const uint8_t src = peerId();
+    const std::size_t cap = _server.mechCapacity();
 
     /* --- Проверка + прогноз Selected (без изменений); commit ниже --- */
     Selection next_selected{};
     for (uint8_t mid = 0; mid < cap; ++mid) {
         const bool in_mask = body.selection.contains(mid);
-        IMech* m = mech(mid);
+        IMech* m = _server.mech(mid);
 
         if (in_mask) {
             if (m == nullptr) {
-                sess->sendNack(pkt_id, msg::ErrorCode::MechNotFound);
+                sendNack(pkt_id, msg::ErrorCode::MechNotFound);
                 return;
             }
 
             /* Чужой holder — отказ при любом action (Select/Set/Deselect). */
             if (m->isSelected() && !m->isSelectedBy(src)) {
-                sess->sendNack(pkt_id, msg::ErrorCode::Busy);
+                sendNack(pkt_id, msg::ErrorCode::Busy);
                 return;
             }
 
@@ -99,11 +93,11 @@ void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint
                 && !m->isSelectedBy(src)) {
                 if (m->isBlocked()) {
                     // TODO: все ли консоли могут блокировать все механизмы (или только свои / политика сегмента)?
-                    sess->sendNack(pkt_id, msg::ErrorCode::Safety);
+                    sendNack(pkt_id, msg::ErrorCode::Safety);
                     return;
                 }
                 if (!m->status().any(IMech::Status::Ready)) {
-                    sess->sendNack(pkt_id, msg::ErrorCode::NotReady);
+                    sendNack(pkt_id, msg::ErrorCode::NotReady);
                     return;
                 }
             }
@@ -134,15 +128,15 @@ void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint
         }
     }
 
-    const msg::ErrorCode policy = acceptSelect(src, next_selected);
+    const msg::ErrorCode policy = _server.acceptSelect(src, next_selected);
     if (policy != msg::ErrorCode::Ok) {
-        sess->sendNack(pkt_id, policy);
+        sendNack(pkt_id, policy);
         return;
     }
 
     /* --- Commit: take / drop в одном проходе --- */
     for (uint8_t mid = 0; mid < cap; ++mid) {
-        IMech* m = mech(mid);
+        IMech* m = _server.mech(mid);
         if (m == nullptr) {
             continue;
         }
@@ -161,45 +155,15 @@ void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint
             // TODO: при проверках снаружи + атомарном commit — в каких случаях select() ещё
             // вернёт false/Busy? Кажется, bool у IMech::select уже бессмысленен.
             (void)m->select(src);
-            pushTelemetry(mid);
+            _server.pushTelemetry(mid);
         } else if (drop) {
             // TODO: то же для select(kHolderNone) — отказ после внешних проверок?
             (void)m->select(kHolderNone);
-            pushTelemetry(mid);
+            _server.pushTelemetry(mid);
         }
     }
 
-    sess->sendAck(pkt_id);
-}
-
-void IServer::pushTelemetry(uint8_t mech_id) noexcept
-{
-    const IMech* m = mech(mech_id);
-    if (m == nullptr) {
-        return;
-    }
-
-    msg::Telemetry tel{};
-    tel.mech_id = mech_id;
-    tel.holder_id = m->holder();
-    tel.position_mm = m->position();
-    tel.status = m->status();
-
-    send(tel, msg::kBroadcastId);
-}
-
-void IServer::pushAck(uint8_t req_pkt_id) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->sendAck(req_pkt_id);
-    }
-}
-
-void IServer::pushNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->sendNack(req_pkt_id, code);
-    }
+    sendAck(pkt_id);
 }
 
 } // namespace smcp

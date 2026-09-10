@@ -28,8 +28,7 @@ MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clo
     , _browser(browser)
     , _mechs(*this)
 {
-    setServerId(smcp::msg::kServerIdMin);
-    startSession();
+    startSession(smcp::msg::kServerIdMin);
 
     for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
         _groups[i].id = static_cast<uint8_t>(i);

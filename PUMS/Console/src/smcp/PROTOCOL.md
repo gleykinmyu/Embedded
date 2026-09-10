@@ -42,36 +42,40 @@ Telemetry при **движении** — отдельно: по Δposition / ra
 
 ## Heartbeat (линк + регистрация)
 
-Ролей в `Session` нет; Open/Close на wire нет. Локально: `Session::Status` / `linkUp()`.
+Open/Close на wire нет. Локально: `Session::Status` / `linkUp()`.
 
-Исходящий keep-alive **не** стартует сам из Idle: слой снаружи вызывает `startSession()` /
-`Session::start()` (консоль — после `setServerId`) → Connecting, `tick` шлёт ping.
-Сервер может не вызывать `start`: RX HB сам переводит в Open (и дальше keep-alive).
+В Node нет ролей «консоль/сервер». Сессия: `Idle` / `Connecting` / `Awaiting` / `Open`
+(`Awaiting` = первый ping, ещё не up; keep-alive из `Open` — только `_hb.isWaiting()`).
+`_master` (`start(peer)`) — кто шлёт keep-alive HB; без `start` — только pong + сторож тишины.
+Кто master, решает приложение (консоль: `startSession(server_id)`; сервер: слоты без `start`).
 
-Сервер может узнать `console_id` с первого RX (`src` → peer).
+| | Master (`_master` / `start`) | Slave |
+|--|---------|---------|
+| Connecting | `ping` → `Awaiting` | — |
+| Awaiting + T | retry / `hbLost` | — |
+| Open + T (не waiting) | `ping()` keep-alive (остаёмся Open) | `miss` |
+| Open + T (`_hb.waiting`) | retry / `hbLost` | `miss` / `hbLost` |
+| RX HB | `_hb.clear`+`start(...,false)`, `Open` | то же + pong если не ждали |
+| misses ≥ N | `onHbLost` → `close` | `onHbLost` → `close` |
+
+`isOpen()` = **только** `Open` (Awaiting ≠ open).  
 
 ```text
-Слой:     startSession()          Idle → Connecting
-Session:  HB → peer               timer = T, awaiting
-Peer:     HB → back               (pong, если сам не ждал ответ)
-Session:  → Open; awaiting=false; timer заново = T
-…
-timer: closeLink → Connecting; сразу новый ping
-RX HB без start: Idle → Open (pong; дальше как обычная сессия)
+Master:  start → Connecting → ping → Awaiting → RX → Open
+         … keep-alive: Open + _hb.waiting, без смены Status …
 ```
 
-Правила (симметрично, **один** `MsTimer`):
-- RX HB и **ждём** → pong: `Open`, `awaiting=false`, timer restart, **не** отвечать.
-- RX HB и **не** ждём → чужой ping: `Open`, timer restart, **один** pong.
-- Timeout: `closeLink` → Connecting + reconnect ping (пока не `stop`).
-- «Сессия открыта» = `Open`, не отдельное сообщение.
+Один `MsTimer` + счётчик `_hb_misses`.  
+«Сессия открыта» = `Session::isOpen()`.
 
-API: `setServerId`/`setConsoleId`, `startSession`/`stopSession`, `update`, `linkUp`,
+API консоли: `startSession(peer)` / `stopSession`, `serverId`, `update`, `linkUp`.
+Сервер: `sessionByPeer` / `SessionBank<SessionConsole>`, без единого `consoleId`.
 `Node::getStatus`/`clearError`; часы — в ctor `Node` (stall enqueue).
 
 RX любого кадра с `src_id == мой id` → **`Node::Status::IdConflict`**:
 не demux RX и не TX (`send` / `sendWire` / drain), пока `clearError()`.
-(Стоп сессий — позже.)
+`Session::isOpen()` при этом может остаться true (линк peer ≠ статус узла):
+сессии не рвём в transport — `onStatus(IdConflict)` наверху (close / UI / смена id).
 
 `Node::send` при полной TX-очереди крутит `update()` до `SMCP_TX_STALL_MS` (как nex enqueue).
 
@@ -80,11 +84,11 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 | | |
 |--|--|
 | **ILink / CanLink** | среда ↔ Packet; один shot `send`/`receive` |
-| **Node** | bus TX + registry Session*; pump RX/`acceptRx`/session/`onPacket` + RR Session::_tx + Node::_tx; **IdConflict** |
-| **Session** | peer, `Status`, pkt_id, **своя TX-очередь**; closeLink чистит очередь |
+| **Node** | bus TX + registry Session*; pump RX/`acceptRx`/session/`onPacket` + RR Session TX + Node::_tx; **IdConflict** |
+| **Session** | peer, `Status`, pkt_id, **своя TX-очередь**; `open`/`close` чистят очередь |
 
 `IConsole` / `IServer` наследуют **Node**, держат `ObjStorage<Session*>`;
-объекты `Session` владеет leaf (`MConsole` — одна, `MServer` — `SessionBank` до `kMaxConsoles`).
+объекты `Session` владеет leaf (`MConsole` — одна `Session`, `MServer` — `SessionBank<SessionConsole>`).
 
 ### Конфликт одинаковых `console_id`
 
@@ -94,7 +98,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 Правило на консоли (first-wins), всё на **Node**:
 1. Перед первым своим Heartbeat — **слушать** шину ~`kHeartbeatTimeoutMs` (`update`/`acceptRx`).
 2. Увидела любой кадр с `src_id == мой id` → `Node::IdConflict` → **не RX-demux и не TX**.
-3. Уже в сессии: то же (стоп сессий — позже).
+3. Уже в сессии: то же — TX/RX стоп; close сессий — в `onStatus` приложения.
 
 Тот же пункт у сервера — для **своего** id.
 
@@ -105,10 +109,14 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 - Очередь **кадров** — в `ICAN` (драйвер / `MockCan`).
 - Очередь **bus / broadcast** `(body, dst, pkt_id)` — `Node::_tx` (`Node::send`, класс **D**).
   `TxQueue::isFull` после stall → `onTxFull(nullptr)`.
-- Очередь **session unicast** — `Session::_tx` (A/B/C/E).
-  `TxQueue::isFull` / `Session::isTxFull()`; edge → `onTxFull(session)`.
+- Очередь **session unicast** — снаружи одна (`transmit` / `isTxFull`);
+  внутри `Session::_tx_req` (A) + `_tx_ctrl` (HB/Ack/Nack).
+  Full любой → `isTxFull()`; edge → `onTxFull(session)`.
 - Drain: один RR на `sessionCapacity + 1` (слоты сессий + bus), **по одному кадру** за заход.
-- Окно Ack / pending retry — **в Session** (класс **A**, позже поверх той же очереди).
+- Окно Ack = **1**: class A после wire — голова `_tx_req` + `_ack` (не drop до reply);
+  `_tx_ctrl` / `_tx_req` — RR в `peekTx` (после успешного wire).
+  Retry головы req по timeout; Ack/Nack / `Timeout` → `onAck` → drop + `onReply`.
+  Diag (default empty): `onPktIdMismatch(expected, got)` (reply ≠ pending). Сессию не рвём.
 - Dual-axis Telemetry — **не** в MVP.
 
 ---
@@ -121,11 +129,11 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 | Класс | Признаки | Слой TX | `pkt_id` | Очередь Session |
 |-------|----------|---------|----------|-----------------|
-| **A. Session request** | unicast → peer, ждёт Ack/Nack | `Session` | `Packet.pkt_id`, TX назначает | да (retry/окно) |
-| **B. Session reply** | Ack/Nack (или аналог) на request | `Session::sendAck/Nack` | echo → `Packet.pkt_id` | нет |
-| **C. Session control** | линк/сессия без RPC (сейчас HB) | внутри `Session` | нет | нет |
-| **D. Broadcast / announce** | `dst=0xFF`, без диалога | `Node::send(body, kBroadcastId)` | нет | нет |
-| **E. Unicast notify** | unicast, **без** Ack (событие) | `Session` / `Node::send` | нет | нет |
+| **A. Session request** | unicast → peer, ждёт Ack/Nack | `Session` | `Packet.pkt_id`, TX назначает | `_tx_req` (retry/окно) |
+| **B. Session reply** | Ack/Nack (или аналог) на request | `Session::sendAck/Nack` | echo → `Packet.pkt_id` | `_tx_ctrl` |
+| **C. Session control** | линк/сессия без RPC (сейчас HB) | внутри `Session` | нет | `_tx_ctrl` |
+| **D. Broadcast / announce** | `dst=0xFF`, без диалога | `Node::send(body, kBroadcastId)` | нет | нет (`Node::_tx`) |
+| **E. Unicast notify** | unicast, **без** Ack (событие) | `Session` / `Node::send` | нет | `_tx_ctrl` / `Node::_tx` |
 
 Примеры: Select/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
 
@@ -157,7 +165,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 ### 4. Узел (IConsole / IServer)
 
 - RX: `Node::update` → `acceptRx` → `sessionByPeer` / `Session::onPacket` → иначе `Node::onPacket`.
-- Новые **A**: обработчик на сервере + Ack/Nack; при изменении состояния оси — Telemetry (**D**).
+- Новые **A** на сервере: `SessionConsole::onPacket` → `onSelect` + Ack/Nack; смена оси — Telemetry (**D**).
 - Новые **D**: `Node::send(body, kBroadcastId)`; не через Session.
 - Политика отказа Select (`acceptSelect` → SelectLimit/…) / SetTarget (Limits) — в наследниках.
 
