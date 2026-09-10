@@ -12,10 +12,6 @@
 
 namespace smcp {
 
-namespace msg {
-struct Telemetry;
-}
-
 /** Идентификатор механизма в сегменте одного server ID (0..31). */
 inline constexpr uint8_t kMechIdMax = 31u;
 
@@ -44,13 +40,12 @@ public:
      * Idle — ни Ready, ни Moving не установлены.
      */
     enum class Status : uint8_t {
-        Ready    = 1u << 0, /**< Привод готов к пуску. */
-        Selected = 1u << 1, /**< Выделен консолью (select). */
-        Blocked  = 1u << 2, /**< Заблокирован (ручная / blocked-группа шоу). */
-        Moving   = 1u << 3, /**< Выполняется подвод к цели. */
-        Limit1   = 1u << 5, /**< Активен концевик / датчик границы 1. */
-        Limit2   = 1u << 6, /**< Активен концевик / датчик границы 2. */
-        Fault    = 1u << 7, /**< Авария: движение запрещено до сброса. */
+        Ready   = 1u << 0, /**< Привод готов к пуску. */
+        Blocked = 1u << 2, /**< Сегментный запрет (сервер); зеркало на пульте из Telemetry. */
+        Moving  = 1u << 3, /**< Выполняется подвод к цели. */
+        Limit1  = 1u << 5, /**< Активен концевик / датчик границы 1. */
+        Limit2  = 1u << 6, /**< Активен концевик / датчик границы 2. */
+        Fault   = 1u << 7, /**< Авария: движение запрещено до сброса. */
     };
 
     explicit IMech(uint8_t id) noexcept;
@@ -82,15 +77,16 @@ public:
 
     /**
      * Заблокировать механизм (Blocked) или снять блокировку.
-     * @return false — операция отклонена реализацией.
+     * Отказ — no-op (проверки снаружи / политика сервера).
      */
-    virtual bool block(bool blocked) noexcept = 0;
+    virtual void block(bool blocked) noexcept = 0;
 
     /**
      * Выделить механизм консолью (Select) или снять выделение (Deselect).
      * @param console_id ID консоли (SRC_ID); 0 — сброс выделения.
+     * Отказ — no-op (проверки снаружи / политика сервера).
      */
-    virtual bool select(uint8_t console_id) noexcept = 0;
+    virtual void select(uint8_t console_id) noexcept = 0;
 
     /** Задать целевую позицию, мм. */
     virtual bool setTarget(const MotionTarget& target) noexcept = 0;
@@ -98,8 +94,11 @@ public:
     /** Сбросить локальный бит Fault. */
     virtual bool resetFault() noexcept = 0;
 
-    /** Обновить состояние из телеметрии (@a src_id — SRC_ID кадра, обычно сервер). */
-    virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept;
+protected:
+    uint8_t _id;
+    uint8_t _holder = kHolderNone;
+    int32_t _position = 0;
+    REG::BitMask<Status> _status{};
 
 private:
     template <typename, typename>
@@ -107,12 +106,6 @@ private:
 
     /** Только из ObjRegistry при registerAt / registerAuto. */
     void set_id(uint8_t id) noexcept { _id = id; }
-
-protected:
-    uint8_t _id;
-    uint8_t _holder = kHolderNone;
-    int32_t _position = 0;
-    REG::BitMask<Status> _status{};
 };
 
 REG_BITMASK_ENUM_OPS(IMech::Status)

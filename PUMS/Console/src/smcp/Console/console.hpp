@@ -1,6 +1,6 @@
 /**
  * @file console.hpp
- * @brief IConsole + Console<N>: inventory IMech*, Select TX, Telemetry RX.
+ * @brief IConsole + Console<N>: inventory IMech*, Select/Block TX, Telemetry RX.
  *
  * Наследует Node. Session* — в registry; объекты Session владеет leaf (напр. MConsole).
  */
@@ -51,9 +51,13 @@ public:
 
     [[nodiscard]] bool linkUp() const noexcept;
 
-    void select(msg::Select::Action action, Selection selection) noexcept;
+    void select(msg::Action action, Selection selection) noexcept;
     void setSelection(Selection selection) noexcept;
     void clearSelection() noexcept;
+
+    void block(msg::Action action, Selection selection) noexcept;
+    void setBlocked(Selection selection) noexcept;
+    void clearBlocked() noexcept;
 
 protected:
     friend void detail::registerMech(IConsole& cons, IMech& mech) noexcept;
@@ -63,7 +67,8 @@ protected:
     [[nodiscard]] virtual MISC::ObjRegistry<IMech, uint8_t>& storage() noexcept = 0;
 
     void onPacket(const msg::Packet& pkt) noexcept override;
-    void handleTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept;
+    /** Leaf (MConsole): проброс в Mech::onTelemetry. */
+    virtual void handleTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept;
 };
 
 template <std::size_t MaxMechs, std::size_t MaxSessions = 1u>

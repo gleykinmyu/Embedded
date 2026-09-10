@@ -14,48 +14,44 @@ DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
     _status.set(Status::Ready);
 }
 
-bool DriveMech::select(uint8_t console_id) noexcept
+void DriveMech::select(uint8_t console_id) noexcept
 {
     if (console_id == smcp::kHolderNone) {
         if (isSelected()) {
             _holder = smcp::kHolderNone;
-            _status.clear(Status::Selected);
             if (s_selectedCount > 0u) {
                 --s_selectedCount;
             }
         }
-        return true;
+        return;
     }
 
     if (isSelected()) {
-        return isSelectedBy(console_id);
+        return; /* уже наш или чужой — чужой не трогаем (политика снаружи) */
     }
 
     if (_status.any(Status::Blocked) || !_status.any(Status::Ready)) {
-        return false;
+        return;
     }
 
     if (s_selectedCount >= kMaxSelected) {
-        return false;
+        return;
     }
 
     _holder = console_id;
-    _status.set(Status::Selected);
     ++s_selectedCount;
-    return true;
 }
 
-bool DriveMech::block(bool blocked) noexcept
+void DriveMech::block(bool blocked) noexcept
 {
     if (blocked) {
         if (isSelected()) {
-            (void)select(smcp::kHolderNone);
+            select(smcp::kHolderNone);
         }
         _status.set(Status::Blocked);
     } else {
         _status.clear(Status::Blocked);
     }
-    return true;
 }
 
 bool DriveMech::setTarget(const smcp::MotionTarget& target) noexcept

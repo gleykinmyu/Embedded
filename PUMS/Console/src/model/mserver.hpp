@@ -22,12 +22,6 @@ public:
         , _mechs(*this)
     {}
 
-    [[nodiscard]] smcp::SessionConsole& sessionAt(uint8_t slot) noexcept { return _sessionBank[slot]; }
-    [[nodiscard]] const smcp::SessionConsole& sessionAt(uint8_t slot) const noexcept
-    {
-        return _sessionBank[slot];
-    }
-
     [[nodiscard]] DriveMech& mech(uint8_t id) noexcept { return _mechs[id]; }
     [[nodiscard]] const DriveMech& mech(uint8_t id) const noexcept { return _mechs[id]; }
 

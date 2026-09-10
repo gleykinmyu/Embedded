@@ -4,7 +4,6 @@
  */
 
 #include "mech.hpp"
-#include "smcp/transport/message.hpp"
 
 namespace smcp {
 
@@ -50,17 +49,6 @@ bool IMech::isSelectedBy(uint8_t console_id) const noexcept
 bool IMech::isBlocked() const noexcept
 {
     return _status.any(Status::Blocked);
-}
-
-void IMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
-{
-    if (!msg::helpers::isServerId(src_id) || telemetry.mech_id != _id) {
-        return;
-    }
-
-    _holder = telemetry.holder_id;
-    _position = telemetry.position_mm;
-    _status = telemetry.status;
 }
 
 } // namespace smcp

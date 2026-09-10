@@ -13,7 +13,7 @@
 #include "smcp/mech.hpp"
 #include "smcp/transport/message.hpp"
 
-/** IMech на пульте: Select TX через IConsole; Selected из Telemetry. */
+/** IMech на пульте: Select TX через IConsole; holder из Telemetry. */
 class Mech : public smcp::IMech {
 public:
     enum class Type : uint8_t {
@@ -27,12 +27,12 @@ public:
     [[nodiscard]] smcp::IConsole& console() noexcept { return *_console; }
     [[nodiscard]] const smcp::IConsole& console() const noexcept { return *_console; }
 
-    bool select(uint8_t console_id) noexcept override;
-    bool block(bool blocked) noexcept override;
+    void select(uint8_t console_id) noexcept override;
+    void block(bool blocked) noexcept override;
     bool setTarget(const smcp::MotionTarget& target) noexcept override;
     bool resetFault() noexcept override;
 
-    void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& telemetry) noexcept override;
+    void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& telemetry) noexcept;
 
 private:
     smcp::IConsole* _console;

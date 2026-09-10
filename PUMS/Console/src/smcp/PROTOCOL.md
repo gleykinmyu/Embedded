@@ -1,7 +1,7 @@
 # SMCP MVP — протокол (консоль ↔ сервер сегмента)
 
 Канал: CAN extended ID, `smcp::msg` (см. `message.hpp`).  
-Wire set: **Ack, Nack, Heartbeat, Select, SetTarget, Telemetry**.
+Wire set: **Ack, Nack, Heartbeat, Select, Block, SetTarget, Telemetry**.
 
 Лимит Select на сегменте — leaf в `acceptSelect`: слияние (чужие Selected ∪ маска консоли) → **SelectLimit**.
 
@@ -11,7 +11,8 @@ Wire set: **Ack, Nack, Heartbeat, Select, SetTarget, Telemetry**.
 
 | Msg | Кто → кому | Смысл |
 |-----|------------|--------|
-| **Select** | Console → Server | Выделение осей (Select / Deselect / Set) |
+| **Select** | Console → Server | Выделение осей (Action Add / Remove / Set) |
+| **Block** | Console → Server | Сегментный Blocked (Action Add / Remove / Set) |
 | **Ack / Nack** | Server → Console | Принятие / отказ **запроса** (`pkt_id` = запроса) |
 | **Telemetry** | Server → (обычно broadcast) | Снимок оси после **изменения** состояния или движения |
 | **Heartbeat** | Console → Server (первый ping); далее ping/pong | Линк + «мягкая» регистрация консоли |
@@ -37,6 +38,21 @@ Server:   1) Проверка (без изменений): маска валид
 Telemetry при **движении** — отдельно: по Δposition / rate-limit на стороне сервера (наследник / приводной слой). Базовый `IServer` шлёт Telemetry при смене select-состояния.
 
 **Не** трактовать Telemetry как RPC-ответ на Select: ответ на Select — Ack/Nack.
+
+---
+
+## Block → Ack + Telemetry
+
+```text
+Console:  Block(mask, action, pkt_id=N)
+Server:   1) MechNotFound / `acceptBlock` — иначе Nack
+          2) Commit: Status::Blocked take/drop, снятие Select при block (IMech::block)
+             → Ack + Telemetry по сменившимся
+```
+
+- **Add / Remove** — дельта по маске; **Set** — абсолютная маска blocked сегмента.
+- GRUP на пульте ≠ сегментный Block (локальный UI).
+- Кто имеет право слать Block — leaf `acceptBlock` (пока Ok всем консолям).
 
 ---
 
@@ -135,7 +151,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 | **D. Broadcast / announce** | `dst=0xFF`, без диалога | `Node::send(body, kBroadcastId)` | нет | нет (`Node::_tx`) |
 | **E. Unicast notify** | unicast, **без** Ack (событие) | `Session` / `Node::send` | нет | `_tx_ctrl` / `Node::_tx` |
 
-Примеры: Select/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
+Примеры: Select/Block/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
 
 **pkt_id** — признак сессии (`Packet.pkt_id`), не поле body. На wire для A/B:
 `data[0]=pkt_id`, дальше payload body. `msg::helpers::carriesPktId(msg_id)`; body без `pkt_id`.
@@ -165,9 +181,9 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 ### 4. Узел (IConsole / IServer)
 
 - RX: `Node::update` → `acceptRx` → `sessionByPeer` / `Session::onPacket` → иначе `Node::onPacket`.
-- Новые **A** на сервере: `SessionConsole::onPacket` → `onSelect` + Ack/Nack; смена оси — Telemetry (**D**).
+- Новые **A** на сервере: `SessionConsole::onPacket` → `onSelect` / `onBlock` + Ack/Nack; смена оси — Telemetry (**D**).
 - Новые **D**: `Node::send(body, kBroadcastId)`; не через Session.
-- Политика отказа Select (`acceptSelect` → SelectLimit/…) / SetTarget (Limits) — в наследниках.
+- Политика отказа Select (`acceptSelect`) / Block (`acceptBlock`) / SetTarget (Limits) — в наследниках.
 
 ### 5. Чеклист «добавил MsgId»
 

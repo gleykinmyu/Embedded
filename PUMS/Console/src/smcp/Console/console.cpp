@@ -47,9 +47,9 @@ bool IConsole::linkUp() const noexcept
     return s != nullptr && s->isOpen();
 }
 
-void IConsole::select(msg::Select::Action action, Selection selection) noexcept
+void IConsole::select(msg::Action action, Selection selection) noexcept
 {
-    if (selection.empty() && action != msg::Select::Action::Set) {
+    if (selection.empty() && action != msg::Action::Set) {
         return;
     }
 
@@ -66,12 +66,39 @@ void IConsole::select(msg::Select::Action action, Selection selection) noexcept
 
 void IConsole::setSelection(Selection selection) noexcept
 {
-    select(msg::Select::Action::Set, selection);
+    select(msg::Action::Set, selection);
 }
 
 void IConsole::clearSelection() noexcept
 {
     setSelection(Selection{});
+}
+
+void IConsole::block(msg::Action action, Selection selection) noexcept
+{
+    if (selection.empty() && action != msg::Action::Set) {
+        return;
+    }
+
+    Session* s = primarySession();
+    if (s == nullptr) {
+        return;
+    }
+
+    msg::Block body{};
+    body.action = action;
+    body.selection = selection;
+    s->send(body);
+}
+
+void IConsole::setBlocked(Selection selection) noexcept
+{
+    block(msg::Action::Set, selection);
+}
+
+void IConsole::clearBlocked() noexcept
+{
+    setBlocked(Selection{});
 }
 
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
@@ -83,11 +110,8 @@ void IConsole::onPacket(const msg::Packet& pkt) noexcept
 
 void IConsole::handleTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept
 {
-    IMech* m = mech(body.mech_id);
-    if (m == nullptr) {
-        return;
-    }
-    m->onTelemetry(hdr.src_id, body);
+    (void)hdr;
+    (void)body;
 }
 
 } // namespace smcp
