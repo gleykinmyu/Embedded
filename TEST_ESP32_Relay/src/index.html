@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Реле</title>
+<style>
+body{margin:0;font-family:Segoe UI,sans-serif;background:#111;color:#eee}
+main{max-width:720px;margin:0 auto;padding:24px}
+h1{font-size:22px;margin:0 0 8px}
+p{color:#9aa;margin:0 0 16px}
+.bar{display:flex;gap:10px;align-items:center;margin:0 0 20px;flex-wrap:wrap}
+button{border:0;border-radius:10px;padding:10px 18px;font-size:16px;cursor:pointer;color:#111}
+#start{background:#2ecc71}
+#stop{background:#e74c3c;color:#fff}
+button:disabled{opacity:.35;cursor:default}
+#state{color:#9aa}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.ch{background:#1c1c1c;border:1px solid #333;border-radius:12px;padding:16px}
+.ch.on{border-color:#2ecc71;background:#14301f}
+.ch b{display:block;margin-top:8px;font-size:20px}
+.on b{color:#2ecc71}
+.btns{display:flex;gap:8px;margin-top:12px}
+.btns button{flex:1;padding:8px 10px;font-size:14px}
+.btn-on{background:#2ecc71}
+.btn-off{background:#555;color:#eee}
+.ch.on .btn-on{box-shadow:0 0 0 2px #fff4}
+.ch:not(.on) .btn-off{background:#e74c3c;color:#fff;box-shadow:0 0 0 2px #fff3}
+</style>
+</head>
+<body>
+<main>
+<h1>ESP32-S3 реле</h1>
+<p>IP: <span id="ip">192.168.6.202</span></p>
+<div class="bar">
+<button id="start" type="button">Старт</button>
+<button id="stop" type="button">Стоп</button>
+<span id="state">Бегущий огонь: …</span>
+</div>
+<div class="grid" id="grid"></div>
+</main>
+<script>
+function apply(d){
+  document.getElementById('ip').textContent=d.ip;
+  document.getElementById('state').textContent=d.running?'Бегущий огонь: идёт':'Бегущий огонь: стоп';
+  document.getElementById('start').disabled=!!d.running;
+  document.getElementById('stop').disabled=!d.running;
+  document.getElementById('grid').innerHTML=d.relays.map((on,i)=>
+    `<div class="ch ${on?'on':''}">CH${i+1}<b>${on?'ON':'OFF'}</b>
+      <div class="btns">
+        <button type="button" class="btn-on" ${on?'disabled':''} onclick="setRelay(${i},1)">Вкл</button>
+        <button type="button" class="btn-off" ${on?'':'disabled'} onclick="setRelay(${i},0)">Выкл</button>
+      </div>
+    </div>`
+  ).join('');
+}
+async function tick(){
+  try{
+    apply(await fetch('/api/relays').then(r=>r.json()));
+  }catch(e){}
+}
+async function setChase(path){
+  try{
+    apply(await fetch(path).then(r=>r.json()));
+  }catch(e){}
+}
+async function setRelay(ch,on){
+  try{
+    apply(await fetch('/api/relay?ch='+ch+'&on='+on).then(r=>r.json()));
+  }catch(e){}
+}
+document.getElementById('start').onclick=()=>setChase('/api/chase/start');
+document.getElementById('stop').onclick=()=>setChase('/api/chase/stop');
+setInterval(tick,300);
+tick();
+</script>
+</body>
+</html>

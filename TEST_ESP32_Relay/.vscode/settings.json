@@ -1,0 +1,10 @@
+{
+    "C_Cpp.intelliSenseEngine": "Disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "clangd.arguments": [
+        "--background-index",
+        "--header-insertion=never",
+        "--query-driver=C:/Users/User/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-*",
+        "--compile-commands-dir=C:/Users/User/.platformio/build/TEST-ESP32-Relay/esp32s3_poe_eth_8di_8ro"
+    ]
+}

@@ -1,0 +1,13 @@
+# --query-driver в .vscode/settings.json подтягивает sysroot xtensa-g++.
+CompileFlags:
+  CompilationDatabase: C:/Users/User/.platformio/build/TEST-ESP32-Relay/esp32s3_poe_eth_8di_8ro
+  Remove:
+    - -mlongcalls
+    - -mdisable-hardware-atomics
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -fno-shrink-wrap
+    - -fno-jump-tables
+    - -fdiagnostics-color=*
+    - -fmacro-prefix-map=*
+    - -fno-builtin-*
