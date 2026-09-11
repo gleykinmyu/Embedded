@@ -88,11 +88,11 @@ public:
      */
     virtual void select(uint8_t console_id) noexcept = 0;
 
-    /** Задать целевую позицию, мм. */
-    virtual bool setTarget(const MotionTarget& target) noexcept = 0;
+    /** Задать целевую позицию. Отказ — no-op (проверки снаружи / политика сервера). */
+    virtual void setTarget(const MotionTarget& target) noexcept = 0;
 
-    /** Сбросить локальный бит Fault. */
-    virtual bool resetFault() noexcept = 0;
+    /** Сбросить локальный бит Fault. Отказ — no-op. */
+    virtual void resetFault() noexcept = 0;
 
 protected:
     uint8_t _id;

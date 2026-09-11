@@ -1,6 +1,6 @@
 /**
  * @file console.hpp
- * @brief IConsole + Console<N>: inventory IMech*, Select/Block TX, Telemetry RX.
+ * @brief IConsole + Console<N>: inventory IMech*, Select/Block/SetTarget TX, Telemetry RX.
  *
  * Наследует Node. Session* — в registry; объекты Session владеет leaf (напр. MConsole).
  */
@@ -58,6 +58,8 @@ public:
     void block(msg::Action action, Selection selection) noexcept;
     void setBlocked(Selection selection) noexcept;
     void clearBlocked() noexcept;
+
+    void setTarget(uint8_t mech_id, const MotionTarget& target) noexcept;
 
 protected:
     friend void detail::registerMech(IConsole& cons, IMech& mech) noexcept;

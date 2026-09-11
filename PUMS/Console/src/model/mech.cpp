@@ -46,16 +46,12 @@ void Mech::block(bool blocked) noexcept
     }
 }
 
-bool Mech::setTarget(const smcp::MotionTarget& target) noexcept
+void Mech::setTarget(const smcp::MotionTarget& target) noexcept
 {
-    (void)target;
-    return false;
+    _console->setTarget(_id, target);
 }
 
-bool Mech::resetFault() noexcept
-{
-    return false;
-}
+void Mech::resetFault() noexcept {}
 
 void Mech::onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& telemetry) noexcept
 {

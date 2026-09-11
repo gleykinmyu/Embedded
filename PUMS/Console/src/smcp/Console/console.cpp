@@ -101,6 +101,19 @@ void IConsole::clearBlocked() noexcept
     setBlocked(Selection{});
 }
 
+void IConsole::setTarget(uint8_t mech_id, const MotionTarget& target) noexcept
+{
+    Session* s = primarySession();
+    if (s == nullptr) {
+        return;
+    }
+
+    msg::SetTarget body{};
+    body.mech_id = mech_id;
+    body.target = target;
+    s->send(body);
+}
+
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
 {
     if (const auto* tel = std::get_if<msg::Telemetry>(&pkt.body)) {

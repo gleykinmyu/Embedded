@@ -16,7 +16,7 @@ Wire set: **Ack, Nack, Heartbeat, Select, Block, SetTarget, Telemetry**.
 | **Ack / Nack** | Server → Console | Принятие / отказ **запроса** (`pkt_id` = запроса) |
 | **Telemetry** | Server → (обычно broadcast) | Снимок оси после **изменения** состояния или движения |
 | **Heartbeat** | Console → Server (первый ping); далее ping/pong | Линк + «мягкая» регистрация консоли |
-| **SetTarget** | Console → Server | Цель движения (позже в базовом poll) |
+| **SetTarget** | Console → Server | Цель движения (класс A) |
 
 ---
 
@@ -53,6 +53,19 @@ Server:   1) MechNotFound / `acceptBlock` — иначе Nack
 - **Add / Remove** — дельта по маске; **Set** — абсолютная маска blocked сегмента.
 - GRUP на пульте ≠ сегментный Block (локальный UI).
 - Кто имеет право слать Block — leaf `acceptBlock` (пока Ok всем консолям).
+
+---
+
+## SetTarget → Ack + Telemetry
+
+```text
+Console:  SetTarget(mech_id, target, pkt_id=N)
+Server:   1) MechNotFound / не наш Select → Busy / Blocked → Safety /
+             не Ready → NotReady / `acceptSetTarget` (Limits) — иначе Nack
+          2) IMech::setTarget → Ack + Telemetry
+```
+
+Движение (Moving / Δposition) — в leaf/приводе; базовый сервер шлёт снимок после accept.
 
 ---
 

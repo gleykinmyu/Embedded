@@ -1,6 +1,6 @@
 /**
  * @file server.cpp
- * @brief IServer Telemetry + SessionConsole Select/Block.
+ * @brief IServer Telemetry + SessionConsole Select/Block/SetTarget.
  */
 
 #include "smcp/Server/server.hpp"
@@ -68,6 +68,10 @@ bool SessionConsole::onPacket(const msg::Packet& pkt) noexcept
         handleMaskOp(MaskKind::Block, blk->action, blk->selection, pkt.pkt_id);
         return true;
     }
+    if (const auto* tgt = std::get_if<msg::SetTarget>(&pkt.body)) {
+        onSetTarget(*tgt, pkt.pkt_id);
+        return true;
+    }
     return false;
 }
 
@@ -107,7 +111,7 @@ void SessionConsole::handleMaskOp(MaskKind kind,
         }
 
         if (is_select && in_mask) {
-            const msg::ErrorCode guard = selectGuard(*m, src, action);
+            const msg::ErrorCode guard = mechGuard(*m, src, /*must_own=*/false);
             if (guard != msg::ErrorCode::Ok) {
                 sendNack(pkt_id, guard);
                 return;
@@ -134,6 +138,40 @@ void SessionConsole::handleMaskOp(MaskKind kind,
 }
 
 // =============================================================================
+// SessionConsole — SetTarget
+// =============================================================================
+
+void SessionConsole::onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noexcept
+{
+    if (!msg::helpers::isConsoleId(peerId())) {
+        return;
+    }
+
+    const uint8_t src = peerId();
+    IMech* m = _server.mech(body.mech_id);
+    if (m == nullptr) {
+        sendNack(pkt_id, msg::ErrorCode::MechNotFound);
+        return;
+    }
+
+    const msg::ErrorCode guard = mechGuard(*m, src, /*must_own=*/true);
+    if (guard != msg::ErrorCode::Ok) {
+        sendNack(pkt_id, guard);
+        return;
+    }
+
+    const msg::ErrorCode policy = _server.acceptSetTarget(src, body.mech_id, body.target);
+    if (policy != msg::ErrorCode::Ok) {
+        sendNack(pkt_id, policy);
+        return;
+    }
+
+    m->setTarget(body.target);
+    sendAck(pkt_id);
+    _server.pushTelemetry(body.mech_id);
+}
+
+// =============================================================================
 // SessionConsole — MaskPlan / guards / commit
 // =============================================================================
 
@@ -155,21 +193,24 @@ void SessionConsole::MaskPlan::note(uint8_t mid, bool was, bool in_mask, msg::Ac
     }
 }
 
-msg::ErrorCode SessionConsole::selectGuard(const IMech& m,
-                                           uint8_t src,
-                                           msg::Action action) noexcept
+msg::ErrorCode SessionConsole::mechGuard(const IMech& m, uint8_t src, bool must_own) noexcept
 {
-    if (m.isSelected() && !m.isSelectedBy(src)) {
-        return msg::ErrorCode::Busy;
+    if (must_own) {
+        if (!m.isSelectedBy(src)) {
+            return msg::ErrorCode::Busy; /* свободная или чужая */
+        }
+    } else if (m.isSelected() && !m.isSelectedBy(src)) {
+        return msg::ErrorCode::Busy; /* чужой holder */
+    } else if (m.isSelectedBy(src)) {
+        return msg::ErrorCode::Ok; /* своя — drive не нужен (Select) */
     }
 
-    if ((action == msg::Action::Add || action == msg::Action::Set) && !m.isSelectedBy(src)) {
-        if (m.isBlocked()) {
-            return msg::ErrorCode::Safety;
-        }
-        if (!m.status().any(IMech::Status::Ready)) {
-            return msg::ErrorCode::NotReady;
-        }
+    /* SetTarget (уже наша) или Select take свободной — Blocked / Ready. */
+    if (m.isBlocked()) {
+        return msg::ErrorCode::Safety;
+    }
+    if (!m.status().any(IMech::Status::Ready)) {
+        return msg::ErrorCode::NotReady;
     }
     return msg::ErrorCode::Ok;
 }

@@ -29,8 +29,8 @@ public:
 
     void select(uint8_t console_id) noexcept override;
     void block(bool blocked) noexcept override;
-    bool setTarget(const smcp::MotionTarget& target) noexcept override;
-    bool resetFault() noexcept override;
+    void setTarget(const smcp::MotionTarget& target) noexcept override;
+    void resetFault() noexcept override;
 
     void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& telemetry) noexcept;
 

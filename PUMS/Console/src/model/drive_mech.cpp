@@ -54,13 +54,10 @@ void DriveMech::block(bool blocked) noexcept
     }
 }
 
-bool DriveMech::setTarget(const smcp::MotionTarget& target) noexcept
+void DriveMech::setTarget(const smcp::MotionTarget& target) noexcept
 {
     (void)target;
-    return false;
+    /* TODO: привод — старт Moving / лимиты → acceptSetTarget. */
 }
 
-bool DriveMech::resetFault() noexcept
-{
-    return false;
-}
+void DriveMech::resetFault() noexcept {}

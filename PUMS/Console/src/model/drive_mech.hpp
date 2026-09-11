@@ -28,8 +28,8 @@ public:
 
     void select(uint8_t console_id) noexcept override;
     void block(bool blocked) noexcept override;
-    bool setTarget(const smcp::MotionTarget& target) noexcept override;
-    bool resetFault() noexcept override;
+    void setTarget(const smcp::MotionTarget& target) noexcept override;
+    void resetFault() noexcept override;
 
 private:
     Type _type = Type::Rope;

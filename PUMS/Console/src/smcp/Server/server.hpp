@@ -1,6 +1,6 @@
 /**
  * @file server.hpp
- * @brief IServer + Server<N> + SessionConsole: Select/Block → Ack + Telemetry.
+ * @brief IServer + Server<N> + SessionConsole: Select/Block/SetTarget → Ack + Telemetry.
  *
  * Наследует Node. Session* — в registry; объекты Session владеет leaf (MServer).
  * Сервер: до kMaxConsoles сессий (SessionConsole).
@@ -29,7 +29,7 @@ namespace detail {
 void registerMech(IServer& server, IMech& mech) noexcept;
 } // namespace detail
 
-/** Узел сегмента: inventory IMech* + политика Select/Block + broadcast Telemetry. */
+/** Узел сегмента: inventory IMech* + политика Select/Block/SetTarget + broadcast Telemetry. */
 class IServer : public Node {
 public:
     virtual ~IServer() = default;
@@ -88,10 +88,24 @@ protected:
         (void)blocked;
         return msg::ErrorCode::Ok;
     }
+
+    /**
+     * Можно ли консоли @a console_id задать @a target оси @a mech_id.
+     * Leaf: лимиты хода / зоны → ErrorCode::Limits.
+     */
+    [[nodiscard]] virtual msg::ErrorCode acceptSetTarget(uint8_t console_id,
+                                                         uint8_t mech_id,
+                                                         const MotionTarget& target) const noexcept
+    {
+        (void)console_id;
+        (void)mech_id;
+        (void)target;
+        return msg::ErrorCode::Ok;
+    }
 };
 
 /**
- * Сессия консоли на сервере: class A (Select/Block) → Ack/Nack + Telemetry при смене.
+ * Сессия консоли на сервере: class A (Select/Block/SetTarget) → Ack/Nack + Telemetry.
  */
 class SessionConsole : public Session {
 public:
@@ -120,7 +134,7 @@ private:
     };
 
     /**
-     * Общий путь: план → accept* → commit → Ack → Telemetry.
+     * Общий путь Select/Block: план → accept* → commit → Ack → Telemetry.
      * Пропуск осей с !in_mask && !was (нет изменений).
      */
     void handleMaskOp(MaskKind kind,
@@ -128,10 +142,17 @@ private:
                       Selection selection,
                       uint8_t pkt_id) noexcept;
 
-    /** Busy / Safety / NotReady (только Select, бит в маске). */
-    [[nodiscard]] static msg::ErrorCode selectGuard(const IMech& m,
-                                                    uint8_t src,
-                                                    msg::Action action) noexcept;
+    /** SetTarget: проверки → acceptSetTarget → setTarget → Ack → Telemetry. */
+    void onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noexcept;
+
+    /**
+     * Проверка доступа к оси.
+     * @param must_own true = SetTarget (нужна наша + drive);
+     *                 false = Select (чужой → Busy; свободная → drive; своя → Ok).
+     */
+    [[nodiscard]] static msg::ErrorCode mechGuard(const IMech& m,
+                                                  uint8_t src,
+                                                  bool must_own) noexcept;
 
     void commitSelect(uint8_t src, const MaskPlan& plan) noexcept;
     void commitBlock(const MaskPlan& plan) noexcept;
