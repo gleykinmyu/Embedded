@@ -1,6 +1,6 @@
 /**
  * @file mserver.hpp
- * @brief Сервер сегмента проекта: smcp::Server + SessionBank + DriveMechBank.
+ * @brief Сервер сегмента проекта: smcp::Server + SessionConsole bank + DriveMechBank.
  */
 
 #pragma once
@@ -20,17 +20,7 @@ public:
         : Base(link, clock)
         , _sessionBank(*this)
         , _mechs(*this)
-    {
-        for (smcp::Session& s : _sessionBank) {
-            s.start();
-        }
-    }
-
-    [[nodiscard]] smcp::Session& sessionAt(uint8_t slot) noexcept { return _sessionBank[slot]; }
-    [[nodiscard]] const smcp::Session& sessionAt(uint8_t slot) const noexcept
-    {
-        return _sessionBank[slot];
-    }
+    {}
 
     [[nodiscard]] DriveMech& mech(uint8_t id) noexcept { return _mechs[id]; }
     [[nodiscard]] const DriveMech& mech(uint8_t id) const noexcept { return _mechs[id]; }
@@ -54,7 +44,7 @@ protected:
     }
 
 private:
-    /* После Base registry: SessionBank регистрирует объекты в Node::sessions(). */
-    smcp::SessionBank<kSessionCount> _sessionBank;
+    /* После Base registry: SessionConsole регистрируется в Node::sessions(). */
+    smcp::SessionBank<kSessionCount, smcp::SessionConsole> _sessionBank;
     DriveMechBank<smcp::kMechCount> _mechs;
 };

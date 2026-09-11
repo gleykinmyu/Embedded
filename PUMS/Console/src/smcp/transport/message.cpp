@@ -156,6 +156,14 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
         packet.body = body;
         return true;
     }
+    case MsgId::Block: {
+        Block body{};
+        if (!Block::deserialize(frame, body)) {
+            return false;
+        }
+        packet.body = body;
+        return true;
+    }
     case MsgId::SetTarget: {
         SetTarget body{};
         if (!SetTarget::deserialize(frame, body)) {
@@ -224,7 +232,26 @@ bool Select::deserialize(const BIF::CAN::Frame& frame, Select& out) noexcept
         return false;
     }
     const auto action = static_cast<Action>(frame.data[1]);
-    if (action != Action::Select && action != Action::Deselect && action != Action::Set) {
+    if (!isValidAction(action)) {
+        return false;
+    }
+    out.action = action;
+    out.selection = Selection::from_raw(load_le32(frame.data + 2));
+    return true;
+}
+
+bool Block::serialize(BIF::CAN::Frame& frame) const noexcept
+{
+    return push(frame, static_cast<uint8_t>(action)) && push_le32(frame, selection.raw());
+}
+
+bool Block::deserialize(const BIF::CAN::Frame& frame, Block& out) noexcept
+{
+    if (!expectDlc(frame, 6)) {
+        return false;
+    }
+    const auto action = static_cast<Action>(frame.data[1]);
+    if (!isValidAction(action)) {
         return false;
     }
     out.action = action;

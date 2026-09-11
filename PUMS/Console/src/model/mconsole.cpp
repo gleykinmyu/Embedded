@@ -28,8 +28,7 @@ MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clo
     , _browser(browser)
     , _mechs(*this)
 {
-    setServerId(smcp::msg::kServerIdMin);
-    startSession();
+    startSession(smcp::msg::kServerIdMin);
 
     for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
         _groups[i].id = static_cast<uint8_t>(i);
@@ -39,6 +38,15 @@ MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clo
     initBlockedGroup();
 
     _showName[0] = '\0';
+}
+
+void MConsole::handleTelemetry(const smcp::msg::Header& hdr,
+                               const smcp::msg::Telemetry& body) noexcept
+{
+    if (!validMechId(body.mech_id)) {
+        return;
+    }
+    _mechs[body.mech_id].onTelemetry(hdr.src_id, body);
 }
 
 
@@ -158,14 +166,16 @@ bool MConsole::mechSelect(uint8_t id) noexcept
     Mech& mech = _mechs[id];
 
     if (mech.isSelected()) {
-        return mech.select(smcp::kHolderNone);
+        mech.select(smcp::kHolderNone);
+        return true;
     }
 
     if (isMechIsolated(id)) {
         return false;
     }
 
-    return mech.select(Console::id());
+    mech.select(Console::id());
+    return true;
 }
 
 
@@ -217,7 +227,7 @@ smcp::Selection MConsole::selectionFromMechs() const noexcept
 {
     smcp::Selection selection;
     for (std::size_t i = 0; i < kMechCount; ++i) {
-        if (_mechs[i].status().any(smcp::IMech::Status::Selected)) {
+        if (_mechs[i].isSelectedBy(Console::id())) {
             selection.add(static_cast<uint8_t>(i));
         }
     }
@@ -437,7 +447,7 @@ MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
     }
 
     if (_mechs[id].isSelected()) {
-        (void)_mechs[id].select(smcp::kHolderNone);
+        _mechs[id].select(smcp::kHolderNone);
     }
     blk.mech.add(id);
     markEdited();
@@ -501,7 +511,7 @@ void MConsole::setGroupBlocked(uint8_t id, bool blocked) noexcept
             /* Ручная блокировка сбрасывается — источник теперь группа. */
             manual.mech.remove(static_cast<uint8_t>(m));
             if (_mechs[m].isSelected()) {
-                (void)_mechs[m].select(smcp::kHolderNone);
+                _mechs[m].select(smcp::kHolderNone);
             }
         }
         if (_activeGroup == id) {
@@ -527,7 +537,7 @@ void MConsole::rebuildBlockedMechs() noexcept
         }
 
         Mech& mech = _mechs[m];
-        (void)mech.block(blocked);
+        mech.block(blocked);
     }
 }
 

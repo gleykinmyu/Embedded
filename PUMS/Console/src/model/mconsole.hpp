@@ -173,6 +173,10 @@ public:
      */
     [[nodiscard]] bool canMutateShowName(const char* name) noexcept;
 
+protected:
+    void handleTelemetry(const smcp::msg::Header& hdr,
+                         const smcp::msg::Telemetry& body) noexcept override;
+
 private:
     /* --- Статус --- */
     void clearError() noexcept { _status = Status::Ok; }

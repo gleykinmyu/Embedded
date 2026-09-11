@@ -41,14 +41,17 @@ inline constexpr unsigned kCanIdPrioPos = 24;
 inline constexpr uint16_t kAckTimeoutControlMs = 100u;
 inline constexpr uint8_t kAckRetryControl = 3u;
 inline constexpr uint16_t kHeartbeatTimeoutMs = 500u;
+/** Сколько интервалов T без RX HB до down (1 = сразу при первом timeout). */
+inline constexpr uint8_t kHeartbeatMissMax = 3u;
 
-/** MVP wire set: Ack/Nack, Heartbeat, Select, SetTarget, Telemetry. */
+/** MVP wire set: Ack/Nack, Heartbeat, Select, Block, SetTarget, Telemetry. */
 enum class MsgId : uint8_t {
     Ack       = 0x01,
     Nack      = 0x02,
     Heartbeat = 0x03,
 
     Select    = 0x10,
+    Block     = 0x11,
     SetTarget = 0x20,
 
     Telemetry = 0x40,
@@ -63,6 +66,7 @@ enum class ErrorCode : uint8_t {
     Safety       = 0x05, /**< Blocked / запрет безопасности. */
     NotReady     = 0x06, /**< Привод не Ready. */
     SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
+    Timeout      = 0x08, /**< Локально: исчерпан retry Ack (не с шины). */
 };
 
 /**
@@ -130,30 +134,60 @@ struct Heartbeat {
 };
 
 /**
+ * Общий action для Select / Block (маска осей).
+ * Add/Remove — дельта по битам; Set — абсолютная маска.
+ */
+enum class Action : uint8_t {
+    Add = 0,    /**< Select / Block. */
+    Remove = 1, /**< Deselect / Unblock. */
+    Set = 2,    /**< Absolute mask. */
+};
+
+[[nodiscard]] constexpr bool isValidAction(Action action) noexcept
+{
+    return action == Action::Add || action == Action::Remove || action == Action::Set;
+}
+
+/**
  * Select — DLC=6
  *   +--------+--------+-------------+
  *   | pkt_id | action | mask LE u32 |
  *   +--------+--------+-------------+
  *    data[0]  data[1]  data[2..5]   (pkt_id → Packet)
  *
- * Action::Select / Deselect — дельта по битам маски.
+ * Action::Add / Remove — дельта по битам маски.
  * Action::Set — полная маска владения этой консоли на сегменте
  *   (бит=1 → select src; бит=0 и наш → deselect; чужих не трогаем).
  */
 struct Select {
     static constexpr MsgId kId = MsgId::Select;
 
-    enum class Action : uint8_t {
-        Select = 0,
-        Deselect = 1,
-        Set = 2, /**< Absolute: mask = желаемый набор осей этой консоли. */
-    };
-
-    Action action = Action::Select;
+    Action action = Action::Add;
     Selection selection;
 
     [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
     [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, Select& out) noexcept;
+};
+
+/**
+ * Block — DLC=6 (как Select)
+ *   +--------+--------+-------------+
+ *   | pkt_id | action | mask LE u32 |
+ *   +--------+--------+-------------+
+ *    data[0]  data[1]  data[2..5]   (pkt_id → Packet)
+ *
+ * Action::Add / Remove — дельта по битам маски (сегментный Status::Blocked).
+ * Action::Set — полная маска blocked на сегменте
+ *   (бит=1 → block; бит=0 → unblock).
+ */
+struct Block {
+    static constexpr MsgId kId = MsgId::Block;
+
+    Action action = Action::Add;
+    Selection selection;
+
+    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
+    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, Block& out) noexcept;
 };
 
 /**
@@ -197,6 +231,7 @@ using Message = std::variant<Ack,
                              Nack,
                              Heartbeat,
                              Select,
+                             Block,
                              SetTarget,
                              Telemetry>;
 
@@ -258,6 +293,7 @@ template <typename T>
 {
     switch (id) {
     case MsgId::Select:
+    case MsgId::Block:
     case MsgId::SetTarget:
         return true;
     case MsgId::Ack:
@@ -276,6 +312,7 @@ template <typename T>
     case MsgId::Ack:
     case MsgId::Nack:
     case MsgId::Select:
+    case MsgId::Block:
     case MsgId::SetTarget:
         return true;
     case MsgId::Heartbeat:
@@ -299,6 +336,7 @@ template <typename T>
 {
     switch (id) {
     case MsgId::Select:
+    case MsgId::Block:
     case MsgId::SetTarget:
         return 2u;
     case MsgId::Ack:

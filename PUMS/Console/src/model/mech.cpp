@@ -17,35 +17,33 @@ Mech::Type Mech::type() const noexcept
     return _type;
 }
 
-bool Mech::select(uint8_t console_id) noexcept
+void Mech::select(uint8_t console_id) noexcept
 {
     smcp::Selection sel;
     sel.add(_id);
 
     if (console_id == smcp::kHolderNone) {
-        _console->select(smcp::msg::Select::Action::Deselect, sel);
-        return true;
+        _console->select(smcp::msg::Action::Remove, sel);
+        return;
     }
 
     if (_status.any(Status::Blocked)) {
-        return false;
+        return;
     }
 
-    _console->select(smcp::msg::Select::Action::Select, sel);
-    return true;
+    _console->select(smcp::msg::Action::Add, sel);
 }
 
-bool Mech::block(bool blocked) noexcept
+void Mech::block(bool blocked) noexcept
 {
     if (blocked) {
         if (isSelected()) {
-            (void)select(smcp::kHolderNone);
+            select(smcp::kHolderNone);
         }
         _status.set(Status::Blocked);
     } else {
         _status.clear(Status::Blocked);
     }
-    return true;
 }
 
 bool Mech::setTarget(const smcp::MotionTarget& target) noexcept

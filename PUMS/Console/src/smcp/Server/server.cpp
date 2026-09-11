@@ -1,5 +1,6 @@
 /**
  * @file server.cpp
+ * @brief IServer Telemetry + SessionConsole Select/Block.
  */
 
 #include "smcp/Server/server.hpp"
@@ -7,6 +8,10 @@
 #include <variant>
 
 namespace smcp {
+
+// =============================================================================
+// detail
+// =============================================================================
 
 namespace detail {
 
@@ -17,160 +22,13 @@ void registerMech(IServer& server, IMech& mech) noexcept
 
 } // namespace detail
 
+// =============================================================================
+// IServer
+// =============================================================================
+
 IServer::IServer(ILink& link, ClockFn clock) noexcept
     : Node(link, clock)
 {}
-
-void IServer::setConsoleId(uint8_t console_id) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->setPeerId(console_id);
-    }
-}
-
-uint8_t IServer::consoleId() const noexcept
-{
-    const Session* s = primarySession();
-    return s != nullptr ? s->peerId() : uint8_t{0};
-}
-
-void IServer::startSession() noexcept
-{
-    if (Session* s = primarySession()) {
-        s->start();
-    }
-}
-
-void IServer::stopSession() noexcept
-{
-    if (Session* s = primarySession()) {
-        s->stop();
-    }
-}
-
-bool IServer::linkUp() const noexcept
-{
-    const Session* s = primarySession();
-    return s != nullptr && s->getStatus() == Session::Status::Open;
-}
-
-void IServer::onPacket(const msg::Packet& pkt) noexcept
-{
-    if (const auto* sel = std::get_if<msg::Select>(&pkt.body)) {
-        handleSelect(pkt.hdr, *sel, pkt.pkt_id);
-    }
-}
-
-void IServer::handleSelect(const msg::Header& hdr, const msg::Select& body, uint8_t pkt_id) noexcept
-{
-    if (!msg::helpers::isConsoleId(hdr.src_id)) {
-        return;
-    }
-
-    Session* sess = sessionByPeer(hdr.src_id);
-    if (sess == nullptr) {
-        return;
-    }
-
-    const auto action = body.action;
-    const uint8_t src = hdr.src_id;
-    const std::size_t cap = mechCapacity();
-
-    /* --- Проверка + прогноз Selected (без изменений); commit ниже --- */
-    Selection next_selected{};
-    for (uint8_t mid = 0; mid < cap; ++mid) {
-        const bool in_mask = body.selection.contains(mid);
-        IMech* m = mech(mid);
-
-        if (in_mask) {
-            if (m == nullptr) {
-                sess->sendNack(pkt_id, msg::ErrorCode::MechNotFound);
-                return;
-            }
-
-            /* Чужой holder — отказ при любом action (Select/Set/Deselect). */
-            if (m->isSelected() && !m->isSelectedBy(src)) {
-                sess->sendNack(pkt_id, msg::ErrorCode::Busy);
-                return;
-            }
-
-            /* Select/Set на свободную: Blocked / Ready — независимые флаги. Deselect — только holder. */
-            if ((action == msg::Select::Action::Select || action == msg::Select::Action::Set)
-                && !m->isSelectedBy(src)) {
-                if (m->isBlocked()) {
-                    // TODO: все ли консоли могут блокировать все механизмы (или только свои / политика сегмента)?
-                    sess->sendNack(pkt_id, msg::ErrorCode::Safety);
-                    return;
-                }
-                if (!m->status().any(IMech::Status::Ready)) {
-                    sess->sendNack(pkt_id, msg::ErrorCode::NotReady);
-                    return;
-                }
-            }
-        }
-
-        if (m == nullptr) {
-            continue;
-        }
-
-        const bool was_ours = m->isSelectedBy(src);
-        const bool take = (action == msg::Select::Action::Select
-                           || action == msg::Select::Action::Set)
-            && in_mask && !was_ours;
-        /* Deselect: бит=1 и наше; Set: бит=0 и наше; чужое не снимаем. */
-        const bool drop = was_ours
-            && ((action == msg::Select::Action::Deselect && in_mask)
-                || (action == msg::Select::Action::Set && !in_mask));
-
-        /* Итог владения этой консоли (не сегментный Selected). */
-        bool ours = was_ours;
-        if (take) {
-            ours = true;
-        } else if (drop) {
-            ours = false;
-        }
-        if (ours) {
-            next_selected.add(mid);
-        }
-    }
-
-    const msg::ErrorCode policy = acceptSelect(src, next_selected);
-    if (policy != msg::ErrorCode::Ok) {
-        sess->sendNack(pkt_id, policy);
-        return;
-    }
-
-    /* --- Commit: take / drop в одном проходе --- */
-    for (uint8_t mid = 0; mid < cap; ++mid) {
-        IMech* m = mech(mid);
-        if (m == nullptr) {
-            continue;
-        }
-
-        const bool in_mask = body.selection.contains(mid);
-        const bool was_ours = m->isSelectedBy(src);
-
-        const bool take = (action == msg::Select::Action::Select
-                           || action == msg::Select::Action::Set)
-            && in_mask && !was_ours;
-        const bool drop = was_ours
-            && ((action == msg::Select::Action::Deselect && in_mask)
-                || (action == msg::Select::Action::Set && !in_mask));
-
-        if (take) {
-            // TODO: при проверках снаружи + атомарном commit — в каких случаях select() ещё
-            // вернёт false/Busy? Кажется, bool у IMech::select уже бессмысленен.
-            (void)m->select(src);
-            pushTelemetry(mid);
-        } else if (drop) {
-            // TODO: то же для select(kHolderNone) — отказ после внешних проверок?
-            (void)m->select(kHolderNone);
-            pushTelemetry(mid);
-        }
-    }
-
-    sess->sendAck(pkt_id);
-}
 
 void IServer::pushTelemetry(uint8_t mech_id) noexcept
 {
@@ -188,17 +46,173 @@ void IServer::pushTelemetry(uint8_t mech_id) noexcept
     send(tel, msg::kBroadcastId);
 }
 
-void IServer::pushAck(uint8_t req_pkt_id) noexcept
+// =============================================================================
+// SessionConsole — ctor / RX
+// =============================================================================
+
+SessionConsole::SessionConsole(IServer& server) noexcept
+    : Session(server)
+    , _server(server)
+{}
+
+bool SessionConsole::onPacket(const msg::Packet& pkt) noexcept
 {
-    if (Session* s = primarySession()) {
-        s->sendAck(req_pkt_id);
+    if (Session::onPacket(pkt)) {
+        return true;
+    }
+    if (const auto* sel = std::get_if<msg::Select>(&pkt.body)) {
+        handleMaskOp(MaskKind::Select, sel->action, sel->selection, pkt.pkt_id);
+        return true;
+    }
+    if (const auto* blk = std::get_if<msg::Block>(&pkt.body)) {
+        handleMaskOp(MaskKind::Block, blk->action, blk->selection, pkt.pkt_id);
+        return true;
+    }
+    return false;
+}
+
+// =============================================================================
+// SessionConsole — общий пайплайн Select/Block
+// =============================================================================
+
+void SessionConsole::handleMaskOp(MaskKind kind,
+                                  msg::Action action,
+                                  Selection selection,
+                                  uint8_t pkt_id) noexcept
+{
+    if (!msg::helpers::isConsoleId(peerId())) {
+        return;
+    }
+
+    const uint8_t src = peerId();
+    const std::size_t cap = _server.mechCapacity();
+    const bool is_select = (kind == MaskKind::Select);
+
+    MaskPlan plan{};
+    for (uint8_t mid = 0; mid < cap; ++mid) {
+        const bool in_mask = selection.contains(mid);
+        IMech* m = _server.mech(mid);
+
+        if (m == nullptr) {
+            if (in_mask) {
+                sendNack(pkt_id, msg::ErrorCode::MechNotFound);
+                return;
+            }
+            continue;
+        }
+
+        const bool was = is_select ? m->isSelectedBy(src) : m->isBlocked();
+        if (!in_mask && !was) {
+            continue; /* нет вклада в next / changed */
+        }
+
+        if (is_select && in_mask) {
+            const msg::ErrorCode guard = selectGuard(*m, src, action);
+            if (guard != msg::ErrorCode::Ok) {
+                sendNack(pkt_id, guard);
+                return;
+            }
+        }
+
+        plan.note(mid, was, in_mask, action);
+    }
+
+    const msg::ErrorCode policy = is_select ? _server.acceptSelect(src, plan.next)
+                                            : _server.acceptBlock(src, plan.next);
+    if (policy != msg::ErrorCode::Ok) {
+        sendNack(pkt_id, policy);
+        return;
+    }
+
+    if (is_select) {
+        commitSelect(src, plan);
+    } else {
+        commitBlock(plan);
+    }
+    sendAck(pkt_id);
+    pushTelemetryMask(plan.changed());
+}
+
+// =============================================================================
+// SessionConsole — MaskPlan / guards / commit
+// =============================================================================
+
+void SessionConsole::MaskPlan::note(uint8_t mid, bool was, bool in_mask, msg::Action action) noexcept
+{
+    const bool want = (action == msg::Action::Set)
+        ? in_mask
+        : (in_mask ? (action == msg::Action::Add) : was);
+
+    if (want != was) {
+        if (want) {
+            take.add(mid);
+        } else {
+            drop.add(mid);
+        }
+    }
+    if (want) {
+        next.add(mid);
     }
 }
 
-void IServer::pushNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept
+msg::ErrorCode SessionConsole::selectGuard(const IMech& m,
+                                           uint8_t src,
+                                           msg::Action action) noexcept
 {
-    if (Session* s = primarySession()) {
-        s->sendNack(req_pkt_id, code);
+    if (m.isSelected() && !m.isSelectedBy(src)) {
+        return msg::ErrorCode::Busy;
+    }
+
+    if ((action == msg::Action::Add || action == msg::Action::Set) && !m.isSelectedBy(src)) {
+        if (m.isBlocked()) {
+            return msg::ErrorCode::Safety;
+        }
+        if (!m.status().any(IMech::Status::Ready)) {
+            return msg::ErrorCode::NotReady;
+        }
+    }
+    return msg::ErrorCode::Ok;
+}
+
+void SessionConsole::commitSelect(uint8_t src, const MaskPlan& plan) noexcept
+{
+    const std::size_t cap = _server.mechCapacity();
+    const Selection changed = plan.changed();
+    for (uint8_t mid = 0; mid < cap; ++mid) {
+        if (!changed.contains(mid)) {
+            continue;
+        }
+        IMech* m = _server.mech(mid);
+        if (m == nullptr) {
+            continue;
+        }
+        m->select(plan.take.contains(mid) ? src : kHolderNone);
+    }
+}
+
+void SessionConsole::commitBlock(const MaskPlan& plan) noexcept
+{
+    const std::size_t cap = _server.mechCapacity();
+    const Selection changed = plan.changed();
+    for (uint8_t mid = 0; mid < cap; ++mid) {
+        if (!changed.contains(mid)) {
+            continue;
+        }
+        IMech* m = _server.mech(mid);
+        if (m == nullptr) {
+            continue;
+        }
+        m->block(plan.take.contains(mid));
+    }
+}
+
+void SessionConsole::pushTelemetryMask(Selection mask) noexcept
+{
+    const std::size_t cap = _server.mechCapacity();
+    for (uint8_t mid = 0; mid < cap; ++mid) {
+        if (mask.contains(mid)) {
+            _server.pushTelemetry(mid);
+        }
     }
 }
 

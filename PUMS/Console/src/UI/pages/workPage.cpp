@@ -417,7 +417,8 @@ void WorkPage::refreshCell(uint8_t index) noexcept
     State next = State::Disabled;
     if (console.isMechBlocked(index)) {
         next = State::Blocked;
-    } else if (console.mech(index).status().all(smcp::IMech::Status::Selected | smcp::IMech::Status::Ready)) {
+    } else if (console.mech(index).isSelectedBy(console.id())
+               && console.mech(index).status().any(smcp::IMech::Status::Ready)) {
         next = State::Selected;
     } else if (console.isMechIsolated(index)) {
         next = State::Disabled;

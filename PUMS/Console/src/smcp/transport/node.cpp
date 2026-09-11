@@ -5,6 +5,8 @@
 #include "smcp/transport/node.hpp"
 #include "smcp/transport/session.hpp"
 
+#include <variant>
+
 namespace smcp {
 
 namespace detail {
@@ -57,6 +59,26 @@ Session* Node::sessionByPeer(uint8_t peer_id) noexcept
         Session* s = reg.get(id);
         if (s != nullptr && s->peerId() == peer_id) {
             return s;
+        }
+    }
+    return nullptr;
+}
+
+Session* Node::openNewSession(const msg::Packet& pkt) noexcept
+{
+    if (std::get_if<msg::Heartbeat>(&pkt.body) == nullptr) {
+        return nullptr;
+    }
+    if (pkt.hdr.dst_id != id()) {
+        return nullptr; /* bind только unicast, не broadcast */
+    }
+
+    auto& reg = sessions();
+    const uint8_t end = reg.endId();
+    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
+        Session* slot = reg.get(sid);
+        if (slot != nullptr && slot->peerId() == 0u) {
+            return slot;
         }
     }
     return nullptr;
@@ -159,7 +181,7 @@ void Node::pumpTx(bool do_tick) noexcept
             s->onTxResult(false);
             return;
         }
-        s->dropTx();
+        /* Drop / pending Ack — решает Session::onTxResult. */
         s->onTxResult(true);
     }
 }
@@ -178,10 +200,11 @@ void Node::update() noexcept
             }
 
             Session* s = sessionByPeer(pkt.hdr.src_id);
-            if (s != nullptr) {
-                if (s->onPacket(pkt)) {
-                    continue;
-                }
+            if (s == nullptr) {
+                s = openNewSession(pkt);
+            }
+            if (s != nullptr && s->onPacket(pkt)) {
+                continue;
             }
 
             onPacket(pkt);

@@ -2,9 +2,8 @@
  * @file node.hpp
  * @brief Базовый узел SMCP: ILink + TxQueue + registry Session*.
  *
- * Session unicast — в Session::_tx (Full → Session::isTxFull, edge Node::onTxFull).
- * Node drain сессии, пока не Idle. Node::send — broadcast / без сессии (Full → onTxFull(nullptr)).
- * Объекты Session создаёт наследник и регистрирует (как IMech).
+ * Session unicast — Session TX (Full → isTxFull / onTxFull).
+ * Node drain сессии + bus; Session создаёт наследник и регистрирует.
  */
 
 #pragma once
@@ -44,8 +43,7 @@ struct TxSlot {
 
 /**
  * Кольцо TxSlot + постановка с ожиданием drain (Node::update).
- * isFull — sticky после неудачного stall/depth; снимается успешным enqueue / clear.
- * enqueue — ниже, после class Node.
+ * isFull — sticky после stall/depth; снимается успешным enqueue / clear.
  */
 template <std::size_t Cap>
 class TxQueue {
@@ -53,7 +51,7 @@ class TxQueue {
 
 public:
     /**
-     * @return true — в очереди; false — Full после stall / depth limit / IdConflict abort.
+     * @return true — в очереди; false — Full после stall / depth / IdConflict abort.
      */
     [[nodiscard]] bool enqueue(const TxSlot& item, Node& node) noexcept;
 
@@ -66,7 +64,6 @@ public:
     }
 
     [[nodiscard]] bool isFull() const noexcept { return _full; }
-
     [[nodiscard]] std::size_t size() const noexcept { return _q.size(); }
     [[nodiscard]] std::size_t space() const noexcept { return _q.space(); }
     [[nodiscard]] bool empty() const noexcept { return _q.empty(); }
@@ -77,122 +74,156 @@ private:
 };
 
 namespace detail {
-/** Регистрация в Node::sessions() (первый свободный слот); fail → Node::Status::RegisterFailed. */
+/** Регистрация в Node::sessions(); fail → RegisterFailed. */
 void registerSession(Node& node, Session& session) noexcept;
 } // namespace detail
 
 /**
- * Узел на шине: ILink, Node::_tx (bus), Session* registry.
- * Drain: RR по capacity+1 (сессии + bus, по одному кадру).
- * Статусы sticky; RX decode — на ILink, без Node::LinkError.
+ * Узел на шине: ILink, bus `_tx`, Session* registry.
+ * Drain RR: capacity+1 (сессии + bus). RX decode — на ILink.
  */
 class Node {
 public:
     /**
-     * Порядок значений = жёсткость (setStatus не понижает, кроме clearError→OK).
+     * Порядок = жёсткость (setStatus не понижает, кроме clearError→OK).
      * OK < LinkError < RegisterFailed < IdConflict.
      */
     enum class Status : uint8_t {
         OK = 0,
-        LinkError, /**< Encode / Send / Closed — см. link().getStatus() */
-        RegisterFailed, /**< registerSession: нет свободного слота */
-        IdConflict, /**< На шине кадр с src == наш node id */
+        LinkError,      /**< Encode / Send / Closed — см. link().getStatus() */
+        RegisterFailed, /**< нет свободного слота сессии */
+        IdConflict,     /**< на шине кадр с src == наш id */
     };
 
     using ClockFn = uint32_t (*)();
 
-    virtual ~Node() = default;
+    // --- ctor ---
 
+    virtual ~Node() = default;
     explicit Node(ILink& link, ClockFn clock) noexcept;
 
-    /** Время узла (clock из ctor); без часов — 0 / последний кэш. */
+    // --- идентичность / часы / линк ---
+
+    [[nodiscard]] uint8_t id() const noexcept { return _link.nodeId(); }
     [[nodiscard]] uint32_t clockMs() const noexcept
     {
         return _clock != nullptr ? _clock() : _now_ms;
     }
-
-    uint8_t id() const noexcept { return _link.nodeId(); }
     ILink& link() noexcept { return _link; }
     const ILink& link() const noexcept { return _link; }
 
+    // --- статус узла ---
+
     [[nodiscard]] Status getStatus() const noexcept { return _status; }
-    /** Сброс sticky-статуса → OK (+ link.clearError, onStatus при смене). */
+    /** Sticky → OK (+ link.clearError, onStatus). */
     void clearError() noexcept;
 
-    std::size_t sessionCapacity() const noexcept
+    // --- сессии (lookup) ---
+
+    [[nodiscard]] std::size_t sessionCapacity() const noexcept
     {
         return const_cast<Node*>(this)->sessions().capacity();
     }
-
     Session* session(uint8_t slot_id) noexcept { return sessions().get(slot_id); }
     const Session* session(uint8_t slot_id) const noexcept
     {
         return const_cast<Node*>(this)->sessions().get(slot_id);
     }
-
-    /** Найти сессию по peer_id (SRC удалённого узла). */
     Session* sessionByPeer(uint8_t peer_id) noexcept;
     const Session* sessionByPeer(uint8_t peer_id) const noexcept
     {
         return const_cast<Node*>(this)->sessionByPeer(peer_id);
     }
 
+    // --- TX / pump (app) ---
+
     /**
-     * Non-session TX (обычно broadcast). Unicast сессий — Session::send.
-     * При Full — stall update() до SMCP_TX_STALL_MS, иначе onTxFull(nullptr).
-     * LinkError снимается успешным wire или clearError().
+     * Non-session TX (обычно broadcast). Unicast — Session::send.
+     * Full → stall update() до SMCP_TX_STALL_MS, иначе onTxFull(nullptr).
      */
     void send(const msg::Message& body,
               uint8_t dst_id = msg::kBroadcastId,
               uint8_t pkt_id = 0) noexcept;
 
-    /**
-     * Входной фильтр RX (с первого poll, до/без сессии):
-     * src==наш → IdConflict; уже IdConflict → drop; dst≠нам → drop.
-     */
-    [[nodiscard]] bool acceptRx(const msg::Packet& pkt) noexcept;
-
-    /** Pump: RX → session/app → tick → RR Session::_tx + Node::_tx. */
+    /** RX → acceptRx → session/onPacket → tick → RR Session TX + bus. */
     void update() noexcept;
 
     /** Глубина вложенного update (TxQueue::enqueue stall). */
-    uint8_t updateDepth() const noexcept { return _updateDepth; }
+    [[nodiscard]] uint8_t updateDepth() const noexcept { return _updateDepth; }
 
 protected:
-    friend void detail::registerSession(Node& node, Session& session) noexcept;
     friend class Session;
+    friend void detail::registerSession(Node& node, Session& session) noexcept;
+
+    // --- storage (leaf) ---
 
     [[nodiscard]] virtual MISC::ObjRegistry<Session, uint8_t>& sessions() noexcept = 0;
 
-    /** Прикладной demux, если сессия кадр не съела. */
+    // --- hooks (leaf / app) ---
+
+    /** Demux, если Session кадр не съела. */
     virtual void onPacket(const msg::Packet& pkt) noexcept { (void)pkt; }
 
-    /** Переход Node::Status (edge). Сессии не трогать — только app/UI/диагностика. */
+    /**
+     * Edge Node::Status. Сессии не трогать — app/UI.
+     * IdConflict: TX/RX уже стоп; close — здесь наверху.
+     */
     virtual void onStatus(Status status) noexcept { (void)status; }
 
-    /** Отказ enqueue: очередь Full. nullptr — Node::_tx. */
-    virtual void onTxFull(Session* session) noexcept
+    /** Отказ enqueue. nullptr — bus `_tx`. */
+    virtual void onTxFull(Session* session) noexcept { (void)session; }
+
+    /**
+     * HB потерян (misses ≥ max): сессия ещё up, peer жив; затем Session::close.
+     */
+    virtual void onHbLost(Session* session) noexcept { (void)session; }
+
+    /**
+     * Ответ на class A: Ack/Nack с шины или локальный Nack(Timeout).
+     */
+    virtual void onReply(Session* session, uint8_t pkt_id, const msg::Message& reply) noexcept
     {
         (void)session;
+        (void)pkt_id;
+        (void)reply;
     }
 
     /**
-     * Wire-результат головы Node::_tx.
-     * По умолчанию drop (класс D, без окна Ack). Session на fail голову держит.
+     * Diag: Ack/Nack pkt_id ≠ pending. Сессию не трогаем.
+     */
+    virtual void onPktIdMismatch(Session* session, uint8_t expected, uint8_t got) noexcept
+    {
+        (void)session;
+        (void)expected;
+        (void)got;
+    }
+
+    /**
+     * Wire-результат головы bus `_tx`.
+     * Default: drop (класс D). Session держит голову сама.
      */
     virtual void onTxResult(bool ok) noexcept
     {
-        if (!ok) _tx.drop();
+        if (!ok) {
+            _tx.drop();
+        }
     }
 
 private:
-    /** Смена статуса: OK всегда; иначе только «жёстче». Edge → onStatus. */
+    // --- статус / RX фильтр ---
+
     void setStatus(Status status) noexcept;
+    /** src==наш → IdConflict; IdConflict → drop; dst≠нам → drop. */
+    [[nodiscard]] bool acceptRx(const msg::Packet& pkt) noexcept;
 
-    /** true — wire OK; false — fail (LinkError) или IdConflict (без LinkError). */
+    // --- TX внутренности ---
+
     [[nodiscard]] bool sendWire(const TxSlot& item) noexcept;
-
     void pumpTx(bool do_tick) noexcept;
+    /** Unicast HB → первый слот peer_id==0 (bind в Session::onHeartbeat). */
+    [[nodiscard]] Session* openNewSession(const msg::Packet& pkt) noexcept;
+
+    // --- данные ---
 
     ILink& _link;
     TxQueue<SMCP_TX_QUEUE_CAPACITY> _tx;
@@ -224,7 +255,7 @@ bool TxQueue<Cap>::enqueue(const TxSlot& item, Node& node) noexcept
         node.update();
 
         if (node.getStatus() == Node::Status::IdConflict) {
-            return false; /* не Full */
+            return false;
         }
 
         if (_q.push(item)) {
