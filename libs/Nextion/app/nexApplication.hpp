@@ -103,6 +103,11 @@ public:
     virtual void onTouch(const msg::evTouch& e);
     virtual void onTouchXY(const msg::evTouchXY& e);
     virtual void onMsgBox(const msg::evMsgBox& e) noexcept;
+    /**
+     * MsgBox закрыт и новый modal не открыт: `refreshPage` уже в очереди.
+     * Сюда — setState / redraw поверх HMI (после ref в UART-очереди).
+     */
+    virtual void onAfterMsgBox(const msg::evMsgBox& e) noexcept;
     virtual void onPageChange(const msg::evPage& e) noexcept;
     virtual void onSystemEvent(const msg::evSystem&) {}
     virtual void onTransparentEvent(const msg::evTransparent&) {}

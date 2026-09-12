@@ -137,6 +137,8 @@ int main(void)
     (void)canServer.open(1'000'000);
     canConsole.connect(canServer);
 
+    console.begin(smcp::msg::kServerIdMin);
+
     console.setMirror(&flashShow);
     if (console.restoreMirror()) {
         NEX_DBG("Restored show from W25Q: '%s'\n", console.showName());

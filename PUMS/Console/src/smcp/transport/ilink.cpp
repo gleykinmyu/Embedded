@@ -4,6 +4,7 @@
  */
 
 #include "smcp/transport/ilink.hpp"
+#include "smcp/debug.hpp"
 
 namespace smcp {
 
@@ -24,6 +25,7 @@ bool ILink::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexc
     pkt.pkt_id = pkt_id;
     pkt.body = body;
 
+    SMCP_TRACE_PKT("TX", _node_id, pkt);
     return write(pkt);
 }
 
@@ -34,7 +36,11 @@ bool ILink::receive(msg::Packet& out) noexcept
         return false;
     }
 
-    return read(out);
+    if (!read(out)) {
+        return false;
+    }
+    SMCP_TRACE_PKT("RX", _node_id, out);
+    return true;
 }
 
 } // namespace smcp

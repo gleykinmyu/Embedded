@@ -1,5 +1,7 @@
 #include "application.hpp"
 
+#include <cstdio>
+
 #include "board.hpp"
 #include "core/memstat.hpp"
 #include "enc.hpp"
@@ -12,6 +14,29 @@ namespace {
 void onConsoleShowChanged() noexcept
 {
     app.syncStatusBarFile();
+}
+
+void onConsoleMechChanged(uint8_t mech_id) noexcept
+{
+    app.work.onMechTelemetry(mech_id);
+}
+
+void onConsoleSelectAck() noexcept
+{
+    app.work.onSelectAck();
+}
+
+void onConsoleNack() noexcept
+{
+    if (console.lastNackReq() == smcp::msg::MsgId::Select) {
+        app.work.onSelectNack();
+    }
+    app.showSmcpNack();
+}
+
+void onConsolePhase(smcp::IConsole::Phase /*phase*/) noexcept
+{
+    app.syncStatusBarLink();
 }
 
 } // namespace
@@ -44,8 +69,12 @@ void Application::boot() noexcept
 
     statusBar.show(overlay);
     console.setOnShowChanged(&onConsoleShowChanged);
+    console.setOnMechChanged(&onConsoleMechChanged);
+    console.setOnSelectAck(&onConsoleSelectAck);
+    console.setOnNack(&onConsoleNack);
+    console.setOnPhase(&onConsolePhase);
     syncStatusBarFile();
-    syncStatusBarMem();
+    syncStatusBarLink();
     syncStatusBarTime();
 }
 
@@ -72,7 +101,7 @@ void Application::update() noexcept
         return;
     }
     _statusBarTickMs = now;
-    syncStatusBarMem();
+    syncStatusBarLink();
     syncStatusBarTime();
 }
 
@@ -125,16 +154,25 @@ void Application::showBrowserStatus(uint8_t tag) noexcept
     showFileMsg(tag, MBrowser::statusText(mBrowser.getStatus()));
 }
 
+void Application::showSmcpNack(uint8_t tag) noexcept
+{
+    showUtf8Msg(uiMsg::kTitleSmcp, nex::ovl::MsgBox::Preset::OK, tag,
+        nex::ovl::MsgBox::Action::Ok, MConsole::nackText(console.lastNack()));
+}
+
 void Application::syncStatusBarFile() noexcept
 {
     statusBar.setFile(MConsole::showBaseName(console.showName()), console.isEdited());
 }
 
-void Application::syncStatusBarMem() noexcept
+void Application::syncStatusBarLink() noexcept
 {
-    char memBuf[16]{};
-    memstat::formatFreeMin(memBuf, sizeof memBuf);
-    statusBar.setStatus(memBuf);
+    char buf[32]{};
+    const unsigned freeKb =
+        static_cast<unsigned>((memstat::freeMinBytes() + 512u) / 1024u);
+    std::snprintf(buf, sizeof(buf), "%s (%uk)",
+        smcp::IConsole::cstr(console.phase()), freeKb);
+    statusBar.setStatus(buf);
     memstat::resetFreeMin();
 }
 

@@ -3,6 +3,7 @@
 #include "../../app/nexOvlApp.hpp"
 #include "../../app/nexErrors.hpp"
 #include "../../comp/nexCanvas.hpp"
+#include "../../core/nexDebug.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -244,13 +245,19 @@ void MsgBox::onClick(Object* const target) noexcept {
     if (btn == nullptr)
         return;
     _ev.action = btn->action();
+    NEX_DBG_OVL("[ovl] MsgBox onClick action=%u tag=%u → hide\n", static_cast<unsigned>(_ev.action),
+        static_cast<unsigned>(_ev.tag));
     Widget::hide(_app.overlay);
-    /* refreshPage до onMsgBox: иначе setState из обработчика уходит в очередь
-       раньше page refresh и панель затирает цвета обратно в HMI-defaults. */
-    if (!_app.overlay.isModal()) {
-        _app.refreshPage();
-    }
+    /* Сначала onMsgBox: может сразу показать следующий MsgBox (modal снова true).
+       refreshPage — только когда modal полностью ушёл; иначе ref 0 стирает новый canvas. */
     _app.onMsgBox(_ev);
+    const bool stillModal = _app.overlay.isModal();
+    NEX_DBG_OVL("[ovl] MsgBox after onMsgBox stillModal=%u\n", static_cast<unsigned>(stillModal));
+    if (!stillModal) {
+        _app.refreshPage();
+        _app.onAfterMsgBox(_ev);
+        _app.overlay.redrawShownWidgets();
+    }
 }
 
 void MsgBox::setTitle(const char* title) noexcept {
@@ -321,10 +328,14 @@ void MsgBox::present() noexcept {
         _ev.route = Route{_app.currentPage(), 0u};
     _routePinned = false;
 
-    if (!hasScreen())
+    if (!hasScreen()) {
+        NEX_DBG_OVL("[ovl] MsgBox present SKIP (!hasScreen)\n");
         return;
+    }
 
     _ev.action = Action::None;
+    NEX_DBG_OVL("[ovl] MsgBox present tag=%u page=%u → show modal\n", static_cast<unsigned>(_ev.tag),
+        static_cast<unsigned>(_ev.route.page));
     Widget::show(_app.overlay, true);
 }
 

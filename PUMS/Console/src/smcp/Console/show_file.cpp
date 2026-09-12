@@ -8,7 +8,7 @@
 #include <cstring>
 
 #include "crc.hpp"
-#include "debug.hpp"
+#include "smcp/debug.hpp"
 
 namespace smcp {
 namespace file {
@@ -17,7 +17,7 @@ uint16_t computeHeaderCrc16(const Header& hdr) noexcept
 {
     Header tmp = hdr;
     tmp.header_crc16 = 0;
-    return crc16Ccitt(reinterpret_cast<const uint8_t*>(&tmp), sizeof(tmp));
+    return MISC::crc16Ccitt(reinterpret_cast<const uint8_t*>(&tmp), sizeof(tmp));
 }
 
 bool updateFileCrc32(IFile& io,
@@ -38,7 +38,7 @@ bool updateFileCrc32(IFile& io,
         if (!io.read(buf, n)) {
             return false;
         }
-        crc = crc32Update(crc, buf, n);
+        crc = MISC::crc32Update(crc, buf, n);
         length -= n;
     }
     return true;
@@ -49,11 +49,11 @@ bool computeFileCrc32(IFile& io,
                       std::size_t length,
                       uint32_t& out_crc) noexcept
 {
-    uint32_t crc = crc32Init();
+    uint32_t crc = MISC::crc32Init();
     if (!updateFileCrc32(io, offset, length, crc)) {
         return false;
     }
-    out_crc = crc32Final(crc);
+    out_crc = MISC::crc32Final(crc);
     return true;
 }
 
@@ -113,12 +113,12 @@ bool Writer::open(const char* path) noexcept
     _status = Status::Ok;
     if (path == nullptr || _catalog == nullptr) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Writer::open fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::open fail %s\n", cstr(_status));
         return false;
     }
     if (!_io.open(path, true)) {
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::open \"%s\" fail %s\n", path, cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::open \"%s\" fail %s\n", path, cstr(_status));
         return false;
     }
 
@@ -133,7 +133,7 @@ bool Writer::open(const char* path) noexcept
         _payloadPtr[i] = nullptr;
         _payloadLen[i] = 0u;
     }
-    SMCP_DBG("[SMCP] Writer::open \"%s\" sections=%u payloadBase=%u\n", path,
+    SMCP_SHOW("[SMCP] Writer::open \"%s\" sections=%u payloadBase=%u\n", path,
         static_cast<unsigned>(_sectionCount), static_cast<unsigned>(_nextOffset));
     return true;
 }
@@ -141,7 +141,7 @@ bool Writer::open(const char* path) noexcept
 void Writer::close() noexcept
 {
     if (_fileOpen) {
-        SMCP_DBG("[SMCP] Writer::close\n");
+        SMCP_SHOW("[SMCP] Writer::close\n");
         _io.close();
         _fileOpen = false;
     }
@@ -155,7 +155,7 @@ bool Writer::writeSection(uint32_t tag,
     if (!_fileOpen || _catalog == nullptr || _written >= _sectionCount
         || _written >= kMaxCrcSections) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Writer::writeSection tag=0x%08lX fail %s\n",
+        SMCP_SHOW("[SMCP] Writer::writeSection tag=0x%08lX fail %s\n",
             static_cast<unsigned long>(tag), cstr(_status));
         return false;
     }
@@ -163,7 +163,7 @@ bool Writer::writeSection(uint32_t tag,
     if (!file::writeSection(_io, tag, records, record_size, record_count, _nextOffset,
                             _catalog[_written])) {
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::writeSection tag=0x%08lX off=%u fail %s\n",
+        SMCP_SHOW("[SMCP] Writer::writeSection tag=0x%08lX off=%u fail %s\n",
             static_cast<unsigned long>(tag), static_cast<unsigned>(_nextOffset), cstr(_status));
         return false;
     }
@@ -172,7 +172,7 @@ bool Writer::writeSection(uint32_t tag,
     _payloadPtr[_written] = records;
     _payloadLen[_written] = byte_size;
 
-    SMCP_DBG("[SMCP] Writer::writeSection #%u tag=0x%08lX rec=%u×%u bytes=%u off=%u\n",
+    SMCP_SHOW("[SMCP] Writer::writeSection #%u tag=0x%08lX rec=%u×%u bytes=%u off=%u\n",
         static_cast<unsigned>(_written), static_cast<unsigned long>(tag),
         static_cast<unsigned>(record_count), static_cast<unsigned>(record_size),
         static_cast<unsigned>(byte_size), static_cast<unsigned>(_catalog[_written].offset));
@@ -197,7 +197,7 @@ bool Writer::finalize(bool closeAfter) noexcept
     if (!_fileOpen || _catalog == nullptr || _written != _sectionCount) {
         close();
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Writer::finalize fail %s (written=%u expect=%u)\n", cstr(_status),
+        SMCP_SHOW("[SMCP] Writer::finalize fail %s (written=%u expect=%u)\n", cstr(_status),
             static_cast<unsigned>(_written), static_cast<unsigned>(_sectionCount));
         return false;
     }
@@ -214,48 +214,48 @@ bool Writer::finalize(bool closeAfter) noexcept
         static_cast<std::size_t>(_sectionCount) * sizeof(SectionDesc);
 
     /* body CRC целиком из RAM: catalog || payload₀ || … */
-    uint32_t body_crc = crc32Init();
-    body_crc = crc32Update(body_crc, reinterpret_cast<const uint8_t*>(_catalog), catalogBytes);
+    uint32_t body_crc = MISC::crc32Init();
+    body_crc = MISC::crc32Update(body_crc, reinterpret_cast<const uint8_t*>(_catalog), catalogBytes);
     for (uint16_t i = 0; i < _written; ++i) {
         if (_payloadPtr[i] == nullptr || _payloadLen[i] == 0u) {
             close();
             _status = Status::BadLayout;
-            SMCP_DBG("[SMCP] Writer::finalize fail %s (payload #%u)\n", cstr(_status),
+            SMCP_SHOW("[SMCP] Writer::finalize fail %s (payload #%u)\n", cstr(_status),
                 static_cast<unsigned>(i));
             return false;
         }
-        body_crc = crc32Update(body_crc, static_cast<const uint8_t*>(_payloadPtr[i]),
+        body_crc = MISC::crc32Update(body_crc, static_cast<const uint8_t*>(_payloadPtr[i]),
                                _payloadLen[i]);
     }
-    _hdr.body_crc32 = crc32Final(body_crc);
+    _hdr.body_crc32 = MISC::crc32Final(body_crc);
     _hdr.header_crc16 = computeHeaderCrc16(_hdr);
 
     if (!_io.seek(0)) {
         close();
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::finalize seek0 fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::finalize seek0 fail %s\n", cstr(_status));
         return false;
     }
     if (!_io.write(reinterpret_cast<const uint8_t*>(&_hdr), sizeof(_hdr))) {
         close();
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::finalize write hdr fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::finalize write hdr fail %s\n", cstr(_status));
         return false;
     }
     if (!_io.write(reinterpret_cast<const uint8_t*>(_catalog), catalogBytes)) {
         close();
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::finalize write catalog fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::finalize write catalog fail %s\n", cstr(_status));
         return false;
     }
     if (!_io.sync()) {
         close();
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Writer::finalize sync fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Writer::finalize sync fail %s\n", cstr(_status));
         return false;
     }
 
-    SMCP_DBG("[SMCP] Writer::finalize ok name=\"%s\" total=%u body_crc=0x%08lX hdr_crc=0x%04X\n",
+    SMCP_SHOW("[SMCP] Writer::finalize ok name=\"%s\" total=%u body_crc=0x%08lX hdr_crc=0x%04X\n",
         _hdr.name, static_cast<unsigned>(_hdr.total_size),
         static_cast<unsigned long>(_hdr.body_crc32),
         static_cast<unsigned>(_hdr.header_crc16));
@@ -278,22 +278,22 @@ bool Reader::open(const char* path) noexcept
     _status = Status::Ok;
     if (path == nullptr || _catalog == nullptr) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Reader::open fail %s\n", cstr(_status));
+        SMCP_SHOW("[SMCP] Reader::open fail %s\n", cstr(_status));
         return false;
     }
     if (!_io.open(path, false)) {
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Reader::open \"%s\" fail %s\n", path, cstr(_status));
+        SMCP_SHOW("[SMCP] Reader::open \"%s\" fail %s\n", path, cstr(_status));
         return false;
     }
 
     _fileOpen = true;
     if (!load()) {
-        SMCP_DBG("[SMCP] Reader::open \"%s\" load fail %s\n", path, cstr(_status));
+        SMCP_SHOW("[SMCP] Reader::open \"%s\" load fail %s\n", path, cstr(_status));
         close();
         return false;
     }
-    SMCP_DBG("[SMCP] Reader::open \"%s\" ok name=\"%s\" sections=%u total=%u\n", path, _hdr.name,
+    SMCP_SHOW("[SMCP] Reader::open \"%s\" ok name=\"%s\" sections=%u total=%u\n", path, _hdr.name,
         static_cast<unsigned>(_hdr.section_count), static_cast<unsigned>(_hdr.total_size));
     return true;
 }
@@ -301,7 +301,7 @@ bool Reader::open(const char* path) noexcept
 void Reader::close() noexcept
 {
     if (_fileOpen) {
-        SMCP_DBG("[SMCP] Reader::close\n");
+        SMCP_SHOW("[SMCP] Reader::close\n");
         _io.close();
         _fileOpen = false;
     }
@@ -313,18 +313,18 @@ bool Reader::readSectionAt(std::size_t index, void* buffer, std::size_t buffer_s
 {
     if (!_loaded || index >= _hdr.section_count) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Reader::readSectionAt #%u fail %s\n", static_cast<unsigned>(index),
+        SMCP_SHOW("[SMCP] Reader::readSectionAt #%u fail %s\n", static_cast<unsigned>(index),
             cstr(_status));
         return false;
     }
     if (!file::readSection(_io, _catalog[index], buffer, buffer_size)) {
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Reader::readSectionAt #%u tag=0x%08lX fail %s\n",
+        SMCP_SHOW("[SMCP] Reader::readSectionAt #%u tag=0x%08lX fail %s\n",
             static_cast<unsigned>(index), static_cast<unsigned long>(_catalog[index].tag),
             cstr(_status));
         return false;
     }
-    SMCP_DBG("[SMCP] Reader::readSectionAt #%u tag=0x%08lX bytes=%u\n",
+    SMCP_SHOW("[SMCP] Reader::readSectionAt #%u tag=0x%08lX bytes=%u\n",
         static_cast<unsigned>(index), static_cast<unsigned long>(_catalog[index].tag),
         static_cast<unsigned>(_catalog[index].byte_size));
     return true;
@@ -334,24 +334,24 @@ bool Reader::readSection(uint32_t tag, void* buffer, std::size_t buffer_size) no
 {
     if (!_loaded) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Reader::readSection tag=0x%08lX fail %s\n",
+        SMCP_SHOW("[SMCP] Reader::readSection tag=0x%08lX fail %s\n",
             static_cast<unsigned long>(tag), cstr(_status));
         return false;
     }
     const SectionDesc* desc = find(tag);
     if (desc == nullptr) {
         _status = Status::BadLayout;
-        SMCP_DBG("[SMCP] Reader::readSection tag=0x%08lX fail %s (not found)\n",
+        SMCP_SHOW("[SMCP] Reader::readSection tag=0x%08lX fail %s (not found)\n",
             static_cast<unsigned long>(tag), cstr(_status));
         return false;
     }
     if (!file::readSection(_io, *desc, buffer, buffer_size)) {
         _status = Status::IoError;
-        SMCP_DBG("[SMCP] Reader::readSection tag=0x%08lX fail %s\n",
+        SMCP_SHOW("[SMCP] Reader::readSection tag=0x%08lX fail %s\n",
             static_cast<unsigned long>(tag), cstr(_status));
         return false;
     }
-    SMCP_DBG("[SMCP] Reader::readSection tag=0x%08lX bytes=%u off=%u\n",
+    SMCP_SHOW("[SMCP] Reader::readSection tag=0x%08lX bytes=%u off=%u\n",
         static_cast<unsigned long>(tag), static_cast<unsigned>(desc->byte_size),
         static_cast<unsigned>(desc->offset));
     return true;
@@ -448,7 +448,7 @@ bool Reader::load() noexcept
                 return false;
             }
         }
-        SMCP_DBG("[SMCP] Reader::load sec[%u] tag=0x%08lX off=%u bytes=%u rec=%u\n",
+        SMCP_SHOW("[SMCP] Reader::load sec[%u] tag=0x%08lX off=%u bytes=%u rec=%u\n",
             static_cast<unsigned>(i), static_cast<unsigned long>(sec.tag),
             static_cast<unsigned>(sec.offset), static_cast<unsigned>(sec.byte_size),
             static_cast<unsigned>(sec.record_count));

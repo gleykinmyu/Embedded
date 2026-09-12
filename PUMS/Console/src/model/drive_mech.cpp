@@ -11,7 +11,10 @@ DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
     , _type(type)
 {
     smcp::detail::registerMech(owner, *this);
-    _status.set(Status::Ready);
+    /* TEST: оси 11…14 — Idle (без Ready), остальным Ready. */
+    if (id < 11u || id > 14u) {
+        _status.set(Status::Ready);
+    }
 }
 
 void DriveMech::select(uint8_t console_id) noexcept

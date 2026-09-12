@@ -1,5 +1,7 @@
 #include "nexAppUI.hpp"
 
+#include "../core/nexDebug.hpp"
+
 namespace nex {
 
 IPage* IAppUI::getPage(uint8_t id) noexcept {
@@ -45,8 +47,16 @@ void IAppUI::reportRegisterError(MISC::RegStatus st, Route route) noexcept {
 }
 
 void IAppUI::onTouch(const msg::evTouch& e) {
-    if (overlay.isModal())
+    /* Modal: страница/HMI-компоненты не получают 0x65.
+       Redraw overlay здесь не делаем — при modal уже sendxy, Restore на
+       Release делает Overlay::dispatchTouchXY (иначе двойной полный draw:
+       0x67 + 0x65 на одно отпускание). */
+    if (overlay.isModal()) {
+        NEX_DBG_OVL("[ovl] onTouch 0x65 BLOCKED (modal) p%u c%u %s\n",
+            static_cast<unsigned>(e.route.page), static_cast<unsigned>(e.route.comp),
+            e.state == TouchState::Press ? "Press" : "Release");
         return;
+    }
     /* Игнор touch со скрытой/чужой страницы (инъекция UART / рассинхрон). */
     if (e.route.page != currentPage())
         return;
@@ -66,6 +76,16 @@ void IAppUI::onMsgBox(const msg::evMsgBox& e) noexcept {
         p->onMsgBox(e);
         if (e.route.comp == 0u)
             return;
+    }
+}
+
+void IAppUI::onAfterMsgBox(const msg::evMsgBox& e) noexcept {
+    IPage* p = getPage(e.route.page);
+    if (p == nullptr) {
+        p = getPage(currentPage());
+    }
+    if (p != nullptr) {
+        p->onAfterMsgBox(e);
     }
 }
 

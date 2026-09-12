@@ -1,51 +1,144 @@
 /**
  * @file console.cpp
+ * @brief IConsole: Phase lifecycle, primary Session TX, Telemetry RX.
  */
 
 #include "smcp/Console/console.hpp"
+#include "smcp/debug.hpp"
 
 #include <variant>
 
 namespace smcp {
 
+// =============================================================================
+// detail
+// =============================================================================
+
 namespace detail {
 
-void registerMech(IConsole& cons, IMech& mech) noexcept
+void registerMech(IConsole& cons, CMech& mech) noexcept
 {
-    (void)cons.storage().registerAt(mech.id(), &mech);
+    const MISC::RegStatus st = cons.storage().registerAt(mech.id(), &mech);
+    if (st != MISC::RegStatus::Ok) {
+        cons.setStatus(Node::Status::RegisterFailed);
+    }
 }
 
 } // namespace detail
 
-IConsole::IConsole(ILink& link, ClockFn clock) noexcept
+// =============================================================================
+// IConsole — Phase / cstr
+// =============================================================================
+
+const char* IConsole::cstr(Phase phase) noexcept
+{
+    switch (phase) {
+    case Phase::Idle: return "Idle";
+    case Phase::Listen: return "Listen";
+    case Phase::Connecting: return "Connecting";
+    case Phase::Online: return "Online";
+    case Phase::Fault: return "Fault";
+    }
+    return "?";
+}
+
+// =============================================================================
+// IConsole — ctor / pump
+// =============================================================================
+
+IConsole::IConsole(ILink& link, ClockFn clock, Session& primary) noexcept
     : Node(link, clock)
+    , _primary(primary)
 {}
 
-uint8_t IConsole::serverId() const noexcept
+void IConsole::update() noexcept
 {
-    const Session* s = primarySession();
-    return s != nullptr ? s->peerId() : uint8_t{0};
-}
+    Node::update();
 
-void IConsole::startSession(uint8_t server_id) noexcept
-{
-    if (Session* s = primarySession()) {
-        s->start(server_id);
+    if (getStatus() == Status::IdConflict || getStatus() == Status::RegisterFailed) {
+        if (_phase != Phase::Fault) {
+            enterFault();
+        }
+        return;
+    }
+
+    switch (_phase) {
+    case Phase::Idle:
+    case Phase::Fault:
+        break;
+
+    case Phase::Listen:
+        if (!_listen.timedOut(clockMs())) {
+            break;
+        }
+        _listen.stop();
+        if (getStatus() != Status::OK) {
+            enterFault();
+            break;
+        }
+        startPrimary();
+        setPhase(Phase::Connecting);
+        break;
+
+    case Phase::Connecting:
+        if (linkUp()) {
+            setPhase(Phase::Online);
+            break;
+        }
+        if (_primary.getStatus() == Session::Status::Idle && _server_id != 0u) {
+            startPrimary();
+        }
+        break;
+
+    case Phase::Online:
+        if (!linkUp()) {
+            setPhase(Phase::Connecting);
+        }
+        break;
     }
 }
 
-void IConsole::stopSession() noexcept
-{
-    if (Session* s = primarySession()) {
-        s->close();
-    }
-}
+// =============================================================================
+// IConsole — lifecycle / идентичность
+// =============================================================================
 
 bool IConsole::linkUp() const noexcept
 {
-    const Session* s = primarySession();
-    return s != nullptr && s->isOpen();
+    return _primary.isOpen();
 }
+
+void IConsole::setConsoleId(uint8_t console_id) noexcept
+{
+    if (console_id == id()) {
+        return;
+    }
+    link().setNodeId(console_id);
+    if (_server_id != 0u) {
+        begin(_server_id);
+    } else {
+        _primary.close();
+        _listen.stop();
+        setPhase(Phase::Idle);
+    }
+}
+
+void IConsole::begin(uint8_t server_id) noexcept
+{
+    if (server_id == 0u) {
+        return;
+    }
+    _server_id = server_id;
+    _primary.close();
+    if (getStatus() != Status::OK) {
+        clearError();
+    }
+    _listen.start(clockMs(), msg::kHeartbeatTimeoutMs);
+    setPhase(Phase::Listen);
+}
+
+// =============================================================================
+// IConsole — исходящие PDU
+// =============================================================================
 
 void IConsole::select(msg::Action action, Selection selection) noexcept
 {
@@ -53,15 +146,10 @@ void IConsole::select(msg::Action action, Selection selection) noexcept
         return;
     }
 
-    Session* s = primarySession();
-    if (s == nullptr) {
-        return;
-    }
-
     msg::Select body{};
     body.action = action;
     body.selection = selection;
-    s->send(body);
+    _primary.send(body);
 }
 
 void IConsole::setSelection(Selection selection) noexcept
@@ -80,15 +168,10 @@ void IConsole::block(msg::Action action, Selection selection) noexcept
         return;
     }
 
-    Session* s = primarySession();
-    if (s == nullptr) {
-        return;
-    }
-
     msg::Block body{};
     body.action = action;
     body.selection = selection;
-    s->send(body);
+    _primary.send(body);
 }
 
 void IConsole::setBlocked(Selection selection) noexcept
@@ -103,28 +186,93 @@ void IConsole::clearBlocked() noexcept
 
 void IConsole::setTarget(uint8_t mech_id, const MotionTarget& target) noexcept
 {
-    Session* s = primarySession();
-    if (s == nullptr) {
-        return;
-    }
-
     msg::SetTarget body{};
     body.mech_id = mech_id;
     body.target = target;
-    s->send(body);
+    _primary.send(body);
 }
+
+void IConsole::getTelemetry(Selection selection) noexcept
+{
+    msg::GetTelemetry body{};
+    body.selection = selection;
+    _primary.send(body);
+}
+
+// =============================================================================
+// IConsole — Node hooks
+// =============================================================================
 
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
 {
     if (const auto* tel = std::get_if<msg::Telemetry>(&pkt.body)) {
-        handleTelemetry(pkt.hdr, *tel);
+        onTelemetry(pkt.hdr, *tel);
     }
 }
 
-void IConsole::handleTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept
+void IConsole::onStatus(Status status) noexcept
 {
-    (void)hdr;
-    (void)body;
+    Node::onStatus(status);
+    switch (status) {
+    case Status::OK:
+    case Status::LinkError:
+        break;
+
+    case Status::RegisterFailed:
+    case Status::IdConflict:
+        enterFault();
+        break;
+    }
+}
+
+void IConsole::onHbLost(Session* session) noexcept
+{
+    if (session != &_primary) {
+        return;
+    }
+    setPhase(Phase::Connecting);
+}
+
+// =============================================================================
+// IConsole — Telemetry
+// =============================================================================
+
+void IConsole::onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept
+{
+    CMech* m = mech(body.mech_id);
+    if (m == nullptr) {
+        return;
+    }
+    m->onTelemetry(hdr.src_id, body);
+}
+
+// =============================================================================
+// IConsole — Phase (private)
+// =============================================================================
+
+void IConsole::setPhase(Phase phase) noexcept
+{
+    if (phase == _phase) {
+        return;
+    }
+    SMCP_CONS("[SMCP] IConsole::phase %s -> %s\n", cstr(_phase), cstr(phase));
+    _phase = phase;
+    onPhase(_phase);
+}
+
+void IConsole::enterFault() noexcept
+{
+    _listen.stop();
+    _primary.close();
+    setPhase(Phase::Fault);
+}
+
+void IConsole::startPrimary() noexcept
+{
+    if (_server_id == 0u) {
+        return;
+    }
+    _primary.start(_server_id);
 }
 
 } // namespace smcp

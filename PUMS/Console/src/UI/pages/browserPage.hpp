@@ -46,6 +46,7 @@ struct BrowserPage : nex::Page<37> {
     void onResponse(const nex::msg::getNumeric& response, nex::Route route, uint8_t tag) override;
     void onResponse(const nex::msg::getString& response, nex::Route route, uint8_t tag) override;
     void onMsgBox(const nex::msg::evMsgBox& e) override;
+    void onAfterMsgBox(const nex::msg::evMsgBox& e) override;
 
 private:
     enum class Mode : int32_t {

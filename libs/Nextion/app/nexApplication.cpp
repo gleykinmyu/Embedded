@@ -109,6 +109,13 @@ void Application::enqueue(Transaction tx) noexcept {
     /* На лимите глубины — только постановка, без вложенного update(). */
     if (_updateDepth >= kMaxUpdateDepth) {
         if (!_session.tryEnqueue(tx)) {
+#if defined(NEX_DEBUG)
+            detail::nexLogPrint(
+                "enqueue DROP depth=%u q=%u/%u (no stall)\n",
+                static_cast<unsigned>(_updateDepth),
+                static_cast<unsigned>(_session.queuedCount()),
+                static_cast<unsigned>(detail::TransactionQueue::kCapacity));
+#endif
             _session.noteQueueFull();
             onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
         }
@@ -117,10 +124,24 @@ void Application::enqueue(Transaction tx) noexcept {
 
     MsTimer stall;
     stall.start(nowMs(), _timeoutMs);
+#if defined(NEX_DEBUG)
+    unsigned spins = 0u;
+#endif
 
     for (;;) {
-        if (_session.tryEnqueue(tx))
+        if (_session.tryEnqueue(tx)) {
+#if defined(NEX_DEBUG)
+            if (spins != 0u) {
+                detail::nexLogPrint(
+                    "enqueue stall OK spins=%u q=%u/%u depth=%u\n",
+                    spins,
+                    static_cast<unsigned>(_session.queuedCount()),
+                    static_cast<unsigned>(detail::TransactionQueue::kCapacity),
+                    static_cast<unsigned>(_updateDepth));
+            }
+#endif
             return;
+        }
 
         if (!_session.isQueueFull()) {
             onStatus(appErrorFrom(_session.getStatus()), tx.route);
@@ -129,6 +150,9 @@ void Application::enqueue(Transaction tx) noexcept {
 
         const std::size_t queued_before = _session.queuedCount();
         update();
+#if defined(NEX_DEBUG)
+        ++spins;
+#endif
         if (_session.queuedCount() < queued_before || _session.isActive())
             stall.start(nowMs(), _timeoutMs);
 
@@ -136,6 +160,14 @@ void Application::enqueue(Transaction tx) noexcept {
             break;
     }
 
+#if defined(NEX_DEBUG)
+    detail::nexLogPrint(
+        "enqueue stall FAIL spins=%u q=%u/%u depth=%u → QueueFull\n",
+        spins,
+        static_cast<unsigned>(_session.queuedCount()),
+        static_cast<unsigned>(detail::TransactionQueue::kCapacity),
+        static_cast<unsigned>(_updateDepth));
+#endif
     _session.noteQueueFull();
     onStatus(appErrorFrom(Session::Status::QueueFull), tx.route);
 }
@@ -358,6 +390,10 @@ void Application::onTouchXY(const msg::evTouchXY& e) {
 }
 
 void Application::onMsgBox(const msg::evMsgBox& e) noexcept {
+    (void)e;
+}
+
+void Application::onAfterMsgBox(const msg::evMsgBox& e) noexcept {
     (void)e;
 }
 

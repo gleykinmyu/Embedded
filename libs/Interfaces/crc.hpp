@@ -1,6 +1,6 @@
 /**
  * @file crc.hpp
- * @brief CRC16-CCITT и CRC32 (ISO-HDLC) для шоуфайла / SMCP.
+ * @brief CRC16-CCITT и CRC32 (ISO-HDLC).
  */
 
 #pragma once
@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace smcp {
+namespace MISC {
 
 /** CRC16-CCITT: poly 0x1021, init 0xFFFF, xorout 0x0000, refin/refout false. */
 [[nodiscard]] inline uint16_t crc16Ccitt(const uint8_t* data, std::size_t len,
@@ -55,4 +55,4 @@ namespace smcp {
 
 [[nodiscard]] inline constexpr uint32_t crc32Final(uint32_t crc) noexcept { return crc ^ 0xFFFFFFFFu; }
 
-} // namespace smcp
+} // namespace MISC

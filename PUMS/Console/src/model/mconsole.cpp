@@ -16,7 +16,6 @@
 namespace {
 
 constexpr const char kDefaultGroupName[] = "Group";
-constexpr const char kBlockedGroupName[] = "Blocked";
 
 } // namespace
 
@@ -24,29 +23,15 @@ constexpr const char kBlockedGroupName[] = "Blocked";
 
 MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
     : smcp::Console<kMechCount>(link, clock)
-    , _session(*this)
+    , _cmechs(*this)
     , _browser(browser)
-    , _mechs(*this)
 {
-    startSession(smcp::msg::kServerIdMin);
-
-    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        _groups[i].id = static_cast<uint8_t>(i);
+    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        _groups[i].id = i;
         _groups[i].clear();
     }
 
-    initBlockedGroup();
-
     _showName[0] = '\0';
-}
-
-void MConsole::handleTelemetry(const smcp::msg::Header& hdr,
-                               const smcp::msg::Telemetry& body) noexcept
-{
-    if (!validMechId(body.mech_id)) {
-        return;
-    }
-    _mechs[body.mech_id].onTelemetry(hdr.src_id, body);
 }
 
 
@@ -116,7 +101,7 @@ MConsole::BlockResult MConsole::pressMech(uint8_t id) noexcept
 {
     switch (_mode) {
     case Mode::Block:
-        return toggleMechBlocked(id);
+        return toggleMechServerBlocked(id);
     case Mode::Work:
     case Mode::Show:
     default:
@@ -136,7 +121,7 @@ MConsole::BlockResult MConsole::pressGroup(uint8_t id) noexcept
         if (!validGroupId(id) || _groups[id].isEmpty() || _groups[id].isBlocked()) {
             return BlockResult::NoChange;
         }
-        if (id == _activeGroup) {
+        if (id == uiActiveGroup()) {
             clearActiveGroup();
             return BlockResult::Changed;
         }
@@ -149,8 +134,8 @@ MConsole::BlockResult MConsole::pressGroup(uint8_t id) noexcept
 
 bool MConsole::hasSelection() const noexcept
 {
-    for (const Mech& mech : _mechs) {
-        if (mech.isSelected()) {
+    for (uint8_t i = 0; i < kMechCount; ++i) {
+        if (mech(i).isSelectedBy(Console::id())) {
             return true;
         }
     }
@@ -163,25 +148,120 @@ bool MConsole::mechSelect(uint8_t id) noexcept
         return false;
     }
 
-    Mech& mech = _mechs[id];
+    smcp::CMech& m = mech(id);
 
-    if (mech.isSelected()) {
-        mech.select(smcp::kHolderNone);
+    if (m.isSelectedBy(Console::id())) {
+        m.select(smcp::kHolderNone);
         return true;
     }
 
-    if (isMechIsolated(id)) {
+    if (m.isSelected() || isMechIsolated(id)) {
         return false;
     }
 
-    mech.select(Console::id());
+    m.select(Console::id());
     return true;
 }
 
 
-void MConsole::clearSelection() noexcept
+void MConsole::onTelemetry(const smcp::msg::Header& hdr,
+                           const smcp::msg::Telemetry& body) noexcept
 {
-    (void)Console::clearSelection();
+    Console::onTelemetry(hdr, body);
+    if (_onMechChanged != nullptr) {
+        _onMechChanged(body.mech_id);
+    }
+}
+
+
+void MConsole::onAck(smcp::Session* session, const smcp::TxSlot& req) noexcept
+{
+    Node::onAck(session, req);
+    if (session != &_primary) {
+        return;
+    }
+    if (smcp::msg::helpers::msgIdOf(req.body) != smcp::msg::MsgId::Select) {
+        return;
+    }
+    if (_groupSelectPending) {
+        _activeGroup = _pendingActiveGroup;
+        _groupSelectPending = false;
+    }
+    if (_onSelectAck != nullptr) {
+        _onSelectAck();
+    }
+}
+
+
+void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
+                      const smcp::msg::Nack& reply) noexcept
+{
+    Node::onNack(session, req, reply);
+    if (session != &_primary) {
+        return;
+    }
+    const smcp::msg::MsgId req_id = smcp::msg::helpers::msgIdOf(req.body);
+    _lastNackReq = req_id;
+    _lastNack = reply.code;
+    _lastNackDetail = reply.detail;
+    if (req_id == smcp::msg::MsgId::Select && _groupSelectPending) {
+        _groupSelectPending = false;
+    }
+
+    /* Nack с mech_id — снимок оси через GetTelemetry (не эвристика зеркала). */
+    const uint8_t detail = reply.detail;
+    if (detail != smcp::msg::kNackDetailNone && validMechId(detail)
+        && (req_id == smcp::msg::MsgId::Select || req_id == smcp::msg::MsgId::SetTarget
+            || req_id == smcp::msg::MsgId::Block)) {
+        smcp::Selection mask;
+        mask.add(detail);
+        Console::getTelemetry(mask);
+    }
+
+    if (_onNack != nullptr) {
+        _onNack();
+    }
+}
+
+
+void MConsole::onPhase(Phase phase) noexcept
+{
+    if (phase == Phase::Online) {
+        smcp::Selection mask;
+        for (uint8_t i = 0; i < kMechCount; ++i) {
+            mask.add(i);
+        }
+        Console::getTelemetry(mask);
+    }
+    if (_onPhase != nullptr) {
+        _onPhase(phase);
+    }
+}
+
+
+const char* MConsole::nackText(smcp::msg::ErrorCode code) noexcept
+{
+    switch (code) {
+    case smcp::msg::ErrorCode::Busy:
+        return uiMsg::kSmcpBusy;
+    case smcp::msg::ErrorCode::Limits:
+        return uiMsg::kSmcpLimits;
+    case smcp::msg::ErrorCode::Crc:
+        return uiMsg::kSmcpCrc;
+    case smcp::msg::ErrorCode::MechNotFound:
+        return uiMsg::kSmcpMechNotFound;
+    case smcp::msg::ErrorCode::Safety:
+        return uiMsg::kSmcpSafety;
+    case smcp::msg::ErrorCode::NotReady:
+        return uiMsg::kSmcpNotReady;
+    case smcp::msg::ErrorCode::SelectLimit:
+        return uiMsg::kSmcpSelectLimit;
+    case smcp::msg::ErrorCode::Timeout:
+        return uiMsg::kSmcpTimeout;
+    case smcp::msg::ErrorCode::Ok:
+    default:
+        return uiMsg::kSmcpError;
+    }
 }
 
 
@@ -191,17 +271,10 @@ bool MConsole::recallGroup(uint8_t id) noexcept
         return false;
     }
 
-    smcp::Selection group_sel;
-    const smcp::Selection& src = _groups[id].mech;
-    for (uint8_t i = 0; i < kMechCount; ++i) {
-        if (src.contains(i) && !isMechBlocked(i) && !isMechIsolated(i)) {
-            group_sel.add(i);
-        }
-    }
-
-    (void)Console::setSelection(group_sel);
-
-    _activeGroup = id;
+    /* active подтверждается на Ack; pending — откат на Nack. */
+    _pendingActiveGroup = id;
+    _groupSelectPending = true;
+    Console::setSelection(_groups[id].mech);
     return true;
 }
 
@@ -213,7 +286,7 @@ uint64_t MConsole::mechGroupMask(uint8_t mech_id, REG::BitMask<smcp::Group::Flag
     }
 
     uint64_t mask = 0ULL;
-    for (std::size_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
         const smcp::Group& grp = _groups[i];
         if (grp.flag.all(group_flags) && grp.mech.contains(mech_id)) {
             mask |= (1ULL << i);
@@ -226,9 +299,9 @@ uint64_t MConsole::mechGroupMask(uint8_t mech_id, REG::BitMask<smcp::Group::Flag
 smcp::Selection MConsole::selectionFromMechs() const noexcept
 {
     smcp::Selection selection;
-    for (std::size_t i = 0; i < kMechCount; ++i) {
-        if (_mechs[i].isSelectedBy(Console::id())) {
-            selection.add(static_cast<uint8_t>(i));
+    for (uint8_t i = 0; i < kMechCount; ++i) {
+        if (mech(i).isSelectedBy(Console::id())) {
+            selection.add(i);
         }
     }
     return selection;
@@ -239,7 +312,7 @@ smcp::Selection MConsole::selectionFromMechs() const noexcept
 
 bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcept
 {
-    if (!validGroupId(id) || id == kBlockedGroupId) {
+    if (!validGroupId(id)) {
         _status = Status::InvalidGroup;
         return false;
     }
@@ -268,7 +341,6 @@ bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcep
 
     markEdited();
     clearActiveGroup();
-    rebuildBlockedMechs();
     _status = Status::Ok;
     return true;
 }
@@ -276,7 +348,7 @@ bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcep
 
 bool MConsole::renameGroup(uint8_t id, const char* name) noexcept
 {
-    if (!validGroupId(id) || id == kBlockedGroupId || name == nullptr || name[0] == '\0') {
+    if (!validGroupId(id) || name == nullptr || name[0] == '\0') {
         return false;
     }
 
@@ -292,7 +364,7 @@ bool MConsole::renameGroup(uint8_t id, const char* name) noexcept
 
 bool MConsole::clearGroup(uint8_t id, bool confirmed) noexcept
 {
-    if (!validGroupId(id) || id == kBlockedGroupId) {
+    if (!validGroupId(id)) {
         _status = Status::InvalidGroup;
         return false;
     }
@@ -309,7 +381,6 @@ bool MConsole::clearGroup(uint8_t id, bool confirmed) noexcept
 
     _groups[id].clear();
     markEdited();
-    rebuildBlockedMechs();
     _status = Status::Ok;
     return true;
 }
@@ -317,8 +388,10 @@ bool MConsole::clearGroup(uint8_t id, bool confirmed) noexcept
 
 void MConsole::clearActiveGroup() noexcept
 {
-    clearSelection();
-    _activeGroup = kBlockedGroupId;
+    _activeGroup = kNoActiveGroup;
+    _pendingActiveGroup = kNoActiveGroup;
+    _groupSelectPending = true;
+    Console::clearSelection();
 }
 
 
@@ -334,24 +407,14 @@ void MConsole::setSettings(const Settings& settings) noexcept
 
 bool MConsole::isMechIsolated(uint8_t id) const noexcept
 {
-    if (!_settings.isolateGroup || _activeGroup == kBlockedGroupId || !validMechId(id)) {
+    if (!_settings.isolateGroup || _activeGroup == kNoActiveGroup || !validMechId(id)) {
         return false;
     }
     return !_groups[_activeGroup].mech.contains(id);
 }
 
 
-void MConsole::initBlockedGroup() noexcept
-{
-    smcp::Group& grp = _groups[kBlockedGroupId];
-    grp.clear();
-    grp.id = kBlockedGroupId;
-    grp.setBlocked(true);
-    grp.setName(kBlockedGroupName);
-}
-
-
-bool MConsole::groupsValid(const smcp::Group* groups, std::size_t count) noexcept
+bool MConsole::groupsValid(const smcp::Group* groups, uint8_t count) noexcept
 {
     if (groups == nullptr || count == 0u || count > smcp::kGroupMaxCount) {
         return false;
@@ -360,7 +423,7 @@ bool MConsole::groupsValid(const smcp::Group* groups, std::size_t count) noexcep
     constexpr uint8_t kKnownFlags = static_cast<uint8_t>(smcp::Group::Flag::Blocked)
         | static_cast<uint8_t>(smcp::Group::Flag::Atomic);
 
-    for (std::size_t i = 0; i < count; ++i) {
+    for (uint8_t i = 0; i < count; ++i) {
         const smcp::Group& g = groups[i];
         if ((g.flag.raw() & static_cast<uint8_t>(~kKnownFlags)) != 0u) {
             return false;
@@ -375,9 +438,28 @@ bool MConsole::groupsValid(const smcp::Group* groups, std::size_t count) noexcep
 
 /* ========== Блокировка ========== */
 
+bool MConsole::isMechServerBlocked(uint8_t id) const noexcept
+{
+    return validMechId(id) && mech(id).isBlocked();
+}
+
+bool MConsole::isMechGroupBlocked(uint8_t id) const noexcept
+{
+    if (!validMechId(id)) {
+        return false;
+    }
+    for (uint8_t g = 0; g < smcp::kGroupMaxCount; ++g) {
+        const smcp::Group& grp = _groups[g];
+        if (grp.isBlocked() && grp.mech.contains(id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool MConsole::isMechBlocked(uint8_t id) const noexcept
 {
-    return validMechId(id) && _mechs[id].isBlocked();
+    return isMechServerBlocked(id) || isMechGroupBlocked(id);
 }
 
 bool MConsole::fillMechBlockMessage(uint8_t id) noexcept
@@ -390,23 +472,27 @@ bool MConsole::fillMechBlockMessage(uint8_t id) noexcept
 
     const unsigned winchNo = static_cast<unsigned>(id) + 1u;
 
-    uint8_t groupIds[smcp::kGroupMaxCount]{};
-    const std::size_t groupCount = collectBlockingGroupIds(id, groupIds, smcp::kGroupMaxCount);
-
-    if (groupCount > 0u) {
-        char list[96]{};
-        (void)formatIdList(list, sizeof(list), groupIds, groupCount);
+    if (isMechServerBlocked(id)) {
         std::snprintf(_blockMsg, sizeof(_blockMsg),
-            uiMsg::kBlockByGroupsFmt, uiMsg::kWinchMark, winchNo, list);
-    } else {
-        std::snprintf(_blockMsg, sizeof(_blockMsg),
-            uiMsg::kBlockByManualFmt, uiMsg::kWinchMark, winchNo);
+            uiMsg::kBlockByServerFmt, uiMsg::kWinchMark, winchNo);
+        return true;
     }
+
+    uint8_t groupIds[smcp::kGroupMaxCount]{};
+    const uint8_t groupCount = collectBlockingGroupIds(id, groupIds, smcp::kGroupMaxCount);
+    if (groupCount == 0u) {
+        return false;
+    }
+
+    char list[96]{};
+    (void)formatIdList(list, sizeof(list), groupIds, groupCount);
+    std::snprintf(_blockMsg, sizeof(_blockMsg),
+        uiMsg::kBlockByGroupsFmt, uiMsg::kWinchMark, winchNo, list);
     return true;
 }
 
 
-MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
+MConsole::BlockResult MConsole::toggleMechServerBlocked(uint8_t id) noexcept
 {
     clearBlockMessage();
 
@@ -414,44 +500,8 @@ MConsole::BlockResult MConsole::toggleMechBlocked(uint8_t id) noexcept
         return BlockResult::NoChange;
     }
 
-    smcp::Group& blk = _groups[kBlockedGroupId];
-    const bool manual = blk.mech.contains(id);
-    const unsigned winchNo = static_cast<unsigned>(id) + 1u;
-
-    uint8_t groupIds[smcp::kGroupMaxCount]{};
-    const std::size_t groupCount = collectBlockingGroupIds(id, groupIds, smcp::kGroupMaxCount);
-
-    /* Заблокирована группами — снять лишнюю ручную (legacy), показать группы. */
-    if (groupCount > 0u) {
-        char list[96]{};
-        (void)formatIdList(list, sizeof(list), groupIds, groupCount);
-        if (manual) {
-            blk.mech.remove(id);
-            markEdited();
-            rebuildBlockedMechs();
-            std::snprintf(_blockMsg, sizeof(_blockMsg),
-                uiMsg::kBlockByGroupsFmt, uiMsg::kWinchMark, winchNo, list);
-            return BlockResult::Warning;
-        }
-        std::snprintf(_blockMsg, sizeof(_blockMsg),
-            uiMsg::kBlockByGroupsFmt, uiMsg::kWinchMark, winchNo, list);
-        return BlockResult::Rejected;
-    }
-
-    /* Только ручная — снять / поставить. */
-    if (manual) {
-        blk.mech.remove(id);
-        markEdited();
-        rebuildBlockedMechs();
-        return BlockResult::Changed;
-    }
-
-    if (_mechs[id].isSelected()) {
-        _mechs[id].select(smcp::kHolderNone);
-    }
-    blk.mech.add(id);
-    markEdited();
-    rebuildBlockedMechs();
+    smcp::CMech& m = mech(id);
+    m.block(!m.isBlocked());
     return BlockResult::Changed;
 }
 
@@ -460,7 +510,7 @@ MConsole::BlockResult MConsole::toggleGroupBlocked(uint8_t id) noexcept
 {
     clearBlockMessage();
 
-    if (!validGroupId(id) || id == kBlockedGroupId || _groups[id].isEmpty()) {
+    if (!validGroupId(id) || _groups[id].isEmpty()) {
         return BlockResult::NoChange;
     }
 
@@ -470,18 +520,17 @@ MConsole::BlockResult MConsole::toggleGroupBlocked(uint8_t id) noexcept
         return BlockResult::Changed;
     }
 
-    /* Пересечение с другими blocked-группами (id≥1), не с ручной (id 0). */
+    /* Пересечение с другими already-blocked группами. */
     uint8_t sharedIds[kMechCount]{};
-    std::size_t sharedCount = 0u;
+    uint8_t sharedCount = 0u;
     const smcp::Selection& self = _groups[id].mech;
-    for (std::size_t m = 0; m < kMechCount; ++m) {
-        if (!self.contains(static_cast<uint8_t>(m))) {
+    for (uint8_t m = 0; m < kMechCount; ++m) {
+        if (!self.contains(m)) {
             continue;
         }
-        uint64_t mask = mechGroupMask(static_cast<uint8_t>(m), smcp::Group::Flag::Blocked);
-        mask &= ~(1ULL << kBlockedGroupId);
+        const uint64_t mask = mechGroupMask(m, smcp::Group::Flag::Blocked);
         if (mask != 0ULL) {
-            sharedIds[sharedCount++] = static_cast<uint8_t>(m);
+            sharedIds[sharedCount++] = m;
         }
     }
 
@@ -502,59 +551,40 @@ void MConsole::setGroupBlocked(uint8_t id, bool blocked) noexcept
 {
     _groups[id].setBlocked(blocked);
     if (blocked) {
-        smcp::Group& manual = _groups[kBlockedGroupId];
         const smcp::Selection& sel = _groups[id].mech;
-        for (std::size_t m = 0; m < kMechCount; ++m) {
-            if (!sel.contains(static_cast<uint8_t>(m))) {
+        for (uint8_t m = 0; m < kMechCount; ++m) {
+            if (!sel.contains(m)) {
                 continue;
             }
-            /* Ручная блокировка сбрасывается — источник теперь группа. */
-            manual.mech.remove(static_cast<uint8_t>(m));
-            if (_mechs[m].isSelected()) {
-                _mechs[m].select(smcp::kHolderNone);
+            if (mech(m).isSelectedBy(Console::id())) {
+                mech(m).select(smcp::kHolderNone);
             }
         }
         if (_activeGroup == id) {
-            _activeGroup = kBlockedGroupId;
+            _activeGroup = kNoActiveGroup;
         }
-    }
-    rebuildBlockedMechs();
-}
-
-
-void MConsole::rebuildBlockedMechs() noexcept
-{
-    // TODO(server): show-Blocked не писать в IMech::Status; UI читает GRUP.
-    // IMech::block/select — запросы; Selected/Ready/… только из Telemetry (onTelemetry).
-    for (std::size_t m = 0; m < kMechCount; ++m) {
-        bool blocked = false;
-        for (std::size_t g = 0; g < smcp::kGroupMaxCount; ++g) {
-            const smcp::Group& grp = _groups[g];
-            if (grp.isBlocked() && grp.mech.contains(static_cast<uint8_t>(m))) {
-                blocked = true;
-                break;
-            }
+        if (_groupSelectPending && _pendingActiveGroup == id) {
+            _groupSelectPending = false;
         }
-
-        Mech& mech = _mechs[m];
-        mech.block(blocked);
     }
 }
 
 
-std::size_t MConsole::collectBlockingGroupIds(uint8_t mech_id,
+
+
+uint8_t MConsole::collectBlockingGroupIds(uint8_t mech_id,
                                              uint8_t* out,
-                                             std::size_t outCap) const noexcept
+                                             uint8_t outCap) const noexcept
 {
     if (out == nullptr || outCap == 0u || !validMechId(mech_id)) {
         return 0u;
     }
 
-    std::size_t count = 0u;
-    for (std::size_t g = 1; g < smcp::kGroupMaxCount && count < outCap; ++g) {
+    uint8_t count = 0u;
+    for (uint8_t g = 0; g < smcp::kGroupMaxCount && count < outCap; ++g) {
         const smcp::Group& grp = _groups[g];
         if (grp.isBlocked() && grp.mech.contains(mech_id)) {
-            out[count++] = static_cast<uint8_t>(g);
+            out[count++] = g;
         }
     }
     return count;
@@ -570,7 +600,7 @@ void MConsole::clearBlockMessage() noexcept
 bool MConsole::formatIdList(char* out,
                             std::size_t outLen,
                             const uint8_t* ids,
-                            std::size_t count,
+                            uint8_t count,
                             uint8_t displayBias,
                             const char* mark) noexcept
 {
@@ -585,7 +615,7 @@ bool MConsole::formatIdList(char* out,
     const char* const prefix = (mark != nullptr) ? mark : "";
 
     std::size_t pos = 0u;
-    for (std::size_t i = 0; i < count; ++i) {
+    for (uint8_t i = 0; i < count; ++i) {
         const unsigned shown = static_cast<unsigned>(ids[i]) + static_cast<unsigned>(displayBias);
         const int n = (pos == 0u)
             ? std::snprintf(out + pos, outLen - pos, "%s%u", prefix, shown)
@@ -689,13 +719,11 @@ void MConsole::newShow() noexcept
     for (smcp::Group& grp : _groups) {
         grp.clear();
     }
-    initBlockedGroup();
     clearActiveGroup();
     _settings = Settings{};
     _mode = Mode::Work;
     setShowName(nullptr);
     clearEdited();
-    rebuildBlockedMechs();
 }
 
 
@@ -854,22 +882,24 @@ bool MConsole::importShow(BIF::IFile& io, const char* openPath) noexcept
         return false;
     }
 
-    if (desc->record_count == 0 || desc->record_count > smcp::kGroupMaxCount) {
+    if (desc->record_count != smcp::kGroupMaxCount) {
         reader.close();
         _status = Status::BadLayout;
         return false;
     }
 
+    const uint8_t recordCount = smcp::kGroupMaxCount;
     const std::size_t byte_size =
-        static_cast<std::size_t>(desc->record_count) * sizeof(smcp::Group);
+        static_cast<std::size_t>(recordCount) * sizeof(smcp::Group);
     if (static_cast<std::size_t>(desc->byte_size) != byte_size) {
         reader.close();
         _status = Status::BadLayout;
         return false;
     }
 
-    /* --- _groupsTmp: читать → groupsValid → commit в _groups (BadGroups не трогает текущее шоу). --- */
-    if (!reader.readSection(smcp::kGroupSectionTag, _groupsTmp, byte_size)) {
+    /* Staging: BadGroups не трогает текущее шоу. */
+    smcp::Group loadBuf[smcp::kGroupMaxCount]{};
+    if (!reader.readSection(smcp::kGroupSectionTag, loadBuf, byte_size)) {
         _status = mapFileStatus(reader.status());
         reader.close();
         return false;
@@ -879,41 +909,26 @@ bool MConsole::importShow(BIF::IFile& io, const char* openPath) noexcept
     std::strncpy(nameFromHdr, reader.header().name, sizeof(nameFromHdr) - 1u);
     reader.close();
 
-    if (!groupsValid(_groupsTmp, desc->record_count)) {
+    if (!groupsValid(loadBuf, recordCount)) {
         _status = Status::BadGroups;
         return false;
     }
 
-    /* --- Commit: сброс рабочего шоу, затем копия из staging ---
-       count == Max-1 → файл без Blocked (слоты 1..N); иначе полный массив. */
     for (smcp::Group& grp : _groups) {
         grp.clear();
     }
-    initBlockedGroup();
     clearActiveGroup();
     _settings = loadedSettings;
     _mode = Mode::Work;
 
-    if (desc->record_count == smcp::kGroupMaxCount - 1u) {
-        for (std::size_t i = 0; i < desc->record_count; ++i) {
-            _groups[i + 1u] = _groupsTmp[i];
-            _groups[i + 1u].id = static_cast<uint8_t>(i + 1u);
-            _groups[i + 1u].name[smcp::kGroupNameSize - 1u] = '\0';
-        }
-    } else {
-        for (std::size_t i = 0; i < desc->record_count; ++i) {
-            _groups[i] = _groupsTmp[i];
-            _groups[i].id = static_cast<uint8_t>(i);
-            _groups[i].name[smcp::kGroupNameSize - 1u] = '\0';
-        }
-        if (!_groups[kBlockedGroupId].isBlocked()) {
-            initBlockedGroup();
-        }
+    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        _groups[i] = loadBuf[i];
+        _groups[i].id = i;
+        _groups[i].name[smcp::kGroupNameSize - 1u] = '\0';
     }
 
     setShowName(openPath[0] != '\0' ? openPath : nameFromHdr);
     clearEdited();
-    rebuildBlockedMechs();
     _status = Status::Ok;
     return true;
 }

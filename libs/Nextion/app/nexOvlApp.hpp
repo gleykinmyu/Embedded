@@ -2,6 +2,7 @@
 
 #include "nexApplication.hpp"
 #include "../overlay/ovlOverlay.hpp"
+#include "../core/nexDebug.hpp"
 
 namespace nex {
 

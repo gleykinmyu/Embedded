@@ -4,6 +4,7 @@
 
 #include "smcp/transport/node.hpp"
 #include "smcp/transport/session.hpp"
+#include "smcp/debug.hpp"
 
 #include <variant>
 
@@ -81,6 +82,7 @@ Session* Node::openNewSession(const msg::Packet& pkt) noexcept
             return slot;
         }
     }
+    onSessionFull(pkt.hdr.src_id);
     return nullptr;
 }
 
@@ -135,11 +137,11 @@ void Node::pumpTx(bool do_tick) noexcept
 {
     auto& reg = sessions();
     const uint8_t first = reg.firstId();
-    const std::size_t cap = reg.capacity();
-    const std::size_t ring = cap + 1u; /* сессии + bus */
+    const uint8_t cap = static_cast<uint8_t>(reg.capacity());
+    const uint8_t ring = static_cast<uint8_t>(cap + 1u); /* сессии + bus */
 
-    for (std::size_t tried = 0; tried < ring; ++tried) {
-        const std::size_t slot = _drainCursor % ring;
+    for (uint8_t tried = 0; tried < ring; ++tried) {
+        const uint8_t slot = static_cast<uint8_t>(_drainCursor % ring);
         _drainCursor = static_cast<uint8_t>((_drainCursor + 1u) % ring);
 
         if (slot == cap) {
@@ -217,6 +219,59 @@ void Node::update() noexcept
         /* Вложенный update на лимите глубины — только TX, без tick/RX. */
         pumpTx(/*do_tick=*/false);
     }
+}
+
+void Node::onAck(Session* session, const TxSlot& req) noexcept
+{
+    SMCP_NODE("[SMCP] Node::onAck session=%u peer=%u pkt=%u req=%s\n",
+             session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+             session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
+             static_cast<unsigned>(req.pkt_id),
+             msg::cstr(msg::helpers::msgIdOf(req.body)));
+}
+
+void Node::onStatus(Status status) noexcept
+{
+    SMCP_NODE("[SMCP] Node::onStatus %s (id=%u)\n",
+             cstr(status), static_cast<unsigned>(id()));
+}
+
+void Node::onTxFull(Session* session) noexcept
+{
+    if (session == nullptr) {
+        SMCP_NODE("[SMCP] Node::onTxFull bus (id=%u)\n", static_cast<unsigned>(id()));
+        return;
+    }
+    SMCP_NODE("[SMCP] Node::onTxFull session=%u peer=%u\n",
+             static_cast<unsigned>(session->id()),
+             static_cast<unsigned>(session->peerId()));
+}
+
+void Node::onSessionFull(uint8_t peer_id) noexcept
+{
+    SMCP_NODE("[SMCP] Node::onSessionFull peer=%u (id=%u)\n",
+             static_cast<unsigned>(peer_id),
+             static_cast<unsigned>(id()));
+}
+
+void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
+{
+    SMCP_NODE("[SMCP] Node::onNack session=%u peer=%u pkt=%u req=%s code=%s detail=%u\n",
+             session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+             session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
+             static_cast<unsigned>(req.pkt_id),
+             msg::cstr(msg::helpers::msgIdOf(req.body)),
+             msg::cstr(reply.code),
+             static_cast<unsigned>(reply.detail));
+}
+
+void Node::onPktIdMismatch(Session* session, uint8_t expected, uint8_t got) noexcept
+{
+    SMCP_NODE("[SMCP] Node::onPktIdMismatch session=%u peer=%u expect=%u got=%u\n",
+             session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+             session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
+             static_cast<unsigned>(expected),
+             static_cast<unsigned>(got));
 }
 
 } // namespace smcp

@@ -19,6 +19,7 @@ inline constexpr const char* kTitleGroup = "Группа";
 inline constexpr const char* kTitleShow = "Шоу";
 inline constexpr const char* kTitleBlock = "Блокировка";
 inline constexpr const char* kTitleSettings = "Настройки";
+inline constexpr const char* kTitleSmcp = "Сервер";
 
 /* --- Подтверждения (Yes/No) --- */
 inline constexpr const char* kConfirmNewShow =
@@ -71,14 +72,34 @@ inline constexpr const char* kConsoleInvalidGroup = "Нельзя изменит
 inline constexpr const char* kConsoleNoSelection = "Сначала выберите лебёдки.";
 inline constexpr const char* kConsoleGroupOccupied = "В группе уже есть данные.";
 
+/* --- SMCP Nack / Timeout --- */
+inline constexpr const char* kSmcpBusy =
+    "Лебёдка занята другой консолью.";
+inline constexpr const char* kSmcpLimits =
+    "Цель вне допустимых пределов.";
+inline constexpr const char* kSmcpCrc =
+    "Ошибка целостности данных.";
+inline constexpr const char* kSmcpMechNotFound =
+    "Лебёдка не найдена на сервере.";
+inline constexpr const char* kSmcpSafety =
+    "Операция запрещена (безопасность / блок).";
+inline constexpr const char* kSmcpNotReady =
+    "Привод не готов.";
+inline constexpr const char* kSmcpSelectLimit =
+    "Превышен лимит выделения.";
+inline constexpr const char* kSmcpTimeout =
+    "Нет ответа от сервера.";
+inline constexpr const char* kSmcpError =
+    "Отказ сервера.";
+
 /* --- Блокировка (%s = kWinchMark, %u = номер с 1, %s = список) --- */
 /**
  * Маркер номера лебёдки. «№» (U+2116) нет в KOI8-R/шрифте панели → «?».
  * Используем ASCII «#».
  */
 inline constexpr const char* kWinchMark = "#";
-inline constexpr const char* kBlockByManualFmt =
-    "Лебёдка %s%u заблокирована в ручном режиме.";
+inline constexpr const char* kBlockByServerFmt =
+    "Лебёдка %s%u заблокирована на сервере сегмента.";
 inline constexpr const char* kBlockByGroupsFmt =
     "Лебёдка %s%u заблокирована в группах: %s";
 inline constexpr const char* kBlockSharedWinchesFmt =

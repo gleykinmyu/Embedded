@@ -21,7 +21,7 @@ public:
     void showWidget(Widget& widget, bool modal = false) noexcept;
     void hideWidget(Widget& widget) noexcept;
 
-    /** Touch: сверху вниз; modal-промах блокирует стек под собой. */
+    /** Touch: сверху вниз; modal-промах на Release — полный redraw (HMI paint-over). */
     void dispatchTouchXY(const msg::evTouchXY& e) noexcept;
 
     /** Перерисовать весь shown-стек снизу вверх (после `hide`). */

@@ -36,6 +36,9 @@ namespace nex {
         IPage(IAppUI& application, const Literal& pageObjName, uint8_t id) noexcept;
         virtual ~IPage() = default;
 
+        /** `true`, если панель сейчас на этой странице (`app.currentPage() == ID`). */
+        [[nodiscard]] bool isCurrent() const noexcept;
+
         /** Касание по этой странице: фильтр `route.page`, затем `onTouchPage` при `route.comp == 0`, иначе виджет. */
         virtual void onTouch(const msg::evTouch& e);
 
@@ -51,6 +54,12 @@ namespace nex {
 
         /** Ответ MCU `MsgBox`, маршрутизированный на эту страницу (`comp == 0`). */
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
+
+        /**
+         * Modal MsgBox закрыт, новый не открыт, `refreshPage` уже в очереди.
+         * Перерисовка HMI (setState / тексты) после ref.
+         */
+        virtual void onAfterMsgBox(const msg::evMsgBox& e) { (void)e; }
 
         /** Ответ `get` по `route` на этой странице: `Component::onResponse`, затем хук страницы в override. */
         virtual void onResponse(const msg::getNumeric& response, Route route, uint8_t tag);

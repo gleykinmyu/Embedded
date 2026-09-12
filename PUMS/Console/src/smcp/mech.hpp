@@ -30,7 +30,7 @@ static_assert(alignof(MotionTarget) == alignof(int32_t));
 
 /**
  * Абстракция одного механизма: телеметрия и управление.
- * Реализация — на стороне проекта (model/Mech, model/DriveMech).
+ * Реализация: smcp::CMech (пульт), DriveMech (сегмент).
  */
 class IMech {
 public:
