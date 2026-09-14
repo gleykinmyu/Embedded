@@ -10,7 +10,10 @@ struct AppColors {
     static constexpr nex::Color kPage{4258u};
     static constexpr nex::Color kDefault{10565u};
     static constexpr nex::Color kMain{64800u};
-    static constexpr nex::Color kBlocked{20643u};
+    /** GRUP / шоуфайл. */
+    static constexpr nex::Color kGroupBlocked{20643u};
+    /** Сегментный Block на сервере (приоритетнее GRUP). */
+    static constexpr nex::Color kServerBlocked{57504u};
     static constexpr nex::Color kBorder{21130u};
 
     static constexpr nex::Color kText{61277u};
@@ -26,10 +29,11 @@ struct StateColors {
 
 static constexpr StateColors kStateColors[] =
 {
-    {AppColors::kPage,    AppColors::kBorder,   AppColors::kPage,    AppColors::kBorder},
-    {AppColors::kDefault, AppColors::kText,     AppColors::kMain,    AppColors::kTextLight},
-    {AppColors::kMain,    AppColors::kTextLight,AppColors::kMain,    AppColors::kTextLight},
-    {AppColors::kBlocked, AppColors::kBorder,   AppColors::kBlocked, AppColors::kBorder},
+    {AppColors::kPage,          AppColors::kBorder,   AppColors::kPage,          AppColors::kBorder},
+    {AppColors::kDefault,       AppColors::kText,     AppColors::kMain,          AppColors::kTextLight},
+    {AppColors::kMain,          AppColors::kTextLight,AppColors::kMain,          AppColors::kTextLight},
+    {AppColors::kServerBlocked, AppColors::kTextLight,AppColors::kServerBlocked, AppColors::kTextLight},
+    {AppColors::kGroupBlocked,  AppColors::kBorder,   AppColors::kGroupBlocked,  AppColors::kBorder},
 };
 
 class ConsoleBtn : public nex::comp::Button<> {
@@ -38,7 +42,8 @@ public:
         Disabled,
         Active,
         Selected,
-        Blocked,
+        Blocked,      /**< Сегментный Block (сервер). */
+        GroupBlocked, /**< GRUP / шоуфайл. */
     };
 
     ConsoleBtn(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept
@@ -47,12 +52,16 @@ public:
 
     void setState(State next) noexcept
     {
-        state = next;
-        const StateColors& colors = kStateColors[static_cast<size_t>(state)];
+        /* Вне своей страницы не трогаем панель — refresh на onLoad подтянет. */
+        if (!page.isCurrent()) {
+            return;
+        }
+        const StateColors& colors = kStateColors[static_cast<size_t>(next)];
         bg.setColor(colors.bg);
         font.setColor(colors.text);
         pressed.bg.setColor(colors.pressedBg);
         pressed.font.setColor(colors.pressedText);
+        state = next;
     }
 
     [[nodiscard]] State getState() const noexcept
@@ -61,7 +70,8 @@ public:
     }
 
 private:
-    State state{State::Disabled};
+    /** 0xFF = ещё не красили на панель (не путать с Disabled). */
+    State state{static_cast<State>(0xFFu)};
 };
 
 struct BrwStateColors {

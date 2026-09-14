@@ -29,7 +29,7 @@ void MGroupPage::refreshActionButtons() noexcept
     bRec.setState(canRecord ? State::Active : State::Disabled);
 
     const uint8_t group_id = resolveGroupId();
-    const bool groupEmpty = (group_id == MConsole::kBlockedGroupId)
+    const bool groupEmpty = (group_id == MConsole::kNoActiveGroup)
         || console.group(group_id).isEmpty();
     const State editState = groupEmpty ? State::Disabled : State::Active;
     bRen.setState(editState);
@@ -44,7 +44,7 @@ void MGroupPage::onLoad()
 uint8_t MGroupPage::resolveGroupId() const noexcept
 {
     if (_assignSlot >= WorkPage::GroupButtons::kCount) {
-        return MConsole::kBlockedGroupId;
+        return MConsole::kNoActiveGroup;
     }
     return ui().work.groupIdForSlot(_assignSlot);
 }
@@ -55,7 +55,7 @@ void MGroupPage::runAction(Action action) noexcept
     _groupId = 0xFFu;
 
     const uint8_t group_id = resolveGroupId();
-    if (group_id == MConsole::kBlockedGroupId) {
+    if (group_id == MConsole::kNoActiveGroup) {
         _action = Action::None;
         return;
     }

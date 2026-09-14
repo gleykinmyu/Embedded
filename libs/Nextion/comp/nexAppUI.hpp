@@ -36,10 +36,12 @@ public:
     /** Цифровая клавиатура (keybdB). */
     void showKeybdNum(const Component& target) noexcept;
 
-    /** Touch → `IPage::onTouch`; игнорируется при modal-виджете в `overlay`. */
+    /** Touch → `IPage::onTouch`; при modal — только блок (redraw — в `dispatchTouchXY`). */
     virtual void onTouch(const msg::evTouch& e) override;
     /** `evMsgBox`: сначала компонент (`route.comp`), затем страница. */
     virtual void onMsgBox(const msg::evMsgBox& e) noexcept override;
+    /** Modal overlay полностью ушёл + `refreshPage` уже поставлен → страница. */
+    virtual void onAfterMsgBox(const msg::evMsgBox& e) noexcept override;
     /** `evPage`: `onExit`/`onLoad` страниц при смене `currentPage()`. */
     virtual void onPageChange(const msg::evPage& e) noexcept override;
     /** После `Application::onStatus` — `IPage::onStatus` (кроме `route.isGlobal()`). */

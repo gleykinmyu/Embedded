@@ -1,6 +1,6 @@
 /**
  * @file server.hpp
- * @brief IServer + Server<N> + SessionConsole: Select/Block → Ack + Telemetry.
+ * @brief IServer + Server<N> + SessionConsole: Select/Block/GetTelemetry/SetTarget → Ack + Telemetry.
  *
  * Наследует Node. Session* — в registry; объекты Session владеет leaf (MServer).
  * Сервер: до kMaxConsoles сессий (SessionConsole).
@@ -29,16 +29,20 @@ namespace detail {
 void registerMech(IServer& server, IMech& mech) noexcept;
 } // namespace detail
 
-/** Узел сегмента: inventory IMech* + политика Select/Block + broadcast Telemetry. */
+/** Узел сегмента: inventory IMech* + политика Select/Block/SetTarget + broadcast Telemetry. */
 class IServer : public Node {
 public:
+    using MechReg = MISC::ObjRegistry<IMech, uint8_t>;
+    template <uint8_t Cap>
+    using MechStore = MISC::ObjStorage<IMech, Cap, uint8_t, 0>;
+
     virtual ~IServer() = default;
 
     // --- механизмы (lookup) ---
 
-    [[nodiscard]] std::size_t mechCapacity() const noexcept
+    [[nodiscard]] uint8_t mechCapacity() const noexcept
     {
-        return const_cast<IServer*>(this)->storage().capacity();
+        return static_cast<uint8_t>(const_cast<IServer*>(this)->storage().capacity());
     }
 
     [[nodiscard]] IMech* mech(uint8_t id) noexcept { return storage().get(id); }
@@ -60,7 +64,7 @@ protected:
 
     explicit IServer(ILink& link, ClockFn clock) noexcept;
 
-    [[nodiscard]] virtual MISC::ObjRegistry<IMech, uint8_t>& storage() noexcept = 0;
+    [[nodiscard]] virtual MechReg& storage() noexcept = 0;
 
     // --- политика (leaf) ---
 
@@ -88,10 +92,24 @@ protected:
         (void)blocked;
         return msg::ErrorCode::Ok;
     }
+
+    /**
+     * Можно ли консоли @a console_id задать @a target оси @a mech_id.
+     * Leaf: лимиты хода / зоны → ErrorCode::Limits.
+     */
+    [[nodiscard]] virtual msg::ErrorCode acceptSetTarget(uint8_t console_id,
+                                                         uint8_t mech_id,
+                                                         const MotionTarget& target) const noexcept
+    {
+        (void)console_id;
+        (void)mech_id;
+        (void)target;
+        return msg::ErrorCode::Ok;
+    }
 };
 
 /**
- * Сессия консоли на сервере: class A (Select/Block) → Ack/Nack + Telemetry при смене.
+ * Сессия консоли на сервере: class A (Select/Block/GetTelemetry/SetTarget) → Ack/Nack + Telemetry.
  */
 class SessionConsole : public Session {
 public:
@@ -120,7 +138,7 @@ private:
     };
 
     /**
-     * Общий путь: план → accept* → commit → Ack → Telemetry.
+     * Общий путь Select/Block: план → accept* → commit → Ack → Telemetry.
      * Пропуск осей с !in_mask && !was (нет изменений).
      */
     void handleMaskOp(MaskKind kind,
@@ -128,10 +146,20 @@ private:
                       Selection selection,
                       uint8_t pkt_id) noexcept;
 
-    /** Busy / Safety / NotReady (только Select, бит в маске). */
-    [[nodiscard]] static msg::ErrorCode selectGuard(const IMech& m,
-                                                    uint8_t src,
-                                                    msg::Action action) noexcept;
+    /** SetTarget: проверки → acceptSetTarget → setTarget → Ack → Telemetry. */
+    void onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noexcept;
+
+    /** GetTelemetry: проверка маски → Ack → Telemetry по осям (без commit). */
+    void onGetTelemetry(const msg::GetTelemetry& body, uint8_t pkt_id) noexcept;
+
+    /**
+     * Проверка доступа к оси.
+     * @param must_own true = SetTarget (нужна наша + drive);
+     *                 false = Select (чужой → Busy; свободная → drive; своя → Ok).
+     */
+    [[nodiscard]] static msg::ErrorCode mechGuard(const IMech& m,
+                                                  uint8_t src,
+                                                  bool must_own) noexcept;
 
     void commitSelect(uint8_t src, const MaskPlan& plan) noexcept;
     void commitBlock(const MaskPlan& plan) noexcept;
@@ -141,25 +169,22 @@ private:
 };
 
 /** Server<N>: storage сессий и осей; leaf регистрирует SessionConsole / DriveMech. */
-template <std::size_t MaxMechs, std::size_t MaxSessions = msg::kMaxConsoles>
+template <uint8_t MaxMechs, uint8_t MaxSessions = msg::kMaxConsoles>
 class Server : public IServer {
 public:
-    static constexpr std::size_t kMechCount = MaxMechs;
-    static constexpr std::size_t kSessionCount = MaxSessions;
+    static constexpr uint8_t kMechCount = MaxMechs;
+    static constexpr uint8_t kSessionCount = MaxSessions;
 
     explicit Server(ILink& link, ClockFn clock) noexcept
         : IServer(link, clock)
     {}
 
 protected:
-    [[nodiscard]] MISC::ObjRegistry<IMech, uint8_t>& storage() noexcept override { return _mechs; }
-    [[nodiscard]] MISC::ObjRegistry<Session, uint8_t>& sessions() noexcept override
-    {
-        return _sessions;
-    }
+    [[nodiscard]] MechReg& storage() noexcept override { return _mechs; }
+    [[nodiscard]] SessionReg& sessions() noexcept override { return _sessions; }
 
-    MISC::ObjStorage<Session, MaxSessions, uint8_t, 0> _sessions;
-    MISC::ObjStorage<IMech, MaxMechs, uint8_t, 0> _mechs;
+    SessionStore<MaxSessions> _sessions;
+    MechStore<MaxMechs> _mechs;
 };
 
 } // namespace smcp

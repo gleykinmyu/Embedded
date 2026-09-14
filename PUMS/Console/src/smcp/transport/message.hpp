@@ -25,7 +25,7 @@ namespace msg {
 inline constexpr uint8_t kConsoleIdMin = 0x01u;
 inline constexpr uint8_t kConsoleIdMax = 0x0Fu;
 /** Сколько консолей / сессий на сервере (id 0x01…0x0F). */
-inline constexpr std::size_t kMaxConsoles = kConsoleIdMax - kConsoleIdMin + 1u;
+inline constexpr uint8_t kMaxConsoles = kConsoleIdMax - kConsoleIdMin + 1u;
 inline constexpr uint8_t kServerIdMin = 0x10u;
 inline constexpr uint8_t kServerIdMax = 0xEFu;
 inline constexpr uint8_t kBroadcastId = 0xFFu;
@@ -44,17 +44,19 @@ inline constexpr uint16_t kHeartbeatTimeoutMs = 500u;
 /** Сколько интервалов T без RX HB до down (1 = сразу при первом timeout). */
 inline constexpr uint8_t kHeartbeatMissMax = 3u;
 
-/** MVP wire set: Ack/Nack, Heartbeat, Select, Block, SetTarget, Telemetry. */
+/** MVP wire set: Ack/Nack, Heartbeat, Select, Block, GetTelemetry, SetTarget, Telemetry. */
 enum class MsgId : uint8_t {
     Ack       = 0x01,
     Nack      = 0x02,
     Heartbeat = 0x03,
 
-    Select    = 0x10,
-    Block     = 0x11,
-    SetTarget = 0x20,
+    Select       = 0x10,
+    Block        = 0x11,
+
+    SetTarget    = 0x20,
 
     Telemetry = 0x40,
+    GetTelemetry = 0x41
 };
 
 enum class ErrorCode : uint8_t {
@@ -68,6 +70,37 @@ enum class ErrorCode : uint8_t {
     SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
     Timeout      = 0x08, /**< Локально: исчерпан retry Ack (не с шины). */
 };
+
+[[nodiscard]] inline const char* cstr(ErrorCode code) noexcept
+{
+    switch (code) {
+    case ErrorCode::Ok: return "Ok";
+    case ErrorCode::Busy: return "Busy";
+    case ErrorCode::Limits: return "Limits";
+    case ErrorCode::Crc: return "Crc";
+    case ErrorCode::MechNotFound: return "MechNotFound";
+    case ErrorCode::Safety: return "Safety";
+    case ErrorCode::NotReady: return "NotReady";
+    case ErrorCode::SelectLimit: return "SelectLimit";
+    case ErrorCode::Timeout: return "Timeout";
+    }
+    return "?";
+}
+
+[[nodiscard]] inline const char* cstr(MsgId id) noexcept
+{
+    switch (id) {
+    case MsgId::Ack: return "Ack";
+    case MsgId::Nack: return "Nack";
+    case MsgId::Heartbeat: return "Heartbeat";
+    case MsgId::Select: return "Select";
+    case MsgId::Block: return "Block";
+    case MsgId::GetTelemetry: return "GetTelemetry";
+    case MsgId::SetTarget: return "SetTarget";
+    case MsgId::Telemetry: return "Telemetry";
+    }
+    return "?";
+}
 
 /**
  * Логический заголовок SMCP = только CAN ID (без data).
@@ -109,15 +142,20 @@ struct Ack {
 };
 
 /**
- * Nack — DLC=2
- *   +--------+------+
- *   | pkt_id | code |
- *   +--------+------+
- *    data[0]  data[1]   (pkt_id → Packet)
+ * Nack — DLC=3
+ *   +--------+------+--------+
+ *   | pkt_id | code | detail |
+ *   +--------+------+--------+
+ *    data[0]  data[1] data[2]   (pkt_id → Packet)
+ *
+ * @a detail — контекст отказа (обычно mech_id); @c kNackDetailNone = нет.
  */
+inline constexpr uint8_t kNackDetailNone = 0xFFu;
+
 struct Nack {
     static constexpr MsgId kId = MsgId::Nack;
     ErrorCode code = ErrorCode::Busy;
+    uint8_t detail = kNackDetailNone;
 
     [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
     [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, Nack& out) noexcept;
@@ -142,6 +180,16 @@ enum class Action : uint8_t {
     Remove = 1, /**< Deselect / Unblock. */
     Set = 2,    /**< Absolute mask. */
 };
+
+[[nodiscard]] inline const char* cstr(Action action) noexcept
+{
+    switch (action) {
+    case Action::Add: return "Add";
+    case Action::Remove: return "Remove";
+    case Action::Set: return "Set";
+    }
+    return "?";
+}
 
 [[nodiscard]] constexpr bool isValidAction(Action action) noexcept
 {
@@ -191,6 +239,26 @@ struct Block {
 };
 
 /**
+ * GetTelemetry — DLC=5 (класс A)
+ *   +--------+-------------+
+ *   | pkt_id | mask LE u32 |
+ *   +--------+-------------+
+ *    data[0]  data[1..4]   (pkt_id → Packet)
+ *
+ * Запрос снимков Telemetry по битам маски.
+ * Пустая маска = все оси inventory сервера (0…cap−1, где mech есть).
+ * Ответ: Ack, затем Telemetry (D) по запрошенным осям (без commit состояния).
+ */
+struct GetTelemetry {
+    static constexpr MsgId kId = MsgId::GetTelemetry;
+
+    Selection selection;
+
+    [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
+    [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, GetTelemetry& out) noexcept;
+};
+
+/**
  * SetTarget — DLC=8 (accel на шину не кладётся)
  *   +--------+---------+--------------+------------+
  *   | pkt_id | mech_id | target_mm LE | speed LE   |
@@ -232,6 +300,7 @@ using Message = std::variant<Ack,
                              Heartbeat,
                              Select,
                              Block,
+                             GetTelemetry,
                              SetTarget,
                              Telemetry>;
 
@@ -294,6 +363,7 @@ template <typename T>
     switch (id) {
     case MsgId::Select:
     case MsgId::Block:
+    case MsgId::GetTelemetry:
     case MsgId::SetTarget:
         return true;
     case MsgId::Ack:
@@ -313,6 +383,7 @@ template <typename T>
     case MsgId::Nack:
     case MsgId::Select:
     case MsgId::Block:
+    case MsgId::GetTelemetry:
     case MsgId::SetTarget:
         return true;
     case MsgId::Heartbeat:
@@ -337,6 +408,7 @@ template <typename T>
     switch (id) {
     case MsgId::Select:
     case MsgId::Block:
+    case MsgId::GetTelemetry:
     case MsgId::SetTarget:
         return 2u;
     case MsgId::Ack:

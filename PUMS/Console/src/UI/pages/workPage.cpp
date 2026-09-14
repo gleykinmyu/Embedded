@@ -17,7 +17,7 @@ WorkPage::WorkPage(nex::IAppUI& app) noexcept
 
 uint8_t WorkPage::groupIdForSlot(uint8_t index) const noexcept
 {
-    return static_cast<uint8_t>(1u + static_cast<uint8_t>(_scenePage * GroupButtons::kCount) + index);
+    return static_cast<uint8_t>(static_cast<uint8_t>(_scenePage * GroupButtons::kCount) + index);
 }
 
 void WorkPage::beginRename(uint8_t group_id) noexcept
@@ -177,7 +177,7 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     if (state == nex::TouchState::Press) {
-        const bool deselect = (group_id == console.getActiveGroup());
+        const bool deselect = (group_id == console.uiActiveGroup());
         const State self = deselect ? State::Active : State::Selected;
 
         if (groupBtn[index].getState() != self) {
@@ -197,8 +197,8 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
         return;
     }
 
+    /* Ячейки: isolate на Ack Select, Selected — с Telemetry. */
     refreshGroupBtn(false);
-    refreshCells();
 }
 
 void WorkPage::onAssignPress(uint8_t index) noexcept
@@ -207,11 +207,6 @@ void WorkPage::onAssignPress(uint8_t index) noexcept
         return;
     }
     if (groupAssignBtn[index].getState() == ConsoleBtn::State::Disabled) {
-        return;
-    }
-
-    const uint8_t group_id = groupIdForSlot(index);
-    if (group_id == MConsole::kBlockedGroupId) {
         return;
     }
 
@@ -225,14 +220,14 @@ void WorkPage::onMenuPress(uint8_t comp)
 
     switch (comp) {
     case PW::bFile:
-        if (!console.allowsFileMenu()) {
+        if (console.mode() != MConsole::Mode::Work) {
             return;
         }
         ui().switchPage(ui().mFile);
         break;
 
     case PW::bBlock:
-        if (!console.allowsBlockMode()) {
+        if (console.mode() == MConsole::Mode::Show) {
             return;
         }
         (void)console.toggleMode(MConsole::Mode::Block);
@@ -268,12 +263,7 @@ void WorkPage::showExitShowConfirm() noexcept
 
 void WorkPage::onMsgBox(const nex::msg::evMsgBox& e)
 {
-    if (e.tag == kTagBlockMsg) {
-        /* После refreshPage из MsgBox::onClick — вернуть цвета кнопок. */
-        refreshGroupBtn(false);
-        refreshCells();
-        return;
-    }
+    /* ExitShow Yes — режим; redraw кнопок в onAfterMsgBox (после refreshPage). */
     if (e.tag != kTagExitShow) {
         return;
     }
@@ -281,7 +271,18 @@ void WorkPage::onMsgBox(const nex::msg::evMsgBox& e)
         return;
     }
     console.setMode(MConsole::Mode::Work);
-    applyModeChange();
+}
+
+void WorkPage::onAfterMsgBox(const nex::msg::evMsgBox& e)
+{
+    if (e.tag == kTagBlockMsg) {
+        refreshGroupBtn(false);
+        refreshCells();
+        return;
+    }
+    if (e.tag == kTagExitShow && e.action == nex::msg::evMsgBox::Action::Yes) {
+        applyModeChange();
+    }
 }
 
 Application& WorkPage::ui() const noexcept
@@ -322,13 +323,13 @@ void WorkPage::refreshModeButtons() noexcept
     using State = ConsoleBtn::State;
     const MConsole::Mode mode = console.mode();
 
-    const State fileState = console.allowsFileMenu() ? State::Active : State::Disabled;
+    const State fileState = (mode == MConsole::Mode::Work) ? State::Active : State::Disabled;
     if (bFile.getState() != fileState) {
         bFile.setState(fileState);
     }
 
     State blockState = State::Active;
-    if (!console.allowsBlockMode()) {
+    if (mode == MConsole::Mode::Show) {
         blockState = State::Disabled;
     } else if (mode == MConsole::Mode::Block) {
         blockState = State::Selected;
@@ -346,7 +347,7 @@ void WorkPage::refreshModeButtons() noexcept
 void WorkPage::refreshGroupBtn(bool textModified) noexcept
 {
     using State = ConsoleBtn::State;
-    const uint8_t active_id = console.getActiveGroup();
+    const uint8_t active_id = console.uiActiveGroup();
 
     for (uint8_t i = 0; i < GroupButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
@@ -362,7 +363,7 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
 
         State next = State::Disabled;
         if (grp.isBlocked()) {
-            next = State::Blocked;
+            next = State::GroupBlocked;
         } else if (!grp.isEmpty()) {
             next = (group_id == active_id) ? State::Selected : State::Active;
         }
@@ -378,9 +379,9 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
 void WorkPage::refreshAssignBtn() noexcept
 {
     using State = ConsoleBtn::State;
-    const bool assignOk = console.allowsGroupEdit();
+    const bool assignOk = (console.mode() == MConsole::Mode::Work);
     const bool hasSelection = console.hasSelection();
-    const uint8_t active_id = console.getActiveGroup();
+    const uint8_t active_id = console.uiActiveGroup();
 
     for (uint8_t i = 0; i < GroupAssignButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
@@ -393,7 +394,7 @@ void WorkPage::refreshAssignBtn() noexcept
                     next = State::Active;
                 }
             } else if (grp.isBlocked()) {
-                next = State::Blocked;
+                next = State::GroupBlocked;
             } else {
                 next = (group_id == active_id) ? State::Selected : State::Active;
             }
@@ -415,13 +416,17 @@ void WorkPage::refreshCell(uint8_t index) noexcept
     using State = ConsoleBtn::State;
 
     State next = State::Disabled;
-    if (console.isMechBlocked(index)) {
+    /* Серверный Block — поверх GRUP; isolate — поверх Select (чужие скрываем).
+     * Нет Ready (Idle) → Disabled — отдельного NotReady в UI нет. */
+    if (console.isMechServerBlocked(index)) {
         next = State::Blocked;
+    } else if (console.isMechGroupBlocked(index)) {
+        next = State::GroupBlocked;
+    } else if (console.isMechIsolated(index)) {
+        next = State::Disabled;
     } else if (console.mech(index).isSelectedBy(console.id())
                && console.mech(index).status().any(smcp::IMech::Status::Ready)) {
         next = State::Selected;
-    } else if (console.isMechIsolated(index)) {
-        next = State::Disabled;
     } else if (console.mech(index).status().any(smcp::IMech::Status::Ready)) {
         next = State::Active;
     }
@@ -442,6 +447,20 @@ void WorkPage::onMechTelemetry(uint8_t mech_id) noexcept
 {
     refreshCell(mech_id);
     refreshAssignBtn();
+}
+
+void WorkPage::onSelectAck() noexcept
+{
+    /* Ack Select: commit active уже в модели; чужие → Disabled; Selected — Telemetry. */
+    refreshGroupBtn(false);
+    refreshCells();
+}
+
+void WorkPage::onSelectNack() noexcept
+{
+    /* pending сброшен; active прежний — вернуть кнопки групп / ячейки. */
+    refreshGroupBtn(false);
+    refreshCells();
 }
 
 } // namespace server

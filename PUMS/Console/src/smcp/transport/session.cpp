@@ -4,12 +4,24 @@
 
 #include "smcp/transport/session.hpp"
 #include "smcp/transport/node.hpp"
+#include "smcp/debug.hpp"
 
 #include <variant>
 
 namespace smcp {
 
 // --- ctor / helpers ---
+
+const char* Session::cstr(Status status) noexcept
+{
+    switch (status) {
+    case Status::Idle: return "Idle";
+    case Status::Connecting: return "Connecting";
+    case Status::Awaiting: return "Awaiting";
+    case Status::Open: return "Open";
+    }
+    return "?";
+}
 
 Session::Session(Node& node) noexcept
     : _node(node)
@@ -22,6 +34,19 @@ bool Session::nodeOk() const noexcept
     return _node.getStatus() != Node::Status::IdConflict;
 }
 
+void Session::setStatus(Status status) noexcept
+{
+    if (status == _status) {
+        return;
+    }
+    SMCP_SESS("[SMCP] Session[%u] status %s -> %s peer=%u\n",
+             static_cast<unsigned>(_id),
+             cstr(_status),
+             cstr(status),
+             static_cast<unsigned>(_peer_id));
+    _status = status;
+}
+
 // --- жизненный цикл ---
 
 void Session::abortAck() noexcept
@@ -31,23 +56,31 @@ void Session::abortAck() noexcept
         return;
     }
     const TxSlot* head = peekReq(true);
-    const uint8_t pkt_id = head != nullptr ? head->pkt_id : uint8_t{0};
-    msg::Nack body{};
-    body.code = msg::ErrorCode::Timeout;
     _ack.clear();
-    _node.onReply(this, pkt_id, body);
+    if (head == nullptr) {
+        return;
+    }
+    msg::Nack reply{};
+    reply.code = msg::ErrorCode::Timeout;
+    reply.detail = msg::kNackDetailNone;
+    _node.onNack(this, *head, reply);
+    _tx_req.drop();
 }
 
 void Session::open(uint8_t peer_id) noexcept
 {
     if (!nodeOk() || peer_id == 0u) {
+        SMCP_SESS("[SMCP] Session[%u] open reject peer=%u nodeOk=%u\n",
+                 static_cast<unsigned>(_id),
+                 static_cast<unsigned>(peer_id),
+                 nodeOk() ? 1u : 0u);
         return;
     }
     abortAck();
     _hb.clear();
     clearTx();
     _peer_id = peer_id;
-    _status = Status::Connecting;
+    setStatus(Status::Connecting);
 }
 
 void Session::start(uint8_t peer_id) noexcept
@@ -61,9 +94,9 @@ void Session::close() noexcept
     abortAck();
     _hb.clear();
     _master = false;
-    _peer_id = 0;
     _pkt_tx = 0;
-    _status = Status::Idle;
+    setStatus(Status::Idle);
+    _peer_id = 0;
     clearTx();
 }
 
@@ -110,16 +143,32 @@ void Session::send(const msg::Message& body) noexcept
 
 void Session::sendAck(uint8_t req_pkt_id) noexcept
 {
-    if (!isOpen()) return;
+    if (!isOpen()) {
+        return;
+    }
 
     transmit(msg::Ack{}, req_pkt_id);
 }
 
-void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept
+void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code, uint8_t detail) noexcept
 {
-    if (!isOpen()) return;
+    if (!isOpen()) {
+        SMCP_SESS("[SMCP] Session[%u] sendNack drop (!Open) pkt=%u code=%s detail=%u\n",
+                 static_cast<unsigned>(_id),
+                 static_cast<unsigned>(req_pkt_id),
+                 msg::cstr(code),
+                 static_cast<unsigned>(detail));
+        return;
+    }
+    SMCP_SESS("[SMCP] Session[%u] sendNack peer=%u pkt=%u code=%s detail=%u\n",
+             static_cast<unsigned>(_id),
+             static_cast<unsigned>(_peer_id),
+             static_cast<unsigned>(req_pkt_id),
+             msg::cstr(code),
+             static_cast<unsigned>(detail));
     msg::Nack body{};
     body.code = code;
+    body.detail = detail;
     transmit(body, req_pkt_id);
 }
 
@@ -215,8 +264,12 @@ void Session::onAck(const msg::Packet& pkt) noexcept
         return;
     }
     _ack.clear();
+    if (const auto* nack = std::get_if<msg::Nack>(&pkt.body)) {
+        _node.onNack(this, *head, *nack);
+    } else {
+        _node.onAck(this, *head);
+    }
     _tx_req.drop();
-    _node.onReply(this, pkt.pkt_id, pkt.body);
 }
 
 void Session::onAckTimeout() noexcept
@@ -230,6 +283,7 @@ void Session::onAckTimeout() noexcept
     pkt.pkt_id = head != nullptr ? head->pkt_id : uint8_t{0};
     msg::Nack body{};
     body.code = msg::ErrorCode::Timeout;
+    body.detail = msg::kNackDetailNone;
     pkt.body = body;
     onAck(pkt);
 }
@@ -242,7 +296,7 @@ void Session::ping() noexcept
         return;
     }
     if (_status != Status::Open) {
-        _status = Status::Awaiting;
+        setStatus(Status::Awaiting);
     }
     _hb.start(_node.clockMs(), msg::kHeartbeatTimeoutMs);
 }
@@ -267,7 +321,7 @@ void Session::onHeartbeat(const msg::Header& hdr) noexcept
     if (!_hb.isWaiting()) {
         pong();
     }
-    _status = Status::Open;
+    setStatus(Status::Open);
     _hb.clear();
     _hb.start(_node.clockMs(), msg::kHeartbeatTimeoutMs, false);
 }

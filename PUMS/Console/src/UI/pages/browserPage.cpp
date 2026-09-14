@@ -349,19 +349,19 @@ void BrowserPage::commitDelete() noexcept
     }
 
     _msg = Msg::None;
+    /* Список — в onAfterMsgBox после OK на «Файл удалён» (без redraw под вторым MsgBox). */
     ui().showFileMsg(0u, uiMsg::kFileDeleted);
 }
+
 void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
 {
-    /* Cancel / OK / No — сброс pending и перерисовка строк (после MsgBox). */
+    /* Cancel / OK / No — сброс pending; список в onAfterMsgBox (после refreshPage). */
     if (e.action != nex::msg::evMsgBox::Action::Yes) {
         _msg = Msg::None;
-        clearFileRowSelection();
-        redrawRows();
         return;
     }
 
-    /* Yes — продолжить отложенное действие по _msg. */
+    /* Yes — продолжить отложенное действие по _msg (может открыть новый MsgBox). */
     switch (_msg) {
     case Msg::OverwriteSave:
         commitSaveAs();
@@ -376,6 +376,15 @@ void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
     default:
         break;
     }
+}
+
+void BrowserPage::onAfterMsgBox(const nex::msg::evMsgBox& e)
+{
+    if (e.action == nex::msg::evMsgBox::Action::Yes) {
+        return;
+    }
+    clearFileRowSelection();
+    redrawRows();
 }
 
 } // namespace server

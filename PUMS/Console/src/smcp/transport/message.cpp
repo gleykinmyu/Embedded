@@ -164,6 +164,14 @@ bool fromCanFrame(const BIF::CAN::Frame& frame, Packet& packet) noexcept
         packet.body = body;
         return true;
     }
+    case MsgId::GetTelemetry: {
+        GetTelemetry body{};
+        if (!GetTelemetry::deserialize(frame, body)) {
+            return false;
+        }
+        packet.body = body;
+        return true;
+    }
     case MsgId::SetTarget: {
         SetTarget body{};
         if (!SetTarget::deserialize(frame, body)) {
@@ -199,15 +207,16 @@ bool Ack::deserialize(const BIF::CAN::Frame& frame, Ack& /*out*/) noexcept
 
 bool Nack::serialize(BIF::CAN::Frame& frame) const noexcept
 {
-    return push(frame, static_cast<uint8_t>(code));
+    return push(frame, static_cast<uint8_t>(code)) && push(frame, detail);
 }
 
 bool Nack::deserialize(const BIF::CAN::Frame& frame, Nack& out) noexcept
 {
-    if (!expectDlc(frame, 2)) {
+    if (!expectDlc(frame, 3)) {
         return false;
     }
     out.code = static_cast<ErrorCode>(frame.data[1]);
+    out.detail = frame.data[2];
     return true;
 }
 
@@ -256,6 +265,20 @@ bool Block::deserialize(const BIF::CAN::Frame& frame, Block& out) noexcept
     }
     out.action = action;
     out.selection = Selection::from_raw(load_le32(frame.data + 2));
+    return true;
+}
+
+bool GetTelemetry::serialize(BIF::CAN::Frame& frame) const noexcept
+{
+    return push_le32(frame, selection.raw());
+}
+
+bool GetTelemetry::deserialize(const BIF::CAN::Frame& frame, GetTelemetry& out) noexcept
+{
+    if (!expectDlc(frame, 5)) {
+        return false;
+    }
+    out.selection = Selection::from_raw(load_le32(frame.data + 1));
     return true;
 }
 

@@ -24,8 +24,8 @@ public:
     static constexpr uint8_t kFieldCount = Count;
     static constexpr uint16_t kDefaultHeight = 48u;
     static constexpr nex::Coord kOriginY = 974;
-    /** Хватает под `min NNNk`; остаток ширины — имени файла. */
-    static constexpr uint16_t kStatusColumnWidth = 140u;
+    /** Хватает под `Connecting (NNNk)`; остаток ширины — имени файла. */
+    static constexpr uint16_t kStatusColumnWidth = 180u;
     static constexpr uint16_t kSideColumnWidth = 120u;
     static constexpr size_t kTextCap = 64u;
 
@@ -61,11 +61,15 @@ private:
     [[nodiscard]] Column& column(Field field) noexcept { return _columns[field]; }
     [[nodiscard]] const Column& column(Field field) const noexcept { return _columns[field]; }
 
+    /** `Widget::draw` → фон полосы, затем `drawChildren` → Column::draw. */
     void drawBackground(const nex::AppCanvas& cs) const override;
+    /** `redrawObject` / present одной колонки — подложка clip до Column::draw. */
     void drawBackgroundRegion(const nex::AppCanvas& cs, nex::Region clip) const override;
 
     void onColumnWidthChanged() noexcept;
+    /** Одна колонка: `redrawObject` = drawBackgroundRegion + Column::draw. */
     void present(const nex::ovl::Object& obj) noexcept;
+    /** Весь бар: `Widget::draw`. */
     void presentAll() noexcept;
 
     nex::Rect _screen;

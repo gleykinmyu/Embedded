@@ -42,6 +42,8 @@ public:
         Open,       /**< линк подтверждён RX HB */
     };
 
+    [[nodiscard]] static const char* cstr(Status status) noexcept;
+
     // --- ctor / id ---
 
     virtual ~Session() = default;
@@ -88,7 +90,8 @@ public:
      */
     void send(const msg::Message& body) noexcept;
     void sendAck(uint8_t req_pkt_id) noexcept;
-    void sendNack(uint8_t req_pkt_id, msg::ErrorCode code) noexcept;
+    void sendNack(uint8_t req_pkt_id, msg::ErrorCode code,
+                  uint8_t detail = msg::kNackDetailNone) noexcept;
 
 protected:
     /** HB / Ack / Nack. true — Node не зовёт Node::onPacket. */
@@ -101,6 +104,9 @@ private:
 
     void set_id(uint8_t id) noexcept { _id = id; }
     [[nodiscard]] bool nodeOk() const noexcept;
+
+    /** Смена `_status`; no-op если тот же; лог SMCP_SESS. */
+    void setStatus(Status status) noexcept;
 
     // --- pump (только Node) ---
 
@@ -150,7 +156,7 @@ private:
 };
 
 /** Банк S[N]: ctor регистрирует каждый в Node::sessions() подряд. */
-template <std::size_t N, typename S = Session>
+template <uint8_t N, typename S = Session>
 class SessionBank {
 public:
     template <typename Owner>
@@ -158,8 +164,8 @@ public:
         : SessionBank(owner, std::make_index_sequence<N>{})
     {}
 
-    [[nodiscard]] S& operator[](std::size_t i) noexcept { return _items[i]; }
-    [[nodiscard]] const S& operator[](std::size_t i) const noexcept { return _items[i]; }
+    [[nodiscard]] S& operator[](uint8_t i) noexcept { return _items[i]; }
+    [[nodiscard]] const S& operator[](uint8_t i) const noexcept { return _items[i]; }
 
     [[nodiscard]] S* begin() noexcept { return _items; }
     [[nodiscard]] S* end() noexcept { return _items + N; }

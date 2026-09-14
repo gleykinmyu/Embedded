@@ -165,6 +165,7 @@ void StatusBar::Column::setWidth(const uint16_t w) noexcept
 
 void StatusBar::Column::draw(const nex::AppCanvas& cs) const
 {
+    /* Пусто — фон уже дал drawBackground / drawBackgroundRegion, xstr не шлём. */
     if (text[0] == '\0') {
         return;
     }

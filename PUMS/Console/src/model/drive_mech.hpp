@@ -28,23 +28,23 @@ public:
 
     void select(uint8_t console_id) noexcept override;
     void block(bool blocked) noexcept override;
-    bool setTarget(const smcp::MotionTarget& target) noexcept override;
-    bool resetFault() noexcept override;
+    void setTarget(const smcp::MotionTarget& target) noexcept override;
+    void resetFault() noexcept override;
 
 private:
     Type _type = Type::Rope;
     static uint8_t s_selectedCount;
 };
 
-template <std::size_t N>
+template <uint8_t N>
 class DriveMechBank {
 public:
     explicit DriveMechBank(smcp::IServer& owner) noexcept
         : DriveMechBank(owner, std::make_index_sequence<N>{})
     {}
 
-    [[nodiscard]] DriveMech& operator[](std::size_t i) noexcept { return _items[i]; }
-    [[nodiscard]] const DriveMech& operator[](std::size_t i) const noexcept { return _items[i]; }
+    [[nodiscard]] DriveMech& operator[](uint8_t i) noexcept { return _items[i]; }
+    [[nodiscard]] const DriveMech& operator[](uint8_t i) const noexcept { return _items[i]; }
 
 private:
     template <std::size_t... I>

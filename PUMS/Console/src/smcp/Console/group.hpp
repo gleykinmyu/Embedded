@@ -16,8 +16,9 @@ namespace smcp {
 inline constexpr std::size_t kGroupWireSize = 64u;
 inline constexpr std::size_t kGroupNameSize = 48u;
 /** Осей на один server ID. Физический сервер на 64 оси → два SMCP ID. */
-inline constexpr std::size_t kMechCount = 32u;
-inline constexpr std::size_t kGroupMaxCount = 33u;
+inline constexpr uint8_t kMechCount = 32u;
+/** Пользовательских групп в шоуфайле (слоты UI 0…31). */
+inline constexpr uint8_t kGroupMaxCount = 32u;
 
 /** FourCC-тег секции групп в шоуфайле — "GRUP". */
 inline constexpr uint32_t kGroupSectionTag = 0x50555247u;

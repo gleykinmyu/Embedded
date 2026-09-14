@@ -12,7 +12,7 @@
 #include "board.hpp"
 #include "impl/w25q.hpp"
 #include "iFileSystem.hpp"
-#include "smcp/Console/debug.hpp"
+#include "smcp/debug.hpp"
 #include "smcp/Console/show_file.hpp"
 #include "smcp/Console/group.hpp"
 
@@ -45,14 +45,14 @@ public:
             std::memset(_buf, 0xFF, sizeof(_buf));
             _size = 0u;
             _open = true;
-            SMCP_DBG("[SMCP] W25Q open write sector=0x%06lX\n",
+            SMCP_SHOW("[SMCP] W25Q open write sector=0x%06lX\n",
                 static_cast<unsigned long>(kSectorAddr));
             return true;
         }
 
         board.watchdog.kick();
         if (!_flash.read(kSectorAddr, _buf, sizeof(_buf))) {
-            SMCP_DBG("[SMCP] W25Q open read fail @0x%06lX\n",
+            SMCP_SHOW("[SMCP] W25Q open read fail @0x%06lX\n",
                 static_cast<unsigned long>(kSectorAddr));
             return false;
         }
@@ -65,7 +65,7 @@ public:
             _size = sizeof(Header);
         }
         _open = true;
-        SMCP_DBG("[SMCP] W25Q open read size=%u\n", static_cast<unsigned>(_size));
+        SMCP_SHOW("[SMCP] W25Q open read size=%u\n", static_cast<unsigned>(_size));
         return true;
     }
 
@@ -74,7 +74,7 @@ public:
         /* Не auto-sync: flush только через sync() из Writer::finalize.
          * Иначе close-on-error повторно жжёт сектор / пишет хвост без заголовка. */
         if (_open) {
-            SMCP_DBG("[SMCP] W25Q close dirty=%u size=%u\n", _dirty ? 1u : 0u,
+            SMCP_SHOW("[SMCP] W25Q close dirty=%u size=%u\n", _dirty ? 1u : 0u,
                 static_cast<unsigned>(_size));
         }
         _open = false;
@@ -135,24 +135,24 @@ public:
         }
         /* После erase хвост сектора = 0xFF; достаточно запрограммировать SMCP. */
         board.watchdog.kick();
-        SMCP_DBG("[SMCP] W25Q sync @0x%06lX len=%u\n",
+        SMCP_SHOW("[SMCP] W25Q sync @0x%06lX len=%u\n",
             static_cast<unsigned long>(kSectorAddr), static_cast<unsigned>(_size));
         if (!_flash.eraseSector(kSectorAddr)) {
-            SMCP_DBG("[SMCP] W25Q erase FAIL @0x%06lX sr=0x%02X\n",
+            SMCP_SHOW("[SMCP] W25Q erase FAIL @0x%06lX sr=0x%02X\n",
                 static_cast<unsigned long>(kSectorAddr),
                 static_cast<unsigned>(_flash.readStatus1()));
             return false;
         }
         board.watchdog.kick();
         if (!_flash.program(kSectorAddr, _buf, _size)) {
-            SMCP_DBG("[SMCP] W25Q program FAIL @0x%06lX len=%u sr=0x%02X\n",
+            SMCP_SHOW("[SMCP] W25Q program FAIL @0x%06lX len=%u sr=0x%02X\n",
                 static_cast<unsigned long>(kSectorAddr), static_cast<unsigned>(_size),
                 static_cast<unsigned>(_flash.readStatus1()));
             return false;
         }
         board.watchdog.kick();
         _dirty = false;
-        SMCP_DBG("[SMCP] W25Q sync OK len=%u\n", static_cast<unsigned>(_size));
+        SMCP_SHOW("[SMCP] W25Q sync OK len=%u\n", static_cast<unsigned>(_size));
         return true;
     }
 

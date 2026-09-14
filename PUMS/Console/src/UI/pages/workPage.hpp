@@ -52,13 +52,18 @@ struct WorkPage : nex::Page<54> {
     void onLoad() override;
     void onResponse(const nex::msg::getString& response, nex::Route route, uint8_t tag) override;
     void onMsgBox(const nex::msg::evMsgBox& e) override;
+    void onAfterMsgBox(const nex::msg::evMsgBox& e) override;
 
     [[nodiscard]] uint8_t groupIdForSlot(uint8_t index) const noexcept;
 
     void beginRename(uint8_t group_id) noexcept;
 
-    /** Mech telemetry callback → обновить ячейку / assign. */
+    /** CMech telemetry → обновить ячейку / assign. */
     void onMechTelemetry(uint8_t mech_id) noexcept;
+    /** Ack Select → isolate Disabled; Selected придёт с Telemetry. */
+    void onSelectAck() noexcept;
+    /** Nack Select после recall/clear — откат подсветки групп. */
+    void onSelectNack() noexcept;
 
 private:
     static constexpr uint8_t kTagExitShow = 1u;
@@ -79,6 +84,7 @@ private:
     void refreshAssignBtn() noexcept;
     void refreshCell(uint8_t index) noexcept;
     void refreshCells() noexcept;
+
     void showBlockMsg(const char* text) noexcept;
     void showExitShowConfirm() noexcept;
     void applyModeChange() noexcept;

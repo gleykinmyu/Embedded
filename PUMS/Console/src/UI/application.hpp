@@ -54,11 +54,14 @@ public:
     void showGroupStatus(uint8_t tag = 0u) noexcept;
     /** MsgBox по текущему статусу MBrowser. */
     void showBrowserStatus(uint8_t tag = 0u) noexcept;
+    /** MsgBox по последнему SMCP Nack. */
+    void showSmcpNack(uint8_t tag = 0u) noexcept;
 
     void onPageChange(const nex::msg::evPage& e) noexcept override;
 
     void syncStatusBarFile() noexcept;
-    void syncStatusBarMem() noexcept;
+    /** Phase + free RAM, напр. `Online (92k)`. */
+    void syncStatusBarLink() noexcept;
     void syncStatusBarTime() noexcept;
 
 private:

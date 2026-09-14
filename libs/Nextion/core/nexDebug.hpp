@@ -1,5 +1,6 @@
 /**
- * Отладочный вывод библиотеки (`NEX_DEBUG`, `NEX_IDMAP_DEBUG`, `NEX_TRACE_TX`/`RX`/`RX_WIRE` — см. `build_flags`).
+ * Отладочный вывод библиотеки (`NEX_DEBUG`, `NEX_IDMAP_DEBUG`, `NEX_TRACE_TX`/`RX`/`RX_WIRE`,
+ * `NEX_OVL_DEBUG` — см. `build_flags`).
  */
 
 #include <cstdio>
@@ -54,6 +55,13 @@
 #  define NEX_DBG_TRACE_RX_WIRE(...) printf(__VA_ARGS__)
 #else
 #  define NEX_DBG_TRACE_RX_WIRE(...) ((void)0)
+#endif
+
+/** McUI overlay: show/hide, touch XY, draw, MsgBox (`-DNEX_OVL_DEBUG`, независимо от `NEX_DEBUG`). */
+#if defined(NEX_OVL_DEBUG)
+#  define NEX_DBG_OVL(...) printf(__VA_ARGS__)
+#else
+#  define NEX_DBG_OVL(...) ((void)0)
 #endif
 
 /** Проверка инварианта; активна при `NEX_DEBUG`, иначе no-op (как `assert` в release). */

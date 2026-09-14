@@ -67,7 +67,7 @@
 
 Select уходит в CAN; Busy / NotReady / SelectLimit на экране нет.
 
-- Перекрыть `Node::onReply` на консоли → MsgBox / состояние клетки (не ждать телеметрию).
+- Перекрыть `Node::onAck` / `onNack` на консоли → MsgBox / состояние клетки (не ждать телеметрию).
 - SelectLimit (`kMaxSelected = 3`) — явный текст.
 - `Node::onStatus`: IdConflict / LinkError → StatusBar / MsgBox; close сессий по политике app.
 - Listen ~T до первого ping (`MConsole`), затем `startSession` (PROTOCOL IdConflict).

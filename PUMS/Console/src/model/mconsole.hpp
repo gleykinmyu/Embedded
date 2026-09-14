@@ -2,7 +2,7 @@
  * @file mconsole.hpp
  * @brief Модель консоли проекта: режимы, группы, шоуфайл поверх smcp::Console<N>.
  *
- * Inventory IMech* — в базе; конкретные Mech — MechBank, register через friend.
+ * Inventory CMech* — в базе; объекты — CMechBank (register через CMech ctor).
  */
 
 #pragma once
@@ -11,10 +11,10 @@
 #include <cstdint>
 
 #include "smcp/Console/console.hpp"
+#include "smcp/Console/cmech.hpp"
 #include "smcp/Console/show_file.hpp"
 #include "smcp/Console/group.hpp"
 #include "smcp/transport/ilink.hpp"
-#include "model/mech.hpp"
 
 class MBrowser;
 
@@ -22,7 +22,8 @@ class MConsole : public smcp::Console<24> {
 public:
     /* ========== Константы ========== */
     using Console::kMechCount;
-    static constexpr uint8_t kBlockedGroupId = 0u;
+    /** Нет активной группы (не id слота GRUP). */
+    static constexpr uint8_t kNoActiveGroup = 0xFFu;
     /** Секция настроек пульта в шоуфайле (не SMCP) — FourCC "SETT". */
     static constexpr uint32_t kSettingsSectionTag = 0x54544553u;
     static constexpr std::size_t kSettingsWireSize = 8u;
@@ -38,7 +39,7 @@ public:
     enum class BlockResult : uint8_t {
         NoChange = 0,
         Changed,
-        Rejected, /**< Ручная блокировка запрещена (есть blocked-группы). */
+        Rejected, /**< Зарезервировано / отказ операции блокировки. */
         Warning,  /**< Группа заблокирована, есть пересечение — см. blockMessage(). */
     };
 
@@ -57,7 +58,7 @@ public:
         BadGroups,          /**< Некорректные записи групп. */
         IoError,            /**< Ошибка носителя (open/read/write). */
         /* Группы */
-        InvalidGroup,       /**< Неверный id / служебная Blocked. */
+        InvalidGroup,       /**< Неверный id группы. */
         NoSelection,        /**< Нет выделенных лебёдок для Record. */
         GroupOccupied,      /**< Группа не пуста (Record/Clear → Yes/No). */
         /* Браузер */
@@ -95,29 +96,49 @@ public:
      */
     Mode toggleMode(Mode mode) noexcept;
 
-    [[nodiscard]] bool allowsFileMenu() const noexcept { return _mode == Mode::Work; }
-    [[nodiscard]] bool allowsGroupEdit() const noexcept { return _mode == Mode::Work; }
-    [[nodiscard]] bool allowsBlockMode() const noexcept { return _mode != Mode::Show; }
-
-    /** Нажатие лебёдки: Work/Show → mechSelect; Block → toggleMechBlocked. */
+    /**
+     * Нажатие лебёдки: Work/Show → mechSelect;
+     * Block → сегментный Block на сервер (не GRUP).
+     */
     [[nodiscard]] BlockResult pressMech(uint8_t id) noexcept;
     /**
      * Нажатие группы: Work/Show → recall / clear active;
-     * Block → toggleGroupBlocked.
+     * Block → GRUP Flag::Blocked в шоуфайле.
      */
     [[nodiscard]] BlockResult pressGroup(uint8_t id) noexcept;
 
     /* ========== Механизмы ========== */
-    [[nodiscard]] Mech& mech(uint8_t id) noexcept { return _mechs[id]; }
-    [[nodiscard]] const Mech& mech(uint8_t id) const noexcept { return _mechs[id]; }
+    [[nodiscard]] smcp::CMech& mech(uint8_t id) noexcept { return _cmechs[id]; }
+    [[nodiscard]] const smcp::CMech& mech(uint8_t id) const noexcept { return _cmechs[id]; }
     /** Есть ли Selected по телеметрии. */
     [[nodiscard]] bool hasSelection() const noexcept;
+    /** Сегментный Blocked (Telemetry / IMech). Приоритет над GRUP. */
+    [[nodiscard]] bool isMechServerBlocked(uint8_t id) const noexcept;
+    /** GRUP blocked (Flag::Blocked в шоуфайле). */
+    [[nodiscard]] bool isMechGroupBlocked(uint8_t id) const noexcept;
+    /** Любая блокировка: server || GRUP. */
     [[nodiscard]] bool isMechBlocked(uint8_t id) const noexcept;
     /**
-     * Если лебёдка заблокирована — заполняет blockMessage() (ручная / группы) и true.
-     * Иначе false, сообщение очищается.
+     * Если лебёдка заблокирована — blockMessage() (server / GRUP) и true.
+     * Иначе false, сообщение очищается. Текст: сначала server.
      */
     [[nodiscard]] bool fillMechBlockMessage(uint8_t id) noexcept;
+    /** Edge Telemetry → UI (mech_id). */
+    void setOnMechChanged(void (*fn)(uint8_t) noexcept) noexcept { _onMechChanged = fn; }
+    /**
+     * Edge Nack / Timeout на Select|Block|SetTarget.
+     * Код — lastNack(); текст — nackText().
+     */
+    void setOnNack(void (*fn)() noexcept) noexcept { _onNack = fn; }
+    /** Ack Select (recall/clear/mech) → UI isolate refresh. */
+    void setOnSelectAck(void (*fn)() noexcept) noexcept { _onSelectAck = fn; }
+    /** Edge IConsole::Phase → UI. */
+    void setOnPhase(void (*fn)(smcp::IConsole::Phase) noexcept) noexcept { _onPhase = fn; }
+    [[nodiscard]] smcp::msg::ErrorCode lastNack() const noexcept { return _lastNack; }
+    [[nodiscard]] smcp::msg::MsgId lastNackReq() const noexcept { return _lastNackReq; }
+    /** mech_id или kNackDetailNone. */
+    [[nodiscard]] uint8_t lastNackDetail() const noexcept { return _lastNackDetail; }
+    [[nodiscard]] static const char* nackText(smcp::msg::ErrorCode code) noexcept;
     /**
      * true: isolateGroup и есть active group, лебёдка не в ней
      * (UI — Disabled; выделение/блокировка не меняются).
@@ -128,6 +149,14 @@ public:
     [[nodiscard]] smcp::Group& group(uint8_t id) noexcept { return _groups[id]; }
     [[nodiscard]] const smcp::Group& group(uint8_t id) const noexcept { return _groups[id]; }
     [[nodiscard]] uint8_t getActiveGroup() const noexcept { return _activeGroup; }
+    /**
+     * Для подсветки кнопок групп: pending Select ещё в полёте → цель,
+     * иначе подтверждённый active (isolate смотрит только getActiveGroup).
+     */
+    [[nodiscard]] uint8_t uiActiveGroup() const noexcept
+    {
+        return _groupSelectPending ? _pendingActiveGroup : _activeGroup;
+    }
 
     /* ========== Настройки ========== */
     [[nodiscard]] const Settings& settings() const noexcept { return _settings; }
@@ -173,10 +202,6 @@ public:
      */
     [[nodiscard]] bool canMutateShowName(const char* name) noexcept;
 
-protected:
-    void handleTelemetry(const smcp::msg::Header& hdr,
-                         const smcp::msg::Telemetry& body) noexcept override;
-
 private:
     /* --- Статус --- */
     void clearError() noexcept { _status = Status::Ok; }
@@ -184,7 +209,6 @@ private:
     /* --- Механизмы --- */
     [[nodiscard]] static constexpr bool validMechId(uint8_t id) noexcept { return id < kMechCount; }
     [[nodiscard]] bool mechSelect(uint8_t id) noexcept;
-    void clearSelection() noexcept;
     /** Маска групп (бит N — группа N), куда входит механизм и у группы есть биты из @a group_flags. */
     [[nodiscard]] uint64_t mechGroupMask(uint8_t mech_id,
                                          REG::BitMask<smcp::Group::Flag> group_flags) const noexcept;
@@ -197,24 +221,31 @@ private:
     }
     [[nodiscard]] bool recallGroup(uint8_t id) noexcept;
     void clearActiveGroup() noexcept;
-    void initBlockedGroup() noexcept;
-    [[nodiscard]] static bool groupsValid(const smcp::Group* groups, std::size_t count) noexcept;
+    [[nodiscard]] static bool groupsValid(const smcp::Group* groups, uint8_t count) noexcept;
+
+    /* --- SMCP leaf --- */
+    void onTelemetry(const smcp::msg::Header& hdr,
+                     const smcp::msg::Telemetry& body) noexcept override;
+    void onAck(smcp::Session* session, const smcp::TxSlot& req) noexcept override;
+    void onNack(smcp::Session* session, const smcp::TxSlot& req,
+                const smcp::msg::Nack& reply) noexcept override;
+    void onPhase(Phase phase) noexcept override;
 
     /* --- Блокировка --- */
-    [[nodiscard]] BlockResult toggleMechBlocked(uint8_t id) noexcept;
+    /** Сегментный Block TX (CMech::block). */
+    [[nodiscard]] BlockResult toggleMechServerBlocked(uint8_t id) noexcept;
+    /** GRUP Flag::Blocked в шоуфайле. */
     [[nodiscard]] BlockResult toggleGroupBlocked(uint8_t id) noexcept;
     /** Blocked=true → снять Selected с лебёдок группы и сбросить active, если это она. */
     void setGroupBlocked(uint8_t id, bool blocked) noexcept;
-    /** Синхронизировать IMech::Status::Blocked с blocked-группами. */
-    void rebuildBlockedMechs() noexcept;
     void clearBlockMessage() noexcept;
     /**
-     * Id blocked-групп (id≥1), в которых есть @a mech_id.
+     * Id blocked-групп, в которых есть @a mech_id.
      * @return число записанных id (≤ outCap).
      */
-    [[nodiscard]] std::size_t collectBlockingGroupIds(uint8_t mech_id,
+    [[nodiscard]] uint8_t collectBlockingGroupIds(uint8_t mech_id,
                                                       uint8_t* out,
-                                                      std::size_t outCap) const noexcept;
+                                                      uint8_t outCap) const noexcept;
     /**
      * Список id через запятую в @a out.
      * @a displayBias прибавляется к каждому id (лебёдки: +1).
@@ -223,7 +254,7 @@ private:
     [[nodiscard]] static bool formatIdList(char* out,
                                            std::size_t outLen,
                                            const uint8_t* ids,
-                                           std::size_t count,
+                                           uint8_t count,
                                            uint8_t displayBias = 0u,
                                            const char* mark = nullptr) noexcept;
 
@@ -245,21 +276,27 @@ private:
     [[nodiscard]] static Status mapFileStatus(smcp::file::Status status) noexcept;
 
     /* --- Данные --- */
-    /** После Console::_sessions: ctor Session регистрируется в registry. */
-    smcp::Session _session;
+    /** CMech bank; primary Session — в Console. */
+    smcp::CMechBank<kMechCount> _cmechs;
     MBrowser& _browser;
-    MechBank<kMechCount> _mechs;
     BIF::IFile* _mirror = nullptr;
-    uint8_t _activeGroup = kBlockedGroupId;
+    uint8_t _activeGroup = kNoActiveGroup;       /**< Подтверждённый (Ack); isolate. */
+    uint8_t _pendingActiveGroup = kNoActiveGroup; /**< Цель recall/clear до Ack/Nack. */
+    bool _groupSelectPending = false;
     Mode _mode = Mode::Work;
     Status _status = Status::Ok;
     Settings _settings{};
     smcp::Group _groups[smcp::kGroupMaxCount];
-    /** Кандидат GRUP при import/restore: validate → commit в _groups (текущее шоу не портим). */
-    smcp::Group _groupsTmp[smcp::kGroupMaxCount];
     char _showName[smcp::file::kPathSize]{};
     char _saveAsName[BIF::kDirNameSize]{};
     char _blockMsg[160]{};
     bool _edited = false;
     void (*_onShowChanged)() noexcept = nullptr;
+    void (*_onMechChanged)(uint8_t) noexcept = nullptr;
+    void (*_onNack)() noexcept = nullptr;
+    void (*_onSelectAck)() noexcept = nullptr;
+    void (*_onPhase)(Phase) noexcept = nullptr;
+    smcp::msg::ErrorCode _lastNack = smcp::msg::ErrorCode::Ok;
+    smcp::msg::MsgId _lastNackReq = smcp::msg::MsgId::Select;
+    uint8_t _lastNackDetail = smcp::msg::kNackDetailNone;
 };

@@ -37,6 +37,11 @@ IPage::IPage(IAppUI& application, const Literal& pageObjName, uint8_t id) noexce
     detail::registerPage(application, *this);
 }
 
+bool IPage::isCurrent() const noexcept
+{
+    return app.currentPage() == ID;
+}
+
 void IPage::onTouch(const msg::evTouch& e) {
     if (e.route.page != ID)
         return;

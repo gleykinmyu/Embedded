@@ -2,6 +2,7 @@
 #include "ovlOverlay.hpp"
 
 #include "../comp/nexCanvas.hpp"
+#include "../core/nexDebug.hpp"
 
 namespace nex::ovl {
 
@@ -62,9 +63,15 @@ void Widget::drawChildren(const AppCanvas& cs) const noexcept {
 }
 
 void Widget::draw(const AppCanvas& cs) const {
-    if (!isVisible())
+    if (!isVisible()) {
+        NEX_DBG_OVL("[ovl] draw SKIP (!vis) w=%p\n", static_cast<const void*>(this));
         return;
+    }
 
+    const Region r = screenRegion();
+    NEX_DBG_OVL("[ovl] draw w=%p region=(%u,%u %ux%u)\n", static_cast<const void*>(this),
+        static_cast<unsigned>(r.ul.x), static_cast<unsigned>(r.ul.y), static_cast<unsigned>(r.size.w),
+        static_cast<unsigned>(r.size.h));
     drawBackground(cs);
     drawChildren(cs);
 }
@@ -75,8 +82,15 @@ void Widget::drawBackgroundRegion(const AppCanvas& cs, const Region clip) const 
 }
 
 void Widget::redrawObject(const Object& obj, const AppCanvas& cs) const noexcept {
-    if (!obj.isVisible())
+    if (!obj.isVisible()) {
+        NEX_DBG_OVL("[ovl] redrawObject SKIP (!vis) obj=%p w=%p\n", static_cast<const void*>(&obj),
+            static_cast<const void*>(this));
         return;
+    }
+    const Region r = obj.screenRegion();
+    NEX_DBG_OVL("[ovl] redrawObject obj=%p clip=(%u,%u %ux%u) w=%p\n", static_cast<const void*>(&obj),
+        static_cast<unsigned>(r.ul.x), static_cast<unsigned>(r.ul.y), static_cast<unsigned>(r.size.w),
+        static_cast<unsigned>(r.size.h), static_cast<const void*>(this));
     drawBackgroundRegion(cs, obj.screenRegion());
     obj.draw(cs);
 }
