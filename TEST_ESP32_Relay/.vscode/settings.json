@@ -1,6 +1,10 @@
 {
     "C_Cpp.intelliSenseEngine": "Disabled",
     "C_Cpp.errorSquiggles": "disabled",
+    "qt-cpp.disableAutoKitGenerationOnOpen": true,
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.enableAutomaticKitScan": false,
     "clangd.arguments": [
         "--background-index",
         "--header-insertion=never",

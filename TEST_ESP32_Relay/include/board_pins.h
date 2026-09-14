@@ -16,6 +16,7 @@ static constexpr int PIN_ETH_MOSI = 13;
 static constexpr int PIN_ETH_MISO = 14;
 static constexpr int PIN_ETH_SCLK = 15;
 static constexpr int PIN_ETH_CS = 16;
+static constexpr int PIN_ETH_RST = 39;
 
 #define ETH_IP4_ADDR   192, 168, 6, 202
 #define ETH_GW4_ADDR   192, 168, 5, 1
@@ -25,6 +26,11 @@ static constexpr int PIN_ETH_CS = 16;
 static constexpr int PIN_DI[] = {4, 5, 6, 7, 8, 9, 10, 11};
 static constexpr uint8_t PIN_RELAY[] = {0, 1, 2, 3, 4, 5, 6, 7};
 static constexpr size_t RELAY_COUNT = sizeof(PIN_RELAY) / sizeof(PIN_RELAY[0]);
+static constexpr size_t PULSE_CH = 0;  // CH1: impulse relay, feedback DI1
+static constexpr uint32_t PULSE_MS = 500;
+static constexpr uint32_t ETH_HTTP_SILENT_MS = 1500;
+static constexpr uint32_t ETH_RECOVER_COOLDOWN_MS = 2000;
+static constexpr uint32_t ETH_RECOVER_DEBOUNCE_MS = 1500;
 
 static constexpr uint8_t TCA9554_ADDR = 0x20;
 static constexpr uint8_t TCA_REG_OUTPUT = 0x01;

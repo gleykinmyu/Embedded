@@ -13,8 +13,10 @@ p{color:#9aa;margin:0 0 16px}
 button{border:0;border-radius:10px;padding:10px 18px;font-size:16px;cursor:pointer;color:#111}
 #start{background:#2ecc71}
 #stop{background:#e74c3c;color:#fff}
+#reload{background:#f1c40f}
 button:disabled{opacity:.35;cursor:default}
-#state{color:#9aa}
+#state,#diag{color:#9aa}
+#diag.bad{color:#e74c3c}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
 .ch{background:#1c1c1c;border:1px solid #333;border-radius:12px;padding:16px}
 .ch.on{border-color:#2ecc71;background:#14301f}
@@ -32,46 +34,101 @@ button:disabled{opacity:.35;cursor:default}
 <main>
 <h1>ESP32-S3 реле</h1>
 <p>IP: <span id="ip">192.168.6.202</span></p>
+<p id="diag">страница: 0 с · HTTP: …</p>
 <div class="bar">
 <button id="start" type="button">Старт</button>
 <button id="stop" type="button">Стоп</button>
+<button id="reload" type="button">Обновить</button>
 <span id="state">Бегущий огонь: …</span>
 </div>
 <div class="grid" id="grid"></div>
 </main>
 <script>
+const grid=document.getElementById('grid');
+const diag=document.getElementById('diag');
+const t0=Date.now();
+let lastHttp=0;
+let httpOk=false;
+let inflight=false;
+
+function paintCard(card,on){
+  card.classList.toggle('on',!!on);
+  card.querySelector('b').textContent=on?'ON':'OFF';
+}
+
+function ensureGrid(n){
+  if(grid.children.length===n)return;
+  grid.innerHTML=Array.from({length:n},(_,i)=>
+    `<div class="ch" data-ch="${i}">CH${i+1}${i===0?' · импульс / DI1':''}<b>OFF</b>
+      <div class="btns">
+        <button type="button" class="btn-on" data-on="1">Вкл</button>
+        <button type="button" class="btn-off" data-on="0">Выкл</button>
+      </div>
+    </div>`
+  ).join('');
+}
+
 function apply(d){
   document.getElementById('ip').textContent=d.ip;
   document.getElementById('state').textContent=d.running?'Бегущий огонь: идёт':'Бегущий огонь: стоп';
   document.getElementById('start').disabled=!!d.running;
   document.getElementById('stop').disabled=!d.running;
-  document.getElementById('grid').innerHTML=d.relays.map((on,i)=>
-    `<div class="ch ${on?'on':''}">CH${i+1}<b>${on?'ON':'OFF'}</b>
-      <div class="btns">
-        <button type="button" class="btn-on" ${on?'disabled':''} onclick="setRelay(${i},1)">Вкл</button>
-        <button type="button" class="btn-off" ${on?'':'disabled'} onclick="setRelay(${i},0)">Выкл</button>
-      </div>
-    </div>`
-  ).join('');
+  if(d.relays){
+    ensureGrid(d.relays.length);
+    d.relays.forEach((on,i)=>paintCard(grid.children[i],on));
+  }
 }
+
+function paintDiag(){
+  const page=Math.floor((Date.now()-t0)/1000);
+  const ago=lastHttp?((Date.now()-lastHttp)/1000).toFixed(1):'—';
+  const stale=httpOk&&lastHttp&&(Date.now()-lastHttp>4000);
+  const ok=httpOk&&!stale;
+  diag.textContent='страница: '+page+' с · HTTP: '+(ok?'ок ('+ago+' с назад)':'нет ответа — нажми Обновить');
+  diag.classList.toggle('bad',!ok);
+}
+
+async function request(url,ms=1500){
+  const ac=new AbortController();
+  const t=setTimeout(()=>ac.abort(),ms);
+  try{
+    const r=await fetch(url+(url.indexOf('?')>=0?'&':'?')+'_='+Date.now(),{cache:'no-store',signal:ac.signal});
+    const d=await r.json();
+    lastHttp=Date.now();
+    httpOk=true;
+    apply(d);
+  }catch(e){
+    httpOk=false;
+  }finally{
+    clearTimeout(t);
+    paintDiag();
+  }
+}
+
 async function tick(){
-  try{
-    apply(await fetch('/api/relays').then(r=>r.json()));
-  }catch(e){}
+  if(inflight)return;
+  inflight=true;
+  await request('/api/relays');
+  inflight=false;
 }
-async function setChase(path){
-  try{
-    apply(await fetch(path).then(r=>r.json()));
-  }catch(e){}
-}
-async function setRelay(ch,on){
-  try{
-    apply(await fetch('/api/relay?ch='+ch+'&on='+on).then(r=>r.json()));
-  }catch(e){}
-}
-document.getElementById('start').onclick=()=>setChase('/api/chase/start');
-document.getElementById('stop').onclick=()=>setChase('/api/chase/stop');
-setInterval(tick,300);
+
+grid.addEventListener('click',e=>{
+  const btn=e.target.closest('button[data-on]');
+  if(!btn)return;
+  e.preventDefault();
+  const card=btn.closest('.ch');
+  paintCard(card,+btn.dataset.on);
+  document.getElementById('start').disabled=false;
+  document.getElementById('stop').disabled=true;
+  document.getElementById('state').textContent='Бегущий огонь: стоп';
+  request('/api/relay?ch='+card.dataset.ch+'&on='+btn.dataset.on, card.dataset.ch==='0'?2000:1500);
+});
+
+document.getElementById('start').onclick=()=>request('/api/chase/start');
+document.getElementById('stop').onclick=()=>request('/api/chase/stop');
+document.getElementById('reload').onclick=()=>{location.href='/';};
+setInterval(paintDiag,500);
+setInterval(tick,1000);
 tick();
 </script>
 </body>
