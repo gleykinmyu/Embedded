@@ -9,6 +9,7 @@
 #include "board.hpp"
 #include "core/nexDebug.hpp"
 #include "UI/uiMessages.hpp"
+#include "smcp/Console/show_file.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -25,12 +26,8 @@ MConsole::MConsole(MBrowser& browser, smcp::ILink& link, smcp::Node::ClockFn clo
     : smcp::Console<kMechCount>(link, clock)
     , _cmechs(*this)
     , _browser(browser)
+    , _groups(_show, *this)
 {
-    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        _groups[i].id = i;
-        _groups[i].clear();
-    }
-
     _showName[0] = '\0';
 }
 
@@ -274,8 +271,7 @@ bool MConsole::recallGroup(uint8_t id) noexcept
     /* active подтверждается на Ack; pending — откат на Nack. */
     _pendingActiveGroup = id;
     _groupSelectPending = true;
-    Console::setSelection(_groups[id].mech);
-    return true;
+    return _groups[id].recall();
 }
 
 
@@ -287,8 +283,8 @@ uint64_t MConsole::mechGroupMask(uint8_t mech_id, REG::BitMask<smcp::Group::Flag
 
     uint64_t mask = 0ULL;
     for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        const smcp::Group& grp = _groups[i];
-        if (grp.flag.all(group_flags) && grp.mech.contains(mech_id)) {
+        const smcp::CGroup& grp = _groups[i];
+        if (grp.flags().all(group_flags) && grp.mech().contains(mech_id)) {
             mask |= (1ULL << i);
         }
     }
@@ -323,20 +319,14 @@ bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcep
         return false;
     }
 
-    smcp::Group& grp = _groups[id];
-    const bool occupied = !grp.isEmpty();
-    if (occupied && !confirmed) {
-        _status = Status::GroupOccupied;
-        return false;
+    const char* rec_name = name;
+    if ((rec_name == nullptr || rec_name[0] == '\0') && _groups[id].isEmpty()) {
+        rec_name = kDefaultGroupName;
     }
 
-    grp.id = id;
-    grp.setSelection(selection);
-
-    if (name != nullptr && name[0] != '\0') {
-        grp.setName(name);
-    } else if (!occupied) {
-        grp.setName(kDefaultGroupName);
+    if (!_groups[id].record(selection, rec_name, confirmed)) {
+        _status = Status::GroupOccupied;
+        return false;
     }
 
     markEdited();
@@ -348,15 +338,10 @@ bool MConsole::recordGroup(uint8_t id, const char* name, bool confirmed) noexcep
 
 bool MConsole::renameGroup(uint8_t id, const char* name) noexcept
 {
-    if (!validGroupId(id) || name == nullptr || name[0] == '\0') {
+    if (!validGroupId(id) || !_groups[id].rename(name)) {
         return false;
     }
 
-    if (_groups[id].isEmpty()) {
-        return false;
-    }
-
-    _groups[id].setName(name);
     markEdited();
     return true;
 }
@@ -374,12 +359,11 @@ bool MConsole::clearGroup(uint8_t id, bool confirmed) noexcept
         return true;
     }
 
-    if (!confirmed) {
+    if (!_groups[id].clear(confirmed)) {
         _status = Status::GroupOccupied;
         return false;
     }
 
-    _groups[id].clear();
     markEdited();
     _status = Status::Ok;
     return true;
@@ -410,7 +394,7 @@ bool MConsole::isMechIsolated(uint8_t id) const noexcept
     if (!_settings.isolateGroup || _activeGroup == kNoActiveGroup || !validMechId(id)) {
         return false;
     }
-    return !_groups[_activeGroup].mech.contains(id);
+    return !_groups[_activeGroup].mech().contains(id);
 }
 
 
@@ -449,8 +433,8 @@ bool MConsole::isMechGroupBlocked(uint8_t id) const noexcept
         return false;
     }
     for (uint8_t g = 0; g < smcp::kGroupMaxCount; ++g) {
-        const smcp::Group& grp = _groups[g];
-        if (grp.isBlocked() && grp.mech.contains(id)) {
+        const smcp::CGroup& grp = _groups[g];
+        if (grp.isBlocked() && grp.mech().contains(id)) {
             return true;
         }
     }
@@ -523,7 +507,7 @@ MConsole::BlockResult MConsole::toggleGroupBlocked(uint8_t id) noexcept
     /* Пересечение с другими already-blocked группами. */
     uint8_t sharedIds[kMechCount]{};
     uint8_t sharedCount = 0u;
-    const smcp::Selection& self = _groups[id].mech;
+    const smcp::Selection& self = _groups[id].mech();
     for (uint8_t m = 0; m < kMechCount; ++m) {
         if (!self.contains(m)) {
             continue;
@@ -551,7 +535,7 @@ void MConsole::setGroupBlocked(uint8_t id, bool blocked) noexcept
 {
     _groups[id].setBlocked(blocked);
     if (blocked) {
-        const smcp::Selection& sel = _groups[id].mech;
+        const smcp::Selection& sel = _groups[id].mech();
         for (uint8_t m = 0; m < kMechCount; ++m) {
             if (!sel.contains(m)) {
                 continue;
@@ -582,8 +566,8 @@ uint8_t MConsole::collectBlockingGroupIds(uint8_t mech_id,
 
     uint8_t count = 0u;
     for (uint8_t g = 0; g < smcp::kGroupMaxCount && count < outCap; ++g) {
-        const smcp::Group& grp = _groups[g];
-        if (grp.isBlocked() && grp.mech.contains(mech_id)) {
+        const smcp::CGroup& grp = _groups[g];
+        if (grp.isBlocked() && grp.mech().contains(mech_id)) {
             out[count++] = g;
         }
     }
@@ -716,8 +700,8 @@ void MConsole::notifyShowChanged() noexcept
 
 void MConsole::newShow() noexcept
 {
-    for (smcp::Group& grp : _groups) {
-        grp.clear();
+    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        (void)_groups[i].clear(true);
     }
     clearActiveGroup();
     _settings = Settings{};
@@ -914,17 +898,12 @@ bool MConsole::importShow(BIF::IFile& io, const char* openPath) noexcept
         return false;
     }
 
-    for (smcp::Group& grp : _groups) {
-        grp.clear();
-    }
     clearActiveGroup();
     _settings = loadedSettings;
     _mode = Mode::Work;
 
     for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
-        _groups[i] = loadBuf[i];
-        _groups[i].id = i;
-        _groups[i].name[smcp::kGroupNameSize - 1u] = '\0';
+        _groups[i].readFrom(loadBuf[i]);
     }
 
     setShowName(openPath[0] != '\0' ? openPath : nameFromHdr);
@@ -956,8 +935,13 @@ bool MConsole::exportShow(BIF::IFile& io, const char* openPath) noexcept
         _status = mapFileStatus(writer.status());
         return false;
     }
+
+    smcp::Group grupWire[smcp::kGroupMaxCount];
+    for (uint8_t i = 0; i < smcp::kGroupMaxCount; ++i) {
+        _groups[i].writeTo(grupWire[i]);
+    }
     if (!writer.writeSection(smcp::kGroupSectionTag,
-                             _groups,
+                             grupWire,
                              sizeof(smcp::Group),
                              smcp::kGroupMaxCount)) {
         writer.close();

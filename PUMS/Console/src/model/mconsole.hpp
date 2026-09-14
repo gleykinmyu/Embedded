@@ -12,7 +12,7 @@
 
 #include "smcp/Console/console.hpp"
 #include "smcp/Console/cmech.hpp"
-#include "smcp/Console/show_file.hpp"
+#include "smcp/Console/show_model.hpp"
 #include "smcp/Console/group.hpp"
 #include "smcp/transport/ilink.hpp"
 
@@ -146,8 +146,8 @@ public:
     [[nodiscard]] bool isMechIsolated(uint8_t id) const noexcept;
 
     /* ========== Группы ========== */
-    [[nodiscard]] smcp::Group& group(uint8_t id) noexcept { return _groups[id]; }
-    [[nodiscard]] const smcp::Group& group(uint8_t id) const noexcept { return _groups[id]; }
+    [[nodiscard]] smcp::CGroup group(uint8_t id) noexcept { return _groups[id]; }
+    [[nodiscard]] const smcp::CGroup group(uint8_t id) const noexcept { return _groups[id]; }
     [[nodiscard]] uint8_t getActiveGroup() const noexcept { return _activeGroup; }
     /**
      * Для подсветки кнопок групп: pending Select ещё в полёте → цель,
@@ -158,25 +158,28 @@ public:
         return _groupSelectPending ? _pendingActiveGroup : _activeGroup;
     }
 
-    /* ========== Настройки ========== */
-    [[nodiscard]] const Settings& settings() const noexcept { return _settings; }
-    void setSettings(const Settings& settings) noexcept;
-
+    /** `recall <id>` — Select маски группы. */
+    [[nodiscard]] bool recallGroup(uint8_t id) noexcept;
+    /** `unrecall` — снять активную группу / selection. */
+    void clearActiveGroup() noexcept;
     /**
-     * Записать выделение в группу.
-     * @a confirmed false: занята → GroupOccupied + false; иначе запись.
-     * @a confirmed true: перезапись (жёсткие проверки остаются).
+     * `record <id> [name] [--force]`
+     * !confirmed && занята → GroupOccupied + false.
      */
     [[nodiscard]] bool recordGroup(uint8_t id,
                                    const char* name = nullptr,
                                    bool confirmed = false) noexcept;
+    /** `rename <id> <name>` */
     [[nodiscard]] bool renameGroup(uint8_t id, const char* name) noexcept;
     /**
-     * Очистить группу.
-     * @a confirmed false: непуста → GroupOccupied + false; пустая → Ok.
-     * @a confirmed true: очистка.
+     * `clear <id> [--force]`
+     * !confirmed && непуста → GroupOccupied + false; пустая → Ok.
      */
     [[nodiscard]] bool clearGroup(uint8_t id, bool confirmed = false) noexcept;
+
+    /* ========== Настройки ========== */
+    [[nodiscard]] const Settings& settings() const noexcept { return _settings; }
+    void setSettings(const Settings& settings) noexcept;
 
     [[nodiscard]] const char* blockMessage() const noexcept { return _blockMsg; }
 
@@ -219,8 +222,6 @@ private:
     {
         return id < smcp::kGroupMaxCount;
     }
-    [[nodiscard]] bool recallGroup(uint8_t id) noexcept;
-    void clearActiveGroup() noexcept;
     [[nodiscard]] static bool groupsValid(const smcp::Group* groups, uint8_t count) noexcept;
 
     /* --- SMCP leaf --- */
@@ -286,7 +287,8 @@ private:
     Mode _mode = Mode::Work;
     Status _status = Status::Ok;
     Settings _settings{};
-    smcp::Group _groups[smcp::kGroupMaxCount];
+    smcp::file::ShowFile<2> _show;
+    smcp::CGroupBank<smcp::kGroupMaxCount> _groups;
     char _showName[smcp::file::kPathSize]{};
     char _saveAsName[BIF::kDirNameSize]{};
     char _blockMsg[160]{};

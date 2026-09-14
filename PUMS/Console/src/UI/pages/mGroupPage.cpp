@@ -142,13 +142,13 @@ void MGroupPage::doRename(uint8_t group_id) noexcept
 {
     _action = Action::None;
 
-    const smcp::Group& grp = console.group(group_id);
+    const smcp::CGroup& grp = console.group(group_id);
     if (grp.isEmpty()) {
         finishToWork();
         return;
     }
 
-    ui().work.gName.txt.setGlobal(grp.name);
+    ui().work.gName.txt.setGlobal(grp.name());
     ui().work.beginRename(group_id);
     ui().showKeybdFull(ui().work.gName);
 }

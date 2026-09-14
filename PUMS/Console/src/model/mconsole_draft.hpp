@@ -1,30 +1,63 @@
 /**
  * @file mconsole_draft.hpp
- * @brief Черновик CLI-поверхности MConsole (не подключать из UI / реального MConsole).
+ * @brief Черновик нового MConsole: Console + ShowFile + Browser + банки.
  *
- * Правь имена, сигнатуры, добавляй методы. Потом перенесём в MConsole.
+ * Не подключать из UI. Живой MConsole пока старый.
+ *
+ * Состав:
+ *   Console<24>     — шина, сессии, inventory CMech*
+ *   Show            — объект шоуфайла внутри консоли (CGroupBank + SETT)
+ *   CMechBank       — объекты осей (register в Console)
+ *   Browser<64>     — каталог тома
+ *   Show _scratch   — staging на import (тот же тип)
  */
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 
-namespace Test {
+#include "iFileSystem.hpp"
+#include "smcp/Console/browser.hpp"
+#include "smcp/Console/cmech.hpp"
+#include "smcp/Console/console.hpp"
+#include "smcp/Console/group.hpp"
+#include "smcp/Console/show_model.hpp"
+#include "smcp/transport/ilink.hpp"
 
-class MConsole {
+namespace draft {
+
+inline constexpr uint32_t kSettingsSectionTag = 0x54544553u;
+inline constexpr uint16_t kFileCache = 64u;
+
+struct Settings {
+    bool isolateGroup = false;
+    uint8_t reserved[7]{};
+};
+static_assert(sizeof(Settings) == 8u, "SETT wire size");
+
+/** Шоуфайл: GRUP = CGroupBank, SETT. Живой и staging — один тип. */
+class Show : public smcp::file::ShowFile<2> {
 public:
-    /* ========== Типы ========== */
+    smcp::CGroupBank<smcp::kGroupMaxCount> grup;
+    smcp::file::Section<Settings, 1> sett;
 
-    /** Режим консоли. Block — не режим, а команда blockMech / blockGroup. */
-    enum class Mode : uint8_t {
-        Work = 0,
-        Show = 1,
-    };
+    explicit Show(smcp::IConsole& console) noexcept
+        : grup{*this, console, true}
+        , sett{*this, kSettingsSectionTag, false}
+    {}
+};
+
+class MConsole : public smcp::Console<24> {
+public:
+    using Console = smcp::Console<24>;
+    using Console::kMechCount;
+    static constexpr uint8_t kGroupCount = smcp::kGroupMaxCount;
+    static constexpr uint8_t kNoActiveGroup = 0xFFu;
+
+    enum class Mode : uint8_t { Work = 0, Show = 1 };
 
     enum class Status : uint8_t {
         Ok = 0,
-        /* шоуфайл / носитель */
         NoShowOpen,
         TemplateProtected,
         BadMagic,
@@ -36,218 +69,109 @@ public:
         MissingGrup,
         BadGroups,
         IoError,
-        /* группы */
-        InvalidGroup,
-        NoSelection,
-        GroupOccupied,
-        /* файлы */
-        BrowserFault,
         InvalidName,
         NotFound,
         FileExists,
+        NotMounted,
+        OpenDirFailed,
+        PathTooLong,
+        OpenFileProtected,
     };
 
-    enum class Result : uint8_t {
-        NoChange = 0,
-        Changed,
-        Rejected,
-        Warning, /**< Текст — lastMessage(). */
-    };
+    MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file, smcp::ILink& link,
+             smcp::Node::ClockFn clock) noexcept;
 
-    struct Settings {
-        bool isolateGroup = false;
-        uint8_t reserved[7]{};
-    };
+    smcp::CMechBank<kMechCount> cmechs;
+    Show show;
+    smcp::file::Browser<kFileCache> browser;
 
-    static constexpr uint8_t kNoActiveGroup = 0xFFu;
-    static constexpr uint8_t kMechCount = 24u;
-    static constexpr uint8_t kGroupCount = 32u;
-
-    /* ========== Режим ========== */
-
-    /** `mode` */
-    [[nodiscard]] Mode getMode() const noexcept;
-
-    /** `mode work` / `mode show` */
-    void setMode(Mode mode) noexcept;
-
-    /* ========== Лебёдки: команды ========== */
-
-    /**
-     * `select <id>` / `deselect <id>`
-     * @a on true — выбрать; false — снять. Уже в нужном состоянии → NoChange.
-     */
-    [[nodiscard]] Result selectMech(uint8_t id, bool on = true) noexcept;
-
-    /**
-     * `block <id>` / `unblock <id>`
-     * Сегментный Block на сервер. @a on — целевое состояние, не toggle.
-     */
-    [[nodiscard]] Result blockMech(uint8_t id, bool on = true) noexcept;
-
-    /* ========== Лебёдки: запросы ========== */
-
-    /** `has-selection` */
-    [[nodiscard]] bool hasSelection() const noexcept;
-
-    /** `mech <id> selected` */
-    [[nodiscard]] bool isMechSelected(uint8_t id) const noexcept;
-
-    /** `mech <id> ready` */
-    [[nodiscard]] bool isMechReady(uint8_t id) const noexcept;
-
-    /** Сегментный Block (сервер / телеметрия). */
-    [[nodiscard]] bool isMechServerBlocked(uint8_t id) const noexcept;
-
-    /** Лебёдка входит в GRUP с Flag::Blocked. */
-    [[nodiscard]] bool isMechGroupBlocked(uint8_t id) const noexcept;
-
-    /** server || GRUP */
-    [[nodiscard]] bool isMechBlocked(uint8_t id) const noexcept;
-
-    /**
-     * isolateGroup + есть active group + лебёдка не в ней.
-     * Выделение/железо не меняются — только факт «чужая».
-     */
-    [[nodiscard]] bool isMechIsolated(uint8_t id) const noexcept;
-
-    /**
-     * `why-blocked <id>`
-     * true → текст в lastMessage(); false → сообщения нет.
-     */
-    [[nodiscard]] bool fillMechBlockMessage(uint8_t id) noexcept;
-
-    /* ========== Группы: команды ========== */
-
-    /** `recall <id>` */
-    [[nodiscard]] Result recallGroup(uint8_t id) noexcept;
-
-    /** `unrecall` — снять активную группу / selection. */
-    void clearActiveGroup() noexcept;
-
-    /**
-     * `record <id> [name] [--force]`
-     * !confirmed && занята → GroupOccupied + false.
-     */
-    [[nodiscard]] bool recordGroup(uint8_t id,
-                                   const char* name = nullptr,
-                                   bool confirmed = false) noexcept;
-
-    /** `rename <id> <name>` */
-    [[nodiscard]] bool renameGroup(uint8_t id, const char* name) noexcept;
-
-    /**
-     * `clear <id> [--force]`
-     * !confirmed && непуста → GroupOccupied + false.
-     */
-    [[nodiscard]] bool clearGroup(uint8_t id, bool confirmed = false) noexcept;
-
-    /**
-     * `block-group <id>` / `unblock-group <id>`
-     * GRUP Flag::Blocked. @a on — целевое состояние, не toggle.
-     */
-    [[nodiscard]] Result blockGroup(uint8_t id, bool on = true) noexcept;
-
-    /* ========== Группы: запросы ========== */
-
-    /** Подтверждённый active (Ack). isolate смотрит сюда. */
-    [[nodiscard]] uint8_t getActiveGroup() const noexcept;
-
-    /** Цель recall/clear, пока Select в полёте; иначе = getActiveGroup(). */
-    [[nodiscard]] uint8_t pendingActiveGroup() const noexcept;
-
-    [[nodiscard]] bool isGroupEmpty(uint8_t id) const noexcept;
-    [[nodiscard]] bool isGroupBlocked(uint8_t id) const noexcept;
-    [[nodiscard]] const char* groupName(uint8_t id) const noexcept;
-
-    /** Число членов; ids — опционально, не больше outCap. */
-    [[nodiscard]] uint8_t groupMembers(uint8_t id,
-                                       uint8_t* out = nullptr,
-                                       uint8_t outCap = 0u) const noexcept;
-
-    /* ========== Шоуфайл: команды ========== */
-
-    /** `new` */
-    void newShow() noexcept;
-
-    /** `open <name>` — имя файла, не полный путь. */
-    [[nodiscard]] bool openShow(const char* name) noexcept;
-
-    /** `save` */
-    [[nodiscard]] bool saveShow() noexcept;
-
-    /**
-     * `save-as <name> [--force]`
-     * !confirmed && файл есть → FileExists + false.
-     */
-    [[nodiscard]] bool saveShowAs(const char* name, bool confirmed = false) noexcept;
-
-    /** `rm <name>` — нельзя удалить открытый. */
-    [[nodiscard]] bool removeShow(const char* name) noexcept;
-
-    /* ========== Шоуфайл: запросы ========== */
-
-    [[nodiscard]] const char* showName() const noexcept;
-    [[nodiscard]] bool isEdited() const noexcept;
-
-    /** basename пути / шаблон? */
-    [[nodiscard]] static const char* showBaseName(const char* path) noexcept;
-    [[nodiscard]] bool isTemplateName(const char* name) const noexcept;
-
-    /**
-     * `ls [from] [count]`
-     * Пишет до @a count имён начиная с @a from.
-     * @return сколько записано; имена — указатели в кэш тома (до следующего ls/refresh).
-     */
-    [[nodiscard]] std::size_t getFileNames(std::size_t from,
-                                           std::size_t count,
-                                           const char** out) noexcept;
-
-    [[nodiscard]] std::size_t fileCount() const noexcept;
-
-    /* ========== Настройки / зеркало ========== */
-
-    /** `settings` */
-    [[nodiscard]] const Settings& settings() const noexcept;
-
-    /** `settings isolate on|off` */
-    void setSettings(const Settings& settings) noexcept;
-
-    /** `restore-mirror` */
+    void setMirror(BIF::IFile* mirror) noexcept { _mirror = mirror; }
     [[nodiscard]] bool restoreMirror() noexcept;
 
-    /* ========== Статус последней команды ========== */
-
-    [[nodiscard]] Status getStatus() const noexcept;
+    [[nodiscard]] Status status() const noexcept { return _status; }
     [[nodiscard]] static const char* statusText(Status status) noexcept;
 
-    /** Текст Warning / why-blocked. */
-    [[nodiscard]] const char* lastMessage() const noexcept;
+    [[nodiscard]] Mode mode() const noexcept { return _mode; }
+    void setMode(Mode mode) noexcept { _mode = mode; }
 
-    [[nodiscard]] uint8_t lastNackCode() const noexcept; /**< smcp::msg::ErrorCode как uint8_t, пока без smcp. */
-    [[nodiscard]] uint8_t lastNackReq() const noexcept;
-    [[nodiscard]] uint8_t lastNackDetail() const noexcept; /**< mech_id или none */
-    [[nodiscard]] static const char* nackText(uint8_t code) noexcept;
+    [[nodiscard]] bool hasSelection() const noexcept;
 
-    /* ========== События (watch) ========== */
+    [[nodiscard]] uint8_t activeGroup() const noexcept { return _activeGroup; }
+    [[nodiscard]] uint8_t uiActiveGroup() const noexcept
+    {
+        return _groupSelectPending ? _pendingActiveGroup : _activeGroup;
+    }
 
-    /** Телеметрия лебёдки изменилась. */
-    void setOnMechChanged(void (*fn)(uint8_t id) noexcept) noexcept;
+    void newShow() noexcept;
+    [[nodiscard]] bool openShow(const char* name) noexcept;
+    [[nodiscard]] bool saveShow() noexcept;
+    [[nodiscard]] bool saveShowAs(const char* name, bool confirmed = false) noexcept;
+    [[nodiscard]] bool removeShow(const char* name) noexcept;
 
-    /** Nack / Timeout на Select|Block|SetTarget. Код — lastNack*. */
-    void setOnNack(void (*fn)() noexcept) noexcept;
+    [[nodiscard]] const char* showName() const noexcept { return show.name(); }
 
-    /** Ack Select (recall / unrecall / selectMech) — active group закоммичен. */
-    void setOnSelectAck(void (*fn)() noexcept) noexcept;
+    [[nodiscard]] static const char* showBaseName(const char* path) noexcept;
+    [[nodiscard]] static bool isTemplateName(const char* name) noexcept;
 
-    /** Фаза линка (smcp IConsole::Phase). */
-    void setOnPhase(void (*fn)(uint8_t phase) noexcept) noexcept;
+    void setOnMechChanged(void (*fn)(uint8_t) noexcept) noexcept { _onMechChanged = fn; }
+    void setOnNack(void (*fn)() noexcept) noexcept { _onNack = fn; }
+    void setOnSelectAck(void (*fn)() noexcept) noexcept { _onSelectAck = fn; }
+    void setOnPhase(void (*fn)(Phase) noexcept) noexcept { _onPhase = fn; }
+    void setOnShowChanged(void (*fn)() noexcept) noexcept { _onShowChanged = fn; }
 
-    /** Имя шоу / флаг edited. */
-    void setOnShowChanged(void (*fn)() noexcept) noexcept;
+    [[nodiscard]] smcp::msg::ErrorCode lastNack() const noexcept { return _lastNack; }
+    [[nodiscard]] smcp::msg::MsgId lastNackReq() const noexcept { return _lastNackReq; }
+    [[nodiscard]] uint8_t lastNackDetail() const noexcept { return _lastNackDetail; }
 
-    /** Модель изменилась (режим, группы, settings) — не telemetry и не Select Ack. */
-    void setOnChanged(void (*fn)() noexcept) noexcept;
+private:
+    void onTelemetry(const smcp::msg::Header& hdr,
+                     const smcp::msg::Telemetry& body) noexcept override;
+    void onAck(smcp::Session* session, const smcp::TxSlot& req) noexcept override;
+    void onNack(smcp::Session* session, const smcp::TxSlot& req,
+                const smcp::msg::Nack& reply) noexcept override;
+    void onPhase(Phase phase) noexcept override;
+
+    [[nodiscard]] bool fail(Status st) noexcept
+    {
+        _status = st;
+        return false;
+    }
+    [[nodiscard]] bool ok() noexcept
+    {
+        _status = Status::Ok;
+        return true;
+    }
+
+    [[nodiscard]] static bool groupsValid(const Show& show) noexcept;
+    [[nodiscard]] static Status mapFile(smcp::file::Status st) noexcept;
+    [[nodiscard]] static Status mapBrowser(smcp::file::IBrowser::Status st) noexcept;
+
+    [[nodiscard]] bool ensureDir() noexcept;
+    [[nodiscard]] bool commitScratch() noexcept;
+    [[nodiscard]] bool importFrom(BIF::IFile& io, const char* path) noexcept;
+    [[nodiscard]] bool exportTo(BIF::IFile& io, const char* path) noexcept;
+    void persistMirror() noexcept;
+    void notifyShow() noexcept;
+
+    Show _scratch;
+    BIF::IFile& _file;
+    BIF::IFile* _mirror = nullptr;
+
+    Mode _mode = Mode::Work;
+    Status _status = Status::Ok;
+    uint8_t _activeGroup = kNoActiveGroup;
+    uint8_t _pendingActiveGroup = kNoActiveGroup;
+    bool _groupSelectPending = false;
+
+    smcp::msg::ErrorCode _lastNack = smcp::msg::ErrorCode::Ok;
+    smcp::msg::MsgId _lastNackReq = smcp::msg::MsgId::Select;
+    uint8_t _lastNackDetail = smcp::msg::kNackDetailNone;
+
+    void (*_onMechChanged)(uint8_t) noexcept = nullptr;
+    void (*_onNack)() noexcept = nullptr;
+    void (*_onSelectAck)() noexcept = nullptr;
+    void (*_onPhase)(Phase) noexcept = nullptr;
+    void (*_onShowChanged)() noexcept = nullptr;
 };
 
-} // namespace Test
+} // namespace draft

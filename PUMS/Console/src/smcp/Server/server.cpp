@@ -45,6 +45,7 @@ void IServer::pushTelemetry(uint8_t mech_id) noexcept
     tel.holder_id = m->holder();
     tel.position_mm = m->position();
     tel.status = m->status();
+    tel.reserved = 0;
 
     send(tel, msg::kBroadcastId);
 }

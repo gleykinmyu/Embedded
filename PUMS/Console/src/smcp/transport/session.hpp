@@ -10,11 +10,10 @@
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
-#include <utility>
 
 #include "ms_timer.hpp"
+#include "obj_bank.hpp"
 #include "obj_registry.hpp"
 #include "smcp/transport/node.hpp"
 
@@ -157,28 +156,6 @@ private:
 
 /** Банк S[N]: ctor регистрирует каждый в Node::sessions() подряд. */
 template <uint8_t N, typename S = Session>
-class SessionBank {
-public:
-    template <typename Owner>
-    explicit SessionBank(Owner& owner) noexcept
-        : SessionBank(owner, std::make_index_sequence<N>{})
-    {}
-
-    [[nodiscard]] S& operator[](uint8_t i) noexcept { return _items[i]; }
-    [[nodiscard]] const S& operator[](uint8_t i) const noexcept { return _items[i]; }
-
-    [[nodiscard]] S* begin() noexcept { return _items; }
-    [[nodiscard]] S* end() noexcept { return _items + N; }
-    [[nodiscard]] const S* begin() const noexcept { return _items; }
-    [[nodiscard]] const S* end() const noexcept { return _items + N; }
-
-private:
-    template <typename Owner, std::size_t... I>
-    SessionBank(Owner& owner, std::index_sequence<I...>) noexcept
-        : _items{((void)I, S{owner})...}
-    {}
-
-    S _items[N];
-};
+using SessionBank = MISC::ObjBank<S, N, false>;
 
 } // namespace smcp

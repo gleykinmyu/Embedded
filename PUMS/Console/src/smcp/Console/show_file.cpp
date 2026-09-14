@@ -13,13 +13,6 @@
 namespace smcp {
 namespace file {
 
-uint16_t computeHeaderCrc16(const Header& hdr) noexcept
-{
-    Header tmp = hdr;
-    tmp.header_crc16 = 0;
-    return MISC::crc16Ccitt(reinterpret_cast<const uint8_t*>(&tmp), sizeof(tmp));
-}
-
 bool updateFileCrc32(IFile& io,
                      std::size_t offset,
                      std::size_t length,
@@ -41,19 +34,6 @@ bool updateFileCrc32(IFile& io,
         crc = MISC::crc32Update(crc, buf, n);
         length -= n;
     }
-    return true;
-}
-
-bool computeFileCrc32(IFile& io,
-                      std::size_t offset,
-                      std::size_t length,
-                      uint32_t& out_crc) noexcept
-{
-    uint32_t crc = MISC::crc32Init();
-    if (!updateFileCrc32(io, offset, length, crc)) {
-        return false;
-    }
-    out_crc = MISC::crc32Final(crc);
     return true;
 }
 
@@ -381,16 +361,8 @@ bool Reader::load() noexcept
         return false;
     }
 
-    if (_hdr.magic != kMagic) {
-        _status = Status::BadMagic;
-        return false;
-    }
-    if (_hdr.version != kVersion) {
-        _status = Status::BadVersion;
-        return false;
-    }
-    if (computeHeaderCrc16(_hdr) != _hdr.header_crc16) {
-        _status = Status::BadHeaderCrc;
+    _status = checkHeader(_hdr);
+    if (_status != Status::Ok) {
         return false;
     }
     if (_hdr.section_count == 0u || _hdr.section_count > _catalogCapacity) {
@@ -398,13 +370,8 @@ bool Reader::load() noexcept
         return false;
     }
 
-    const std::size_t payload_base = _hdr.payloadBase();
-    if (_hdr.total_size < payload_base) {
-        _status = Status::BadLayout;
-        return false;
-    }
-    if (_io.size() < static_cast<std::size_t>(_hdr.total_size)) {
-        _status = Status::Truncated;
+    _status = checkFileSize(_hdr, _io.size());
+    if (_status != Status::Ok) {
         return false;
     }
 
@@ -418,28 +385,11 @@ bool Reader::load() noexcept
         return false;
     }
 
-    std::size_t cursor = payload_base;
+    std::size_t cursor = _hdr.payloadBase();
     for (uint16_t i = 0; i < _hdr.section_count; ++i) {
         const SectionDesc& sec = _catalog[i];
-        if (sec.tag == 0u || sec.byte_size == 0u || sec.record_count == 0u) {
-            _status = Status::BadLayout;
-            return false;
-        }
-        if (sec.offset != cursor) {
-            _status = Status::BadLayout;
-            return false;
-        }
-        if (sec.offset > UINT32_MAX - sec.byte_size) {
-            _status = Status::BadLayout;
-            return false;
-        }
-        const std::size_t end = sec.endOffset();
-        if (end > static_cast<std::size_t>(_hdr.total_size)) {
-            _status = Status::BadLayout;
-            return false;
-        }
-        if ((sec.byte_size % sec.record_count) != 0u) {
-            _status = Status::BadLayout;
+        _status = checkSectionDesc(sec, cursor, _hdr.total_size);
+        if (_status != Status::Ok) {
             return false;
         }
         for (uint16_t j = 0; j < i; ++j) {
@@ -452,7 +402,7 @@ bool Reader::load() noexcept
             static_cast<unsigned>(i), static_cast<unsigned long>(sec.tag),
             static_cast<unsigned>(sec.offset), static_cast<unsigned>(sec.byte_size),
             static_cast<unsigned>(sec.record_count));
-        cursor = end;
+        cursor = sec.endOffset();
     }
     if (cursor != static_cast<std::size_t>(_hdr.total_size)) {
         _status = Status::BadLayout;

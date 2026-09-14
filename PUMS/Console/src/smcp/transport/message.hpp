@@ -276,20 +276,24 @@ struct SetTarget {
 };
 
 /**
- * Telemetry — DLC=7 (broadcast, без pkt_id)
- *   +---------+--------+--------------+--------+
- *   | mech_id | holder | position LE  | status |
- *   |   u8    |  u8    |    i32       |   u8   |
- *   +---------+--------+--------------+--------+
- *    data[0]   data[1]  data[2..5]     data[6]
+ * Telemetry — DLC=8 (broadcast, без pkt_id)
+ *   +---------+----------+--------+--------+--------------+
+ *   | mech_id | reserved | holder | status | position LE  |
+ *   |   u8    |    u8    |  u8    |   u8   |     i32      |
+ *   +---------+----------+--------+--------+--------------+
+ *    data[0]   data[1]    data[2]  data[3]  data[4..7]
+ *
+ * reserved после mech_id — слот под dual-axis / расширение адресации.
+ * position с data[4]: i32 выровнен, первые 4 байта — заголовок оси.
  */
 struct Telemetry {
     static constexpr MsgId kId = MsgId::Telemetry;
 
     uint8_t mech_id = 0;
+    uint8_t reserved = 0;
     uint8_t holder_id = kHolderNone;
-    int32_t position_mm = 0;
     REG::BitMask<IMech::Status> status{};
+    int32_t position_mm = 0;
 
     [[nodiscard]] bool serialize(BIF::CAN::Frame& frame) const noexcept;
     [[nodiscard]] static bool deserialize(const BIF::CAN::Frame& frame, Telemetry& out) noexcept;

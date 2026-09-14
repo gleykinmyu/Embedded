@@ -160,7 +160,7 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     const uint8_t group_id = groupIdForSlot(index);
-    const smcp::Group& grp = console.group(group_id);
+    const smcp::CGroup& grp = console.group(group_id);
     if (grp.isEmpty()) {
         return;
     }
@@ -351,14 +351,14 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
 
     for (uint8_t i = 0; i < GroupButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
-        const smcp::Group& grp = console.group(group_id);
+        const smcp::CGroup& grp = console.group(group_id);
 
         if (textModified) {
             char preamble[] = "  00 - ";
             preamble[2] = static_cast<char>('0' + (group_id / 10u));
             preamble[3] = static_cast<char>('0' + (group_id % 10u));
             groupBtn[i].txt.set(preamble);
-            groupBtn[i].appendText(grp.name);
+            groupBtn[i].appendText(grp.name());
         }
 
         State next = State::Disabled;
@@ -385,7 +385,7 @@ void WorkPage::refreshAssignBtn() noexcept
 
     for (uint8_t i = 0; i < GroupAssignButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
-        const smcp::Group& grp = console.group(group_id);
+        const smcp::CGroup& grp = console.group(group_id);
 
         State next = State::Disabled;
         if (assignOk) {

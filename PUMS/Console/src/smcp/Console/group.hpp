@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "bitmask.hpp"
+#include "smcp/Console/show_model.hpp"
 
 namespace smcp {
 
@@ -86,10 +87,12 @@ static_assert(sizeof(Selection) == sizeof(uint32_t));
 
 
 /**
- * Группа механизмов — 64 байта (wire = runtime).
+ * Группа механизмов — 64 байта, запись секции GRUP (только wire).
  *
  * Layout:
- *   0 id(1) | 1 flag(1) | 2 crc16(2) | 4 reserved(4) | 8 mech(4) | 12 pad(4) | 16 name(48)
+ *   0 id(1) | 1 flag(1) | 2 reserved_1(2) | 4 mech(4) | 8 name(48) | 56 reserved_2(8)
+ *
+ * reserved_1 после flag: 2 байта до выравнивания uint32 у mech.
  */
 struct Group {
     enum class Flag : uint8_t {
@@ -98,11 +101,10 @@ struct Group {
     };
     uint8_t id = 0;
     REG::BitMask<Flag> flag;
-    uint16_t crc16 = 0;
-    uint8_t reserved[4]{};
+    uint8_t reserved_1[2]{};
     Selection mech;
-    uint8_t pad[4]{};
     char name[kGroupNameSize]{};
+    uint8_t reserved_2[8]{};
 
     [[nodiscard]] constexpr bool isEmpty() const noexcept { return mech.empty(); }
 
@@ -110,10 +112,9 @@ struct Group {
     {
         mech = Selection{};
         flag = {};
-        crc16 = 0;
-        std::memset(reserved, 0, sizeof(reserved));
-        std::memset(pad, 0, sizeof(pad));
+        std::memset(reserved_1, 0, sizeof(reserved_1));
         std::memset(name, 0, sizeof(name));
+        std::memset(reserved_2, 0, sizeof(reserved_2));
     }
 
     void setName(const char* group_name) noexcept
@@ -126,13 +127,12 @@ struct Group {
         name[kGroupNameSize - 1u] = '\0';
     }
 
-    void setSelection(Selection selection) noexcept { mech = selection; }
-
     [[nodiscard]] constexpr bool isBlocked() const noexcept { return flag.any(Flag::Blocked); }
 
-    void setBlocked(bool blocked) noexcept
+    /** @a on — целевое состояние, не toggle. */
+    void setBlocked(bool on = true) noexcept
     {
-        if (blocked) {
+        if (on) {
             flag.set(Flag::Blocked);
         } else {
             flag.clear(Flag::Blocked);
@@ -142,6 +142,99 @@ struct Group {
 
 static_assert(sizeof(Group) == kGroupWireSize);
 static_assert(alignof(Group) == alignof(uint32_t));
+static_assert(offsetof(Group, id) == 0);
+static_assert(offsetof(Group, flag) == 1);
+static_assert(offsetof(Group, reserved_1) == 2);
+static_assert(offsetof(Group, mech) == 4);
+static_assert(offsetof(Group, name) == 8);
+static_assert(offsetof(Group, reserved_2) == 56);
+
+
+class IConsole;
+
+/**
+ * Прокси слота GRUP: ссылки на запись в секции и на пульт.
+ * В шоуфайл пишется Group (64 байта), не этот объект.
+ */
+class CGroup {
+    IConsole& _console;
+    Group& _rec;
+    file::ISection& _section;
+
+public:
+    CGroup(IConsole& console, Group& rec, file::ISection& section) noexcept
+        : _console(console)
+        , _rec(rec)
+        , _section(section)
+    {}
+
+    [[nodiscard]] uint8_t id() const noexcept { return _rec.id; }
+    [[nodiscard]] const Selection& mech() const noexcept { return _rec.mech; }
+    [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept { return _rec.flag; }
+    [[nodiscard]] const char* name() const noexcept { return _rec.name; }
+
+    [[nodiscard]] bool isEmpty() const noexcept { return _rec.isEmpty(); }
+    [[nodiscard]] bool isBlocked() const noexcept { return _rec.isBlocked(); }
+    void setBlocked(bool on = true) noexcept;
+
+    /** Select маски группы. */
+    [[nodiscard]] bool recall() noexcept;
+
+    /**
+     * Записать выделение в слот.
+     * Пустая — всегда; непустая — только @a confirmed (перезапись).
+     */
+    [[nodiscard]] bool record(Selection selection,
+                              const char* name = nullptr,
+                              bool confirmed = false) noexcept;
+    /** Переименовать непустую группу. */
+    [[nodiscard]] bool rename(const char* name) noexcept;
+    /**
+     * Очистить слот.
+     * Пустая — true; непустая — только @a confirmed.
+     */
+    [[nodiscard]] bool clear(bool confirmed = false) noexcept;
+
+    /** Прочитать запись шоуфайла; id слота не меняется. */
+    void readFrom(const Group& rec) noexcept;
+    /** Выгрузить запись шоуфайла. */
+    void writeTo(Group& rec) const noexcept { rec = _rec; }
+};
+
+/**
+ * Секция GRUP + банк слотов: payload — Group[N], operator[] даёт временный CGroup.
+ */
+template <uint8_t N>
+class CGroupBank : public file::Section<Group, N> {
+    using Base = file::Section<Group, N>;
+    IConsole& _console;
+
+    using Base::begin;
+    using Base::end;
+
+public:
+    static constexpr uint8_t kCount = N;
+
+    CGroupBank(file::IShowFile& file, IConsole& console, bool required = true) noexcept
+        : Base(file, kGroupSectionTag, required)
+        , _console(console)
+    {
+        for (uint8_t i = 0; i < N; ++i) {
+            this->rec(i).id = i;
+        }
+    }
+
+    [[nodiscard]] CGroup operator[](uint8_t i) noexcept
+    {
+        return CGroup(_console, this->rec(i), *this);
+    }
+
+    [[nodiscard]] const CGroup operator[](uint8_t i) const noexcept
+    {
+        return CGroup(_console, const_cast<Group&>(this->rec(i)),
+                      const_cast<CGroupBank&>(*this));
+    }
+};
 
 
 REG_BITMASK_ENUM_OPS(Group::Flag)

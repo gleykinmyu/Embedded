@@ -302,20 +302,21 @@ bool SetTarget::deserialize(const BIF::CAN::Frame& frame, SetTarget& out) noexce
 
 bool Telemetry::serialize(BIF::CAN::Frame& frame) const noexcept
 {
-    return push(frame, mech_id) && push(frame, holder_id)
-        && push_le32(frame, static_cast<uint32_t>(position_mm))
-        && push(frame, static_cast<uint8_t>(status.raw()));
+    return push(frame, mech_id) && push(frame, reserved) && push(frame, holder_id)
+        && push(frame, static_cast<uint8_t>(status.raw()))
+        && push_le32(frame, static_cast<uint32_t>(position_mm));
 }
 
 bool Telemetry::deserialize(const BIF::CAN::Frame& frame, Telemetry& out) noexcept
 {
-    if (!expectDlc(frame, 7)) {
+    if (!expectDlc(frame, 8)) {
         return false;
     }
     out.mech_id = frame.data[0];
-    out.holder_id = frame.data[1];
-    out.position_mm = static_cast<int32_t>(load_le32(frame.data + 2));
-    out.status = REG::BitMask<IMech::Status>::from_raw(frame.data[6]);
+    out.reserved = frame.data[1];
+    out.holder_id = frame.data[2];
+    out.status = REG::BitMask<IMech::Status>::from_raw(frame.data[3]);
+    out.position_mm = static_cast<int32_t>(load_le32(frame.data + 4));
     return true;
 }
 
