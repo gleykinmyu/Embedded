@@ -156,6 +156,10 @@ public:
 
     ISection(const ISection&) = delete;
     ISection& operator=(const ISection&) = delete;
+    virtual ~ISection() = default;
+
+    virtual void clearData() noexcept = 0;
+    [[nodiscard]] virtual bool isValid() const noexcept { return true; }
 
     [[nodiscard]] IShowFile& showFile() noexcept { return _file; }
     [[nodiscard]] const IShowFile& showFile() const noexcept { return _file; }
@@ -195,6 +199,9 @@ public:
     {
         return io.write(&_data, payloadBytes());
     }
+
+    /** Payload + desc. Только секция той же раскладки (тег и размер). */
+    [[nodiscard]] bool copyFrom(const ISection& src) noexcept;
 };
 
 class IShowFile {
@@ -247,6 +254,10 @@ protected:
 public:
     IShowFile(const IShowFile&) = delete;
     IShowFile& operator=(const IShowFile&) = delete;
+    virtual ~IShowFile() = default;
+
+    virtual void clearData() noexcept;
+    [[nodiscard]] virtual bool isValid() const noexcept;
 
     [[nodiscard]] uint16_t sectionCount() const noexcept
     {
@@ -279,6 +290,12 @@ public:
 
     [[nodiscard]] Status load(IFile& io, const char* path) noexcept;
     [[nodiscard]] Status save(IFile& io, const char* path) noexcept;
+
+    /**
+     * Имя, mismatches, payload по id реестра. edited не копируется.
+     * Оба файла — один конкретный тип (тот же набор секций). Иначе false, dest не меняется.
+     */
+    [[nodiscard]] bool copyFrom(const IShowFile& src) noexcept;
 };
 
 template <typename Rec, uint16_t N>
@@ -301,6 +318,14 @@ public:
     explicit Section(IShowFile& file, uint32_t tag, bool required = false) noexcept
         : ISection(file, tag, kSlotCount, kSlotSize, required, _rec)
     {}
+
+    void clearData() noexcept override
+    {
+        for (uint16_t i = 0; i < N; ++i) {
+            _rec[i] = Rec{};
+        }
+        clearDesc();
+    }
 
     Rec* begin() noexcept { return _rec; }
     Rec* end() noexcept { return _rec + N; }

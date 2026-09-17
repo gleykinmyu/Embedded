@@ -224,6 +224,30 @@ public:
         }
     }
 
+    void clearData() noexcept override
+    {
+        for (uint8_t i = 0; i < N; ++i) {
+            this->rec(i).clear();
+        }
+        this->clearDesc();
+    }
+
+    [[nodiscard]] bool isValid() const noexcept override
+    {
+        constexpr uint8_t kKnown = static_cast<uint8_t>(Group::Flag::Blocked)
+            | static_cast<uint8_t>(Group::Flag::Atomic);
+        for (uint8_t i = 0; i < N; ++i) {
+            const Group& g = this->rec(i);
+            if ((g.flag.raw() & static_cast<uint8_t>(~kKnown)) != 0u) {
+                return false;
+            }
+            if (std::memchr(g.name, '\0', kGroupNameSize) == nullptr) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] CGroup operator[](uint8_t i) noexcept
     {
         return CGroup(_console, this->rec(i), *this);

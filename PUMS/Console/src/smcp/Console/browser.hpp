@@ -45,19 +45,19 @@ public:
     IBrowser(const IBrowser&) = delete;
     IBrowser& operator=(const IBrowser&) = delete;
 
-    [[nodiscard]] Status status() const noexcept { return _status; }
-    [[nodiscard]] const char* dirPath() const noexcept { return _dirPath; }
-    [[nodiscard]] uint16_t cacheCapacity() const noexcept { return _cacheCapacity; }
+    Status status() const noexcept { return _status; }
+    const char* dirPath() const noexcept { return _dirPath; }
+    uint16_t cacheCapacity() const noexcept { return _cacheCapacity; }
 
-    [[nodiscard]] uint16_t dirCount() const noexcept { return _dirCount; }
-    [[nodiscard]] uint16_t cacheCount() const noexcept { return _cacheCount; }
+    uint16_t dirCount() const noexcept { return _dirCount; }
+    uint16_t cacheCount() const noexcept { return _cacheCount; }
 
-    [[nodiscard]] const Entry* at(uint16_t i) const noexcept
+    const Entry* at(uint16_t i) const noexcept
     {
         return (i < _cacheCount) ? &_entries[i] : nullptr;
     }
 
-    [[nodiscard]] const Entry& operator[](uint16_t i) const noexcept
+    const Entry& operator[](uint16_t i) const noexcept
     {
         return _entries[(i < _cacheCount) ? i : 0u];
     }
@@ -75,13 +75,29 @@ public:
      */
     [[nodiscard]] bool refresh() noexcept;
 
-    [[nodiscard]] bool makePath(char* out, std::size_t outLen, const char* name) const noexcept;
+    [[nodiscard]] bool makePath(char* out, std::size_t outLen, const char* name) noexcept;
+
+    /** Имя есть в кэше. true → status FileExists. */
+    [[nodiscard]] bool contains(const char* name) noexcept;
 
     /** Удалить файл в текущем каталоге (basename). Затем refresh(). */
     [[nodiscard]] bool remove(const char* name) noexcept;
 
     /** Переименовать в текущем каталоге. Цель уже есть → FileExists. */
     [[nodiscard]] bool rename(const char* from, const char* to) noexcept;
+
+    /**
+     * Подменить dest файлом tmp (оба — basename текущего каталога).
+     * dest нет — rename; dest есть — remove, затем rename.
+     * rename не удался — tmp удаляется.
+     *
+     * Содержимое пишет вызывающий, браузер только меняет имена:
+     *   browser.makePath(tmpPath, sizeof(tmpPath), "tmp");
+     *   live.save(main, tmpPath);
+     *   browser.replaceWith("tmp", "foo.smc");
+     *   live.save(bak, "");                   // вспышка после успешной замены
+     */
+    [[nodiscard]] bool replaceWith(const char* tmpName, const char* destName) noexcept;
 
     /**
      * Копировать файл в текущем каталоге.
@@ -95,7 +111,7 @@ private:
     [[nodiscard]] bool readyDir() noexcept;
     [[nodiscard]] bool resolvePath(char* out, std::size_t outLen, const char* name) noexcept;
     [[nodiscard]] bool ok() noexcept;
-    [[nodiscard]] bool fail(Status st) noexcept;
+    bool fail(Status st) noexcept;
     void clear() noexcept;
 
     [[nodiscard]] static bool skip(const Entry& e) noexcept;

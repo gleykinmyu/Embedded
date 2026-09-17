@@ -105,6 +105,19 @@ void ISection::markEdited() noexcept
     _file.markEdited();
 }
 
+bool ISection::copyFrom(const ISection& src) noexcept
+{
+    if (&src == this) {
+        return true;
+    }
+    if (tag() != src.tag() || payloadBytes() != src.payloadBytes()) {
+        return false;
+    }
+    std::memcpy(&_data, src.payload(), payloadBytes());
+    _desc = src.desc();
+    return true;
+}
+
 Status IShowFile::fail(Status st) noexcept
 {
     _status = st;
@@ -137,6 +150,51 @@ void IShowFile::setName(const char* name) noexcept
     }
     std::strncpy(_name, name, sizeof(_name) - 1u);
     _name[sizeof(_name) - 1u] = '\0';
+}
+
+void IShowFile::clearData() noexcept
+{
+    setName(nullptr);
+    _status = Status::Ok;
+    _mismatchCount = 0;
+    for (uint8_t i = 0; i < kMaxMismatches; ++i) {
+        _mismatches[i] = {};
+    }
+    forEachSection([](ISection& sec) { sec.clearData(); });
+}
+
+bool IShowFile::copyFrom(const IShowFile& src) noexcept
+{
+    if (&src == this) {
+        return true;
+    }
+    if (sectionCount() != src.sectionCount()) {
+        return false;
+    }
+
+    const uint8_t first = _sections.firstId();
+    const uint8_t end = _sections.endId();
+    for (uint8_t id = first; id < end; ++id) {
+        const ISection* d = section(id);
+        const ISection* s = src.section(id);
+        if (d == nullptr || s == nullptr) {
+            return false;
+        }
+        if (d->tag() != s->tag() || d->payloadBytes() != s->payloadBytes()) {
+            return false;
+        }
+    }
+
+    setName(src.name());
+    _status = src._status;
+    _mismatchCount = src._mismatchCount;
+    for (uint8_t i = 0; i < kMaxMismatches; ++i) {
+        _mismatches[i] = src._mismatches[i];
+    }
+    for (uint8_t id = first; id < end; ++id) {
+        (void)section(id)->copyFrom(*src.section(id));
+    }
+    return true;
 }
 
 void IShowFile::addMismatch(Diff kind, uint32_t tag, uint16_t expected, uint16_t found) noexcept
@@ -194,6 +252,17 @@ bool IShowFile::allRequiredPresent() const noexcept
     bool ok = true;
     forEachSection([&](const ISection& s) {
         if (s.required() && s.desc().tag == 0u) {
+            ok = false;
+        }
+    });
+    return ok;
+}
+
+bool IShowFile::isValid() const noexcept
+{
+    bool ok = true;
+    forEachSection([&](const ISection& s) {
+        if (!s.isValid()) {
             ok = false;
         }
     });

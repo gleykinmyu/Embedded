@@ -1,6 +1,6 @@
 /**
  * @file browser.cpp
- * @brief IBrowser: mount, cwd, refresh, remove / rename / copy.
+ * @brief IBrowser: mount, cwd, refresh, remove / rename / replaceWith / copy.
  */
 
 #include "smcp/Console/browser.hpp"
@@ -123,12 +123,30 @@ bool IBrowser::refresh() noexcept
     return ok();
 }
 
-bool IBrowser::makePath(char* out, std::size_t outLen, const char* name) const noexcept
+bool IBrowser::makePath(char* out, std::size_t outLen, const char* name) noexcept
 {
     if (!isValidName(name)) {
+        return fail(Status::InvalidName);
+    }
+    if (!join(out, outLen, _dirPath, name)) {
+        return fail(Status::PathTooLong);
+    }
+    return ok();
+}
+
+bool IBrowser::contains(const char* name) noexcept
+{
+    if (name == nullptr || name[0] == '\0') {
+        fail(Status::InvalidName);
         return false;
     }
-    return join(out, outLen, _dirPath, name);
+    for (uint16_t i = 0; i < _cacheCount; ++i) {
+        if (std::strcmp(_entries[i].name, name) == 0) {
+            fail(Status::FileExists);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool IBrowser::remove(const char* name) noexcept
@@ -163,6 +181,34 @@ bool IBrowser::rename(const char* from, const char* to) noexcept
         return fail(Status::FileExists);
     }
     if (!_volume.rename(src, dst)) {
+        return fail(Status::IoError);
+    }
+    return refresh();
+}
+
+bool IBrowser::replaceWith(const char* tmpName, const char* destName) noexcept
+{
+    if (tmpName == nullptr || destName == nullptr || tmpName[0] == '\0'
+        || destName[0] == '\0') {
+        return fail(Status::InvalidName);
+    }
+    if (std::strcmp(tmpName, destName) == 0) {
+        return ok();
+    }
+    char tmpPath[kBrowserPathSize]{};
+    char destPath[kBrowserPathSize]{};
+    if (!resolvePath(tmpPath, sizeof(tmpPath), tmpName)
+        || !resolvePath(destPath, sizeof(destPath), destName)) {
+        return false;
+    }
+    if (!_volume.exists(tmpPath)) {
+        return fail(Status::NotFound);
+    }
+    if (_volume.exists(destPath) && !_volume.remove(destPath)) {
+        return fail(Status::IoError);
+    }
+    if (!_volume.rename(tmpPath, destPath)) {
+        (void)_volume.remove(tmpPath);
         return fail(Status::IoError);
     }
     return refresh();

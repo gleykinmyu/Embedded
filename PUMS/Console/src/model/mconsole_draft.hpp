@@ -1,15 +1,15 @@
 /**
  * @file mconsole_draft.hpp
- * @brief Черновик нового MConsole: Console + ShowFile + Browser + банки.
+ * @brief Черновик нового MConsole: Console + ShowStore + банки.
  *
  * Не подключать из UI. Живой MConsole пока старый.
  *
  * Состав:
- *   Console<24>     — шина, сессии, inventory CMech*
- *   Show            — объект шоуфайла внутри консоли (CGroupBank + SETT)
- *   CMechBank       — объекты осей (register в Console)
- *   Browser<64>     — каталог тома
- *   Show _scratch   — staging на import (тот же тип)
+ *   Console<24>         — шина, сессии, inventory CMech*
+ *   Show live/incoming  — RAM шоуфайла
+ *   Browser             — каталог тома
+ *   ShowStore           — open/save/restore поверх Browser + двух IFile
+ *   CMechBank           — объекты осей
  */
 
 #pragma once
@@ -21,6 +21,7 @@
 #include "smcp/Console/cmech.hpp"
 #include "smcp/Console/console.hpp"
 #include "smcp/Console/group.hpp"
+#include "smcp/Console/show_store.hpp"
 #include "smcp/Console/show_model.hpp"
 #include "smcp/transport/ilink.hpp"
 
@@ -59,37 +60,31 @@ public:
     enum class Status : uint8_t {
         Ok = 0,
         NoShowOpen,
-        TemplateProtected,
-        BadMagic,
-        BadVersion,
-        BadHeaderCrc,
-        BadBodyCrc,
-        BadLayout,
-        Truncated,
         MissingGrup,
         BadGroups,
-        IoError,
-        InvalidName,
-        NotFound,
-        FileExists,
-        NotMounted,
-        OpenDirFailed,
-        PathTooLong,
         OpenFileProtected,
+        BrowserFail,
+        MainFail,
+        BakFail,
+        RestoreFail,
     };
 
-    MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file, smcp::ILink& link,
-             smcp::Node::ClockFn clock) noexcept;
+    /** @a bak — тот же объект, что @a file, если резерва нет. */
+    MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file, BIF::IFile& bak,
+             smcp::ILink& link, smcp::Node::ClockFn clock) noexcept;
 
     smcp::CMechBank<kMechCount> cmechs;
-    Show show;
-    smcp::file::Browser<kFileCache> browser;
 
-    void setMirror(BIF::IFile* mirror) noexcept { _mirror = mirror; }
+    [[nodiscard]] Show& showFile() noexcept { return _live; }
+    [[nodiscard]] const Show& showFile() const noexcept { return _live; }
+    [[nodiscard]] smcp::file::ShowStore& store() noexcept { return _store; }
+    [[nodiscard]] const smcp::file::ShowStore& store() const noexcept { return _store; }
+
     [[nodiscard]] bool restoreMirror() noexcept;
 
     [[nodiscard]] Status status() const noexcept { return _status; }
-    [[nodiscard]] static const char* statusText(Status status) noexcept;
+    [[nodiscard]] const char* statusText() const noexcept;
+    [[nodiscard]] smcp::file::Status showStatus() const noexcept { return _live.status(); }
 
     [[nodiscard]] Mode mode() const noexcept { return _mode; }
     void setMode(Mode mode) noexcept { _mode = mode; }
@@ -108,10 +103,12 @@ public:
     [[nodiscard]] bool saveShowAs(const char* name, bool confirmed = false) noexcept;
     [[nodiscard]] bool removeShow(const char* name) noexcept;
 
-    [[nodiscard]] const char* showName() const noexcept { return show.name(); }
+    [[nodiscard]] const char* showName() const noexcept { return _live.name(); }
 
-    [[nodiscard]] static const char* showBaseName(const char* path) noexcept;
-    [[nodiscard]] static bool isTemplateName(const char* name) noexcept;
+    [[nodiscard]] static const char* showBaseName(const char* path) noexcept
+    {
+        return smcp::file::ShowStore::showBaseName(path);
+    }
 
     void setOnMechChanged(void (*fn)(uint8_t) noexcept) noexcept { _onMechChanged = fn; }
     void setOnNack(void (*fn)() noexcept) noexcept { _onNack = fn; }
@@ -141,21 +138,14 @@ private:
         _status = Status::Ok;
         return true;
     }
-
-    [[nodiscard]] static bool groupsValid(const Show& show) noexcept;
-    [[nodiscard]] static Status mapFile(smcp::file::Status st) noexcept;
-    [[nodiscard]] static Status mapBrowser(smcp::file::IBrowser::Status st) noexcept;
-
-    [[nodiscard]] bool ensureDir() noexcept;
-    [[nodiscard]] bool commitScratch() noexcept;
-    [[nodiscard]] bool importFrom(BIF::IFile& io, const char* path) noexcept;
-    [[nodiscard]] bool exportTo(BIF::IFile& io, const char* path) noexcept;
-    void persistMirror() noexcept;
+    [[nodiscard]] bool failStore() noexcept;
+    [[nodiscard]] static Status mapStore(smcp::file::ShowStore::Status st) noexcept;
     void notifyShow() noexcept;
 
-    Show _scratch;
-    BIF::IFile& _file;
-    BIF::IFile* _mirror = nullptr;
+    Show _incoming;
+    Show _live;
+    smcp::file::Browser<kFileCache> _browser;
+    smcp::file::ShowStore _store;
 
     Mode _mode = Mode::Work;
     Status _status = Status::Ok;
