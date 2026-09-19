@@ -17,7 +17,7 @@ DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
     }
 }
 
-void DriveMech::select(uint8_t console_id) noexcept
+bool DriveMech::select(uint8_t console_id) noexcept
 {
     if (console_id == smcp::kHolderNone) {
         if (isSelected()) {
@@ -26,23 +26,24 @@ void DriveMech::select(uint8_t console_id) noexcept
                 --s_selectedCount;
             }
         }
-        return;
+        return true;
     }
 
     if (isSelected()) {
-        return; /* уже наш или чужой — чужой не трогаем (политика снаружи) */
+        return false; /* уже наш или чужой — чужой не трогаем (политика снаружи) */
     }
 
     if (_status.any(Status::Blocked) || !_status.any(Status::Ready)) {
-        return;
+        return false;
     }
 
     if (s_selectedCount >= kMaxSelected) {
-        return;
+        return false;
     }
 
     _holder = console_id;
     ++s_selectedCount;
+    return true;
 }
 
 void DriveMech::block(bool blocked) noexcept

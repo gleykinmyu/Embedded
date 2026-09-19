@@ -25,7 +25,7 @@ public:
 
     [[nodiscard]] Type type() const noexcept { return _type; }
 
-    void select(uint8_t console_id) noexcept override;
+    bool select(uint8_t console_id) noexcept override;
     void block(bool blocked) noexcept override;
     void setTarget(const smcp::MotionTarget& target) noexcept override;
     void resetFault() noexcept override;
