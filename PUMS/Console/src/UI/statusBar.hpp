@@ -22,14 +22,15 @@ public:
     };
 
     static constexpr uint8_t kFieldCount = Count;
-    static constexpr uint16_t kDefaultHeight = 48u;
+    static constexpr nex::Coord kDefaultHeight = 48;
     static constexpr nex::Coord kOriginY = 974;
     /** Хватает под `Connecting (NNNk)`; остаток ширины — имени файла. */
-    static constexpr uint16_t kStatusColumnWidth = 180u;
-    static constexpr uint16_t kSideColumnWidth = 120u;
+    static constexpr nex::Coord kStatusColumnWidth = 180;
+    static constexpr nex::Coord kSideColumnWidth = 120;
     static constexpr size_t kTextCap = 64u;
 
-    explicit StatusBar(nex::Rect screen, uint16_t barHeight = kDefaultHeight) noexcept;
+    explicit StatusBar(nex::Rect screen, nex::Coord barHeight = kDefaultHeight,
+                       nex::Coord originY = kOriginY) noexcept;
 
     void show(nex::ovl::Overlay& ovl) noexcept;
     void hide(nex::ovl::Overlay& ovl) noexcept;
@@ -40,7 +41,7 @@ public:
     void setTime(const PHL::DateTime& dt) noexcept;
 
     /** Ширина боковой колонки (Status / Time); File занимает оставшуюся середину. */
-    void setColumnWidth(Field field, uint16_t width) noexcept;
+    void setColumnWidth(Field field, nex::Coord width) noexcept;
 
     void layout() noexcept override;
     [[nodiscard]] bool raiseOnPress() const noexcept override { return false; }
@@ -48,13 +49,13 @@ public:
 private:
     struct Column : nex::ovl::Object {
         char text[kTextCap]{};
-        uint16_t width{0u};
+        nex::Coord width{0};
         nex::HAlign align{nex::HAlign::Left};
         bool fit{false};
 
         void setText(const char* src) noexcept;
         void append(const char* src) noexcept;
-        void setWidth(uint16_t w) noexcept;
+        void setWidth(nex::Coord w) noexcept;
         void draw(const nex::AppCanvas& cs) const override;
     };
 
@@ -73,7 +74,7 @@ private:
     void presentAll() noexcept;
 
     nex::Rect _screen;
-    uint16_t _barHeight;
+    nex::Coord _barHeight;
     Column _columns[kFieldCount]{};
     nex::ovl::Overlay* _overlay{nullptr};
 };

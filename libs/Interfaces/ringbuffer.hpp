@@ -52,11 +52,38 @@ public:
     }
 
     /** Снять голову без копирования (после успешной обработки peek). */
-    void drop() noexcept
+    void drop() noexcept { drop(1u); }
+
+    /** Снять `n` элементов с головы. */
+    void drop(std::size_t n) noexcept
     {
-        if (_head != _tail) {
-            _tail = (_tail + 1u) % Size;
+        const std::size_t sz = size();
+        if (n > sz)
+            n = sz;
+        _tail = (_tail + n) % Size;
+    }
+
+    struct Linear {
+        T* data;
+        std::size_t n;
+    };
+
+    /** Занятые байты одним или двумя линейными кусками (wrap). Без копии, до `drop`. */
+    [[nodiscard]] uint8_t peekLinear(Linear out[2]) noexcept
+    {
+        const std::size_t head = _head;
+        const std::size_t tail = _tail;
+        if (head == tail)
+            return 0u;
+        if (head > tail) {
+            out[0] = {&_buffer[tail], head - tail};
+            return 1u;
         }
+        out[0] = {&_buffer[tail], Size - tail};
+        if (head == 0u)
+            return 1u;
+        out[1] = {&_buffer[0], head};
+        return 2u;
     }
 
     [[nodiscard]] std::size_t size() const noexcept

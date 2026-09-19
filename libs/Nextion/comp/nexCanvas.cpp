@@ -31,8 +31,8 @@ Region Canvas::region(const Coord x0, const Coord y0, const Coord x1, const Coor
     Point lr;
     normalizeRect(x0, y0, x1, y1, r.ul, lr);
     if (lr.x >= r.ul.x && lr.y >= r.ul.y) {
-        r.size.w = static_cast<uint16_t>(lr.x - r.ul.x + 1u);
-        r.size.h = static_cast<uint16_t>(lr.y - r.ul.y + 1u);
+        r.size.w = static_cast<Coord>(lr.x - r.ul.x + 1);
+        r.size.h = static_cast<Coord>(lr.y - r.ul.y + 1);
     }
     return r;
 }
@@ -42,19 +42,22 @@ bool Canvas::contains(const Region region, const Point p) noexcept {
 }
 
 Point Canvas::center(const Rect& screen, const Rect& box) noexcept {
-    return Point(static_cast<Coord>((static_cast<unsigned>(screen.w) - box.w) / 2u),
-        static_cast<Coord>((static_cast<unsigned>(screen.h) - box.h) / 2u));
+    return Point(static_cast<Coord>((static_cast<int32_t>(screen.w) - box.w) / 2),
+        static_cast<Coord>((static_cast<int32_t>(screen.h) - box.h) / 2));
 }
 
 Region Canvas::innerRegion(const Region& outer, const uint16_t borderThickness) noexcept {
+    if (outer.size.isEmpty())
+        return Region();
     if (borderThickness == 0u)
         return outer;
-    if (outer.size.w <= 2u * borderThickness || outer.size.h <= 2u * borderThickness)
+    const int32_t inset = 2 * static_cast<int32_t>(borderThickness);
+    if (static_cast<int32_t>(outer.size.w) <= inset || static_cast<int32_t>(outer.size.h) <= inset)
         return Region();
     return Region(Point(static_cast<Coord>(outer.ul.x + borderThickness),
                       static_cast<Coord>(outer.ul.y + borderThickness)),
-        Rect(static_cast<uint16_t>(outer.size.w - 2u * borderThickness),
-            static_cast<uint16_t>(outer.size.h - 2u * borderThickness)));
+        Rect(static_cast<Coord>(outer.size.w - inset),
+            static_cast<Coord>(outer.size.h - inset)));
 }
 
 Region Canvas::toScreen(const Region& parentScreen, const Region& childLocal) noexcept {
@@ -93,32 +96,32 @@ void AppCanvas::picture(Point at, PicId pictureId) const noexcept {
 }
 
 void AppCanvas::picture_in_place(const Region region, const PicId pictureId) const noexcept {
-    if (region.size.w == 0u || region.size.h == 0u)
+    if (region.size.isEmpty())
         return;
     _app.enqueue(Transaction{cmd::gui::PictureCrop::inPlace(region, pictureId), 0u, 0u});
 }
 
-void AppCanvas::picture_in_place(const Point upperLeft, const uint32_t w, const uint32_t h,
+void AppCanvas::picture_in_place(const Point upperLeft, const Rect size,
     const PicId pictureId) const noexcept {
-    picture_in_place(Region(upperLeft, Rect(static_cast<uint16_t>(w), static_cast<uint16_t>(h))), pictureId);
+    picture_in_place(Region(upperLeft, size), pictureId);
 }
 
 void AppCanvas::picture_draw(const Point dst, const Region src, const PicId pictureId) const noexcept {
-    if (src.size.w == 0u || src.size.h == 0u)
+    if (src.size.isEmpty())
         return;
     _app.enqueue(Transaction{cmd::gui::PictureCrop::draw(dst, src, pictureId), 0u, 0u});
 }
 
-void AppCanvas::picture_draw(const Point dst, const uint32_t w, const uint32_t h, const Point src,
+void AppCanvas::picture_draw(const Point dst, const Rect size, const Point src,
     const PicId pictureId) const noexcept {
-    picture_draw(dst, Region(src, Rect(static_cast<uint16_t>(w), static_cast<uint16_t>(h))), pictureId);
+    picture_draw(dst, Region(src, size), pictureId);
 }
 
 void AppCanvas::text_in_region(const Region region, const char* contentToken, const FontId fontId, const Color fg,
     const HAlign hAlign, const VAlign vAlign, const Color bg, const BG fill) const noexcept {
     if (contentToken == nullptr || contentToken[0] == '\0')
         return;
-    if (region.size.w == 0u || region.size.h == 0u)
+    if (region.size.isEmpty())
         return;
     _app.enqueue(Transaction{
         cmd::gui::TextInRegion(region, fontId, fg, bg, hAlign, vAlign, fill, contentToken), 0u, 0u});
@@ -127,17 +130,18 @@ void AppCanvas::text_in_region(const Region region, const char* contentToken, co
 void AppCanvas::text_in_region(const Region region, const uint16_t pad, const char* contentToken,
     const FontId fontId, const Color fg, const HAlign hAlign, const VAlign vAlign, const Color bg,
     const BG fill) const noexcept {
-    if (region.size.w <= 2u * pad || region.size.h <= 2u * pad)
+    const Coord inset = static_cast<Coord>(2 * pad);
+    if (region.size.w <= inset || region.size.h <= inset)
         return;
-    const Region inset(Point(static_cast<Coord>(region.ul.x + pad), static_cast<Coord>(region.ul.y + pad)),
-        Rect(static_cast<uint16_t>(region.size.w - 2u * pad), static_cast<uint16_t>(region.size.h - 2u * pad)));
-    text_in_region(inset, contentToken, fontId, fg, hAlign, vAlign, bg, fill);
+    const Region insetR(Point(static_cast<Coord>(region.ul.x + pad), static_cast<Coord>(region.ul.y + pad)),
+        Rect(static_cast<Coord>(region.size.w - inset), static_cast<Coord>(region.size.h - inset)));
+    text_in_region(insetR, contentToken, fontId, fg, hAlign, vAlign, bg, fill);
 }
 
 void AppCanvas::text_in_region_bordered(const Region region, const char* const contentToken, const FontId fontId,
     const Color fg, const HAlign hAlign, const VAlign vAlign, const Color fill, const Color border,
     const uint16_t borderThickness, const BG textFill) const noexcept {
-    if (region.size.w == 0u || region.size.h == 0u)
+    if (region.size.isEmpty())
         return;
     if (borderThickness > 0u)
         rect_bordered(region, fill, border, borderThickness);
@@ -145,12 +149,12 @@ void AppCanvas::text_in_region_bordered(const Region region, const char* const c
         rect_fill(region, fill);
 
     const Region textRegion = Canvas::innerRegion(region, borderThickness);
-    if (textRegion.size.w > 0u && textRegion.size.h > 0u)
+    if (!textRegion.size.isEmpty())
         text_in_region(textRegion, contentToken, fontId, fg, hAlign, vAlign, fill, textFill);
 }
 
 void AppCanvas::rect_fill(const Region rect, const Color color) const noexcept {
-    if (rect.size.w == 0u || rect.size.h == 0u)
+    if (rect.size.isEmpty())
         return;
     _app.enqueue(Transaction{cmd::gui::Rect(cmd::gui::Rect::Mode::Fill, rect, color), 0u, 0u});
 }
@@ -160,13 +164,13 @@ void AppCanvas::rect_fill(const Point upperLeft, const Point lowerRightInclusive
 }
 
 void AppCanvas::rect_fill(const Point upperLeft, const Rect size, const Color color) const noexcept {
-    if (size.w == 0u || size.h == 0u)
+    if (size.isEmpty())
         return;
     rect_fill(Region(upperLeft, size), color);
 }
 
 void AppCanvas::rect_outline(const Region rect, const Color color) const noexcept {
-    if (rect.size.w == 0u || rect.size.h == 0u)
+    if (rect.size.isEmpty())
         return;
     _app.enqueue(Transaction{cmd::gui::Rect(cmd::gui::Rect::Mode::Outline, rect, color), 0u, 0u});
 }
@@ -176,14 +180,14 @@ void AppCanvas::rect_outline(const Point upperLeft, const Point lowerRightInclus
 }
 
 void AppCanvas::rect_outline(const Point upperLeft, const Rect size, const Color color) const noexcept {
-    if (size.w == 0u || size.h == 0u)
+    if (size.isEmpty())
         return;
     rect_outline(Region(upperLeft, size), color);
 }
 
 void AppCanvas::rect_bordered(const Region outer, const Color fill, const Color border,
     const uint16_t borderThickness) const noexcept {
-    if (outer.size.w == 0u || outer.size.h == 0u)
+    if (outer.size.isEmpty())
         return;
     if (borderThickness == 0u) {
         rect_fill(outer, fill);
@@ -193,7 +197,7 @@ void AppCanvas::rect_bordered(const Region outer, const Color fill, const Color 
     rect_fill(outer, border);
 
     const Region inner = Canvas::innerRegion(outer, borderThickness);
-    if (inner.size.w > 0u && inner.size.h > 0u)
+    if (!inner.size.isEmpty())
         rect_fill(inner, fill);
 }
 
@@ -206,7 +210,7 @@ void AppCanvas::rect_bordered(const Point upperLeft, const Point lowerRightInclu
 
 void AppCanvas::rect_bordered(const Point upperLeft, const Rect size, const Color fill, const Color border,
     const uint16_t borderThickness) const noexcept {
-    if (size.w == 0u || size.h == 0u)
+    if (size.isEmpty())
         return;
     rect_bordered(Region(upperLeft, size), fill, border, borderThickness);
 }
@@ -225,20 +229,23 @@ void AppCanvas::circle_filled(const Point center, const uint16_t radius, const C
 
 // --- Font / Canvas::Button --------------------------------------------------
 
-uint16_t Font::minWidthFor(const char* text, const uint16_t padX, const int16_t spax) const noexcept {
+Coord Font::minWidthFor(const char* text, const uint16_t padX, const int16_t spax) const noexcept {
+    const int32_t pad = 2 * static_cast<int32_t>(padX);
     if (text == nullptr || text[0] == '\0')
-        return static_cast<uint16_t>(padX * 2u);
+        return static_cast<Coord>(pad < 0 ? 0 : pad);
 
-    const uint16_t glyphW = static_cast<uint16_t>((heightPx * 3u + 4u) / 5u);
-    uint16_t w = static_cast<uint16_t>(padX * 2u);
+    const int32_t glyphW = (static_cast<int32_t>(heightPx) * 3 + 4) / 5;
+    int32_t w = pad;
     const uint16_t maxChars = cmd::gui::TextInRegion::maxTextLength;
     uint16_t n = 0u;
     for (const char* p = text; *p != '\0' && n < maxChars; ++p, ++n) {
-        w = static_cast<uint16_t>(w + glyphW);
+        w += glyphW;
         if (p[1] != '\0' && spax > 0 && (n + 1u) < maxChars)
-            w = static_cast<uint16_t>(w + static_cast<uint16_t>(spax));
+            w += static_cast<int32_t>(spax);
     }
-    return w;
+    if (w < 0)
+        return 0;
+    return static_cast<Coord>(w);
 }
 
 Canvas::Button::Button(const char* const label, const Font font, const Rect size, const Color bgColor,
@@ -257,15 +264,9 @@ void Canvas::Button::setStyle(const Color bgColor, const Color pressedColor, con
 }
 
 Rect Canvas::Button::resolveSize(Rect requested) const noexcept {
-    uint16_t w = requested.w == 0u ? _region.size.w : requested.w;
-    uint16_t h = requested.h == 0u ? _region.size.h : requested.h;
-    const uint16_t minW = _font.minWidthFor(_label);
-    if (w < minW)
-        w = minW;
-    const uint16_t minH = _font.minHeightFor();
-    if (h < minH)
-        h = minH;
-    return Rect(w, h);
+    Coord w = requested.w == 0 ? _region.size.w : requested.w;
+    Coord h = requested.h == 0 ? _region.size.h : requested.h;
+    return Rect(max(w, _font.minWidthFor(_label)), max(h, _font.minHeightFor()));
 }
 
 bool Canvas::Button::isVisible() const noexcept {
@@ -291,7 +292,7 @@ void Canvas::Button::hide() noexcept {
 
 void Canvas::Button::placeRight(const Button& left, const uint16_t gap) noexcept {
     setSize(Rect(0, left._region.size.h));
-    show(left._region.ul.right(static_cast<uint16_t>(left._region.size.w + gap)));
+    show(left._region.ul.right(static_cast<Coord>(left._region.size.w + gap)));
 }
 
 bool Canvas::Button::contains(const Point p) const noexcept {

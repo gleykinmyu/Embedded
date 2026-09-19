@@ -47,9 +47,9 @@ public:
 #endif
 #if NEX_TOUCH_AREA_SIZE
     /** mcu: ширина (RO в ответе get) */
-    attr::NumRO<uint16_t> w;
+    attr::NumRO<Coord> w;
     /** mcu: высота (RO в ответе get) */
-    attr::NumRO<uint16_t> h;
+    attr::NumRO<Coord> h;
 #endif
 
     /** NIS `tsw obj,0|1` — вкл./выкл. touch на компоненте. */
@@ -224,6 +224,10 @@ public:
     void appendText(const char* text) noexcept
     {
         attr_detail::appendText(*this, attr::Id::Txt, text);
+    }
+    void appendText(const char* text, std::size_t len) noexcept
+    {
+        attr_detail::appendText(*this, attr::Id::Txt, text, len);
     }
 
 protected:

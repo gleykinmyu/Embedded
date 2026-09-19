@@ -1,5 +1,6 @@
 #include "board.hpp"
 
+#include <cstddef>
 #include <errno.h>
 
 #include "ff.h"
@@ -12,19 +13,21 @@ extern "C" DWORD get_fattime(void)
 }
 
 
-void CBoard::tick() noexcept
+bool CBoard::tick() noexcept
 {
     watchdog.kick();
 
     if (!_ledAlive) {
-        return;
+        return false;
     }
 
     const uint32_t now = GetTick();
-    if ((now - _ledBlinkMs) >= 1000u) {
-        _ledBlinkMs = now;
-        led.Toggle();
+    if ((now - _ledBlinkMs) < 1000u) {
+        return false;
     }
+    _ledBlinkMs = now;
+    led.Toggle();
+    return true;
 }
 
 void CBoard::setLedAlive(bool alive) noexcept
@@ -43,6 +46,7 @@ uint32_t boardClockMs() noexcept
 namespace {
 
 bool g_serial1_log_enabled = true;
+Serial1LogSink g_serial1_log_sink = nullptr;
 
 bool serial1TxHealthy() noexcept
 {
@@ -65,6 +69,11 @@ void setSerial1LogEnabled(bool enabled) noexcept
     g_serial1_log_enabled = enabled;
 }
 
+void setSerial1LogSink(Serial1LogSink sink) noexcept
+{
+    g_serial1_log_sink = sink;
+}
+
 extern "C" int _write(int file, char *ptr, int len) {
     (void)file;
 
@@ -76,6 +85,8 @@ extern "C" int _write(int file, char *ptr, int len) {
     }
     if (!g_serial1_log_enabled)
         return len;
+    if (g_serial1_log_sink != nullptr)
+        g_serial1_log_sink(ptr, static_cast<std::size_t>(len));
     if (!board.serial1.isOpen()) {
         errno = EIO;
         return -1;

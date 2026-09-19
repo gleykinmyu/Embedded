@@ -23,16 +23,10 @@ void Button::layout() noexcept {
 }
 
 Rect Button::resolveSize(const Rect requested) const noexcept {
-    uint16_t w = requested.w == 0u ? _region.size.w : requested.w;
-    uint16_t h = requested.h == 0u ? _region.size.h : requested.h;
+    Coord w = requested.w == 0 ? _region.size.w : requested.w;
+    Coord h = requested.h == 0 ? _region.size.h : requested.h;
     const Font& font = _style.normal.font;
-    const uint16_t minW = font.minWidthFor(_label);
-    if (w < minW)
-        w = minW;
-    const uint16_t minH = font.minHeightFor();
-    if (h < minH)
-        h = minH;
-    return Rect(w, h);
+    return Rect(max(w, font.minWidthFor(_label)), max(h, font.minHeightFor()));
 }
 
 void Button::draw(const AppCanvas& cs) const {

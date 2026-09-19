@@ -15,7 +15,7 @@ namespace nex {
  */
 class RxFramer {
 public:
-    enum class State : uint8_t { WaitHeader, Collect, WaitTerm, Resync };
+    enum class State : uint8_t { WaitHeader, Collect, Resync };
 
     RxFrame frame{};
 
@@ -26,6 +26,7 @@ public:
 
 private:
     void enterResync(uint8_t byte) noexcept;
+    bool tryComplete() noexcept;
 
     State _state = State::WaitHeader;
     uint8_t _terms = 0;

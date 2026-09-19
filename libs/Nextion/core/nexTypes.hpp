@@ -222,6 +222,9 @@ using PicId = uint16_t;
 /** Идентификатор шрифта в NIS (`font`). */
 using FontId = uint16_t;
 
+/** Пиксель NIS: `x`/`y`/`w`/`h`/`val_y` (signed int32 на проводе, в MCU `int16_t`). */
+using Coord = int16_t;
+
 /** Шрифт Nextion: id ресурса и высота глифа в пикселях (как в Font Generator). */
 struct Font {
     FontId id = 1u;
@@ -234,18 +237,16 @@ struct Font {
     {}
 
     /** Минимальная ширина подписи: оценка по высоте шрифта + `padX` с каждой стороны. */
-    [[nodiscard]] uint16_t minWidthFor(const char* text, uint16_t padX = 12u, int16_t spax = 0) const noexcept;
+    [[nodiscard]] Coord minWidthFor(const char* text, uint16_t padX = 12u, int16_t spax = 0) const noexcept;
 
     /** Минимальная высота под глиф + `padY` сверху и снизу. */
-    [[nodiscard]] constexpr uint16_t minHeightFor(uint16_t padY = 8u) const noexcept {
-        return static_cast<uint16_t>(heightPx + 2u * padY);
+    [[nodiscard]] constexpr Coord minHeightFor(uint16_t padY = 8u) const noexcept {
+        const int32_t h = static_cast<int32_t>(heightPx) + 2 * static_cast<int32_t>(padY);
+        return static_cast<Coord>(h);
     }
 };
 
 // --- Геометрия экрана ---------------------------------------------------------
-
-/** Пиксельная координата X/Y (NIS `x`, `y`, touch): ≥ 0, `uint16_t`, не `int16_t`. */
-using Coord = uint16_t;
 
 /** Точка (x, y) на экране в пикселях. */
 struct Point {
@@ -253,8 +254,8 @@ struct Point {
     Coord y;
 
     constexpr Point() noexcept
-        : x(0u)
-        , y(0u)
+        : x(0)
+        , y(0)
     {}
     constexpr Point(Coord px, Coord py) noexcept
         : x(px)
@@ -266,32 +267,40 @@ struct Point {
         return Point(static_cast<Coord>(x + dx), y);
     }
 
-    /** Точка левее на `dx` пикселей (тот же `y`, `x` не меньше 0). */
+    /** Точка левее на `dx` пикселей (тот же `y`). */
     [[nodiscard]] constexpr Point left(Coord dx) const noexcept {
-        return Point(x >= dx ? static_cast<Coord>(x - dx) : 0u, y);
+        return Point(static_cast<Coord>(x - dx), y);
     }
 };
 
 /** Размер прямоугольника в пикселях. */
 struct Rect {
-    uint16_t w = 0u;
-    uint16_t h = 0u;
+    Coord w = 0;
+    Coord h = 0;
 
     constexpr Rect() noexcept = default;
-    constexpr Rect(uint16_t width, uint16_t height) noexcept
+    constexpr Rect(Coord width, Coord height) noexcept
         : w(width)
         , h(height)
     {}
-    explicit constexpr Rect(unsigned width, unsigned height) noexcept
-        : w(static_cast<uint16_t>(width))
-        , h(static_cast<uint16_t>(height))
+
+    /** `w = (base.w * wNum) / wDen`, `h = (base.h * hNum) / hDen`. */
+    constexpr Rect(const Rect& base, unsigned wNum, unsigned wDen, unsigned hNum, unsigned hDen) noexcept
+        : w(static_cast<Coord>(static_cast<int32_t>(base.w) * static_cast<int32_t>(wNum)
+              / static_cast<int32_t>(wDen)))
+        , h(static_cast<Coord>(static_cast<int32_t>(base.h) * static_cast<int32_t>(hNum)
+              / static_cast<int32_t>(hDen)))
     {}
 
-    /** `w = (base.w * wNum) / wDen`, `h = (base.h * hNum) / hDen` — беззнаковое целочисленное деление. */
-    constexpr Rect(const Rect& base, unsigned wNum, unsigned wDen, unsigned hNum, unsigned hDen) noexcept
-        : w(static_cast<uint16_t>(static_cast<unsigned>(base.w) * wNum / wDen))
-        , h(static_cast<uint16_t>(static_cast<unsigned>(base.h) * hNum / hDen))
-    {}
+    /**
+     * `w >= 0 && h >= 0` (нулевой размер валиден). Для сырого/внешнего ввода.
+     * Геометрию экрана (`innerRegion`, `resolveSize`, `Canvas::region`, `Font::min*`)
+     * продюсеры не отдают отрицательной — режут в empty `{0,0}`. После них `isValid()`
+     * всегда true, в draw/hit/serialize его не вызывать.
+     */
+    [[nodiscard]] constexpr bool isValid() const noexcept { return w >= 0 && h >= 0; }
+    /** Нечего рисовать / некуда попасть: `w <= 0 || h <= 0` (и ноль, и отрицательное). */
+    [[nodiscard]] constexpr bool isEmpty() const noexcept { return w <= 0 || h <= 0; }
 };
 
 /** Прямоугольная область на экране: верхний левый угол и размер. */
@@ -306,20 +315,20 @@ struct Region {
     {}
 
     [[nodiscard]] constexpr Point lowerRight() const noexcept {
-        return Point(static_cast<Coord>(ul.x + size.w - 1u), static_cast<Coord>(ul.y + size.h - 1u));
+        return Point(static_cast<Coord>(ul.x + size.w - 1), static_cast<Coord>(ul.y + size.h - 1));
     }
 
-    /** Точка `p` внутри (включительно по границе); при нулевом размере — false. */
+    /** Точка `p` внутри (включительно по границе); empty — false. */
     [[nodiscard]] constexpr bool contains(Point p) const noexcept {
-        if (size.w == 0u || size.h == 0u)
+        if (size.isEmpty())
             return false;
         const Point lr = lowerRight();
         return p.x >= ul.x && p.x <= lr.x && p.y >= ul.y && p.y <= lr.y;
     }
 
-    /** Непустое пересечение с `other`; при нулевом размере у любой — false. */
+    /** Непустое пересечение с `other`. */
     [[nodiscard]] constexpr bool overlaps(const Region& other) const noexcept {
-        if (size.w == 0u || size.h == 0u || other.size.w == 0u || other.size.h == 0u)
+        if (size.isEmpty() || other.size.isEmpty())
             return false;
         const Point lr = lowerRight();
         const Point otherLr = other.lowerRight();
@@ -332,7 +341,7 @@ struct ScreenLayout {
     Rect size{};
 
     constexpr ScreenLayout() noexcept = default;
-    constexpr ScreenLayout(uint16_t w, uint16_t h) noexcept
+    constexpr ScreenLayout(Coord w, Coord h) noexcept
         : size(w, h)
     {}
 };
@@ -343,6 +352,12 @@ struct ScreenLayout {
 template<typename T>
 [[nodiscard]] constexpr T min(T a, T b) noexcept {
     return (a < b) ? a : b;
+}
+
+/** Большее из `a`, `b`. */
+template<typename T>
+[[nodiscard]] constexpr T max(T a, T b) noexcept {
+    return (a > b) ? a : b;
 }
 
 /** Ограничить `v` диапазоном `[lo, hi]` (inclusive). */

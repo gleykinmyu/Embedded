@@ -78,6 +78,7 @@ bool IBrowser::changeDirectoryUp() noexcept
     if (slash == nullptr || _dirPath[0] == '\0') {
         return ok();
     }
+    /* `0:/dir` → `0:/`; корень тома не обрезаем дальше. */
     if (slash == _dirPath + 2 && _dirPath[1] == ':') {
         slash[1] = '\0';
         return ok();
@@ -115,6 +116,7 @@ bool IBrowser::refresh() noexcept
         if (_cacheCount < _cacheCapacity) {
             _entries[_cacheCount++] = entry;
         }
+        /* dirCount растёт и после заполнения кэша. */
         if (_dirCount < 0xFFFFu) {
             ++_dirCount;
         }
@@ -142,6 +144,7 @@ bool IBrowser::contains(const char* name) noexcept
     }
     for (uint16_t i = 0; i < _cacheCount; ++i) {
         if (std::strcmp(_entries[i].name, name) == 0) {
+            /* Совпадение — FileExists, чтобы вызывающий видел причину. */
             fail(Status::FileExists);
             return true;
         }
@@ -204,6 +207,7 @@ bool IBrowser::replaceWith(const char* tmpName, const char* destName) noexcept
     if (!_volume.exists(tmpPath)) {
         return fail(Status::NotFound);
     }
+    /* dest нет — просто rename; dest есть — убрать, затем rename. */
     if (_volume.exists(destPath) && !_volume.remove(destPath)) {
         return fail(Status::IoError);
     }
@@ -370,6 +374,7 @@ bool IBrowser::isValidName(const char* name) noexcept
             break;
         }
     }
+    /* Хвост пробел/точка на FAT запрещён. */
     return name[len - 1u] != ' ' && name[len - 1u] != '.';
 }
 

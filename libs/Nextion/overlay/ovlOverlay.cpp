@@ -14,7 +14,7 @@ const char* touchStateCstr(const TouchState state) noexcept {
 } // namespace
 
 Overlay::Overlay(Application& application) noexcept : app(application) {
-    _root.setRegion(Region(Point(0u, 0u), application.screenLayout().size));
+    _root.setRegion(Region(Point(0, 0), application.screenLayout().size));
 }
 
 void Overlay::showWidget(Widget& widget, const bool modal) noexcept {

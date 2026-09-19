@@ -30,6 +30,17 @@ void formatFatStamp(char* out, std::size_t outLen, uint16_t date, uint16_t time)
         day, month, year % 100u, hour, min);
 }
 
+[[nodiscard]] bool isTemplateName(const char* name) noexcept
+{
+    static constexpr char kTemplate[] = {
+        static_cast<char>(0xFB), static_cast<char>(0xE1), static_cast<char>(0xE2),
+        static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
+        '\0',
+    };
+    const char* base = smcp::file::FIOManager::showBaseName(name);
+    return base != nullptr && std::strncmp(base, kTemplate, sizeof(kTemplate) - 1u) == 0;
+}
+
 } // namespace
 
 BrowserPage::BrowserPage(nex::IAppUI& app) noexcept
@@ -65,7 +76,7 @@ BrowserPage::Mode BrowserPage::currentMode() const noexcept
 
 std::size_t BrowserPage::visibleRows() const noexcept
 {
-    return (currentMode() == Mode::SaveAs) ? 7u : MBrowser::kPageSize;
+    return (currentMode() == Mode::SaveAs) ? 7u : kPageSize;
 }
 
 void BrowserPage::onLoad()
@@ -77,7 +88,8 @@ void BrowserPage::onLoad()
         /* После page-события: короткий `mode.val` уже на активной странице. */
         mode.val = static_cast<int32_t>(Mode::SaveAs);
         _pending = Pending::None;
-        if (!mBrowser.refresh()) {
+        _page = 0u;
+        if (!console.browser.refresh()) {
             ui().showBrowserStatus();
             return;
         }
@@ -127,7 +139,8 @@ void BrowserPage::onResponse(const nex::msg::getNumeric& response, nex::Route ro
     }
 
     _pending = Pending::None;
-    if (!mBrowser.refresh()) {
+    _page = 0u;
+    if (!console.browser.refresh()) {
         ui().showBrowserStatus();
         return;
     }
@@ -156,32 +169,35 @@ void BrowserPage::clearFileRowSelection() noexcept
             fileRows[i].setState(BrowserBtn::State::Active);
         }
     }
-    mBrowser.clearSelection();
+    _selected = npos;
     BrowserBtn::active_id = 0xFFu;
 }
 
 void BrowserPage::updateStatusTexts() noexcept
 {
+    const std::size_t count = console.browser.cacheCount();
+    const std::size_t rows = visibleRows();
+    const std::size_t pages = (count == 0u) ? 1u : ((count + rows - 1u) / rows);
+
     char buf[12]{};
     std::snprintf(buf, sizeof(buf), "%u/%u",
-        static_cast<unsigned>(mBrowser.page() + 1u),
-        static_cast<unsigned>(mBrowser.pageCount()));
+        static_cast<unsigned>(_page + 1u),
+        static_cast<unsigned>(pages));
     tfPage.txt.set(buf);
 
     std::snprintf(buf, sizeof(buf), "%u",
-        static_cast<unsigned>(mBrowser.fileCount()));
+        static_cast<unsigned>(console.browser.dirCount()));
     tfNum.txt.set(buf);
 }
 
 void BrowserPage::redrawRows() noexcept
 {
-    mBrowser.setPageRows(visibleRows());
-
     char stamp[20]{};
     const std::size_t rows = visibleRows();
-    const std::size_t selected = mBrowser.selectedIndex();
+    const std::size_t count = console.browser.cacheCount();
+    const std::size_t base = _page * rows;
 
-    if (selected == MBrowser::npos) {
+    if (_selected == npos) {
         clearFileRowSelection();
     }
 
@@ -193,7 +209,8 @@ void BrowserPage::redrawRows() noexcept
             continue;
         }
 
-        const MBrowser::Entry* entry = mBrowser.entryAt(i);
+        const std::size_t index = base + i;
+        const auto* entry = (index < count) ? console.browser.at(static_cast<uint16_t>(index)) : nullptr;
         if (entry == nullptr) {
             fileRows[i].setText("");
             fileDates[i].txt.set("");
@@ -204,8 +221,7 @@ void BrowserPage::redrawRows() noexcept
         fileRows[i].setText("  ");
         fileRows[i].appendText(entry->name);
         fileRows[i].appendText("\r ");
-        const std::size_t base = mBrowser.page() * rows;
-        const bool rowSelected = (selected != MBrowser::npos) && (selected == base + i);
+        const bool rowSelected = (_selected != npos) && (_selected == index);
         fileRows[i].setState(rowSelected ? BtnState::Selected : BtnState::Active);
         if (rowSelected) {
             BrowserBtn::active_id = fileRows[i].id();
@@ -222,23 +238,36 @@ void BrowserPage::onFileRow(std::size_t row) noexcept
     if (row >= visibleRows()) {
         return;
     }
-    if (!mBrowser.selectRow(row)) {
+    const std::size_t index = _page * visibleRows() + row;
+    if (index >= console.browser.cacheCount()) {
         return;
     }
+    _selected = index;
 
     if (currentMode() == Mode::SaveAs) {
-        const char* name = mBrowser.selectedName();
-        if (name[0] != '\0') {
-            fNameStr.txt.set(name);
+        const auto* entry = console.browser.at(static_cast<uint16_t>(index));
+        if (entry != nullptr && entry->name[0] != '\0') {
+            fNameStr.txt.set(entry->name);
         }
     }
+    redrawRows();
 }
 
 void BrowserPage::changePage(bool next) noexcept
 {
-    const bool moved = next ? mBrowser.pageNext() : mBrowser.pagePrev();
-    if (!moved) {
-        return;
+    const std::size_t count = console.browser.cacheCount();
+    const std::size_t rows = visibleRows();
+    const std::size_t pages = (count == 0u) ? 1u : ((count + rows - 1u) / rows);
+    if (next) {
+        if (_page + 1u >= pages) {
+            return;
+        }
+        ++_page;
+    } else {
+        if (_page == 0u) {
+            return;
+        }
+        --_page;
     }
     clearFileRowSelection();
     redrawRows();
@@ -262,7 +291,7 @@ void BrowserPage::onAction() noexcept
 void BrowserPage::doOpen() noexcept
 {
     /* Есть несохранённые правки — спросить, иначе сразу openShow. */
-    if (console.isEdited()) {
+    if (console.show.isEdited()) {
         _msg = Msg::ConfirmDiscardOpen;
         ui().showFileYesNo(kTagDiscardOpen, uiMsg::kConfirmOpenDiscard);
         return;
@@ -273,8 +302,17 @@ void BrowserPage::doOpen() noexcept
 
 void BrowserPage::commitOpen() noexcept
 {
-    if (!console.openShow()) {
-        ui().showConsoleStatus();
+    if (_selected == npos) {
+        ui().showFileMsg(0u, uiMsg::kBrowserNoSelection);
+        return;
+    }
+    const auto* entry = console.browser.at(static_cast<uint16_t>(_selected));
+    if (entry == nullptr || entry->name[0] == '\0') {
+        ui().showFileMsg(0u, uiMsg::kBrowserNoSelection);
+        return;
+    }
+    if (!console.fio.openShow(entry->name)) {
+        ui().showFileSystemStatus();
         return;
     }
     _msg = Msg::None;
@@ -291,14 +329,21 @@ void BrowserPage::beginSaveAs() noexcept
 void BrowserPage::finishSaveAs() noexcept
 {
     const char* name = fNameStr.txt;
-    if (!console.saveShowAs(name)) {
-        if (console.getStatus() == MConsole::Status::BrowserFault
-            && mBrowser.getStatus() == MBrowser::Status::FileExists) {
+    std::strncpy(_saveAsName, (name != nullptr) ? name : "", sizeof(_saveAsName) - 1u);
+    _saveAsName[sizeof(_saveAsName) - 1u] = '\0';
+
+    if (isTemplateName(_saveAsName)) {
+        ui().showFileMsg(0u, uiMsg::kConsoleTemplateProtected);
+        return;
+    }
+    if (!console.fio.saveShowAs(_saveAsName)) {
+        if (console.fio.status() == smcp::file::FIOManager::Status::BrowserFail
+            && console.browser.status() == smcp::file::IBrowser::Status::FileExists) {
             _msg = Msg::OverwriteSave;
             ui().showFileYesNo(kTagOverwriteSave, uiMsg::kConfirmOverwriteFile);
             return;
         }
-        ui().showConsoleStatus();
+        ui().showFileSystemStatus();
         return;
     }
 
@@ -307,8 +352,8 @@ void BrowserPage::finishSaveAs() noexcept
 
 void BrowserPage::commitSaveAs() noexcept
 {
-    if (!console.saveShowAs(nullptr, true)) {
-        ui().showConsoleStatus();
+    if (!console.fio.saveShowAs(_saveAsName, true)) {
+        ui().showFileSystemStatus();
         return;
     }
     afterSaveAsOk();
@@ -317,7 +362,8 @@ void BrowserPage::commitSaveAs() noexcept
 void BrowserPage::afterSaveAsOk() noexcept
 {
     _msg = Msg::None;
-    if (!mBrowser.refresh()) {
+    _page = 0u;
+    if (!console.browser.refresh()) {
         ui().showBrowserStatus();
         return;
     }
@@ -327,12 +373,17 @@ void BrowserPage::afterSaveAsOk() noexcept
 
 void BrowserPage::doDelete() noexcept
 {
-    if (mBrowser.selectedName()[0] == '\0') {
-        ui().showFileMsg(0u, MBrowser::statusText(MBrowser::Status::NoSelection));
+    if (_selected == npos) {
+        ui().showFileMsg(0u, uiMsg::kBrowserNoSelection);
         return;
     }
-    if (!console.canMutateShowName(mBrowser.selectedName())) {
-        ui().showConsoleStatus();
+    const auto* entry = console.browser.at(static_cast<uint16_t>(_selected));
+    if (entry == nullptr || entry->name[0] == '\0') {
+        ui().showFileMsg(0u, uiMsg::kBrowserNoSelection);
+        return;
+    }
+    if (isTemplateName(entry->name)) {
+        ui().showFileMsg(0u, uiMsg::kConsoleTemplateProtected);
         return;
     }
 
@@ -342,9 +393,17 @@ void BrowserPage::doDelete() noexcept
 
 void BrowserPage::commitDelete() noexcept
 {
-    /* Нельзя удалить открытый шоу; иначе unlink + refresh списка. */
-    if (!mBrowser.removeSelected(console.showName())) {
+    if (_selected == npos) {
         ui().showBrowserStatus();
+        return;
+    }
+    const auto* entry = console.browser.at(static_cast<uint16_t>(_selected));
+    if (entry == nullptr) {
+        ui().showBrowserStatus();
+        return;
+    }
+    if (!console.fio.removeShow(entry->name)) {
+        ui().showFileSystemStatus();
         return;
     }
 
@@ -381,6 +440,9 @@ void BrowserPage::onMsgBox(const nex::msg::evMsgBox& e)
 void BrowserPage::onAfterMsgBox(const nex::msg::evMsgBox& e)
 {
     if (e.action == nex::msg::evMsgBox::Action::Yes) {
+        return;
+    }
+    if (!console.browser.refresh()) {
         return;
     }
     clearFileRowSelection();

@@ -18,18 +18,22 @@ class IConsole;
 /** IMech на пульте: Select/Block/SetTarget — TX; holder/status — только Telemetry. */
 class CMech : public IMech {
 public:
+    /** Регистрируется в inventory пульта. */
     CMech(IConsole& console, uint8_t id) noexcept;
 
     [[nodiscard]] IConsole& console() noexcept { return *_console; }
     [[nodiscard]] const IConsole& console() const noexcept { return *_console; }
 
-    void select(uint8_t console_id) noexcept override;
+    /** Select/Deselect этой оси (kHolderNone → Remove). TX всегда уходит. */
+    bool select(uint8_t console_id) noexcept override;
     /** Сегментный Block на сервер (не GRUP / не локальный Status). */
     void block(bool blocked) noexcept override;
+    /** Уставка этой оси через пульт. */
     void setTarget(const MotionTarget& target) noexcept override;
+    /** На пульте нет локального сброса: команда уходит с сервера. */
     void resetFault() noexcept override;
 
-    /** Зеркало Telemetry (holder / status / position). */
+    /** Зеркало Telemetry (holder / status / position) с сервера. */
     void onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept;
 
 private:

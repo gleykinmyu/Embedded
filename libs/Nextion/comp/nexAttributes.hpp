@@ -48,6 +48,16 @@ inline void appendText(const Component& parent, attr::Id id, const char* text) n
         parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
 }
 
+inline void appendText(const Component& parent, attr::Id id, const char* text, std::size_t len) noexcept
+{
+    if (text == nullptr || len == 0u)
+        return;
+    const AttrRef target{parent.name, attr::literal(id)};
+    parent.page.app.enqueue(Transaction{
+        cmd::assign::Text(target, text, len, cmd::assign::Text::Op::Append),
+        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+}
+
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
 inline void copy_string_mirror(char* buf, uint16_t buf_cap, const msg::getString& response) noexcept {
     if (buf_cap == 0u)
@@ -332,6 +342,8 @@ public:
             return;
         pushCmdAssignTextSubtract(n);
     }
+
+    void applyResponse(const msg::getString&) const noexcept {}
 
     String(const String&) = delete;
     String& operator=(const String&) = delete;

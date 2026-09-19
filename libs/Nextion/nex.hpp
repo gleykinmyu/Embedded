@@ -14,3 +14,4 @@
 #include "core/nexSession.hpp"
 #include "comp/nexAttributes.hpp"
 #include "comp/nexComponents.hpp"
+#include "comp/nexSlidingLog.hpp"

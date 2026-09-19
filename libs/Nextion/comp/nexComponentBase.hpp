@@ -224,7 +224,8 @@ namespace nex {
      *               │   │
      *               │   └── Multiline          // setLineSpacing; setWordWrap; setHAlign
      *               │       ├── Textual        // setText
-     *               │       │   ├── SlidingText // txt; setShowProgressBar; val_y; setVAlign=delete; (ch/maxval_y — не в API)
+     *               │       │   ├── SlidingText // txt; setShowProgressBar; val_y; maxval_y (RO); setVAlign=delete; (ch — не в API)
+     *               │       │   │   └── SlidingLog // follow-tail лог; HMI: Press+Release 0x65
      *               │       │   ├── Text       // setVAlign; txt; enablePassword/disablePassword
      *               │       │   ├── ScrollText // setVAlign; txt; setScrollDirection; setScrollStep; setPeriod; enable/disable
      *               │       │   └── ButtonBase  // setVAlign; pressed (Pressed<S>)

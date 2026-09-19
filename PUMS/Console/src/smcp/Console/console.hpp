@@ -3,7 +3,7 @@
  * @brief IConsole + Console<N>: Select/Block/SetTarget TX, Telemetry RX.
  *
  * Наследует Node. Session* / CMech* — в registry; primary Session и слоты
- * MaxSessions+1 — в Console; CMechBank — у leaf (MConsole).
+ * MaxSessions+1 — в Console / GroupConsole; CMechBank — у leaf.
  *
  * Lifecycle: begin → Listen → Connecting → Online; Fault / onPhase для UI.
  * setConsoleId → снова begin (Listen на конфликт id). Phase — SMCP_CONS.
@@ -50,31 +50,29 @@ public:
         Fault,         /**< IdConflict / RegisterFailed. */
     };
 
+    /** Имя фазы для лога / UI. */
     [[nodiscard]] static const char* cstr(Phase phase) noexcept;
 
     virtual ~IConsole() = default;
 
-    // --- pump (app) ---
-
     /** Node::update + tick Phase. Вызывать из app loop (не через Node&). */
     void update() noexcept;
 
-    // --- механизмы (lookup) ---
-
+    /** Ёмкость банка CMech (MaxMechs у Console<N>). */
     [[nodiscard]] uint8_t mechCapacity() const noexcept
     {
         return static_cast<uint8_t>(const_cast<IConsole*>(this)->storage().capacity());
     }
-
+    /** Ось по id реестра; нет — nullptr. */
     [[nodiscard]] CMech* mech(uint8_t id) noexcept { return storage().get(id); }
     [[nodiscard]] const CMech* mech(uint8_t id) const noexcept
     {
         return const_cast<IConsole*>(this)->storage().get(id);
     }
 
-    // --- lifecycle / идентичность ---
-
+    /** Текущая фаза lifecycle. */
     [[nodiscard]] Phase phase() const noexcept { return _phase; }
+    /** Primary-сессия открыта. */
     [[nodiscard]] bool linkUp() const noexcept;
 
     /** Наш id на шине (ILink / Node::id()). */
@@ -94,16 +92,21 @@ public:
      */
     void begin(uint8_t server_id) noexcept;
 
-    // --- исходящие PDU (class A / через primary Session) ---
-
+    /** Select: Add / Remove / Set по маске. Пустая маска и не Set — no-op. */
     void select(msg::Action action, Selection selection) noexcept;
+    /** Заменить выделение целиком (Action::Set). */
     void setSelection(Selection selection) noexcept;
+    /** Снять выделение со всех осей. */
     void clearSelection() noexcept;
 
+    /** Block: Add / Remove / Set по маске. Пустая маска и не Set — no-op. */
     void block(msg::Action action, Selection selection) noexcept;
+    /** Заменить блок целиком (Action::Set). */
     void setBlocked(Selection selection) noexcept;
+    /** Снять блок со всех осей. */
     void clearBlocked() noexcept;
 
+    /** Уставка одной оси (класс A через primary). */
     void setTarget(uint8_t mech_id, const MotionTarget& target) noexcept;
 
     /**
@@ -116,36 +119,32 @@ protected:
     friend void detail::registerMech(IConsole& cons, CMech& mech) noexcept;
     friend class CMech;
 
-    // --- ctor / storage ---
-
+    /** @a primary — слот сессии наследника (Console::_session). */
     explicit IConsole(ILink& link, ClockFn clock, Session& primary) noexcept;
 
+    /** Реестр осей; реализация — Console / leaf. */
     [[nodiscard]] virtual MechReg& storage() noexcept = 0;
-
-    // --- Node hooks ---
 
     void onPacket(const msg::Packet& pkt) noexcept override;
     void onStatus(Status status) noexcept override;
+    /** Потеря HB primary → Connecting. */
     void onHbLost(Session* session) noexcept override;
-
-    // --- leaf / UI ---
 
     /** По умолчанию: CMech::onTelemetry. */
     virtual void onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept;
-
     /** Edge Phase — UI. */
     virtual void onPhase(Phase phase) noexcept { (void)phase; }
 
+    /** Primary-сессия к серверу; leaf сравнивает указатель в onHbLost. */
     Session& _primary;
 
 private:
-    // --- Phase ---
-
+    /** Смена фазы с логом и onPhase. */
     void setPhase(Phase phase) noexcept;
+    /** Закрыть primary и уйти в Fault. */
     void enterFault() noexcept;
+    /** start(_server_id), если сервер задан. */
     void startPrimary() noexcept;
-
-    // --- данные ---
 
     Phase _phase = Phase::Idle;
     uint8_t _server_id = 0;
@@ -159,6 +158,7 @@ public:
     static constexpr uint8_t kMechCount = MaxMechs;
     static constexpr uint8_t kSessionCount = static_cast<uint8_t>(MaxSessions + 1u);
 
+    /** Primary-сессия — _session, слот 0 реестра. */
     explicit Console(ILink& link, ClockFn clock) noexcept
         : IConsole(link, clock, _session)
         , _session(*this)
@@ -168,6 +168,7 @@ protected:
     [[nodiscard]] MechReg& storage() noexcept override { return _mechs; }
     [[nodiscard]] SessionReg& sessions() noexcept override { return _sessions; }
 
+private:
     /* _sessions до _session: Session ctor → register → sessions(). */
     SessionStore<kSessionCount> _sessions;
     Session _session;

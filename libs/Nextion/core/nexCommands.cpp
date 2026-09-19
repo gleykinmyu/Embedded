@@ -58,14 +58,25 @@ bool Command::printComma(TxFrame& tx) const noexcept {
 }
 
 bool Command::printQuotedString(TxFrame& tx, const char* text) const noexcept {
+    return printQuotedString(tx, text, text != nullptr ? static_cast<std::size_t>(-1) : 0u);
+}
+
+bool Command::printQuotedString(TxFrame& tx, const char* text, const std::size_t len) const noexcept {
     const uint8_t dq = static_cast<uint8_t>('"');
     if (!pushBytes(tx, &dq, 1u))
         return false;
-    if (text == nullptr)
+    if (text == nullptr || len == 0u)
         return pushBytes(tx, &dq, 1u);
-    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != 0u; ++p) {
-        const unsigned char c = *p;
-        /* 0xFF — физический терминатор кадра; сырой байт рвёт инструкцию. */
+
+    const bool cstr = (len == static_cast<std::size_t>(-1));
+    for (std::size_t i = 0u;; ++i) {
+        if (!cstr && i >= len)
+            break;
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (cstr && c == 0u)
+            break;
+        if (!cstr && c == 0u)
+            continue;
         if (c == Physical::TERM_BYTE) {
             const uint8_t repl = static_cast<uint8_t>('?');
             if (!pushBytes(tx, &repl, 1u))
@@ -192,9 +203,10 @@ void printTxPayloadLine(const char* label, const TxFrame& tx) noexcept {
 void printRxLine(const RxFrame& wire, const Message& parsed) noexcept {
     NEX_DBG_TRACE_RX_WIRE("RX wire hdr=0x%02X len=%u", static_cast<unsigned>(wire.header),
         static_cast<unsigned>(wire.length));
-    if (wire.length > 0u) {
+    const uint16_t n = msg::payloadSize(wire.length);
+    if (n > 0u) {
         NEX_DBG_TRACE_RX_WIRE(" [");
-        for (uint16_t i = 0u; i < wire.length; ++i)
+        for (uint16_t i = 0u; i < n; ++i)
             NEX_DBG_TRACE_RX_WIRE("%s0x%02X", (i != 0u) ? " " : "",
                 static_cast<unsigned>(wire.payload[i]));
         NEX_DBG_TRACE_RX_WIRE("]\n");
@@ -257,7 +269,7 @@ bool Text::serialize(TxFrame& tx) const noexcept {
     const Command::Op numOp = (_op == Op::Append) ? Command::Op::Add : Command::Op::Assign;
     if (!printOperation(tx, numOp))
         return false;
-    return printQuotedString(tx, _text);
+    return printQuotedString(tx, _text, _len);
 }
 
 bool TextSubtract::serialize(TxFrame& tx) const noexcept {
@@ -722,7 +734,7 @@ bool Picture::serialize(TxFrame& tx) const noexcept {
 bool PictureCrop::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_mode == Mode::InPlace) {
-        if (_region.size.w == 0u || _region.size.h == 0u)
+        if (_region.size.isEmpty())
             return fail(Status::InvalidGeometry);
         if (!NEX_CMD_PRINT_LIT(tx, "picq") || !printSpace(tx))
             return false;
@@ -733,7 +745,7 @@ bool PictureCrop::serialize(TxFrame& tx) const noexcept {
             && printUint32(tx, static_cast<uint32_t>(_pictureId));
     }
 
-    if (_region.size.w == 0u || _region.size.h == 0u)
+    if (_region.size.isEmpty())
         return fail(Status::InvalidGeometry);
 
     if (!NEX_CMD_PRINT_LIT(tx, "xpic") || !printSpace(tx))
@@ -751,11 +763,14 @@ bool TextInRegion::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (!NEX_CMD_PRINT_LIT(tx, "xstr") || !printSpace(tx))
         return false;
+    if (_region.size.isEmpty())
+        return fail(Status::InvalidGeometry);
     if (_contentToken == nullptr)
         return fail(Status::NullPointer);
     return printInt32(tx, static_cast<int32_t>(_region.ul.x)) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_region.ul.y)) && printComma(tx)
-        && printUint32(tx, _region.size.w) && printComma(tx) && printUint32(tx, _region.size.h)
+        && printUint32(tx, static_cast<uint32_t>(_region.size.w)) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_region.size.h))
         && printComma(tx) && printUint32(tx, _fontId) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_fg.raw)) && printComma(tx)
         && printUint32(tx, static_cast<uint32_t>(_bg.raw)) && printComma(tx)
@@ -767,10 +782,10 @@ bool TextInRegion::serialize(TxFrame& tx) const noexcept {
 
 bool Rect::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
+    if (_region.size.isEmpty())
+        return fail(Status::InvalidGeometry);
     const int32_t w = static_cast<int32_t>(_region.size.w);
     const int32_t h = static_cast<int32_t>(_region.size.h);
-    if (w <= 0 || h <= 0)
-        return fail(Status::InvalidGeometry);
 
     const Point lr = _region.lowerRight();
     if (_mode == Mode::Fill) {

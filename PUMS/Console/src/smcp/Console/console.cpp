@@ -10,10 +10,6 @@
 
 namespace smcp {
 
-// =============================================================================
-// detail
-// =============================================================================
-
 namespace detail {
 
 void registerMech(IConsole& cons, CMech& mech) noexcept
@@ -26,10 +22,6 @@ void registerMech(IConsole& cons, CMech& mech) noexcept
 
 } // namespace detail
 
-// =============================================================================
-// IConsole — Phase / cstr
-// =============================================================================
-
 const char* IConsole::cstr(Phase phase) noexcept
 {
     switch (phase) {
@@ -41,10 +33,6 @@ const char* IConsole::cstr(Phase phase) noexcept
     }
     return "?";
 }
-
-// =============================================================================
-// IConsole — ctor / pump
-// =============================================================================
 
 IConsole::IConsole(ILink& link, ClockFn clock, Session& primary) noexcept
     : Node(link, clock)
@@ -76,6 +64,7 @@ void IConsole::update() noexcept
             enterFault();
             break;
         }
+        /* Тишина на шине — можно открывать primary. */
         startPrimary();
         setPhase(Phase::Connecting);
         break;
@@ -97,10 +86,6 @@ void IConsole::update() noexcept
         break;
     }
 }
-
-// =============================================================================
-// IConsole — lifecycle / идентичность
-// =============================================================================
 
 bool IConsole::linkUp() const noexcept
 {
@@ -135,10 +120,6 @@ void IConsole::begin(uint8_t server_id) noexcept
     _listen.start(clockMs(), msg::kHeartbeatTimeoutMs);
     setPhase(Phase::Listen);
 }
-
-// =============================================================================
-// IConsole — исходящие PDU
-// =============================================================================
 
 void IConsole::select(msg::Action action, Selection selection) noexcept
 {
@@ -199,10 +180,6 @@ void IConsole::getTelemetry(Selection selection) noexcept
     _primary.send(body);
 }
 
-// =============================================================================
-// IConsole — Node hooks
-// =============================================================================
-
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
 {
     if (const auto* tel = std::get_if<msg::Telemetry>(&pkt.body)) {
@@ -233,10 +210,6 @@ void IConsole::onHbLost(Session* session) noexcept
     setPhase(Phase::Connecting);
 }
 
-// =============================================================================
-// IConsole — Telemetry
-// =============================================================================
-
 void IConsole::onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept
 {
     CMech* m = mech(body.mech_id);
@@ -245,10 +218,6 @@ void IConsole::onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) n
     }
     m->onTelemetry(hdr.src_id, body);
 }
-
-// =============================================================================
-// IConsole — Phase (private)
-// =============================================================================
 
 void IConsole::setPhase(Phase phase) noexcept
 {

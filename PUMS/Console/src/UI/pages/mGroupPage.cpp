@@ -29,8 +29,7 @@ void MGroupPage::refreshActionButtons() noexcept
     bRec.setState(canRecord ? State::Active : State::Disabled);
 
     const uint8_t group_id = resolveGroupId();
-    const bool groupEmpty = (group_id == MConsole::kNoActiveGroup)
-        || console.group(group_id).isEmpty();
+    const bool groupEmpty = (group_id == MConsole::kNoActiveGroup) || console.show.group[group_id].isEmpty();
     const State editState = groupEmpty ? State::Disabled : State::Active;
     bRen.setState(editState);
     bClr.setState(editState);
@@ -102,31 +101,46 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
     _groupId = group_id;
 
     switch (action) {
-    case Action::Record:
-        if (!console.recordGroup(group_id)) {
-            if (console.getStatus() == MConsole::Status::GroupOccupied) {
-                ui().showGroupYesNo(kTagOverwrite, uiMsg::kConfirmOverwriteGroup);
-                return;
-            }
-            // NoSelection («Сначала выберите лебёдки») и прочие ошибки —
-            // MsgBox, на work уходим после OK/Cancel в onMsgBox.
-            ui().showGroupStatus();
+    case Action::Record: {
+        const smcp::Selection sel = console.selectionFromMechs();
+        if (sel.empty()) {
+            ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
         }
-        finishToWork();
+        auto grp = console.show.group[group_id];
+        const char* name = grp.isEmpty() ? "Group" : nullptr;
+        switch (grp.record(sel, name, false)) {
+        case smcp::CGroup::Result::Ok:
+            console.clearActiveGroup();
+            finishToWork();
+            break;
+        case smcp::CGroup::Result::Occupied:
+            ui().showGroupYesNo(kTagOverwrite, uiMsg::kConfirmOverwriteGroup);
+            break;
+        case smcp::CGroup::Result::OverlapsBlocked:
+            ui().showGroupMsg(0u, uiMsg::kGroupOverlapsBlocked);
+            break;
+        case smcp::CGroup::Result::Empty:
+        default:
+            ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
+            break;
+        }
         break;
+    }
 
-    case Action::Clear:
-        if (!console.clearGroup(group_id)) {
-            if (console.getStatus() == MConsole::Status::GroupOccupied) {
-                ui().showGroupYesNo(kTagClear, uiMsg::kConfirmClearGroup);
-                return;
-            }
-            ui().showGroupStatus();
+    case Action::Clear: {
+        auto grp = console.show.group[group_id];
+        if (grp.isEmpty()) {
+            finishToWork();
+            return;
+        }
+        if (!grp.clear(false)) {
+            ui().showGroupYesNo(kTagClear, uiMsg::kConfirmClearGroup);
             return;
         }
         finishToWork();
         break;
+    }
 
     case Action::Rename:
         doRename(group_id);
@@ -142,7 +156,7 @@ void MGroupPage::doRename(uint8_t group_id) noexcept
 {
     _action = Action::None;
 
-    const smcp::CGroup& grp = console.group(group_id);
+    const auto grp = console.show.group[group_id];
     if (grp.isEmpty()) {
         finishToWork();
         return;
@@ -179,16 +193,28 @@ void MGroupPage::onMsgBox(const nex::msg::evMsgBox& e)
     }
 
     if (e.tag == kTagOverwrite) {
-        if (!console.recordGroup(group_id, nullptr, true)) {
-            // Например NoSelection — показать и уйти после следующего OK.
-            ui().showGroupStatus();
+        const smcp::Selection sel = console.selectionFromMechs();
+        if (sel.empty()) {
+            ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
+            return;
+        }
+        auto grp = console.show.group[group_id];
+        const char* name = grp.isEmpty() ? "Group" : nullptr;
+        switch (grp.record(sel, name, true)) {
+        case smcp::CGroup::Result::Ok:
+            console.clearActiveGroup();
+            break;
+        case smcp::CGroup::Result::OverlapsBlocked:
+            ui().showGroupMsg(0u, uiMsg::kGroupOverlapsBlocked);
+            return;
+        case smcp::CGroup::Result::Empty:
+        case smcp::CGroup::Result::Occupied:
+        default:
+            ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
         }
     } else if (e.tag == kTagClear) {
-        if (!console.clearGroup(group_id, true)) {
-            ui().showGroupStatus();
-            return;
-        }
+        (void)console.show.group[group_id].clear(true);
     }
     finishToWork();
 }

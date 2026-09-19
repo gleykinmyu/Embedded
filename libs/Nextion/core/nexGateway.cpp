@@ -28,56 +28,44 @@ bool RxFramer::getOverflowReport() noexcept {
     return true;
 }
 
+bool RxFramer::tryComplete() noexcept {
+    if (_terms < Physical::TERM_COUNT || frame.length < Physical::TERM_COUNT)
+        return false;
+    const uint16_t n = static_cast<uint16_t>(frame.length - Physical::TERM_COUNT);
+    if (!msg::frameLengthOk(frame.header, n))
+        return false;
+    frame.length = n;
+    _terms = 0;
+    _state = State::WaitHeader;
+    return true;
+}
+
 bool RxFramer::appendByte(uint8_t byte) {
     switch (_state)
     {
-    // NIS §18 — ожидание заголовка кадра (первый байт после `0xFF×3`, не «скользящее» окно).
+    // NIS §18 — заголовок: первый байт после `0xFF×3`; лишние `0xFF` между кадрами пропускаем.
     case State::WaitHeader:
+        if (byte == Physical::TERM_BYTE)
+            return false;
         frame.header = byte;
-        frame.length = 0;
+        frame.length = 1;
         _terms = 0;
         _state = State::Collect;
         break;
 
-    // NIS §17 — сборка полезной нагрузки кадра.
+    // NIS §17 — payload + скользящие `0xFF×3`; кадр только если длина совпала (кроме `0x70`).
     case State::Collect:
-        if (byte == Physical::TERM_BYTE) {
-            _terms = 1;
-            _state = State::WaitTerm;
-        } else if (frame.length < RxFrame::MAX_PAYLOAD) {
-            frame.payload[frame.length++] = byte;
-        } else {
+        if (msg::payloadSize(frame.length) >= RxFrame::MAX_PAYLOAD) {
             enterResync(byte);
+            break;
         }
-        break;
-
-    // NIS §16 — ожидание терминальных байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
-    case State::WaitTerm:
-        if (byte == Physical::TERM_BYTE) {
-            if (++_terms >= Physical::TERM_COUNT) {
-                _state = State::WaitHeader;
-                _terms = 0;
-                return true;
-            }
-        } else {
-            for (uint8_t i = 0; i < _terms; i++) {
-                if (frame.length < RxFrame::MAX_PAYLOAD)
-                    frame.payload[frame.length++] = Physical::TERM_BYTE;
-                else {
-                    enterResync(byte);
-                    return false;
-                }
-            }
-            if (frame.length < RxFrame::MAX_PAYLOAD)
-                frame.payload[frame.length++] = byte;
-            else
-                enterResync(byte);
-            if (_state == State::Resync)
-                return false;
+        frame.payload[msg::payloadSize(frame.length)] = byte;
+        ++frame.length;
+        if (byte == Physical::TERM_BYTE)
+            ++_terms;
+        else
             _terms = 0;
-            _state = State::Collect;
-        }
-        break;
+        return tryComplete();
 
     // После overflow: только поиск `0xFF×3`, кадр не собираем.
     case State::Resync:
@@ -103,104 +91,68 @@ bool RxFramer::appendByte(uint8_t byte) {
 
 void TranslateMessage(const RxFrame& f, Message& out)
 {
-    // NIS §7 — первый байт (обычно 0xFF×3). §1.16 transparent. См. Instruction Set.
-    if (f.header == 0u && f.length >= 2u) {
+    const uint8_t h = f.header;
+
+    // Длину кадра уже проверил `RxFramer`. `0x00`: status (1) или startup (3).
+    if (h == 0u && f.length == msg::evSystem::StartupLength) {
         out = msg::evSystem{msg::evSystem::Code::StartupPreamble};
         return;
     }
 
-    const uint8_t h = f.header;
-
-    // NIS §8 — статус ответа (успешно, нет такого компонента, переполнение буфера и т.п.).
-    if (h <= static_cast<uint8_t>(msg::Status::Code::Serial_Overflow)) {
-        out = msg::Status{static_cast<msg::Status::Code>(h)};
-        return;
-    }
-
-    // NIS §9 — строковый ответ.
-    if (h == msg::getString::Header) {
+    switch (h) {
+    case msg::getString::Header: {
         msg::getString s{};
-        const uint16_t len = f.length;
-        const uint16_t n = len < RxFrame::MAX_PAYLOAD ? len : RxFrame::MAX_PAYLOAD;
-        s.length = len;
-        if (n > 0u)
-            std::memcpy(s.chars, f.payload, n);
-        if (n < RxFrame::MAX_PAYLOAD)
-            s.chars[n] = '\0';
+        s.length = msg::payloadSize(f.length);
+        if (s.length > 0u)
+            std::memcpy(s.chars, f.payload, s.length);
+        if (s.length < RxFrame::MAX_PAYLOAD)
+            s.chars[s.length] = '\0';
         out = s;
         return;
     }
-
-    // NIS §10 — числовой ответ (ровно 4 байта LE int32).
-    if (h == msg::getNumeric::Header) {
-        if (f.length != 4u) {
-            out = msg::Status{msg::Status::Code::Unrecognized_Header};
-            return;
-        }
+    case msg::getNumeric::Header: {
         msg::getNumeric n{};
-        std::memcpy(&n.value, f.payload, 4u);
+        std::memcpy(&n.value, f.payload, msg::payloadSize(msg::getNumeric::Length));
         out = n;
         return;
     }
-
-    // NIS §11 — событие нажатия на компонент (page, id, event).
-    if (h == msg::evTouch::Header) {
-        if (f.length != 3u) {
-            out = msg::Status{msg::Status::Code::Unrecognized_Header};
-            return;
-        }
-        msg::evTouch t{};
-        t.route.page = f.payload[0];
-        t.route.comp = f.payload[1];
-        t.state = static_cast<TouchState>(f.payload[2]);
-        out = t;
+    case msg::evTouch::Header:
+        out = msg::evTouch{
+            .route = Route{f.payload[0], f.payload[1]},
+            .state = static_cast<TouchState>(f.payload[2]),
+        };
         return;
-    }
-
-    // NIS §12 — событие нажатия на экран (Xhi,Xlo,Yhi,Ylo,event).
-    if (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake) || h == static_cast<uint8_t>(msg::evTouchXY::Mode::Sleep)) {
-        if (f.length != 5u) {
-            out = msg::Status{msg::Status::Code::Unrecognized_Header};
-            return;
-        }
-        msg::evTouchXY e{};
-        e.mode = (h == static_cast<uint8_t>(msg::evTouchXY::Mode::Awake)) ? msg::evTouchXY::Mode::Awake : msg::evTouchXY::Mode::Sleep;
-        const Coord rx = static_cast<Coord>((uint16_t(f.payload[0]) << 8) | f.payload[1]);
-        const Coord ry = static_cast<Coord>((uint16_t(f.payload[2]) << 8) | f.payload[3]);
-        e.pos.x = rx;
-        e.pos.y = ry;
-        e.state = static_cast<TouchState>(f.payload[4]);
-        out = e;
+    case static_cast<uint8_t>(msg::evTouchXY::Mode::Awake):
+    case static_cast<uint8_t>(msg::evTouchXY::Mode::Sleep):
+        out = msg::evTouchXY{
+            .mode = static_cast<msg::evTouchXY::Mode>(h),
+            .pos = Point{
+                static_cast<Coord>((uint16_t(f.payload[0]) << 8) | f.payload[1]),
+                static_cast<Coord>((uint16_t(f.payload[2]) << 8) | f.payload[3]),
+            },
+            .state = static_cast<TouchState>(f.payload[4]),
+        };
         return;
-    }
-
-    // NIS §13 — событие смены страницы (1 байт page id).
-    if (h == msg::evPage::Header) {
-        if (f.length != 1u) {
-            out = msg::Status{msg::Status::Code::Unrecognized_Header};
-            return;
-        }
+    case msg::evPage::Header:
         out = msg::evPage{.page = f.payload[0]};
         return;
-    }
-
-    // NIS §1.16 — Transparent Data Mode.
-    if (h == static_cast<uint8_t>(msg::evTransparent::Code::BlockComplete)
-        || h == static_cast<uint8_t>(msg::evTransparent::Code::ReadyToReceive)) {
+    case static_cast<uint8_t>(msg::evTransparent::Code::BlockComplete):
+    case static_cast<uint8_t>(msg::evTransparent::Code::ReadyToReceive):
         out = msg::evTransparent{static_cast<msg::evTransparent::Code>(h)};
         return;
-    }
-
-    // NIS §14 — системное событие.
-    if (h >= static_cast<uint8_t>(msg::evSystem::Code::AutoEnteredSleepMode)
-        && h <= static_cast<uint8_t>(msg::evSystem::Code::StartMicroSdUpgrade)) {
+    case static_cast<uint8_t>(msg::evSystem::Code::AutoEnteredSleepMode):
+    case static_cast<uint8_t>(msg::evSystem::Code::AutoWakeFromSleep):
+    case static_cast<uint8_t>(msg::evSystem::Code::NextionReady):
+    case static_cast<uint8_t>(msg::evSystem::Code::StartMicroSdUpgrade):
         out = msg::evSystem{static_cast<msg::evSystem::Code>(h)};
         return;
+    default:
+        if (h <= static_cast<uint8_t>(msg::Status::Code::Serial_Overflow))
+            out = msg::Status{static_cast<msg::Status::Code>(h)};
+        else
+            out = msg::Status{msg::Status::Code::Unrecognized_Header};
+        return;
     }
-
-    // NIS §15 — неизвестный заголовок кадра (внутренний код `Status`, не с шины).
-    (void)h;
-    out = msg::Status{msg::Status::Code::Unrecognized_Header};
 }
 
 //===============================================

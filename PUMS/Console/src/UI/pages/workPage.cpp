@@ -3,11 +3,125 @@
 #include "UI/application.hpp"
 #include "UI/uiMessages.hpp"
 
+#include <cstdio>
+
 namespace server {
 
 namespace {
 
 constexpr uint8_t kScenePageCount = 4u;
+
+smcp::IGroupBank::OverlapSlot overlapSlots[smcp::kGroupMaxCount]{};
+
+[[nodiscard]] uint8_t shownGroup() noexcept
+{
+    const uint8_t queued = console.queuedGroup();
+    return (queued != smcp::IGroupConsole::kNoQueuedGroup) ? queued : console.activeGroup();
+}
+
+[[nodiscard]] bool isMechBlocked(uint8_t id) noexcept
+{
+    return console.cmechs[id].isBlocked() || console.show.group.containsBlocked(id);
+}
+
+[[nodiscard]] bool isMechIsolated(uint8_t id) noexcept
+{
+    if (!console.show.settings().isolateGroup || id >= MConsole::kMechCount) {
+        return false;
+    }
+    const uint8_t active = console.activeGroup();
+    if (active == MConsole::kNoActiveGroup) {
+        return false;
+    }
+    return !console.show.group[active].mech().contains(id);
+}
+
+[[nodiscard]] bool formatIdList(char* out, std::size_t outLen, const uint8_t* ids, uint8_t count,
+                                uint8_t displayBias = 0u, const char* mark = nullptr) noexcept
+{
+    if (out == nullptr || outLen == 0u) {
+        return false;
+    }
+    out[0] = '\0';
+    if (ids == nullptr || count == 0u) {
+        return false;
+    }
+    const char* const prefix = (mark != nullptr) ? mark : "";
+    std::size_t pos = 0u;
+    for (uint8_t i = 0; i < count; ++i) {
+        const unsigned shown = static_cast<unsigned>(ids[i]) + static_cast<unsigned>(displayBias);
+        const int n = (pos == 0u)
+            ? std::snprintf(out + pos, outLen - pos, "%s%u", prefix, shown)
+            : std::snprintf(out + pos, outLen - pos, ", %s%u", prefix, shown);
+        if (n <= 0 || static_cast<std::size_t>(n) >= outLen - pos) {
+            out[outLen - 1u] = '\0';
+            return pos > 0u;
+        }
+        pos += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+bool fillMechBlockMessage(uint8_t id, char* out, std::size_t outLen) noexcept
+{
+    if (out == nullptr || outLen == 0u || !isMechBlocked(id)) {
+        return false;
+    }
+    const unsigned winchNo = static_cast<unsigned>(id) + 1u;
+    if (console.cmechs[id].isBlocked()) {
+        std::snprintf(out, outLen, uiMsg::kBlockByServerFmt, uiMsg::kWinchMark, winchNo);
+        return true;
+    }
+    smcp::Selection one;
+    one.add(id);
+    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, one)) {
+        return false;
+    }
+    const auto& ov = console.show.group.overlap();
+    if (ov.slot == nullptr || ov.count == 0u) {
+        return false;
+    }
+    uint8_t groupIds[smcp::kGroupMaxCount]{};
+    for (uint8_t i = 0; i < ov.count; ++i) {
+        groupIds[i] = ov.slot[i].group;
+    }
+    char list[96]{};
+    (void)formatIdList(list, sizeof(list), groupIds, ov.count);
+    std::snprintf(out, outLen, uiMsg::kBlockByGroupsFmt, uiMsg::kWinchMark, winchNo, list);
+    return true;
+}
+
+void deselectGroupMechs(uint8_t group_id) noexcept
+{
+    const smcp::Selection& sel = console.show.group[group_id].mech();
+    for (uint8_t m = 0; m < MConsole::kMechCount; ++m) {
+        if (!sel.contains(m)) {
+            continue;
+        }
+        if (console.cmechs[m].isSelectedBy(console.consoleId())) {
+            console.cmechs[m].select(smcp::kHolderNone);
+        }
+    }
+    if (console.activeGroup() == group_id) {
+        console.clearActiveGroup();
+    }
+}
+
+bool pressMechSelect(uint8_t id) noexcept
+{
+    if (id >= MConsole::kMechCount || isMechBlocked(id)) {
+        return false;
+    }
+    smcp::CGMech& m = console.cmechs[id];
+    if (m.isSelectedBy(console.consoleId())) {
+        m.select(smcp::kHolderNone);
+        return true;
+    }
+    if (m.isSelected() || isMechIsolated(id)) {
+        return false;
+    }
+    return m.select(console.consoleId());
+}
 
 } // namespace
 
@@ -27,6 +141,7 @@ void WorkPage::beginRename(uint8_t group_id) noexcept
 
 void WorkPage::onLoad()
 {
+    console.show.group.setOverlapArray(overlapSlots, smcp::kGroupMaxCount);
     refreshModeButtons();
     refreshGroupBtn(true);
     refreshCells();
@@ -59,7 +174,7 @@ void WorkPage::finishRename() noexcept
         return;
     }
 
-    (void)console.renameGroup(group_id, *gName.txt);
+    (void)console.show.group[group_id].rename(*gName.txt);
     refreshGroupBtn(true);
 }
 
@@ -101,17 +216,22 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         return;
     }
 
-    if (console.mode() == MConsole::Mode::Block) {
-        if (state == nex::TouchState::Release) {
-            applyBlockResult(console.pressMech(index));
+    if (_blockOn) {
+        if (state != nex::TouchState::Release || index >= MConsole::kMechCount) {
+            return;
         }
+        smcp::CGMech& m = console.cmechs[index];
+        m.block(!m.isBlocked());
+        refreshGroupBtn(false);
+        refreshCells();
         return;
     }
 
     /* Work: заблокированная лебёдка — MsgBox на Release. */
-    if (console.mode() == MConsole::Mode::Work && console.isMechBlocked(index)) {
-        if (state == nex::TouchState::Release && console.fillMechBlockMessage(index)) {
-            showBlockMsg(console.blockMessage());
+    if (console.mode() == MConsole::Mode::Work && isMechBlocked(index)) {
+        char msg[160]{};
+        if (state == nex::TouchState::Release && fillMechBlockMessage(index, msg, sizeof(msg))) {
+            showBlockMsg(msg);
         }
         return;
     }
@@ -120,8 +240,7 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         return;
     }
 
-    const MConsole::BlockResult result = console.pressMech(index);
-    if (result == MConsole::BlockResult::Changed) {
+    if (pressMechSelect(index)) {
         refreshCell(index);
         refreshAssignBtn();
     }
@@ -160,15 +279,43 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     const uint8_t group_id = groupIdForSlot(index);
-    const smcp::CGroup& grp = console.group(group_id);
+    const auto grp = console.show.group[group_id];
     if (grp.isEmpty()) {
         return;
     }
 
-    if (console.mode() == MConsole::Mode::Block) {
-        if (state == nex::TouchState::Release) {
-            applyBlockResult(console.pressGroup(group_id));
+    if (_blockOn) {
+        if (state != nex::TouchState::Release) {
+            return;
         }
+        if (grp.isBlocked()) {
+            console.show.group[group_id].setBlocked(false);
+            refreshGroupBtn(false);
+            refreshCells();
+            return;
+        }
+
+        console.show.group[group_id].setBlocked(true);
+        deselectGroupMechs(group_id);
+        refreshGroupBtn(false);
+        refreshCells();
+
+        const auto& ov = console.show.group.overlap();
+        if (ov.count == 0u) {
+            return;
+        }
+        uint8_t sharedIds[MConsole::kMechCount]{};
+        uint8_t sharedCount = 0u;
+        for (uint8_t m = 0; m < MConsole::kMechCount; ++m) {
+            if (ov.mechs().contains(m)) {
+                sharedIds[sharedCount++] = m;
+            }
+        }
+        char list[96]{};
+        char msg[160]{};
+        (void)formatIdList(list, sizeof(list), sharedIds, sharedCount, 1u, uiMsg::kWinchMark);
+        std::snprintf(msg, sizeof(msg), uiMsg::kBlockSharedWinchesFmt, list);
+        showBlockMsg(msg);
         return;
     }
 
@@ -177,7 +324,7 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     if (state == nex::TouchState::Press) {
-        const bool deselect = (group_id == console.uiActiveGroup());
+        const bool deselect = (group_id == shownGroup());
         const State self = deselect ? State::Active : State::Selected;
 
         if (groupBtn[index].getState() != self) {
@@ -193,8 +340,34 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
         return;
     }
 
-    if (console.pressGroup(group_id) == MConsole::BlockResult::NoChange) {
-        return;
+    if (group_id == shownGroup()) {
+        console.clearActiveGroup();
+    } else {
+        switch (console.show.group[group_id].recall()) {
+        case smcp::CGroup::Result::Ok:
+            break;
+        case smcp::CGroup::Result::OverlapsBlocked: {
+            const auto& ov = console.show.group.overlap();
+            uint8_t sharedIds[MConsole::kMechCount]{};
+            uint8_t sharedCount = 0u;
+            for (uint8_t m = 0; m < MConsole::kMechCount; ++m) {
+                if (ov.mechs().contains(m)) {
+                    sharedIds[sharedCount++] = m;
+                }
+            }
+            char list[96]{};
+            char msg[160]{};
+            (void)formatIdList(list, sizeof(list), sharedIds, sharedCount, 1u, uiMsg::kWinchMark);
+            std::snprintf(msg, sizeof(msg), uiMsg::kBlockSharedWinchesFmt, list);
+            showBlockMsg(msg);
+            return;
+        }
+        case smcp::CGroup::Result::Empty:
+        case smcp::CGroup::Result::Blocked:
+        case smcp::CGroup::Result::Occupied:
+        default:
+            return;
+        }
     }
 
     /* Ячейки: isolate на Ack Select, Selected — с Telemetry. */
@@ -220,7 +393,7 @@ void WorkPage::onMenuPress(uint8_t comp)
 
     switch (comp) {
     case PW::bFile:
-        if (console.mode() != MConsole::Mode::Work) {
+        if (console.mode() != MConsole::Mode::Work || _blockOn) {
             return;
         }
         ui().switchPage(ui().mFile);
@@ -230,7 +403,7 @@ void WorkPage::onMenuPress(uint8_t comp)
         if (console.mode() == MConsole::Mode::Show) {
             return;
         }
-        (void)console.toggleMode(MConsole::Mode::Block);
+        _blockOn = !_blockOn;
         applyModeChange();
         break;
 
@@ -239,7 +412,8 @@ void WorkPage::onMenuPress(uint8_t comp)
             showExitShowConfirm();
             return;
         }
-        (void)console.toggleMode(MConsole::Mode::Show);
+        _blockOn = false;
+        console.setMode(MConsole::Mode::Show);
         applyModeChange();
         break;
 
@@ -290,27 +464,6 @@ Application& WorkPage::ui() const noexcept
     return static_cast<Application&>(app);
 }
 
-void WorkPage::applyBlockResult(MConsole::BlockResult result) noexcept
-{
-    const bool modelChanged = (result == MConsole::BlockResult::Changed
-        || result == MConsole::BlockResult::Warning);
-
-    if (result == MConsole::BlockResult::Rejected
-        || result == MConsole::BlockResult::Warning) {
-        const char* msg = console.blockMessage();
-        if (msg != nullptr && msg[0] != '\0') {
-            /* Без redraw до диалога — иначе setState рисует поверх canvas MsgBox. */
-            showBlockMsg(msg);
-            return;
-        }
-    }
-
-    if (modelChanged) {
-        refreshGroupBtn(false);
-        refreshCells();
-    }
-}
-
 void WorkPage::showBlockMsg(const char* text) noexcept
 {
     /* text — UTF-8 литерал из прошивки (не имя с SD). */
@@ -323,7 +476,7 @@ void WorkPage::refreshModeButtons() noexcept
     using State = ConsoleBtn::State;
     const MConsole::Mode mode = console.mode();
 
-    const State fileState = (mode == MConsole::Mode::Work) ? State::Active : State::Disabled;
+    const State fileState = (mode == MConsole::Mode::Work && !_blockOn) ? State::Active : State::Disabled;
     if (bFile.getState() != fileState) {
         bFile.setState(fileState);
     }
@@ -331,7 +484,7 @@ void WorkPage::refreshModeButtons() noexcept
     State blockState = State::Active;
     if (mode == MConsole::Mode::Show) {
         blockState = State::Disabled;
-    } else if (mode == MConsole::Mode::Block) {
+    } else if (_blockOn) {
         blockState = State::Selected;
     }
     if (bBlock.getState() != blockState) {
@@ -347,11 +500,11 @@ void WorkPage::refreshModeButtons() noexcept
 void WorkPage::refreshGroupBtn(bool textModified) noexcept
 {
     using State = ConsoleBtn::State;
-    const uint8_t active_id = console.uiActiveGroup();
+    const uint8_t active_id = shownGroup();
 
     for (uint8_t i = 0; i < GroupButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
-        const smcp::CGroup& grp = console.group(group_id);
+        const auto grp = console.show.group[group_id];
 
         if (textModified) {
             char preamble[] = "  00 - ";
@@ -379,13 +532,13 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
 void WorkPage::refreshAssignBtn() noexcept
 {
     using State = ConsoleBtn::State;
-    const bool assignOk = (console.mode() == MConsole::Mode::Work);
+    const bool assignOk = (console.mode() == MConsole::Mode::Work && !_blockOn);
     const bool hasSelection = console.hasSelection();
-    const uint8_t active_id = console.uiActiveGroup();
+    const uint8_t active_id = shownGroup();
 
     for (uint8_t i = 0; i < GroupAssignButtons::kCount; ++i) {
         const uint8_t group_id = groupIdForSlot(i);
-        const smcp::CGroup& grp = console.group(group_id);
+        const auto grp = console.show.group[group_id];
 
         State next = State::Disabled;
         if (assignOk) {
@@ -418,16 +571,16 @@ void WorkPage::refreshCell(uint8_t index) noexcept
     State next = State::Disabled;
     /* Серверный Block — поверх GRUP; isolate — поверх Select (чужие скрываем).
      * Нет Ready (Idle) → Disabled — отдельного NotReady в UI нет. */
-    if (console.isMechServerBlocked(index)) {
+    if (console.cmechs[index].isBlocked()) {
         next = State::Blocked;
-    } else if (console.isMechGroupBlocked(index)) {
+    } else if (console.show.group.containsBlocked(index)) {
         next = State::GroupBlocked;
-    } else if (console.isMechIsolated(index)) {
+    } else if (isMechIsolated(index)) {
         next = State::Disabled;
-    } else if (console.mech(index).isSelectedBy(console.id())
-               && console.mech(index).status().any(smcp::IMech::Status::Ready)) {
+    } else if (console.cmechs[index].isSelectedBy(console.consoleId())
+               && console.cmechs[index].status().any(smcp::IMech::Status::Ready)) {
         next = State::Selected;
-    } else if (console.mech(index).status().any(smcp::IMech::Status::Ready)) {
+    } else if (console.cmechs[index].status().any(smcp::IMech::Status::Ready)) {
         next = State::Active;
     }
 
@@ -458,7 +611,7 @@ void WorkPage::onSelectAck() noexcept
 
 void WorkPage::onSelectNack() noexcept
 {
-    /* pending сброшен; active прежний — вернуть кнопки групп / ячейки. */
+    /* queued сброшен; active прежний — вернуть кнопки групп / ячейки. */
     refreshGroupBtn(false);
     refreshCells();
 }

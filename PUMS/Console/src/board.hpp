@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "impl/serial.hpp"
@@ -23,7 +24,8 @@ public:
     PHL::Rtc rtc;
     PHL::WatchDog watchdog;
 
-    void tick() noexcept;
+    /** Kick IWDG; при alive — мигание LED раз в 1 с. @return true, если LED переключился. */
+    bool tick() noexcept;
     void setLedAlive(bool alive) noexcept;
 
 private:
@@ -38,3 +40,10 @@ uint32_t boardClockMs() noexcept;
 
 /** Включить/выключить вывод `printf` на serial1 (не блокирует UART при off). */
 void setSerial1LogEnabled(bool enabled) noexcept;
+
+/**
+ * Доп. приёмник `printf` (тот же поток, что serial1).
+ * Вызов из `_write`: только копирование, без UART/Nextion/printf.
+ */
+using Serial1LogSink = void (*)(const char* data, std::size_t len);
+void setSerial1LogSink(Serial1LogSink sink) noexcept;

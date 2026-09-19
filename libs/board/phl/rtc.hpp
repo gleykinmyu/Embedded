@@ -2,8 +2,8 @@
 
 /**
  * PHL::Rtc — RTC STM32F4 на LSE (32.768 кГц).
- * Календарь сохраняется в backup-домене (метка RTC_BKP_DR0).
- * При первом запуске — дата/время сборки (__DATE__/__TIME__).
+ * Календарь в backup-домене: hasCalendar() / commitCalendar() (метка RTC_BKP_DR0).
+ * Время не выставляет — это политика приложения (сборка, UI, NTP).
  */
 
 #include <cstddef>
@@ -25,11 +25,10 @@ struct DateTime {
 
 class Rtc {
 public:
-    static constexpr uint32_t kBackupMagic = 0x32F2u;
-    static constexpr uint32_t kBackupReg = RTC_BKP_DR0;
-
     /**
-     * Включить LSE, RTC; при чистом backup — записать время сборки.
+     * Включить LSE и RTC.
+     * Если календарь уже в backup (VBAT) — не вызывать HAL_RTC_Init (сбрасывает время).
+     * Иначе HAL_RTC_Init, календарь пустой: приложение set() + commitCalendar().
      * @return false, если LSE/HAL_RTC не поднялись.
      */
     [[nodiscard]] bool begin() noexcept
@@ -53,19 +52,11 @@ public:
         _hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
         _hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
 
-        if (HAL_RTC_Init(&_hrtc) != HAL_OK) {
+        if (hasCalendar()) {
+            _hrtc.State = HAL_RTC_STATE_READY;
+        } else if (HAL_RTC_Init(&_hrtc) != HAL_OK) {
             _ready = false;
             return false;
-        }
-
-        const bool firstBoot = (HAL_RTCEx_BKUPRead(&_hrtc, kBackupReg) != kBackupMagic);
-        if (firstBoot) {
-            DateTime build{};
-            if (!parseBuildDateTime(build) || !set(build)) {
-                _ready = false;
-                return false;
-            }
-            HAL_RTCEx_BKUPWrite(&_hrtc, kBackupReg, kBackupMagic);
         }
 
         _ready = true;
@@ -73,6 +64,23 @@ public:
     }
 
     [[nodiscard]] bool isReady() const noexcept { return _ready; }
+
+    /** Календарь помечен валидным в backup (переживает питание при VBAT). */
+    [[nodiscard]] bool hasCalendar() const noexcept
+    {
+        if (_hrtc.Instance == nullptr) {
+            return false;
+        }
+        return HAL_RTCEx_BKUPRead(&_hrtc, kBackupReg) == kBackupMagic;
+    }
+
+    /** Зафиксировать календарь после успешного set(). */
+    void commitCalendar() noexcept
+    {
+        if (_hrtc.Instance != nullptr) {
+            HAL_RTCEx_BKUPWrite(&_hrtc, kBackupReg, kBackupMagic);
+        }
+    }
 
     [[nodiscard]] bool get(DateTime& out) const noexcept
     {
@@ -159,6 +167,9 @@ public:
     [[nodiscard]] const RTC_HandleTypeDef& handle() const noexcept { return _hrtc; }
 
 private:
+    static constexpr uint32_t kBackupMagic = 0x32F2u;
+    static constexpr uint32_t kBackupReg = RTC_BKP_DR0;
+
     mutable RTC_HandleTypeDef _hrtc{};
     bool _ready = false;
 
@@ -182,67 +193,90 @@ private:
         const int sak = (y + y / 4 - y / 100 + y / 400 + kT[static_cast<std::size_t>(m - 1)] + d) % 7;
         return static_cast<uint8_t>((sak == 0) ? 7 : sak);
     }
-
-    [[nodiscard]] static bool parseBuildDateTime(DateTime& out) noexcept
-    {
-        // __DATE__ "Mmm dd yyyy" / "Mmm  d yyyy"; __TIME__ "hh:mm:ss"
-        static constexpr char kMonths[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-        const char* const date = __DATE__;
-        const char* const time = __TIME__;
-
-        uint8_t month = 0u;
-        for (uint8_t i = 0u; i < 12u; ++i) {
-            if (std::memcmp(date, kMonths + static_cast<std::size_t>(i) * 3u, 3u) == 0) {
-                month = static_cast<uint8_t>(i + 1u);
-                break;
-            }
-        }
-        if (month == 0u) {
-            return false;
-        }
-
-        unsigned day = 0u;
-        unsigned year = 0u;
-        unsigned hour = 0u;
-        unsigned minute = 0u;
-        unsigned second = 0u;
-
-        // day: один или два символа перед пробелом+годом
-        const char* p = date + 4;
-        if (*p == ' ') {
-            ++p;
-        }
-        while (*p >= '0' && *p <= '9') {
-            day = day * 10u + static_cast<unsigned>(*p - '0');
-            ++p;
-        }
-        while (*p == ' ') {
-            ++p;
-        }
-        while (*p >= '0' && *p <= '9') {
-            year = year * 10u + static_cast<unsigned>(*p - '0');
-            ++p;
-        }
-
-        if (time[0] < '0' || time[0] > '9') {
-            return false;
-        }
-        hour = static_cast<unsigned>((time[0] - '0') * 10 + (time[1] - '0'));
-        minute = static_cast<unsigned>((time[3] - '0') * 10 + (time[4] - '0'));
-        second = static_cast<unsigned>((time[6] - '0') * 10 + (time[7] - '0'));
-
-        if (year < 2000u || year > 2099u || day < 1u || day > 31u) {
-            return false;
-        }
-
-        out.year = static_cast<uint16_t>(year);
-        out.month = month;
-        out.day = static_cast<uint8_t>(day);
-        out.hour = static_cast<uint8_t>(hour);
-        out.minute = static_cast<uint8_t>(minute);
-        out.second = static_cast<uint8_t>(second);
-        return true;
-    }
 };
+
+/** Разобрать __DATE__ / __TIME__ компиляции TU, который вызывает функцию. */
+inline bool parseBuildDateTime(DateTime& out) noexcept
+{
+    static constexpr char kMonths[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    const char* const date = __DATE__;
+    const char* const time = __TIME__;
+
+    uint8_t month = 0u;
+    for (uint8_t i = 0u; i < 12u; ++i) {
+        if (std::memcmp(date, kMonths + static_cast<std::size_t>(i) * 3u, 3u) == 0) {
+            month = static_cast<uint8_t>(i + 1u);
+            break;
+        }
+    }
+    if (month == 0u) {
+        return false;
+    }
+
+    unsigned day = 0u;
+    unsigned year = 0u;
+    const char* p = date + 4;
+    if (*p == ' ') {
+        ++p;
+    }
+    while (*p >= '0' && *p <= '9') {
+        day = day * 10u + static_cast<unsigned>(*p - '0');
+        ++p;
+    }
+    while (*p == ' ') {
+        ++p;
+    }
+    while (*p >= '0' && *p <= '9') {
+        year = year * 10u + static_cast<unsigned>(*p - '0');
+        ++p;
+    }
+
+    if (time[0] < '0' || time[0] > '9') {
+        return false;
+    }
+    const unsigned hour = static_cast<unsigned>((time[0] - '0') * 10 + (time[1] - '0'));
+    const unsigned minute = static_cast<unsigned>((time[3] - '0') * 10 + (time[4] - '0'));
+    const unsigned second = static_cast<unsigned>((time[6] - '0') * 10 + (time[7] - '0'));
+
+    if (year < 2000u || year > 2099u || day < 1u || day > 31u) {
+        return false;
+    }
+
+    out.year = static_cast<uint16_t>(year);
+    out.month = month;
+    out.day = static_cast<uint8_t>(day);
+    out.hour = static_cast<uint8_t>(hour);
+    out.minute = static_cast<uint8_t>(minute);
+    out.second = static_cast<uint8_t>(second);
+    return true;
+}
+
+/**
+ * Поднять RTC. Нет календаря в backup — записать время сборки и commitCalendar().
+ * @param setFromBuild true, если только что записали compile time.
+ */
+inline bool initRtc(Rtc& rtc, DateTime* now = nullptr, bool* setFromBuild = nullptr) noexcept
+{
+    if (setFromBuild != nullptr) {
+        *setFromBuild = false;
+    }
+    if (!rtc.begin()) {
+        return false;
+    }
+    if (!rtc.hasCalendar()) {
+        DateTime build{};
+        if (!parseBuildDateTime(build) || !rtc.set(build)) {
+            return false;
+        }
+        rtc.commitCalendar();
+        if (setFromBuild != nullptr) {
+            *setFromBuild = true;
+        }
+    }
+    if (now != nullptr) {
+        return rtc.get(*now);
+    }
+    return true;
+}
 
 } // namespace PHL

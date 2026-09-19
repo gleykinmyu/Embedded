@@ -11,35 +11,100 @@ namespace server {
 
 namespace {
 
-void onConsoleShowChanged() noexcept
+[[nodiscard]] const char* nackText(smcp::msg::ErrorCode code) noexcept
 {
-    app.syncStatusBarFile();
+    switch (code) {
+    case smcp::msg::ErrorCode::Busy: return uiMsg::kSmcpBusy;
+    case smcp::msg::ErrorCode::Limits: return uiMsg::kSmcpLimits;
+    case smcp::msg::ErrorCode::Crc: return uiMsg::kSmcpCrc;
+    case smcp::msg::ErrorCode::MechNotFound: return uiMsg::kSmcpMechNotFound;
+    case smcp::msg::ErrorCode::Safety: return uiMsg::kSmcpSafety;
+    case smcp::msg::ErrorCode::NotReady: return uiMsg::kSmcpNotReady;
+    case smcp::msg::ErrorCode::SelectLimit: return uiMsg::kSmcpSelectLimit;
+    case smcp::msg::ErrorCode::Timeout: return uiMsg::kSmcpTimeout;
+    case smcp::msg::ErrorCode::Ok:
+    default: return uiMsg::kSmcpError;
+    }
 }
 
-void onConsoleMechChanged(uint8_t mech_id) noexcept
+[[nodiscard]] const char* fileSystemText(smcp::file::Status st) noexcept
+{
+    switch (st) {
+    case smcp::file::Status::BadMagic: return uiMsg::kConsoleBadMagic;
+    case smcp::file::Status::BadVersion: return uiMsg::kConsoleBadVersion;
+    case smcp::file::Status::BadHeaderCrc:
+    case smcp::file::Status::BadBodyCrc: return uiMsg::kConsoleBadCrc;
+    case smcp::file::Status::BadLayout: return uiMsg::kConsoleBadLayout;
+    case smcp::file::Status::Truncated: return uiMsg::kConsoleTruncated;
+    case smcp::file::Status::IoError:
+    default: return uiMsg::kStorageError;
+    }
+}
+
+[[nodiscard]] const char* fileSystemText(smcp::file::IBrowser::Status st) noexcept
+{
+    switch (st) {
+    case smcp::file::IBrowser::Status::NotMounted: return uiMsg::kBrowserNotMounted;
+    case smcp::file::IBrowser::Status::OpenDirFailed: return uiMsg::kBrowserOpenDirFailed;
+    case smcp::file::IBrowser::Status::InvalidName: return uiMsg::kBrowserInvalidName;
+    case smcp::file::IBrowser::Status::NotFound: return uiMsg::kBrowserNotFound;
+    case smcp::file::IBrowser::Status::FileExists: return uiMsg::kBrowserFileExists;
+    case smcp::file::IBrowser::Status::PathTooLong: return uiMsg::kBrowserPathTooLong;
+    case smcp::file::IBrowser::Status::IoError:
+    default: return uiMsg::kStorageError;
+    }
+}
+
+[[nodiscard]] const char* fileSystemText(smcp::file::FIOManager::Status st) noexcept
+{
+    using St = smcp::file::FIOManager::Status;
+    switch (st) {
+    case St::NoShowOpen: return uiMsg::kConsoleNoShowOpen;
+    case St::MissingSection: return uiMsg::kConsoleMissingGrup;
+    case St::InvalidData: return uiMsg::kConsoleBadGroups;
+    case St::OpenFileProtected: return uiMsg::kBrowserOpenProtected;
+    case St::BrowserFail: return fileSystemText(console.browser.status());
+    case St::MainFail:
+    case St::BakFail:
+    case St::RestoreFail: {
+        const smcp::file::Status fs = (console.show.status() != smcp::file::Status::Ok)
+            ? console.show.status()
+            : smcp::file::Status::IoError;
+        return fileSystemText(fs);
+    }
+    case St::Ok:
+    default: return uiMsg::kOk;
+    }
+}
+
+} // namespace
+
+void UiConsole::onMechChanged(uint8_t mech_id) noexcept
 {
     app.work.onMechTelemetry(mech_id);
 }
 
-void onConsoleSelectAck() noexcept
+void UiConsole::onGroupAck(uint8_t group_id) noexcept
 {
+    MConsole::onGroupAck(group_id);
     app.work.onSelectAck();
 }
 
-void onConsoleNack() noexcept
+void UiConsole::onConsoleChanged() noexcept
 {
-    if (console.lastNackReq() == smcp::msg::MsgId::Select) {
+    app.syncStatusBarFile();
+    app.syncStatusBarLink();
+}
+
+void UiConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
+                       const smcp::msg::Nack& reply) noexcept
+{
+    MConsole::onNack(session, req, reply);
+    if (lastNackReq() == smcp::msg::MsgId::Select) {
         app.work.onSelectNack();
     }
     app.showSmcpNack();
 }
-
-void onConsolePhase(smcp::IConsole::Phase /*phase*/) noexcept
-{
-    app.syncStatusBarLink();
-}
-
-} // namespace
 
 Application::Application(BIF::IByteStream& stream, nex::Rect screen, nex::AppTiming timing) noexcept
     : AppUI(stream, screen, timing)
@@ -68,11 +133,6 @@ void Application::boot() noexcept
     msgBox.setLabels({ok, yes, no, cancel});
 
     statusBar.show(overlay);
-    console.setOnShowChanged(&onConsoleShowChanged);
-    console.setOnMechChanged(&onConsoleMechChanged);
-    console.setOnSelectAck(&onConsoleSelectAck);
-    console.setOnNack(&onConsoleNack);
-    console.setOnPhase(&onConsolePhase);
     syncStatusBarFile();
     syncStatusBarLink();
     syncStatusBarTime();
@@ -135,34 +195,25 @@ void Application::showGroupYesNo(uint8_t tag, const char* text) noexcept
                 text);
 }
 
-void Application::showConsoleStatus(uint8_t tag) noexcept
+void Application::showFileSystemStatus(uint8_t tag) noexcept
 {
-    if (console.getStatus() == MConsole::Status::BrowserFault) {
-        showBrowserStatus(tag);
-        return;
-    }
-    showFileMsg(tag, MConsole::statusText(console.getStatus()));
-}
-
-void Application::showGroupStatus(uint8_t tag) noexcept
-{
-    showGroupMsg(tag, MConsole::statusText(console.getStatus()));
+    showFileMsg(tag, fileSystemText(console.fio.status()));
 }
 
 void Application::showBrowserStatus(uint8_t tag) noexcept
 {
-    showFileMsg(tag, MBrowser::statusText(mBrowser.getStatus()));
+    showFileMsg(tag, fileSystemText(console.browser.status()));
 }
 
 void Application::showSmcpNack(uint8_t tag) noexcept
 {
     showUtf8Msg(uiMsg::kTitleSmcp, nex::ovl::MsgBox::Preset::OK, tag,
-        nex::ovl::MsgBox::Action::Ok, MConsole::nackText(console.lastNack()));
+        nex::ovl::MsgBox::Action::Ok, nackText(console.lastNack().code));
 }
 
 void Application::syncStatusBarFile() noexcept
 {
-    statusBar.setFile(MConsole::showBaseName(console.showName()), console.isEdited());
+    statusBar.setFile(smcp::file::FIOManager::showBaseName(console.show.name()), console.show.isEdited());
 }
 
 void Application::syncStatusBarLink() noexcept

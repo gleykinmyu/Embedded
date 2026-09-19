@@ -29,10 +29,10 @@ public:
     /** Вывод картинки `pic` в точку (`x`, `y`). */
     void picture(Point at, PicId pictureId) const noexcept;
     void picture_in_place(Region region, PicId pictureId) const noexcept;
-    void picture_in_place(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) const noexcept;
+    void picture_in_place(Point upperLeft, Rect size, PicId pictureId) const noexcept;
     /** Фрагмент `pic` в `dst` из области `src`. */
     void picture_draw(Point dst, Region src, PicId pictureId) const noexcept;
-    void picture_draw(Point dst, uint32_t w, uint32_t h, Point src, PicId pictureId) const noexcept;
+    void picture_draw(Point dst, Rect size, Point src, PicId pictureId) const noexcept;
 
     /** `xstr` в `region`: текст → шрифт/цвет/выравнивание → фон (по умолчанию прозрачный). */
     void text_in_region(Region region, const char* contentToken, FontId fontId = 1u,
@@ -111,8 +111,6 @@ public:
 
     [[nodiscard]] const Region& region() const noexcept { return _region; }
     [[nodiscard]] Rect size() const noexcept { return _region.size; }
-    [[nodiscard]] uint16_t w() const noexcept { return _region.size.w; }
-    [[nodiscard]] uint16_t h() const noexcept { return _region.size.h; }
 
     /** Разместить справа от `left` (размер из `_region.size`). */
     void placeRight(const Button& left, uint16_t gap) noexcept;

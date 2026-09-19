@@ -20,25 +20,21 @@
 #include "core/memstat.hpp"
 #include "core/crash_dump.hpp"
 #include "fat_file.hpp"
-#include "model/mbrowser.hpp"
-#include "model/mconsole.hpp"
 #include "model/mserver.hpp"
 #include "smcp/mock_can.hpp"
 #include "smcp/transport/can_link.hpp"
 #include "w25q_show_file.hpp"
 
-
 smcp::file::FatVolume sdVolume(board.SD.volumePath());
 smcp::file::FatFile showFile;
 smcp::file::FatDirectory showDir;
 smcp::file::W25qShowFile flashShow(board.flash);
-MBrowser mBrowser(sdVolume, showDir, showFile);
 
 smcp::MockCan canConsole;
 smcp::MockCan canServer;
 smcp::CanLink linkConsole(canConsole, 1u);
 smcp::CanLink linkServer(canServer, smcp::msg::kServerIdMin);
-MConsole console(mBrowser, linkConsole, boardClockMs);
+server::UiConsole console(sdVolume, showDir, showFile, flashShow, linkConsole, boardClockMs);
 MServer mServer(linkServer, boardClockMs);
 
 nex::AppTiming timing = {boardClockMs, 500u};
@@ -121,14 +117,15 @@ int main(void)
 
     board.watchdog.kick();
 
-    if (!board.rtc.begin()) {
+    bool rtcFromBuild = false;
+    PHL::DateTime rtcNow{};
+    if (!PHL::initRtc(board.rtc, &rtcNow, &rtcFromBuild)) {
         NEX_DBG("RTC begin failed (LSE?)\n");
     } else {
-        PHL::DateTime now{};
-        if (board.rtc.get(now)) {
-            NEX_DBG("RTC: %04u-%02u-%02u %02u:%02u:%02u\n",
-                now.year, now.month, now.day, now.hour, now.minute, now.second);
-        }
+        NEX_DBG("RTC %s: %04u-%02u-%02u %02u:%02u:%02u\n",
+            rtcFromBuild ? "set from build" : "restored",
+            rtcNow.year, rtcNow.month, rtcNow.day,
+            rtcNow.hour, rtcNow.minute, rtcNow.second);
     }
 
     board.watchdog.kick();
@@ -139,12 +136,11 @@ int main(void)
 
     console.begin(smcp::msg::kServerIdMin);
 
-    console.setMirror(&flashShow);
-    if (console.restoreMirror()) {
-        NEX_DBG("Restored show from W25Q: '%s'\n", console.showName());
+    if (console.fio.restore()) {
+        NEX_DBG("Restored show from W25Q: '%s'\n", console.show.name());
     } else {
         NEX_DBG("No valid show mirror in W25Q (%s)\n",
-            MConsole::statusText(console.getStatus()));
+            smcp::file::FIOManager::cstr(console.fio.status()));
     }
 
     board.watchdog.kick();

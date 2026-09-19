@@ -23,7 +23,7 @@ Region Object::screenRegion() const noexcept {
 Object* Object::hitTarget(const Point screenPt) noexcept {
     if (!isVisible())
         return nullptr;
-    if (_region.size.w == 0u || _region.size.h == 0u)
+    if (_region.size.isEmpty())
         return nullptr;
     if (!screenRegion().contains(screenPt))
         return nullptr;

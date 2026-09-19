@@ -33,7 +33,7 @@ void clampTextForXstr(char* buf, const uint16_t capacity) noexcept {
         return Region{};
     return Region(
         Point(static_cast<Coord>(frame.ul.x + kMsgBoxFrame.pad), uy0),
-        Rect(static_cast<uint16_t>(frame.size.w - 2u * kMsgBoxFrame.pad), static_cast<uint16_t>(uy1 - uy0 + 1u)));
+        Rect(static_cast<Coord>(frame.size.w - 2 * kMsgBoxFrame.pad), static_cast<Coord>(uy1 - uy0 + 1)));
 }
 
 void layoutButtonRow(const Region& frame, const Coord topY, const uint16_t gap, Button* const* btns,
@@ -41,9 +41,9 @@ void layoutButtonRow(const Region& frame, const Coord topY, const uint16_t gap, 
     if (count == 0u)
         return;
 
-    uint16_t rowW = btns[0]->region().size.w;
+    Coord rowW = btns[0]->region().size.w;
     for (uint8_t i = 1u; i < count; ++i)
-        rowW = static_cast<uint16_t>(rowW + gap + btns[i]->region().size.w);
+        rowW = static_cast<Coord>(rowW + gap + btns[i]->region().size.w);
 
     Coord x = static_cast<Coord>(frame.ul.x + Canvas::center(frame.size, Rect(rowW, 0)).x);
     for (uint8_t i = 0u; i < count; ++i) {
@@ -169,15 +169,15 @@ void MsgBox::applyShow(const Preset preset, const Action defaultAction, const ui
 }
 
 void MsgBox::fit(const Rect& screen) noexcept {
-    const unsigned margin = min(screen.w, screen.h) / 16;
+    const Coord margin = static_cast<Coord>(min(screen.w, screen.h) / 16);
 
     Region frame;
     frame.size = Rect(screen, 4, 5, 2, 7);
 
-    const Rect maxSize(static_cast<uint16_t>(screen.w - 2u * margin),
-        static_cast<uint16_t>(screen.h - 2u * margin));
-    frame.size.w = clamp(frame.size.w, uint16_t{240}, maxSize.w);
-    frame.size.h = clamp(frame.size.h, uint16_t{168}, maxSize.h);
+    const Rect maxSize(static_cast<Coord>(screen.w - 2 * margin),
+        static_cast<Coord>(screen.h - 2 * margin));
+    frame.size.w = clamp(frame.size.w, Coord{240}, maxSize.w);
+    frame.size.h = clamp(frame.size.h, Coord{168}, maxSize.h);
 
     frame.ul = Canvas::center(screen, frame.size);
     setRegion(frame);
@@ -218,13 +218,13 @@ void MsgBox::drawBackground(const AppCanvas& cs) const {
     cs.rect_bordered(frame, frameStyle.bg, frameStyle.border.color, border);
 
     if (_title[0] != '\0') {
-        cs.text_in_region(Region(frame.ul, Rect(frame.size.w, static_cast<uint16_t>(kMsgBoxFrame.titleH + 2u * border))),
+        cs.text_in_region(Region(frame.ul, Rect(frame.size.w, static_cast<Coord>(kMsgBoxFrame.titleH + 2 * border))),
             border, _title, frameStyle.font.id, resolvedTitleColor());
     }
 
     if (_text[0] != '\0') {
         const Region body = bodyTextRegion(frame);
-        if (body.size.w > 0u && body.size.h > 0u) {
+        if (body.size.w > 0 && body.size.h > 0) {
             cs.text_in_region(body, _text, frameStyle.font.id, _colors.body);
         }
     }

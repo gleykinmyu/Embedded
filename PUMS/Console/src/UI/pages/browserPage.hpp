@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "UI/buttons.hpp"
@@ -94,9 +95,15 @@ private:
     void doDelete() noexcept;
     void commitDelete() noexcept;
 
+    static constexpr std::size_t kPageSize = 8u;
+    static constexpr std::size_t npos = static_cast<std::size_t>(-1);
+
     Pending _pending = Pending::None;
     Msg _msg = Msg::None;
     bool _forceSaveAs = false;
+    std::size_t _page = 0u;
+    std::size_t _selected = npos;
+    char _saveAsName[32]{};
 };
 
 } // namespace server

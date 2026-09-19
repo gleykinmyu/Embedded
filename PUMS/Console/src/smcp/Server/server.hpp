@@ -12,7 +12,7 @@
 #include <cstdint>
 
 #include "obj_registry.hpp"
-#include "smcp/Console/group.hpp"
+#include "smcp/GroupConsole/group.hpp"
 #include "smcp/mech.hpp"
 #include "smcp/transport/ilink.hpp"
 #include "smcp/transport/message.hpp"

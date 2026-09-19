@@ -1,5 +1,6 @@
 /**
  * @file cmech.cpp
+ * @brief CMech: Select/Block/SetTarget через IConsole, зеркало Telemetry.
  */
 
 #include "smcp/Console/cmech.hpp"
@@ -14,17 +15,18 @@ CMech::CMech(IConsole& console, uint8_t id) noexcept
     detail::registerMech(console, *this);
 }
 
-void CMech::select(uint8_t console_id) noexcept
+bool CMech::select(uint8_t console_id) noexcept
 {
     Selection sel;
     sel.add(_id);
 
     if (console_id == kHolderNone) {
         _console->select(msg::Action::Remove, sel);
-        return;
+        return true;
     }
 
     _console->select(msg::Action::Add, sel);
+    return true;
 }
 
 void CMech::block(bool blocked) noexcept
@@ -39,7 +41,10 @@ void CMech::setTarget(const MotionTarget& target) noexcept
     _console->setTarget(_id, target);
 }
 
-void CMech::resetFault() noexcept {}
+void CMech::resetFault() noexcept
+{
+    /* Fault сбрасывает сервер; на пульте локального состояния нет. */
+}
 
 void CMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {

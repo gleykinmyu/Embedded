@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "buttons.hpp"
+#include "appColors.hpp"
 #include "phl/rtc.hpp"
 
 namespace server {
@@ -26,7 +26,7 @@ void copyFieldText(char* dst, size_t cap, const char* src) noexcept
 }
 
 /** Обрезать @a src в @a dst так, чтобы оценка ширины ≤ @a maxPx (с `...`). */
-void fitFieldText(char* dst, size_t cap, const char* src, uint16_t maxPx) noexcept
+void fitFieldText(char* dst, size_t cap, const char* src, nex::Coord maxPx) noexcept
 {
     if (dst == nullptr || cap == 0u) {
         return;
@@ -67,11 +67,12 @@ void fitFieldText(char* dst, size_t cap, const char* src, uint16_t maxPx) noexce
 
 } // namespace
 
-StatusBar::StatusBar(const nex::Rect screen, const uint16_t barHeight) noexcept
+StatusBar::StatusBar(const nex::Rect screen, const nex::Coord barHeight,
+                     const nex::Coord originY) noexcept
     : _screen(screen)
     , _barHeight(barHeight)
 {
-    setRegion(nex::Region(nex::Point{0, kOriginY}, nex::Rect{screen.w, barHeight}));
+    setRegion(nex::Region(nex::Point{0, originY}, nex::Rect(screen.w, barHeight)));
 
     auto& status = column(Field::Status);
     status.width = kStatusColumnWidth;
@@ -105,7 +106,7 @@ void StatusBar::hide(nex::ovl::Overlay& ovl) noexcept
     }
 }
 
-void StatusBar::setColumnWidth(const Field field, const uint16_t width) noexcept
+void StatusBar::setColumnWidth(const Field field, const nex::Coord width) noexcept
 {
     if (field == Field::File || field >= kFieldCount) {
         return;
@@ -117,9 +118,10 @@ void StatusBar::Column::setText(const char* const src) noexcept
 {
     char buf[kTextCap]{};
     if (fit) {
-        const uint16_t textW = (region().size.w > 2u * kFieldPad)
-            ? static_cast<uint16_t>(region().size.w - 2u * kFieldPad)
-            : 0u;
+        const nex::Coord pad = static_cast<nex::Coord>(2 * kFieldPad);
+        const nex::Coord textW = (region().size.w > pad)
+            ? static_cast<nex::Coord>(region().size.w - pad)
+            : 0;
         fitFieldText(buf, kTextCap, src, textW);
     } else {
         copyFieldText(buf, kTextCap, src);
@@ -151,7 +153,7 @@ void StatusBar::Column::append(const char* const src) noexcept
     setText(buf);
 }
 
-void StatusBar::Column::setWidth(const uint16_t w) noexcept
+void StatusBar::Column::setWidth(const nex::Coord w) noexcept
 {
     if (width == w) {
         return;
@@ -202,26 +204,25 @@ void StatusBar::setTime(const PHL::DateTime& dt) noexcept
 
 void StatusBar::layout() noexcept
 {
-    const uint16_t totalW = _screen.w;
-    const uint16_t h = _barHeight;
+    const nex::Coord totalW = _screen.w;
+    const nex::Coord h = _barHeight;
     const nex::Coord y = 0;
 
     auto& status = column(Field::Status);
     auto& file = column(Field::File);
     auto& time = column(Field::Time);
 
-    const uint16_t statusW = (status.width > 0u) ? status.width : kStatusColumnWidth;
-    const uint16_t timeW = (time.width > 0u) ? time.width : kSideColumnWidth;
-    const uint16_t timeX =
-        (totalW > timeW) ? static_cast<uint16_t>(totalW - timeW) : 0u;
-    const uint16_t fileX = statusW;
-    const uint16_t fileW = (totalW > statusW + timeW)
-        ? static_cast<uint16_t>(totalW - statusW - timeW)
-        : 0u;
+    const nex::Coord statusW = (status.width > 0) ? status.width : kStatusColumnWidth;
+    const nex::Coord timeW = (time.width > 0) ? time.width : kSideColumnWidth;
+    const nex::Coord timeX = (totalW > timeW) ? static_cast<nex::Coord>(totalW - timeW) : 0;
+    const nex::Coord fileX = statusW;
+    const nex::Coord fileW = (totalW > statusW + timeW)
+        ? static_cast<nex::Coord>(totalW - statusW - timeW)
+        : 0;
 
-    status.setRegion(nex::Region(nex::Point{0, y}, nex::Rect{statusW, h}));
-    file.setRegion(nex::Region(nex::Point{static_cast<nex::Coord>(fileX), y}, nex::Rect{fileW, h}));
-    time.setRegion(nex::Region(nex::Point{static_cast<nex::Coord>(timeX), y}, nex::Rect{timeW, h}));
+    status.setRegion(nex::Region(nex::Point{0, y}, nex::Rect(statusW, h)));
+    file.setRegion(nex::Region(nex::Point{fileX, y}, nex::Rect(fileW, h)));
+    time.setRegion(nex::Region(nex::Point{timeX, y}, nex::Rect(timeW, h)));
 
     Widget::layout();
 }

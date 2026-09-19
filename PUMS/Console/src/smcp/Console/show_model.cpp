@@ -15,6 +15,7 @@ namespace file {
 
 uint16_t computeHeaderCrc16(const Header& hdr) noexcept
 {
+    /* Поле CRC в расчёт не входит. */
     Header tmp = hdr;
     tmp.header_crc16 = 0;
     return MISC::crc16Ccitt(reinterpret_cast<const uint8_t*>(&tmp), sizeof(tmp));
@@ -61,6 +62,7 @@ Status checkFileSize(const Header& hdr, std::size_t fileSize) noexcept
     if (hdr.total_size < hdr.payloadBase()) {
         return Status::BadLayout;
     }
+    /* Файл короче заявленного total_size — обрезан. Длиннее — допустимо. */
     if (fileSize < static_cast<std::size_t>(hdr.total_size)) {
         return Status::Truncated;
     }
@@ -73,6 +75,7 @@ Status checkSectionDesc(const SectionDesc& desc, std::size_t expectedOffset,
     if (desc.tag == 0u || desc.byte_size == 0u || desc.record_count == 0u) {
         return Status::BadLayout;
     }
+    /* Секции идут подряд без дыр. */
     if (desc.offset != expectedOffset) {
         return Status::BadLayout;
     }
@@ -135,6 +138,7 @@ void detail::registerSection(IShowFile& file, ISection& sec) noexcept
     if (sec.tag() == 0u || sec.slotCount() == 0u || sec.slotSize() == 0u) {
         return;
     }
+    /* Повтор того же FourCC не регистрируем. */
     if (file.find(sec.tag()) != nullptr) {
         return;
     }
@@ -160,6 +164,7 @@ void IShowFile::clearData() noexcept
     for (uint8_t i = 0; i < kMaxMismatches; ++i) {
         _mismatches[i] = {};
     }
+    /* edited не трогаем: решение за вызывающим (newShow / acceptLoaded). */
     forEachSection([](ISection& sec) { sec.clearData(); });
 }
 
@@ -174,6 +179,7 @@ bool IShowFile::copyFrom(const IShowFile& src) noexcept
 
     const uint8_t first = _sections.firstId();
     const uint8_t end = _sections.endId();
+    /* Сначала сверка раскладки — dest не меняем при несовпадении. */
     for (uint8_t id = first; id < end; ++id) {
         const ISection* d = section(id);
         const ISection* s = src.section(id);
@@ -296,6 +302,7 @@ Status IShowFile::load(IFile& io, const char* path) noexcept
         return fail(io, fs);
     }
 
+    /* Старые desc с прошлого load не должны выглядеть как «секция уже прочитана». */
     forEachSection([](ISection& sec) { sec.clearDesc(); });
 
     if (!io.seek(sizeof(Header))) {
@@ -362,6 +369,7 @@ Status IShowFile::load(IFile& io, const char* path) noexcept
             return;
         }
 
+        /* Читаем min(nfile, slotCount) — лишние слоты файла не лезут в RAM. */
         if (!io.seek(static_cast<std::size_t>(desc.offset))
             || !sec.readPayload(io, static_cast<uint16_t>(desc.record_count))) {
             ioFail = true;
@@ -406,6 +414,7 @@ Status IShowFile::save(IFile& io, const char* path) noexcept
     std::strncpy(hdr.name, _name, sizeof(hdr.name) - 1u);
     hdr.name[sizeof(hdr.name) - 1u] = '\0';
 
+    /* Сначала payload: смещения в desc появятся по мере записи. */
     std::size_t cursor = hdr.payloadBase();
     uint16_t written = 0;
     Status err = Status::Ok;

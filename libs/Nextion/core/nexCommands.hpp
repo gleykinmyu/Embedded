@@ -85,6 +85,8 @@ struct AttrRef {
         bool printDot(TxFrame& tx) const noexcept;
         bool printComma(TxFrame& tx) const noexcept;
         bool printQuotedString(TxFrame& tx, const char* text) const noexcept;
+        /** `len == npos` — C-строка до `'\0'`; иначе ровно `len` байт (без нуля). */
+        bool printQuotedString(TxFrame& tx, const char* text, std::size_t len) const noexcept;
         bool printUint32(TxFrame& tx, uint32_t value) const noexcept;
         bool printInt32(TxFrame& tx, int32_t value) const noexcept;
         bool printOperation(TxFrame& tx, Op op) const noexcept;
@@ -155,7 +157,15 @@ namespace assign {
         Text(const AttrRef& target, const char* text, Op op) noexcept
             : _target(target)
             , _text(text)
-            , _op(op) {}
+            , _len(static_cast<std::size_t>(-1))
+            , _op(op)
+        {}
+        Text(const AttrRef& target, const char* text, std::size_t len, Op op) noexcept
+            : _target(target)
+            , _text(text)
+            , _len(len)
+            , _op(op)
+        {}
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Text)
@@ -163,6 +173,7 @@ namespace assign {
     private:
         AttrRef _target;
         const char* _text;
+        std::size_t _len;
         Op _op;
     };
 
@@ -758,8 +769,8 @@ namespace gui {
         static PictureCrop inPlace(Region region, PicId pictureId) noexcept {
             return PictureCrop(Mode::InPlace, region, pictureId);
         }
-        static PictureCrop inPlace(Point upperLeft, uint32_t w, uint32_t h, PicId pictureId) noexcept {
-            return inPlace(Region(upperLeft, Rect(static_cast<uint16_t>(w), static_cast<uint16_t>(h))), pictureId);
+        static PictureCrop inPlace(Point upperLeft, Rect size, PicId pictureId) noexcept {
+            return inPlace(Region(upperLeft, size), pictureId);
         }
 
         /** `xpic dstX,dstY,w,h,srcX,srcY,picid` — `dst` upper-left on screen; `src` crop in picture (w×h from `src`). */

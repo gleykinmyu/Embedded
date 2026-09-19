@@ -16,7 +16,7 @@
 #include <variant>
 
 #include "ican.hpp"
-#include "smcp/Console/group.hpp"
+#include "smcp/GroupConsole/group.hpp"
 #include "smcp/mech.hpp"
 
 namespace smcp {

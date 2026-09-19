@@ -71,6 +71,8 @@ inline constexpr const char* kConsoleBadGroups = "Данные групп в ф�
 inline constexpr const char* kConsoleInvalidGroup = "Нельзя изменить эту группу.";
 inline constexpr const char* kConsoleNoSelection = "Сначала выберите лебёдки.";
 inline constexpr const char* kConsoleGroupOccupied = "В группе уже есть данные.";
+inline constexpr const char* kGroupOverlapsBlocked =
+    "Маска пересекается с заблокированной группой.";
 
 /* --- SMCP Nack / Timeout --- */
 inline constexpr const char* kSmcpBusy =

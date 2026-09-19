@@ -18,6 +18,8 @@ namespace nex {
         struct Status {
             /** Битовая маска кодов panel status (0x00…0x24); бит @a n = `1ull << code`. */
             using Mask = uint64_t;
+            /** Длина кадра без `0xFF×3` (заголовок; NIS: 4 байта). */
+            constexpr static uint16_t Length = 1;
 
             enum class Code : uint8_t {
                 Invalid_Instruction = 0x00,
@@ -78,10 +80,12 @@ namespace nex {
         /** Ответ с числом (заголовок **0x71**, например после `get` числового атрибута). */
         struct getNumeric {
             constexpr static uint8_t Header = 0x71;
+            /** Длина кадра без `0xFF×3` (заголовок + int32; NIS: 8 байт). */
+            constexpr static uint16_t Length = 5;
             int32_t value;
         };
 
-        /** Ответ со строкой (заголовок **0x70** — текстовое значение атрибута). */
+        /** Ответ со строкой (заголовок **0x70** — текстовое значение атрибута, длина не фиксирована). */
         struct getString {
             constexpr static uint8_t Header = 0x70;
             char chars[RxFrame::MAX_PAYLOAD]{};
@@ -93,6 +97,8 @@ namespace nex {
          */
         struct evTouch {
             constexpr static uint8_t Header = 0x65;
+            /** Длина кадра без `0xFF×3` (заголовок + page, id, event; NIS: 7 байт). */
+            constexpr static uint16_t Length = 4;
             Route route;
             TouchState state;
         };
@@ -105,6 +111,8 @@ namespace nex {
                 Awake = 0x67,
                 Sleep = 0x68,
             };
+            /** Длина кадра без `0xFF×3` (заголовок + X, Y, event; NIS: 9 байт). */
+            constexpr static uint16_t Length = 6;
             Mode mode;
             Point pos{};
             TouchState state;
@@ -113,6 +121,8 @@ namespace nex {
         /** Смена страницы на дисплее (заголовок **0x66**, индекс страницы). */
         struct evPage {
             constexpr static uint8_t Header = 0x66;
+            /** Длина кадра без `0xFF×3` (заголовок + page; NIS: 5 байт). */
+            constexpr static uint16_t Length = 2;
             uint8_t page = 0u;
         };
 
@@ -125,6 +135,10 @@ namespace nex {
                 StartMicroSdUpgrade = 0x89,
                 StartupPreamble = 0xFA //Не существует в NIS
             };
+            /** Длина кадра без `0xFF×3` для `0x86`…`0x89` (заголовок; NIS: 4 байта). */
+            constexpr static uint16_t Length = 1;
+            /** Кадр startup `0x00 0x00 0x00` без `0xFF×3` (NIS: 6 байт). */
+            constexpr static uint16_t StartupLength = 3;
             Code code;
         };
 
@@ -143,8 +157,53 @@ namespace nex {
                 ReadyToReceive = 0xFE,
             };
 
+            /** Длина кадра без `0xFF×3` (заголовок; NIS: 4 байта). */
+            constexpr static uint16_t Length = 1;
             Code code;
         };
+
+        /** Нет фиксированной длины кадра (`0x70` и неизвестный заголовок). */
+        constexpr uint16_t kVariableLength = 0xFFFFu;
+
+        [[nodiscard]] constexpr uint16_t payloadSize(uint16_t frameLen) noexcept {
+            return (frameLen > 0u) ? static_cast<uint16_t>(frameLen - 1u) : 0u;
+        }
+
+        [[nodiscard]] constexpr uint16_t frameLength(uint8_t header) noexcept {
+            switch (header) {
+            case getNumeric::Header:
+                return getNumeric::Length;
+            case getString::Header:
+                return kVariableLength;
+            case evTouch::Header:
+                return evTouch::Length;
+            case static_cast<uint8_t>(evTouchXY::Mode::Awake):
+            case static_cast<uint8_t>(evTouchXY::Mode::Sleep):
+                return evTouchXY::Length;
+            case evPage::Header:
+                return evPage::Length;
+            case static_cast<uint8_t>(evSystem::Code::AutoEnteredSleepMode):
+            case static_cast<uint8_t>(evSystem::Code::AutoWakeFromSleep):
+            case static_cast<uint8_t>(evSystem::Code::NextionReady):
+            case static_cast<uint8_t>(evSystem::Code::StartMicroSdUpgrade):
+                return evSystem::Length;
+            case static_cast<uint8_t>(evTransparent::Code::BlockComplete):
+            case static_cast<uint8_t>(evTransparent::Code::ReadyToReceive):
+                return evTransparent::Length;
+            default:
+                if (header <= static_cast<uint8_t>(Status::Code::Serial_Overflow))
+                    return Status::Length;
+                return kVariableLength;
+            }
+        }
+
+        /** `true`, если `n` — допустимая длина кадра (заголовок + payload) после снятия `0xFF×3`. */
+        [[nodiscard]] constexpr bool frameLengthOk(uint8_t header, uint16_t n) noexcept {
+            if (header == 0u)
+                return n == Status::Length || n == evSystem::StartupLength;
+            const uint16_t expect = frameLength(header);
+            return expect == kVariableLength || n == expect;
+        }
 
         /** Закрытие MCU `MsgBox` по кнопке (внутреннее, не с UART). */
         struct evMsgBox {

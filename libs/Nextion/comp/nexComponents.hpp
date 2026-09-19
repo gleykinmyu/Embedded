@@ -383,7 +383,7 @@ public:
     attr::String<TxtMaxL> txt;
 
     // NIS type 62: нет `ycen` — запрет assign через SlidingText&.
-    // `ch`, `maxval_y` в NIS есть, но в MCU API намеренно не экспортируем (Editor / val_y достаточно).
+    // `ch` в NIS есть, но в MCU API намеренно не экспортируем.
     void setVAlign(VAlign) = delete;
 
     void setShowProgressBar(ShowProgressBar v) noexcept
@@ -391,8 +391,10 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Left, static_cast<uint8_t>(v));
     }
 
-    /** user: позиция прокрутки по Y */
+    /** user: позиция прокрутки по Y (отскок за верх — отрицательный). */
     attr::Num<Coord> val_y;
+    /** mcu: максимум прокрутки Y (NIS RO, панель считает по txt). */
+    attr::NumRO<Coord> maxval_y;
 
     void onResponse(const msg::getString& response, uint8_t tag) override
     {
@@ -409,6 +411,10 @@ public:
             val_y.applyResponse(response);
             return;
         }
+        if (tag == static_cast<uint8_t>(attr::Id::MaxvalY)) {
+            maxval_y.applyResponse(response);
+            return;
+        }
         Textual<S>::onResponse(response, tag);
     }
 
@@ -416,6 +422,7 @@ public:
         : Textual<S>(owner, name, Component::Type::SlidingText, id)
         , txt{*this, attr::Id::Txt}
         , val_y{*this, attr::Id::ValY}
+        , maxval_y{*this, attr::Id::MaxvalY}
     {}
 };
 

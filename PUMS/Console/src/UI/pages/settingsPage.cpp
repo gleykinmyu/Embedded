@@ -68,7 +68,7 @@ void SettingsPage::onLoad()
     _pending = Pending::None;
     _pendingGets = 0u;
     loadRtcToUi();
-    swGr0.val = console.settings().isolateGroup;
+    swGr0.val = console.show.settings().isolateGroup;
 }
 
 void SettingsPage::loadRtcToUi() noexcept
@@ -175,13 +175,17 @@ void SettingsPage::commitApply() noexcept
 
     if (board.rtc.isReady()) {
         (void)board.rtc.set(dt);
+        board.rtc.commitCalendar();
         ui().syncStatusBarTime();
     }
 
     {
-        MConsole::Settings s = console.settings();
-        s.isolateGroup = static_cast<bool>(swGr0.val);
-        console.setSettings(s);
+        Settings& s = console.show.settings();
+        const bool isolate = static_cast<bool>(swGr0.val);
+        if (s.isolateGroup != isolate) {
+            s.isolateGroup = isolate;
+            console.show.sett.markEdited();
+        }
     }
 
     if (clamped) {

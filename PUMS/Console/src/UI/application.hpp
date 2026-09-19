@@ -12,9 +12,20 @@
 #include "overlay/ovl.hpp"
 
 #include "model/mconsole.hpp"
-#include "model/mbrowser.hpp"
 
 namespace server {
+
+class UiConsole final : public MConsole {
+public:
+    using MConsole::MConsole;
+
+protected:
+    void onMechChanged(uint8_t mech_id) noexcept override;
+    void onGroupAck(uint8_t group_id) noexcept override;
+    void onConsoleChanged() noexcept override;
+    void onNack(smcp::Session* session, const smcp::TxSlot& req,
+                const smcp::msg::Nack& reply) noexcept override;
+};
 
 /** HMI UI: страницы приложения + служебные клавиатуры keybdA/keybdB. */
 class Application : public nex::AppUI<nex::hmi::kPageCount> {
@@ -48,11 +59,9 @@ public:
      */
     void showUtf8Msg(const char* titleUtf8, nex::ovl::MsgBox::Preset preset, uint8_t tag,
         nex::ovl::MsgBox::Action defaultAction, const char* textUtf8) noexcept;
-    /** MsgBox по текущему статусу MConsole. */
-    void showConsoleStatus(uint8_t tag = 0u) noexcept;
-    /** MsgBox по статусу MConsole с заголовком «Группа». */
-    void showGroupStatus(uint8_t tag = 0u) noexcept;
-    /** MsgBox по текущему статусу MBrowser. */
+    /** MsgBox «Файл» по статусу FIO (браузер / шоуфайл). */
+    void showFileSystemStatus(uint8_t tag = 0u) noexcept;
+    /** MsgBox «Файл» по статусу браузера. */
     void showBrowserStatus(uint8_t tag = 0u) noexcept;
     /** MsgBox по последнему SMCP Nack. */
     void showSmcpNack(uint8_t tag = 0u) noexcept;
@@ -70,6 +79,5 @@ private:
 
 } // namespace server
 
-extern MConsole console;
-extern MBrowser mBrowser;
+extern server::UiConsole console;
 extern server::Application app;

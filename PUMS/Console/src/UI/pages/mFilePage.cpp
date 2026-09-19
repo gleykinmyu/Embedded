@@ -22,33 +22,33 @@ void MFilePage::onLoad()
 void MFilePage::refreshSaveBtn() noexcept
 {
     using State = ConsoleBtn::State;
-    bSave.setState(console.isEdited() ? State::Active : State::Disabled);
+    bSave.setState(console.show.isEdited() ? State::Active : State::Disabled);
 }
 
 void MFilePage::doSave() noexcept
 {
-    if (!console.isEdited()) {
+    if (!console.show.isEdited()) {
         return;
     }
 
-    if (console.saveShow()) {
+    if (console.fio.saveShow()) {
         ui().showFileMsg(Msg::AfterSaveOk, uiMsg::kFileSaved);
         return;
     }
 
-    switch (console.getStatus()) {
-    case MConsole::Status::NoShowOpen:
-        ui().showFileMsg(Msg::GoSaveAs, MConsole::statusText(MConsole::Status::NoShowOpen));
+    switch (console.fio.status()) {
+    case smcp::file::FIOManager::Status::NoShowOpen:
+        ui().showFileMsg(Msg::GoSaveAs, uiMsg::kConsoleNoShowOpen);
         break;
     default:
-        ui().showConsoleStatus(Msg::None);
+        ui().showFileSystemStatus(Msg::None);
         break;
     }
 }
 
 void MFilePage::beginNew() noexcept
 {
-    if (console.isEdited()) {
+    if (console.show.isEdited()) {
         ui().showFileYesNo(Msg::ConfirmNew, uiMsg::kConfirmNewShowDiscard);
         return;
     }
@@ -57,7 +57,7 @@ void MFilePage::beginNew() noexcept
 
 void MFilePage::commitNew() noexcept
 {
-    console.newShow();
+    console.fio.newShow();
     ui().switchPage(ui().work);
 }
 

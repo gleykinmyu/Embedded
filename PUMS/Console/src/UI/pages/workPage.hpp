@@ -76,9 +76,6 @@ private:
     void onAssignPress(uint8_t index) noexcept;
     void onMenuPress(uint8_t comp);
 
-    /** Block на Release: модель → MsgBox при необходимости → redraw после закрытия. */
-    void applyBlockResult(MConsole::BlockResult result) noexcept;
-
     void refreshModeButtons() noexcept;
     void refreshGroupBtn(bool textModified) noexcept;
     void refreshAssignBtn() noexcept;
@@ -93,6 +90,7 @@ private:
 
     uint8_t _scenePage = 0u;
     uint8_t _renameGroupId = 0xFFu;
+    bool _blockOn = false;
 };
 
 } // namespace server

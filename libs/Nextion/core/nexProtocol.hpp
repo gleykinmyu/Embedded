@@ -16,7 +16,8 @@ namespace nex {
     }
 
     /**
-     * **R**eceive **frame** — один принятый кадр от дисплея: заголовок + полезная нагрузка (до `MAX_PAYLOAD`).
+     * **R**eceive **frame** — один принятый кадр от дисплея.
+     * `length` — заголовок + payload, без `0xFF×3`.
      */
     struct RxFrame {
         static constexpr uint16_t MAX_PAYLOAD = 64;
