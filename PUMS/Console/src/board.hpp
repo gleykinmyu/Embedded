@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "impl/can_bus.hpp"
 #include "impl/serial.hpp"
 #include "impl/spi_stream.hpp"
 #include "impl/w25q.hpp"
@@ -14,6 +15,8 @@
 class CBoard : public CBaseBoard 
 {
 public:
+    static constexpr uint32_t kCanBitrate = 1'000'000u;
+
     PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
     PHL::Serial<PHL::ID::SERIAL2, 512, 128> serial2;
 
@@ -24,9 +27,15 @@ public:
     PHL::Rtc rtc;
     PHL::WatchDog watchdog;
 
+    /** CAN1: RX=PD0, TX=PD1 (AF9). */
+    PHL::CanBus<PHL::ID::CAN1, 32, 32> can;
+
     /** Kick IWDG; при alive — мигание LED раз в 1 с. @return true, если LED переключился. */
     bool tick() noexcept;
     void setLedAlive(bool alive) noexcept;
+
+    /** Пины PD0/PD1 и open(bitrate). */
+    bool initCan(uint32_t bitrate = kCanBitrate) noexcept;
 
 private:
     bool _ledAlive = false;

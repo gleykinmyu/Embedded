@@ -63,6 +63,10 @@ inline uint32_t input_clock_hz() noexcept
         static inline constexpr ::PHL::IRQ::Vector<ID::NAME, ORIG##_IRQn> IRQ{}; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static void Reset() { \
+            __HAL_RCC_##ORIG##_FORCE_RESET(); \
+            __HAL_RCC_##ORIG##_RELEASE_RESET(); \
+        } \
         static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 
@@ -84,6 +88,10 @@ inline uint32_t input_clock_hz() noexcept
         }; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static void Reset() { \
+            __HAL_RCC_##ORIG##_FORCE_RESET(); \
+            __HAL_RCC_##ORIG##_RELEASE_RESET(); \
+        } \
         static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 
@@ -103,6 +111,10 @@ inline uint32_t input_clock_hz() noexcept
         }; \
         static void EnableClock() { __HAL_RCC_##ORIG##_CLK_ENABLE(); } \
         static void DisableClock() { __HAL_RCC_##ORIG##_CLK_DISABLE(); } \
+        static void Reset() { \
+            __HAL_RCC_##ORIG##_FORCE_RESET(); \
+            __HAL_RCC_##ORIG##_RELEASE_RESET(); \
+        } \
         static uint32_t InputClockHz() { return ::PHL::detail::input_clock_hz<ID::NAME>(); } \
     };
 

@@ -87,7 +87,7 @@ public:
 
     [[nodiscard]] bool isEmpty() const noexcept;
     [[nodiscard]] bool isBlocked() const noexcept;
-    /** Ставит Blocked. При @a on пересечение пишется в overlap — только инфо, отказ нет. */
+    /** Ставит Blocked. При @a on: overlap (инфо); если это queued/active — сброс группы. */
     void setBlocked(bool on = true) noexcept;
 
     enum class Result : uint8_t {
@@ -235,8 +235,8 @@ class CGMech : public CMech {
 public:
     CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept;
 
-    /** Deselect — всегда true; Add — false, если isBlocked() или overlap с blocked-группой. */
-    bool select(uint8_t console_id) noexcept override;
+    /** Deselect — Ok + TX; Add — Blocked / OverlapsBlocked / Occupied, иначе TX. */
+    [[nodiscard]] CGroup::Result trySelect(uint8_t console_id) noexcept;
 
 private:
     IGroupBank& _groups;

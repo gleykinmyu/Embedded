@@ -2,25 +2,23 @@
 
 namespace nex {
 
-void attr::Base::pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept {
-    const AttrRef target{ _parent.name, name() };
+void attr::Base::pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept
+{
+    if (!_parent.canAccess()) {
+        return;
+    }
     const char* const p = text != nullptr ? text : "";
-    const cmd::assign::Text cmd(target, p, op);
-    enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
+    enqueueTransaction(cmd::assign::Text(attr_detail::makeTarget(_parent, id), p, op),
+        Transaction::Kind::Command, msg::kAwaitingNone);
 }
 
-void attr::Base::pushCmdAssignTextGlobal(const char* text, cmd::assign::Text::Op op) const noexcept {
-    const AttrRef target{ _parent.name, name() };
-    const char* const p = text != nullptr ? text : "";
-    const cmd::assign::Text inner(target, p, op);
-    enqueueTransaction(cmd::Global(_parent.page.name, inner), Transaction::Kind::Command,
-        msg::kAwaitingNone);
-}
-
-void attr::Base::pushCmdAssignTextSubtract(uint32_t n) const noexcept {
-    const AttrRef target{ _parent.name, name() };
-    const cmd::assign::TextSubtract cmd(target, n);
-    enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
+void attr::Base::pushCmdAssignTextSubtract(uint32_t n) const noexcept
+{
+    if (!_parent.canAccess()) {
+        return;
+    }
+    enqueueTransaction(cmd::assign::TextSubtract(attr_detail::makeTarget(_parent, id), n),
+        Transaction::Kind::Command, msg::kAwaitingNone);
 }
 
 } // namespace nex

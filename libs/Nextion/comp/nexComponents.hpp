@@ -37,8 +37,8 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::En, false);
     }
 
-    Timer(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Component(owner, name, Component::Type::Timer, id)
+    Timer(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Component(owner, name, Component::Type::Timer, id, global)
     {}
 };
 
@@ -58,8 +58,8 @@ public:
         Component::onResponse(response, tag);
     }
 
-    NumericVar(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Component(owner, name, Component::Type::Variable, id)
+    NumericVar(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Component(owner, name, Component::Type::Variable, id, global)
         , val{*this, attr::Id::Val}
     {}
 };
@@ -85,8 +85,8 @@ public:
         Component::onResponse(response, tag);
     }
 
-    StringVar(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Component(owner, name, Component::Type::Variable, id)
+    StringVar(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Component(owner, name, Component::Type::Variable, id, global)
         , txt{*this, attr::Id::Txt}
     {}
 };
@@ -95,8 +95,8 @@ public:
 
 class Hotspot : public TouchArea {
 public:
-    Hotspot(IPage& owner, const Literal& name, uint8_t id = 0)
-        : TouchArea(owner, name, Component::Type::Hotspot, id) {}
+    Hotspot(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : TouchArea(owner, name, Component::Type::Hotspot, id, global) {}
 };
 
 /** pco; dis; txt (данные QR) */
@@ -119,8 +119,8 @@ public:
         attr_detail::assignText(*this, attr::Id::Txt, text);
     }
 
-    QRCode(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Styled<BG::Color>(owner, name, Component::Type::QRCode, id)
+    QRCode(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Styled<BG::Color>(owner, name, Component::Type::QRCode, id, global)
     {}
 };
 
@@ -132,8 +132,8 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Pic, v);
     }
 
-    Picture(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Drawable(owner, name, Component::Type::Picture, id)
+    Picture(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Drawable(owner, name, Component::Type::Picture, id, global)
     {}
 };
 
@@ -145,8 +145,8 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Picc, v);
     }
 
-    CropPicture(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Drawable(owner, name, Component::Type::CropPicture, id)
+    CropPicture(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Drawable(owner, name, Component::Type::CropPicture, id, global)
     {}
 };
 
@@ -170,8 +170,8 @@ public:
             clamp(v, kDataScaleMin, kDataScaleMax));
     }
 
-    Waveform(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Drawable(owner, name, Component::Type::Waveform, id)
+    Waveform(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Drawable(owner, name, Component::Type::Waveform, id, global)
         , bg{*this}
         , ch{*this}
     {}
@@ -203,8 +203,8 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
-    ProgressBar(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Drawable(owner, name, Component::Type::ProgressBar, id)
+    ProgressBar(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Drawable(owner, name, Component::Type::ProgressBar, id, global)
         , value{*this, attr::Id::Val}
         , bg{*this}
         , bar{*this}
@@ -234,8 +234,8 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
-    Slider(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Styled<S>(owner, name, Component::Type::Slider, id)
+    Slider(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Styled<S>(owner, name, Component::Type::Slider, id, global)
         , value{*this, attr::Id::Val}
         , cursor{*this}
         , bg2{*this}
@@ -260,8 +260,8 @@ public:
             clamp(v, kAngleMin, kAngleMax));
     }
 
-    Gauge(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Styled<S>(owner, name, Component::Type::Gauge, id)
+    Gauge(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Styled<S>(owner, name, Component::Type::Gauge, id, global)
         , center{*this}
         , pointer{*this}
     {}
@@ -301,8 +301,8 @@ public:
         ListSelect<S>::onResponse(response, tag);
     }
 
-    ComboBox(IPage& owner, const Literal& name, uint8_t id = 0)
-        : ListSelect<S>(owner, name, Component::Type::ComboBox, id)
+    ComboBox(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : ListSelect<S>(owner, name, Component::Type::ComboBox, id, global)
         , border{*this}
         , arrow{*this}
         , cells{*this}
@@ -330,8 +330,8 @@ public:
 
     // NIS `txt` (RO) — в MCU API не зеркалим: строки из path знает приложение; выбор — val (ListSelect).
 
-    TextSelect(IPage& owner, const Literal& name, uint8_t id = 0)
-        : ListSelect<S>(owner, name, Component::Type::TextSelect, id)
+    TextSelect(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : ListSelect<S>(owner, name, Component::Type::TextSelect, id, global)
     {}
 };
 
@@ -370,8 +370,8 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
-    Text(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Textual<S>(owner, name, Component::Type::Text, id)
+    Text(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Textual<S>(owner, name, Component::Type::Text, id, global)
         , txt{*this, attr::Id::Txt}
     {}
 };
@@ -418,8 +418,8 @@ public:
         Textual<S>::onResponse(response, tag);
     }
 
-    SlidingText(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Textual<S>(owner, name, Component::Type::SlidingText, id)
+    SlidingText(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Textual<S>(owner, name, Component::Type::SlidingText, id, global)
         , txt{*this, attr::Id::Txt}
         , val_y{*this, attr::Id::ValY}
         , maxval_y{*this, attr::Id::MaxvalY}
@@ -478,8 +478,8 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
-    ScrollText(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Textual<S>(owner, name, Component::Type::ScrollText, id)
+    ScrollText(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Textual<S>(owner, name, Component::Type::ScrollText, id, global)
         , txt{*this, attr::Id::Txt}
     {}
 };
@@ -487,8 +487,8 @@ public:
 template<BG S = BG::Color>
 class Button : public ButtonBase<S> {
 public:
-    Button(IPage& owner, const Literal& name, uint8_t id = 0)
-        : ButtonBase<S>(owner, name, Component::Type::Button, id)
+    Button(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : ButtonBase<S>(owner, name, Component::Type::Button, id, global)
     {}
 };
 
@@ -507,8 +507,8 @@ public:
         ButtonBase<S>::onResponse(response, tag);
     }
 
-    DualStateButton(IPage& owner, const Literal& name, uint8_t id = 0)
-        : ButtonBase<S>(owner, name, Component::Type::DualStateButton, id)
+    DualStateButton(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : ButtonBase<S>(owner, name, Component::Type::DualStateButton, id, global)
         , val{*this, attr::Id::Val}
     {}
 };
@@ -526,8 +526,8 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Format, v);
     }
 
-    Number(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Numeric<S>(owner, name, Component::Type::Number, id)
+    Number(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Numeric<S>(owner, name, Component::Type::Number, id, global)
     {}
 };
 
@@ -541,21 +541,21 @@ public:
         attr_detail::assignNumeric(*this, attr::Id::Vvs1, digitsAfterPoint);
     }
 
-    XFloat(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Numeric<S>(owner, name, Component::Type::XFloat, id)
+    XFloat(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Numeric<S>(owner, name, Component::Type::XFloat, id, global)
     {}
 };
 
 class Checkbox : public Selection {
 public:
-    Checkbox(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Selection(owner, name, Component::Type::Checkbox, id) {}
+    Checkbox(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Selection(owner, name, Component::Type::Checkbox, id, global) {}
 };
 
 class Radio : public Selection {
 public:
-    Radio(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Selection(owner, name, Component::Type::Radio, id) {}
+    Radio(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Selection(owner, name, Component::Type::Radio, id, global) {}
 };
 
 class ToggleSwitch : public Selection {
@@ -576,8 +576,8 @@ public:
     //возможно использовать txt как private поле
     attr::String<24> txt;
 
-    ToggleSwitch(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Selection(owner, name, Component::Type::ToggleSwitch, id)
+    ToggleSwitch(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Selection(owner, name, Component::Type::ToggleSwitch, id, global)
         , pressed{*this}
         , font{*this}
         , txt{*this, attr::Id::Txt}

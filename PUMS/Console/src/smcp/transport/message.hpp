@@ -102,6 +102,39 @@ enum class ErrorCode : uint8_t {
     return "?";
 }
 
+#if defined(SMCP_TRACE_SHORT)
+[[nodiscard]] inline const char* cstrS(ErrorCode code) noexcept
+{
+    switch (code) {
+    case ErrorCode::Ok: return "Ok";
+    case ErrorCode::Busy: return "Busy";
+    case ErrorCode::Limits: return "Lim";
+    case ErrorCode::Crc: return "Crc";
+    case ErrorCode::MechNotFound: return "Mech";
+    case ErrorCode::Safety: return "Safe";
+    case ErrorCode::NotReady: return "NRdy";
+    case ErrorCode::SelectLimit: return "SLim";
+    case ErrorCode::Timeout: return "Tmo";
+    }
+    return "?";
+}
+
+[[nodiscard]] inline const char* cstrS(MsgId id) noexcept
+{
+    switch (id) {
+    case MsgId::Ack: return "Ack";
+    case MsgId::Nack: return "Nk";
+    case MsgId::Heartbeat: return "HB";
+    case MsgId::Select: return "Sel";
+    case MsgId::Block: return "Blk";
+    case MsgId::GetTelemetry: return "GT";
+    case MsgId::SetTarget: return "Tg";
+    case MsgId::Telemetry: return "Te";
+    }
+    return "?";
+}
+#endif
+
 /**
  * Логический заголовок SMCP = только CAN ID (без data).
  * prio — 5 бит (0 = высший приоритет арбитража).

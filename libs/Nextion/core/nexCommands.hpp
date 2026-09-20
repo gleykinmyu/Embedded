@@ -15,12 +15,32 @@
 namespace nex {
 
 /**
- * Ссылка на атрибут NIS: `comp` (объект / путь без точки до атрибута) и `attr` (`txt`, `val`, …).
- * Если `comp.len == 0` (`kEmptyLiteral`), в кадр выводится только `attr` как вся левая часть (`sys0`, `p0.t0.val`, …).
- * Объекты `Literal` для `comp` и `attr` должны жить дольше, чем хранящий `AttrRef`.
+ * Ссылка на объект NIS: опционально `page.` + `name` (`vis page.b0,1`, `tsw 255,0`).
+ * Пустой `page` — без префикса страницы. `Literal` должны жить дольше, чем `CompRef`.
+ */
+struct CompRef {
+    const Literal& page;
+    const Literal& name;
+
+    constexpr CompRef(const Literal& pageName, const Literal& objName) noexcept
+        : page(pageName)
+        , name(objName)
+    {}
+
+    /** Текущая страница: в кадр только `name`. */
+    constexpr CompRef(const Literal& objName) noexcept
+        : page(kEmptyLiteral)
+        , name(objName)
+    {}
+};
+
+/**
+ * Ссылка на атрибут: `comp` + `attr` (`page.b0.val`, `sys0`).
+ * Если у `comp` пустые `page` и `name`, в кадр идёт только `attr` (системные переменные).
+ * `Literal` должны жить дольше, чем `AttrRef`.
  */
 struct AttrRef {
-    const Literal& comp;
+    CompRef comp;
     const Literal& attr;
 };
 
@@ -90,6 +110,7 @@ struct AttrRef {
         bool printUint32(TxFrame& tx, uint32_t value) const noexcept;
         bool printInt32(TxFrame& tx, int32_t value) const noexcept;
         bool printOperation(TxFrame& tx, Op op) const noexcept;
+        bool printCompLexeme(TxFrame& tx, const CompRef& c) const noexcept;
         bool printAttrLexeme(TxFrame& tx, const AttrRef& t) const noexcept;
         bool printColorConst(TxFrame& tx, Color::std c) const noexcept;
     };
@@ -145,6 +166,7 @@ namespace assign {
     /**
      * **Text** assign / append — строковое присваивание к атрибуту (NIS §2.1–2.2): `…="<text>"` или `…+="<text>"`.
      * Экранирование `\r`, `\"`, `\\` — §1.11.
+     * Слот хранит указатель: буфер должен жить до `serialize` (у вызывающего / `attr::String`).
      */
     class Text final : public Command {
     public:
@@ -203,7 +225,8 @@ namespace assign {
         Numeric(const AttrRef& target, int32_t value, Op op = Op::Assign) noexcept
             : _target(target)
             , _value(value)
-            , _op(op) {}
+            , _op(op)
+        {}
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Numeric)
@@ -283,49 +306,32 @@ namespace assign {
     };
 
     /**
-     * **Global** — квалификатор страницы: `pageName.` + полезная нагрузка вложенной команды.
-     * Вложенная `Command` копируется через `emplaceIn` во внутренний слот (как в очереди Session).
-     * Пример: `Global(workPage, assign::Numeric({comp, attr}, 1))` → `work.comp.attr=1`.
-     */
-    class Global final : public Command {
-    public:
-        /** Вместимость вложенной команды; `sizeof(Global)` ≤ слот очереди (128). */
-        static constexpr std::size_t kInnerCapacity = 96u;
-
-        Global(const Literal& pageName, const Command& inner) noexcept;
-        Global(const Global& other) noexcept;
-        Global(Global&&) = delete;
-        Global& operator=(const Global&) = delete;
-        Global& operator=(Global&&) = delete;
-        ~Global() override;
-
-        bool serialize(TxFrame& tx) const noexcept override;
-        NEX_COMMAND_SLOT(Global)
-
-    private:
-        const Literal& _pageName;
-        Command* _inner = nullptr;
-        alignas(std::max_align_t) unsigned char _storage[kInnerCapacity]{};
-    };
-
-    static_assert(sizeof(Global) <= 128u, "cmd::Global must fit TransactionQueue slot");
-
-    /**
-     * **Cfgpio** — привязка GPIO к компоненту (NIS `cfgpio`).
+     * **Cfgpio** — `cfgpio io,mode,comp` (NIS, Enhanced/Intelligent).
+     * `io` 0…7; PWM только 4…7. `comp` — объект при `Mode::InputBind`, иначе `0`.
+     * Binding после `ref`/смены страницы нужно повторить (preinitialize страницы).
      */
     class Cfgpio final : public Command {
     public:
-        Cfgpio(uint32_t pin, uint32_t mode, const Literal& bindCompNameOrZero) noexcept
+        /** Второй аргумент NIS: режим ноги. */
+        enum class Mode : uint8_t {
+            PullUpInput = 0, /**< pull-up input; чтение `pioN` */
+            InputBind = 1,   /**< input binding: спад = Press, фронт = Release */
+            PushPull = 2,    /**< push-pull output; запись `pioN=0/1` */
+            Pwm = 3,         /**< PWM output; заранее `pwmN=duty`, частота `pwmf` */
+            OpenDrain = 4,   /**< open-drain output */
+        };
+
+        Cfgpio(uint32_t pin, Mode mode, const CompRef& bindComp) noexcept
             : _pin(pin)
             , _mode(mode)
-            , _bindCompNameOrZero(bindCompNameOrZero) {}
+            , _bindComp(bindComp) {}
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Cfgpio)
 
     private:
         uint32_t _pin;
-        uint32_t _mode;
-        const Literal& _bindCompNameOrZero;
+        Mode _mode;
+        CompRef _bindComp;
     };
 
 
@@ -419,20 +425,20 @@ namespace assign {
             Setlayer, /**< порядок отрисовки (Z-order) */
         };
 
-        static Component refresh(const Literal& compName) noexcept {
-            return Component(Kind::Refresh, compName, 0u);
+        static Component refresh(const CompRef& comp) noexcept {
+            return Component(Kind::Refresh, comp, 0u);
         }
-        static Component visible(const Literal& compName, bool on) noexcept {
-            return Component(Kind::Visible, compName, on ? 1u : 0u);
+        static Component visible(const CompRef& comp, bool on) noexcept {
+            return Component(Kind::Visible, comp, on ? 1u : 0u);
         }
-        static Component tsw(const Literal& compName, bool enabled) noexcept {
-            return Component(Kind::TouchSwitch, compName, enabled ? 1u : 0u);
+        static Component tsw(const CompRef& comp, bool enabled) noexcept {
+            return Component(Kind::TouchSwitch, comp, enabled ? 1u : 0u);
         }
-        static Component click(const Literal& compName, TouchState state) noexcept {
-            return Component(Kind::Click, compName, static_cast<uint32_t>(state));
+        static Component click(const CompRef& comp, TouchState state) noexcept {
+            return Component(Kind::Click, comp, static_cast<uint32_t>(state));
         }
-        static Component setlayer(const Literal& compName, const Literal& aboveCompNameOr255) noexcept {
-            return Component(Kind::Setlayer, compName, aboveCompNameOr255);
+        static Component setlayer(const CompRef& comp, const Literal& above) noexcept {
+            return Component(Kind::Setlayer, comp, above);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -440,25 +446,29 @@ namespace assign {
 
     private:
         Kind _kind;
-        const Literal& _compName;
+        const Literal& _page;
+        const Literal& _comp;
         union Arg {
             uint32_t arg01;
-            const Literal* aboveCompNameOr255;
+            const Literal* above;
 
-            constexpr Arg() noexcept : arg01(0u) {}
             constexpr explicit Arg(uint32_t value) noexcept : arg01(value) {}
-            constexpr explicit Arg(const Literal& compName) noexcept : aboveCompNameOr255(&compName) {}
+            constexpr explicit Arg(const Literal& aboveComp) noexcept : above(&aboveComp) {}
         } _arg;
 
-        Component(Kind k, const Literal& compName, uint32_t arg01) noexcept
+        Component(Kind k, const CompRef& comp, uint32_t arg01) noexcept
             : _kind(k)
-            , _compName(compName)
-            , _arg(arg01) {}
+            , _page(comp.page)
+            , _comp(comp.name)
+            , _arg(arg01)
+        {}
 
-        Component(Kind k, const Literal& compName, const Literal& aboveCompNameOr255) noexcept
+        Component(Kind k, const CompRef& comp, const Literal& above) noexcept
             : _kind(k)
-            , _compName(compName)
-            , _arg(aboveCompNameOr255) {}
+            , _page(comp.page)
+            , _comp(comp.name)
+            , _arg(above)
+        {}
     };
 
     /**
@@ -472,8 +482,8 @@ namespace assign {
      */
     class Move final : public Command {
     public:
-        Move(const Literal& compName, Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept
-            : _compName(compName)
+        Move(const CompRef& comp, Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept
+            : _comp(comp)
             , _from(from)
             , _to(to)
             , _priority(priority)
@@ -482,7 +492,7 @@ namespace assign {
         NEX_COMMAND_SLOT(Move)
 
     private:
-        const Literal& _compName;
+        CompRef _comp;
         Point _from;
         Point _to;
         uint32_t _priority;
@@ -699,20 +709,20 @@ namespace assign {
             Find,
         };
 
-        static FileStream open(const Literal& compName, const char* path) noexcept {
-            return FileStream(Kind::Open, compName, path, 0u, 0u);
+        static FileStream open(const CompRef& comp, const char* path) noexcept {
+            return FileStream(Kind::Open, comp, path, 0u, 0u);
         }
-        static FileStream read(const Literal& compName, uint32_t offset, uint32_t byteCount) noexcept {
-            return FileStream(Kind::Read, compName, nullptr, offset, byteCount);
+        static FileStream read(const CompRef& comp, uint32_t offset, uint32_t byteCount) noexcept {
+            return FileStream(Kind::Read, comp, nullptr, offset, byteCount);
         }
-        static FileStream write(const Literal& compName, uint32_t byteCount) noexcept {
-            return FileStream(Kind::Write, compName, nullptr, byteCount, 0u);
+        static FileStream write(const CompRef& comp, uint32_t byteCount) noexcept {
+            return FileStream(Kind::Write, comp, nullptr, byteCount, 0u);
         }
-        static FileStream close(const Literal& compName) noexcept {
-            return FileStream(Kind::Close, compName, nullptr, 0u, 0u);
+        static FileStream close(const CompRef& comp) noexcept {
+            return FileStream(Kind::Close, comp, nullptr, 0u, 0u);
         }
-        static FileStream find(const Literal& compName, const char* path) noexcept {
-            return FileStream(Kind::Find, compName, path, 0u, 0u);
+        static FileStream find(const CompRef& comp, const char* path) noexcept {
+            return FileStream(Kind::Find, comp, path, 0u, 0u);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -720,14 +730,14 @@ namespace assign {
 
     private:
         Kind _kind;
-        const Literal& _compName;
+        CompRef _comp;
         const char* _path;
         uint32_t _arg1;
         uint32_t _arg2;
 
-        FileStream(Kind kind, const Literal& compName, const char* path, uint32_t arg1, uint32_t arg2) noexcept
+        FileStream(Kind kind, const CompRef& comp, const char* path, uint32_t arg1, uint32_t arg2) noexcept
             : _kind(kind)
-            , _compName(compName)
+            , _comp(comp)
             , _path(path)
             , _arg1(arg1)
             , _arg2(arg2)

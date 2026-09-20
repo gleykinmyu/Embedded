@@ -21,6 +21,7 @@ void IGroupConsole::onAck(Session* session, const TxSlot& req) noexcept
     }
     const uint8_t id = _queuedGroup;
     _queuedGroup = kNoQueuedGroup;
+    _activeGroup = id;
     onGroupAck(id);
 }
 
@@ -35,6 +36,13 @@ void IGroupConsole::onNack(Session* session, const TxSlot& req, const msg::Nack&
 void IGroupConsole::setQueuedGroup(uint8_t group_id) noexcept
 {
     _queuedGroup = group_id;
+}
+
+void IGroupConsole::clearActiveGroup() noexcept
+{
+    _activeGroup = kNoActiveGroup;
+    _queuedGroup = kNoQueuedGroup;
+    clearSelection();
 }
 
 } // namespace smcp

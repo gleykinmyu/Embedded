@@ -62,8 +62,8 @@ public:
     void onResponse(const msg::getString& response, uint8_t tag) override;
 
 protected:
-    explicit TouchArea(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Component(owner, objectName, componentType, id)
+    explicit TouchArea(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Component(owner, objectName, componentType, id, global)
 #if NEX_TOUCH_AREA_POSITION
         , x{*this, attr::Id::X}
         , y{*this, attr::Id::Y}
@@ -105,8 +105,8 @@ public:
     void move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept;
 
 protected:
-    explicit Drawable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : TouchArea(owner, objectName, componentType, id)
+    explicit Drawable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : TouchArea(owner, objectName, componentType, id, global)
     {}
 };
 
@@ -122,8 +122,8 @@ public:
     resources::Background<S> bg;
 
 protected:
-    explicit Styled(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Drawable(owner, objectName, componentType, id)
+    explicit Styled(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Drawable(owner, objectName, componentType, id, global)
         , bg{*this}
     {}
 };
@@ -136,8 +136,8 @@ public:
     resources::Font<> font;
 
 protected:
-    explicit Printable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Styled<S>(owner, objectName, componentType, id)
+    explicit Printable(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Styled<S>(owner, objectName, componentType, id, global)
         , font{*this}
     {}
 };
@@ -180,8 +180,8 @@ public:
     }
 
 protected:
-    explicit ListSelect(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Printable<S>(owner, objectName, componentType, id)
+    explicit ListSelect(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Printable<S>(owner, objectName, componentType, id, global)
         , path{*this, attr::Id::Path}
         , val{*this, attr::Id::Val}
     {}
@@ -207,8 +207,8 @@ public:
     }
 
 protected:
-    explicit Multiline(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Printable<S>(owner, objectName, componentType, id)
+    explicit Multiline(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Printable<S>(owner, objectName, componentType, id, global)
     {}
 };
 
@@ -231,8 +231,8 @@ public:
     }
 
 protected:
-    explicit Textual(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Multiline<S>(owner, objectName, componentType, id)
+    explicit Textual(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Multiline<S>(owner, objectName, componentType, id, global)
     {}
 };
 
@@ -249,8 +249,8 @@ public:
     resources::Pressed<S> pressed;
 
 protected:
-    explicit ButtonBase(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Textual<S>(owner, objectName, componentType, id)
+    explicit ButtonBase(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Textual<S>(owner, objectName, componentType, id, global)
         , pressed{*this}
     {}
 };
@@ -277,8 +277,8 @@ public:
     }
 
 protected:
-    explicit Numeric(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Multiline<S>(owner, objectName, componentType, id)
+    explicit Numeric(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Multiline<S>(owner, objectName, componentType, id, global)
         , val{*this, attr::Id::Val}
     {}
 };
@@ -308,8 +308,8 @@ public:
     }
 
 protected:
-    explicit Selection(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Styled<BG::Color>(owner, objectName, componentType, id)
+    explicit Selection(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Styled<BG::Color>(owner, objectName, componentType, id, global)
         , val{*this, attr::Id::Val}
     {}
 };

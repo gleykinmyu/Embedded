@@ -220,6 +220,8 @@ public:
         if (!_txQ.push(frame))
             return false;
         IRQ_TX_Enable();
+        /* bxCAN TMEIE — по RQCPx, не по пустому mailbox. Грузим сразу, как HAL_CAN_AddTxMessage. */
+        IRQ_TX_Handler();
         return true;
     }
 

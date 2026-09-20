@@ -151,12 +151,21 @@ bool Command::printOperation(TxFrame& tx, Op op) const noexcept {
     return pushBytes(tx, "=", 1u);
 }
 
+bool Command::printCompLexeme(TxFrame& tx, const CompRef& c) const noexcept {
+    if (c.page.len != 0u) {
+        if (!printLiteral(tx, c.page) || !printDot(tx))
+            return false;
+    }
+    return printLiteral(tx, c.name);
+}
+
 bool Command::printAttrLexeme(TxFrame& tx, const AttrRef& t) const noexcept {
     if (t.attr.len == 0u)
         return fail(Status::EmptyAttribute);
-    if (t.comp.len == 0u)
+    const bool hasComp = (t.comp.page.len != 0u) || (t.comp.name.len != 0u);
+    if (!hasComp)
         return printLiteral(tx, t.attr);
-    return printLiteral(tx, t.comp) && printDot(tx) && printLiteral(tx, t.attr);
+    return printCompLexeme(tx, t.comp) && printDot(tx) && printLiteral(tx, t.attr);
 }
 
 bool Command::printColorConst(TxFrame& tx, Color::std c) const noexcept {
@@ -329,54 +338,6 @@ bool Page::serialize(TxFrame& tx) const noexcept {
     }
 }
 
-Global::Global(const Literal& pageName, const Command& inner) noexcept
-    : _pageName(pageName)
-{
-    if (!inner.emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
-        _status = inner.getStatus();
-        if (_status == Status::OK)
-            _status = Status::SlotTooSmall;
-        return;
-    }
-    _inner = reinterpret_cast<Command*>(_storage);
-}
-
-Global::Global(const Global& other) noexcept
-    : _pageName(other._pageName)
-{
-    if (other._inner == nullptr) {
-        _status = (other._status != Status::OK) ? other._status : Status::NullPointer;
-        return;
-    }
-    if (!other._inner->emplaceIn(_storage, kInnerCapacity, alignof(std::max_align_t))) {
-        _status = other._inner->getStatus();
-        if (_status == Status::OK)
-            _status = Status::SlotTooSmall;
-        return;
-    }
-    _inner = reinterpret_cast<Command*>(_storage);
-}
-
-Global::~Global() {
-    if (_inner != nullptr) {
-        _inner->destroyIn(_storage);
-        _inner = nullptr;
-    }
-}
-
-bool Global::serialize(TxFrame& tx) const noexcept {
-    _status = Status::OK;
-    if (_inner == nullptr)
-        return fail(Status::NullPointer);
-    if (!printLiteral(tx, _pageName) || !printDot(tx))
-        return false;
-    if (!_inner->serialize(tx)) {
-        _status = _inner->getStatus();
-        return false;
-    }
-    return true;
-}
-
 bool Get::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (!NEX_CMD_PRINT_LIT(tx, "get") || !printSpace(tx))
@@ -433,19 +394,20 @@ bool String::serialize(TxFrame& tx) const noexcept {
 
 bool Component::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
+    const CompRef target{_page, _comp};
     if (_kind == Kind::Refresh) {
         if (!NEX_CMD_PRINT_LIT(tx, "ref") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName);
+        return printCompLexeme(tx, target);
     }
 
     if (_kind == Kind::Setlayer) {
         if (!NEX_CMD_PRINT_LIT(tx, "setlayer") || !printSpace(tx))
             return false;
-        if (_arg.aboveCompNameOr255 == nullptr)
+        if (_arg.above == nullptr)
             return fail(Status::NullPointer);
-        return printLiteral(tx, _compName) && printComma(tx)
-            && printLiteral(tx, *_arg.aboveCompNameOr255);
+        return printCompLexeme(tx, target) && printComma(tx)
+            && printLiteral(tx, *_arg.above);
     }
 
     if (_kind == Kind::Visible) {
@@ -458,7 +420,7 @@ bool Component::serialize(TxFrame& tx) const noexcept {
         if (!NEX_CMD_PRINT_LIT(tx, "click") || !printSpace(tx))
             return false;
     }
-    return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg.arg01);
+    return printCompLexeme(tx, target) && printComma(tx) && printUint32(tx, _arg.arg01);
 }
 
 bool WaveForm::serialize(TxFrame& tx) const noexcept {
@@ -517,15 +479,16 @@ bool Cfgpio::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (!NEX_CMD_PRINT_LIT(tx, "cfgpio") || !printSpace(tx))
         return false;
-    return printUint32(tx, _pin) && printComma(tx) && printUint32(tx, _mode)
-        && printComma(tx) && printLiteral(tx, _bindCompNameOrZero);
+    return printUint32(tx, _pin) && printComma(tx)
+        && printUint32(tx, static_cast<uint32_t>(_mode))
+        && printComma(tx) && printCompLexeme(tx, _bindComp);
 }
 
 bool Move::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (!NEX_CMD_PRINT_LIT(tx, "move") || !printSpace(tx))
         return false;
-    return printLiteral(tx, _compName) && printComma(tx)
+    return printCompLexeme(tx, _comp) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_from.x)) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_from.y)) && printComma(tx)
         && printInt32(tx, static_cast<int32_t>(_to.x)) && printComma(tx)
@@ -679,20 +642,20 @@ bool FileStream::serialize(TxFrame& tx) const noexcept {
     if (_kind == Kind::Close) {
         if (!NEX_CMD_PRINT_LIT(tx, "close") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName);
+        return printCompLexeme(tx, _comp);
     }
 
     if (_kind == Kind::Read) {
         if (!NEX_CMD_PRINT_LIT(tx, "read") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg1)
+        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _arg1)
             && printComma(tx) && printUint32(tx, _arg2);
     }
 
     if (_kind == Kind::Write) {
         if (!NEX_CMD_PRINT_LIT(tx, "write") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName) && printComma(tx) && printUint32(tx, _arg1);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _arg1);
     }
 
     if (_path == nullptr)
@@ -701,13 +664,13 @@ bool FileStream::serialize(TxFrame& tx) const noexcept {
     if (_kind == Kind::Open) {
         if (!NEX_CMD_PRINT_LIT(tx, "open") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName) && printComma(tx) && printQuotedString(tx, _path);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _path);
     }
 
     if (_kind == Kind::Find) {
         if (!NEX_CMD_PRINT_LIT(tx, "find") || !printSpace(tx))
             return false;
-        return printLiteral(tx, _compName) && printComma(tx) && printQuotedString(tx, _path);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _path);
     }
 
     return fail(Status::UnknownKind);

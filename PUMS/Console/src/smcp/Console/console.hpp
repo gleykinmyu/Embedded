@@ -134,6 +134,10 @@ protected:
     virtual void onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept;
     /** Edge Phase — UI. */
     virtual void onPhase(Phase phase) noexcept { (void)phase; }
+    /** Согласие наследника на Connecting → Online. По умолчанию сразу. */
+    [[nodiscard]] virtual bool readyForOnline() const noexcept { return true; }
+    /** Connecting + linkUp + readyForOnline → Online. */
+    void tryGoOnline() noexcept;
 
     /** Primary-сессия к серверу; leaf сравнивает указатель в onHbLost. */
     Session& _primary;

@@ -70,8 +70,8 @@ void IConsole::update() noexcept
         break;
 
     case Phase::Connecting:
-        if (linkUp()) {
-            setPhase(Phase::Online);
+        tryGoOnline();
+        if (_phase == Phase::Online) {
             break;
         }
         if (_primary.getStatus() == Session::Status::Idle && _server_id != 0u) {
@@ -217,6 +217,13 @@ void IConsole::onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) n
         return;
     }
     m->onTelemetry(hdr.src_id, body);
+}
+
+void IConsole::tryGoOnline() noexcept
+{
+    if (_phase == Phase::Connecting && linkUp() && readyForOnline()) {
+        setPhase(Phase::Online);
+    }
 }
 
 void IConsole::setPhase(Phase phase) noexcept

@@ -51,6 +51,11 @@ void CGroup::setBlocked(bool on) noexcept
     if (_rec.isBlocked() == on) {
         return;
     }
+    if (on) {
+        if (_console.queuedGroup() == _rec.id || _console.activeGroup() == _rec.id) {
+            _console.clearActiveGroup();
+        }
+    }
     _rec.setBlocked(on);
     _bank.markEdited();
 }
@@ -135,20 +140,25 @@ CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept
     , _groups(groups)
 {}
 
-bool CGMech::select(uint8_t console_id) noexcept
+CGroup::Result CGMech::trySelect(uint8_t console_id) noexcept
 {
     if (console_id == kHolderNone) {
-        return CMech::select(console_id);
+        CMech::select(console_id);
+        return CGroup::Result::Ok;
     }
     if (isBlocked()) {
-        return false;
+        return CGroup::Result::Blocked;
     }
     Selection one;
     one.add(_id);
     if (_groups.fillBlockedOverlap(IGroupBank::kNoExcept, one)) {
-        return false;
+        return CGroup::Result::OverlapsBlocked;
     }
-    return CMech::select(console_id);
+    if (isSelected()) {
+        return CGroup::Result::Occupied;
+    }
+    CMech::select(console_id);
+    return CGroup::Result::Ok;
 }
 
 } // namespace smcp

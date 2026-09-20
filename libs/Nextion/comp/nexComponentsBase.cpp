@@ -81,12 +81,25 @@ Component* IPage::getComponent(uint8_t comp) noexcept {
 
 // --- Component ------------------------------------------------------------
 
-Component::Component(IPage& owner, const nex::Literal& compName, Component::Type compType, uint8_t id) noexcept
+Component::Component(IPage& owner, const nex::Literal& compName, Component::Type compType, uint8_t id,
+                     bool global) noexcept
     : page(owner),
       name(compName),
       type(compType),
+      global(global),
       id_(id) {
     detail::registerComponent(owner, *this);
+}
+
+bool Component::canAccess() const noexcept
+{
+    if (global || page.isCurrent()) {
+        return true;
+    }
+    page.app.onStatus(
+        appErrorFrom(ComponentStatus::LocalOffPage),
+        Route{page.ID, id()});
+    return false;
 }
 
 void Component::onTouch(const msg::evTouch& e) {

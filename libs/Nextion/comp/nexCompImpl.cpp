@@ -3,14 +3,26 @@
 namespace nex {
 namespace comp {
 
+namespace {
+
+void enqueueComp(Component& c, const Command& cmd) noexcept
+{
+    if (!c.canAccess()) {
+        return;
+    }
+    c.page.app.enqueue(Transaction{cmd, c.page.ID, c.id()});
+}
+
+} // namespace
+
 void TouchArea::setTouchable(bool on) noexcept
 {
-    page.app.enqueue(Transaction{cmd::Component::tsw(name, on), page.ID, id()});
+    enqueueComp(*this, cmd::Component::tsw(attr_detail::makeCompRef(*this), on));
 }
 
 void TouchArea::touch(TouchState state) noexcept
 {
-    page.app.enqueue(Transaction{cmd::Component::click(name, state), page.ID, id()});
+    enqueueComp(*this, cmd::Component::click(attr_detail::makeCompRef(*this), state));
 }
 
 void TouchArea::onResponse(const msg::getNumeric& response, uint8_t tag)
@@ -66,12 +78,12 @@ void Drawable::setTransitionEffect(uint8_t v) noexcept
 
 void Drawable::refresh() noexcept
 {
-    page.app.enqueue(Transaction{cmd::Component::refresh(name), page.ID, id()});
+    enqueueComp(*this, cmd::Component::refresh(attr_detail::makeCompRef(*this)));
 }
 
 void Drawable::setVisible(bool on) noexcept
 {
-    page.app.enqueue(Transaction{cmd::Component::visible(name, on), page.ID, id()});
+    enqueueComp(*this, cmd::Component::visible(attr_detail::makeCompRef(*this), on));
 }
 
 void Drawable::show() noexcept
@@ -86,16 +98,15 @@ void Drawable::hide() noexcept
 
 void Drawable::placeAbove(const Drawable& above) noexcept
 {
-    page.app.enqueue(Transaction{
-        cmd::Component::setlayer(name, above.name),
-        page.ID, id()});
+    if (&page != &above.page) {
+        return;
+    }
+    enqueueComp(*this, cmd::Component::setlayer(attr_detail::makeCompRef(*this), above.name));
 }
 
 void Drawable::move(Point from, Point to, uint32_t priority, uint32_t timeMs) noexcept
 {
-    page.app.enqueue(Transaction{
-        cmd::Move(name, from, to, priority, timeMs),
-        page.ID, id()});
+    enqueueComp(*this, cmd::Move(attr_detail::makeCompRef(*this), from, to, priority, timeMs));
 }
 
 } // namespace comp

@@ -84,9 +84,9 @@ public:
     /**
      * Выделить механизм консолью (Select) или снять выделение (Deselect).
      * @param console_id ID консоли (SRC_ID); 0 — сброс выделения.
-     * @return true — принято / команда ушла; false — отказ (no-op).
+     * Отказ — no-op (проверки в реализации / политика сервера).
      */
-    virtual bool select(uint8_t console_id) noexcept = 0;
+    virtual void select(uint8_t console_id) noexcept = 0;
 
     /** Задать целевую позицию. Отказ — no-op (проверки снаружи / политика сервера). */
     virtual void setTarget(const MotionTarget& target) noexcept = 0;

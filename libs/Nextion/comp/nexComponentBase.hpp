@@ -131,13 +131,23 @@ namespace nex {
         const Literal name;
         /** Вид этого экземпляра (тот же код, что атрибут `type` объекта на панели). */
         const Type type;
+        /** NIS `vscope=global`: с чужой страницы кадр `page.name` / `page.name.attr`. */
+        const bool global;
         uint8_t id() const noexcept { return id_; }
+
+        /**
+         * `true`, если кадр на этот объект можно слать: global или страница текущая.
+         * Иначе `onStatus(ComponentStatus::LocalOffPage)` и `false`.
+         */
+        [[nodiscard]] bool canAccess() const noexcept;
 
         /**
          * `@p id` — panel id (`≥ kFirstCompId`) или `0` = автослот при регистрации
          * (не panel id; на панели у виджетов id начинается с 1).
+         * `@p global` — vscope; по умолчанию local.
          */
-        Component(IPage& owner, const Literal& compName, Type compType, uint8_t id = 0) noexcept;
+        Component(IPage& owner, const Literal& compName, Type compType, uint8_t id = 0,
+                  bool global = false) noexcept;
 
         virtual void onTouch(const msg::evTouch& e);
         

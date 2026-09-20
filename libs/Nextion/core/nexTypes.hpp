@@ -460,7 +460,7 @@ public:
     Literal& operator=(Literal&&) = delete;
 };
 
-/** Пустая лексема (`len == 0`): `AttrRef` без компонента (`sys0`, …), невалидный `attr::Id`, … */
+/** Пустая лексема (`len == 0`): `CompRef`/`AttrRef` без объекта (`sys0`, …), невалидный `attr::Id`, … */
 inline constexpr Literal kEmptyLiteral{""};
 
 /**

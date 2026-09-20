@@ -651,6 +651,9 @@ public:
         if (!enterInitMode())
             return false;
 
+        /* Как HAL: ABOM (выход из bus-off), TXFP (порядок очереди, не арбитраж ID). */
+        mcr.set(MCR::ABOM | MCR::TXFP);
+
         btr.write(timing.toBtr());
         filter.initEnter();
         if (!filter[0].acceptAll()) {

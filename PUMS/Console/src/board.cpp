@@ -38,6 +38,12 @@ void CBoard::setLedAlive(bool alive) noexcept
     }
 }
 
+bool CBoard::initCan(uint32_t bitrate) noexcept
+{
+    can.InitPins(GPIO::PortD::pin<0>, GPIO::PortD::pin<1>);
+    return can.open(bitrate);
+}
+
 uint32_t boardClockMs() noexcept
 {
     return board.GetTick();

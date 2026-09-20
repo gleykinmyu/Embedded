@@ -74,6 +74,9 @@ void emplacePageWidget(IPage& page, void* slot, uint8_t panelId) noexcept
 /** A: поле + default member init — одна строка в struct ... : Page<N>. Нужен `PG`. */
 #define HMI_COMP(Type, sym) Type sym{HMI_PAGE_COMP_ARGS(sym)};
 
+/** Как HMI_COMP, vscope=global. */
+#define HMI_COMP_GLOBAL(Type, sym) Type sym{HMI_PAGE_COMP_ARGS(sym), true};
+
 // --- InplacePageArray: плотный массив виджетов (placement new) ----------------
 /**
  * Буфер на `sizeof...(Ids)` объектов `T`; placement new в ctor, `~T()` в dtor.

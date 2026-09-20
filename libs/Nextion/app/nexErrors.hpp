@@ -32,6 +32,12 @@ enum class AppError : uint8_t {
     Session,
     Gateway,
     Stream,
+    Component,
+};
+
+/** Отказ MCU до UART: local-виджет на чужой странице (`tag_2` при `AppError::Component`). */
+enum class ComponentStatus : uint8_t {
+    LocalOffPage = 1u,
 };
 
 inline msg::Status makeAppError(AppError reporter, uint16_t detail) noexcept {
@@ -66,6 +72,10 @@ inline msg::Status appErrorFrom(BIF::IByteStream::Status st) noexcept {
     return makeAppError(AppError::Stream, static_cast<uint16_t>(st));
 }
 
+inline msg::Status appErrorFrom(ComponentStatus st) noexcept {
+    return makeAppError(AppError::Component, static_cast<uint16_t>(st));
+}
+
 /** Gateway в приоритете; иначе Stream (после RX). */
 inline msg::Status appErrorFrom(Gateway::Status gw, BIF::IByteStream::Status stream) noexcept {
     if (gw != Gateway::Status::OK)
@@ -80,6 +90,14 @@ inline const char* cstr(AppError r) noexcept {
     case AppError::Session: return "Session";
     case AppError::Gateway: return "Gateway";
     case AppError::Stream: return "Stream";
+    case AppError::Component: return "Component";
+    default: return "?";
+    }
+}
+
+inline const char* cstr(ComponentStatus s) noexcept {
+    switch (s) {
+    case ComponentStatus::LocalOffPage: return "LocalOffPage";
     default: return "?";
     }
 }
@@ -104,6 +122,8 @@ inline const char* appErrorDetailCstr(AppError reporter, uint16_t detail) noexce
         return cstr(static_cast<Gateway::Status>(detail));
     case AppError::Stream:
         return BIF::cstr(static_cast<BIF::IByteStream::Status>(detail));
+    case AppError::Component:
+        return cstr(static_cast<ComponentStatus>(detail));
     default:
         return "?";
     }

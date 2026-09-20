@@ -16,8 +16,13 @@ const char* Session::cstr(Status status) noexcept
 {
     switch (status) {
     case Status::Idle: return "Idle";
+#if defined(SMCP_TRACE_SHORT)
+    case Status::Connecting: return "Conn";
+    case Status::Awaiting: return "Wait";
+#else
     case Status::Connecting: return "Connecting";
     case Status::Awaiting: return "Awaiting";
+#endif
     case Status::Open: return "Open";
     }
     return "?";
@@ -39,7 +44,11 @@ void Session::setStatus(Status status) noexcept
     if (status == _status) {
         return;
     }
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_SESS("S%u %s>%s p=%u\n",
+#else
     SMCP_SESS("[SMCP] Session[%u] status %s -> %s peer=%u\n",
+#endif
              static_cast<unsigned>(_id),
              cstr(_status),
              cstr(status),
@@ -70,7 +79,11 @@ void Session::abortAck() noexcept
 void Session::open(uint8_t peer_id) noexcept
 {
     if (!nodeOk() || peer_id == 0u) {
+#if defined(SMCP_TRACE_SHORT)
+        SMCP_SESS("S%u rej p=%u ok=%u\n",
+#else
         SMCP_SESS("[SMCP] Session[%u] open reject peer=%u nodeOk=%u\n",
+#endif
                  static_cast<unsigned>(_id),
                  static_cast<unsigned>(peer_id),
                  nodeOk() ? 1u : 0u);
@@ -153,19 +166,36 @@ void Session::sendAck(uint8_t req_pkt_id) noexcept
 void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code, uint8_t detail) noexcept
 {
     if (!isOpen()) {
+#if defined(SMCP_TRACE_SHORT)
+        SMCP_SESS("S%u Nk! #%u %s %u\n",
+                 static_cast<unsigned>(_id),
+                 static_cast<unsigned>(req_pkt_id),
+                 msg::cstrS(code),
+                 static_cast<unsigned>(detail));
+#else
         SMCP_SESS("[SMCP] Session[%u] sendNack drop (!Open) pkt=%u code=%s detail=%u\n",
                  static_cast<unsigned>(_id),
                  static_cast<unsigned>(req_pkt_id),
                  msg::cstr(code),
                  static_cast<unsigned>(detail));
+#endif
         return;
     }
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_SESS("S%u Nk p=%u #%u %s %u\n",
+             static_cast<unsigned>(_id),
+             static_cast<unsigned>(_peer_id),
+             static_cast<unsigned>(req_pkt_id),
+             msg::cstrS(code),
+             static_cast<unsigned>(detail));
+#else
     SMCP_SESS("[SMCP] Session[%u] sendNack peer=%u pkt=%u code=%s detail=%u\n",
              static_cast<unsigned>(_id),
              static_cast<unsigned>(_peer_id),
              static_cast<unsigned>(req_pkt_id),
              msg::cstr(code),
              static_cast<unsigned>(detail));
+#endif
     msg::Nack body{};
     body.code = code;
     body.detail = detail;

@@ -16,46 +16,87 @@ namespace nex {
 
 namespace attr_detail {
 
+[[nodiscard]] inline bool needPagePrefix(const Component& parent) noexcept
+{
+    return parent.global && !parent.page.isCurrent();
+}
+
+[[nodiscard]] inline CompRef makeCompRef(const Component& parent) noexcept
+{
+    const Literal& page = needPagePrefix(parent) ? parent.page.name : kEmptyLiteral;
+    return CompRef{page, parent.name};
+}
+
+[[nodiscard]] inline AttrRef makeTarget(const Component& parent, attr::Id id) noexcept
+{
+    return AttrRef{makeCompRef(parent), attr::literal(id)};
+}
+
+inline void enqueueCmd(const Component& parent, attr::Id id, const Command& cmd,
+                       Transaction::Kind kind, msg::Status::Mask awaiting) noexcept
+{
+    parent.page.app.enqueue(Transaction{cmd, parent.page.ID, parent.id(),
+        static_cast<uint8_t>(id), kind, awaiting});
+}
+
 /** MCU: `assign` числового атрибута без зеркала (только исходящая команда). */
 template<typename T>
 inline void assignNumeric(const Component& parent, attr::Id id, T value) noexcept
 {
-    const AttrRef target{parent.name, attr::literal(id)};
-    const cmd::assign::Numeric cmd(target, wire::toWire(value));
-    parent.page.app.enqueue(
-        Transaction{cmd, parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command,
-            msg::kAwaitingNone});
+    if (!parent.canAccess()) {
+        return;
+    }
+    enqueueCmd(parent, id, cmd::assign::Numeric(makeTarget(parent, id), wire::toWire(value)),
+        Transaction::Kind::Command, msg::kAwaitingNone);
 }
 
 /** MCU: `assign` строкового атрибута без зеркала (только исходящая команда). */
 inline void assignText(const Component& parent, attr::Id id, const char* text) noexcept
 {
-    const AttrRef target{parent.name, attr::literal(id)};
+    if (!parent.canAccess()) {
+        return;
+    }
     const char* const p = text != nullptr ? text : "";
-    parent.page.app.enqueue(Transaction{
-        cmd::assign::Text(target, p, cmd::assign::Text::Op::Assign),
-        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+    enqueueCmd(parent, id, cmd::assign::Text(makeTarget(parent, id), p, cmd::assign::Text::Op::Assign),
+        Transaction::Kind::Command, msg::kAwaitingNone);
 }
 
 /** MCU: `append` строкового атрибута без зеркала (NIS `+=`, только исходящая команда). */
 inline void appendText(const Component& parent, attr::Id id, const char* text) noexcept
 {
-    if (text == nullptr || *text == '\0')
+    if (text == nullptr || *text == '\0' || !parent.canAccess()) {
         return;
-    const AttrRef target{parent.name, attr::literal(id)};
-    parent.page.app.enqueue(Transaction{
-        cmd::assign::Text(target, text, cmd::assign::Text::Op::Append),
-        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+    }
+    enqueueCmd(parent, id, cmd::assign::Text(makeTarget(parent, id), text, cmd::assign::Text::Op::Append),
+        Transaction::Kind::Command, msg::kAwaitingNone);
 }
 
 inline void appendText(const Component& parent, attr::Id id, const char* text, std::size_t len) noexcept
 {
-    if (text == nullptr || len == 0u)
+    if (text == nullptr || len == 0u || !parent.canAccess()) {
         return;
-    const AttrRef target{parent.name, attr::literal(id)};
-    parent.page.app.enqueue(Transaction{
-        cmd::assign::Text(target, text, len, cmd::assign::Text::Op::Append),
-        parent.page.ID, parent.id(), static_cast<uint8_t>(id), Transaction::Kind::Command, msg::kAwaitingNone});
+    }
+    enqueueCmd(parent, id,
+        cmd::assign::Text(makeTarget(parent, id), text, len, cmd::assign::Text::Op::Append),
+        Transaction::Kind::Command, msg::kAwaitingNone);
+}
+
+inline void requestGetNumeric(const Component& parent, attr::Id id) noexcept
+{
+    if (!parent.canAccess()) {
+        return;
+    }
+    enqueueCmd(parent, id, cmd::Get::numeric(makeTarget(parent, id)), Transaction::Kind::GetNumeric,
+        msg::kAwaitingAllPanel);
+}
+
+inline void requestGetString(const Component& parent, attr::Id id) noexcept
+{
+    if (!parent.canAccess()) {
+        return;
+    }
+    enqueueCmd(parent, id, cmd::Get::string(makeTarget(parent, id)), Transaction::Kind::GetString,
+        msg::kAwaitingAllPanel);
 }
 
 /** Копия ответа `get` (0x70) в зеркало `buf[buf_cap]` (NUL на `buf_cap - 1`). */
@@ -108,7 +149,6 @@ protected:
     const Component& _parent;
 
     void pushCmdAssignText(const char* text, cmd::assign::Text::Op op) const noexcept;
-    void pushCmdAssignTextGlobal(const char* text, cmd::assign::Text::Op op) const noexcept;
     void pushCmdAssignTextSubtract(uint32_t n) const noexcept;
 
     void enqueueTransaction(const Command& cmd, Transaction::Kind kind = Transaction::Kind::Command,
@@ -139,24 +179,12 @@ public:
 
     Num& operator=(const T& v) noexcept {
         _val = v;
-        const AttrRef target{ _parent.name, name() };
-        const cmd::assign::Numeric cmd(target, wire::toWire(v));
-        enqueueTransaction(cmd, Transaction::Kind::Command, msg::kAwaitingNone);
+        attr_detail::assignNumeric(_parent, id, v);
         return *this;
     }
 
-    /** Как `operator=`, но кадр `pageName.comp.attr=…` (`cmd::Global` + имя страницы родителя). */
-    void setGlobal(const T& v) noexcept {
-        _val = v;
-        const AttrRef target{ _parent.name, name() };
-        const cmd::assign::Numeric inner(target, wire::toWire(v));
-        enqueueTransaction(cmd::Global(_parent.page.name, inner), Transaction::Kind::Command,
-            msg::kAwaitingNone);
-    }
-
     void get() noexcept {
-        const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::numeric(target), Transaction::Kind::GetNumeric);
+        attr_detail::requestGetNumeric(_parent, id);
     }
 
     Num(const Num&) = delete;
@@ -188,8 +216,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::numeric(target), Transaction::Kind::GetNumeric);
+        attr_detail::requestGetNumeric(_parent, id);
     }
 
     NumRO(const NumRO&) = delete;
@@ -235,18 +262,6 @@ public:
         pushCmdAssignText(buf, cmd::assign::Text::Op::Assign);
     }
 
-    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
-    void setGlobal(const char* text) noexcept {
-        if (text == nullptr) {
-            buf[0] = '\0';
-            pushCmdAssignTextGlobal("", cmd::assign::Text::Op::Assign);
-            return;
-        }
-        std::strncpy(buf, text, static_cast<std::size_t>(MaxL));
-        buf[MaxL - 1u] = '\0';
-        pushCmdAssignTextGlobal(buf, cmd::assign::Text::Op::Assign);
-    }
-
     void clear() noexcept { set(""); }
 
     void subtract(uint32_t n) noexcept {
@@ -265,8 +280,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::string(target), Transaction::Kind::GetString);
+        attr_detail::requestGetString(_parent, id);
     }
 
     String(const String&) = delete;
@@ -298,8 +312,7 @@ public:
     }
 
     void get() noexcept {
-        const AttrRef target{ _parent.name, name() };
-        enqueueTransaction(cmd::Get::string(target), Transaction::Kind::GetString);
+        attr_detail::requestGetString(_parent, id);
     }
 
     StringRO(const StringRO&) = delete;
@@ -321,12 +334,6 @@ public:
     void set(const char* text) const noexcept {
         const char* const p = text != nullptr ? text : "";
         pushCmdAssignText(p, cmd::assign::Text::Op::Assign);
-    }
-
-    /** Как `set`, но кадр `pageName.comp.txt=…` (`cmd::Global` + имя страницы родителя). */
-    void setGlobal(const char* text) const noexcept {
-        const char* const p = text != nullptr ? text : "";
-        pushCmdAssignTextGlobal(p, cmd::assign::Text::Op::Assign);
     }
 
     void clear() const noexcept { set(""); }

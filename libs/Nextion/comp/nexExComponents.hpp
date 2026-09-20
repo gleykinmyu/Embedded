@@ -55,8 +55,8 @@ public:
         Component::onResponse(response, tag);
     }
 
-    Audio(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Component(owner, name, Component::Type::Audio, id)
+    Audio(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Component(owner, name, Component::Type::Audio, id, global)
         , from{*this, attr::Id::From}
         , vid{*this, attr::Id::Vid}
         , stim{*this, attr::Id::Stim}
@@ -75,27 +75,47 @@ public:
 
     void open(const char* path) noexcept
     {
-        page.app.enqueue(Transaction{cmd::FileStream::open(name, path), page.ID, id()});
+        if (!canAccess()) {
+            return;
+        }
+        page.app.enqueue(Transaction{cmd::FileStream::open(attr_detail::makeCompRef(*this), path),
+            page.ID, id()});
     }
 
     void read(uint32_t offset, uint32_t byteCount) noexcept
     {
-        page.app.enqueue(Transaction{cmd::FileStream::read(name, offset, byteCount), page.ID, id()});
+        if (!canAccess()) {
+            return;
+        }
+        page.app.enqueue(Transaction{
+            cmd::FileStream::read(attr_detail::makeCompRef(*this), offset, byteCount), page.ID, id()});
     }
 
     void write(uint32_t byteCount) noexcept
     {
-        page.app.enqueue(Transaction{cmd::FileStream::write(name, byteCount), page.ID, id()});
+        if (!canAccess()) {
+            return;
+        }
+        page.app.enqueue(Transaction{cmd::FileStream::write(attr_detail::makeCompRef(*this), byteCount),
+            page.ID, id()});
     }
 
     void close() noexcept
     {
-        page.app.enqueue(Transaction{cmd::FileStream::close(name), page.ID, id()});
+        if (!canAccess()) {
+            return;
+        }
+        page.app.enqueue(Transaction{cmd::FileStream::close(attr_detail::makeCompRef(*this)),
+            page.ID, id()});
     }
 
     void find(const char* path) noexcept
     {
-        page.app.enqueue(Transaction{cmd::FileStream::find(name, path), page.ID, id()});
+        if (!canAccess()) {
+            return;
+        }
+        page.app.enqueue(Transaction{cmd::FileStream::find(attr_detail::makeCompRef(*this), path),
+            page.ID, id()});
     }
 
     void onResponse(const msg::getNumeric& response, uint8_t tag) override
@@ -116,8 +136,8 @@ public:
         Component::onResponse(response, tag);
     }
 
-    FileStream(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Component(owner, name, Component::Type::FileStream, id)
+    FileStream(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Component(owner, name, Component::Type::FileStream, id, global)
         , val{*this, attr::Id::Val}
         , qty{*this, attr::Id::Qty}
         , en{*this, attr::Id::En}
@@ -139,8 +159,8 @@ public:
         TouchArea::onResponse(response, tag);
     }
 
-    ExternalPicture(IPage& owner, const Literal& name, uint8_t id = 0)
-        : Drawable(owner, name, Component::Type::ExternalPicture, id)
+    ExternalPicture(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : Drawable(owner, name, Component::Type::ExternalPicture, id, global)
         , path{*this, attr::Id::Path}
     {}
 };
@@ -199,8 +219,8 @@ public:
     }
 
 protected:
-    explicit MediaComponent(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Drawable(owner, objectName, componentType, id)
+    explicit MediaComponent(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Drawable(owner, objectName, componentType, id, global)
         , stim{*this, attr::Id::Stim}
         , qty{*this, attr::Id::Qty}
     {}
@@ -208,8 +228,8 @@ protected:
 
 class Gmov : public MediaComponent {
 public:
-    Gmov(IPage& owner, const Literal& name, uint8_t id = 0)
-        : MediaComponent(owner, name, Component::Type::Gmov, id) {}
+    Gmov(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : MediaComponent(owner, name, Component::Type::Gmov, id, global) {}
 };
 
 class Video : public MediaComponent {
@@ -231,8 +251,8 @@ public:
         MediaComponent::onResponse(response, tag);
     }
 
-    Video(IPage& owner, const Literal& name, uint8_t id = 0)
-        : MediaComponent(owner, name, Component::Type::Video, id)
+    Video(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : MediaComponent(owner, name, Component::Type::Video, id, global)
         , from{*this, attr::Id::From}
     {}
 };
@@ -307,8 +327,8 @@ public:
     }
 
 protected:
-    explicit DataFile(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0) noexcept
-        : Printable<S>(owner, objectName, componentType, id)
+    explicit DataFile(IPage& owner, const Literal& objectName, Component::Type componentType, uint8_t id = 0, bool global = false) noexcept
+        : Printable<S>(owner, objectName, componentType, id, global)
         , txt{*this, attr::Id::Txt}
         , left{*this, attr::Id::Left}
         , ch{*this, attr::Id::Ch}
@@ -451,8 +471,8 @@ public:
         DataFile<S>::onResponse(response, tag);
     }
 
-    DataRecord(IPage& owner, const Literal& name, uint8_t id = 0)
-        : DataFile<S>(owner, name, Component::Type::DataRecord, id)
+    DataRecord(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : DataFile<S>(owner, name, Component::Type::DataRecord, id, global)
         , path{*this, attr::Id::Path}
         , format{*this, attr::Id::Format}
         , dir{*this, attr::Id::Dir}
@@ -564,8 +584,8 @@ public:
         DataFile<S>::onResponse(response, tag);
     }
 
-    FileBrowser(IPage& owner, const Literal& name, uint8_t id = 0)
-        : DataFile<S>(owner, name, Component::Type::FileBrowser, id)
+    FileBrowser(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : DataFile<S>(owner, name, Component::Type::FileBrowser, id, global)
         , dir{*this, attr::Id::Dir}
         , filter{*this, attr::Id::Filter}
         , val{*this, attr::Id::Val}

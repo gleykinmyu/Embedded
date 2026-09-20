@@ -15,18 +15,11 @@ CMech::CMech(IConsole& console, uint8_t id) noexcept
     detail::registerMech(console, *this);
 }
 
-bool CMech::select(uint8_t console_id) noexcept
+void CMech::select(uint8_t console_id) noexcept
 {
     Selection sel;
     sel.add(_id);
-
-    if (console_id == kHolderNone) {
-        _console->select(msg::Action::Remove, sel);
-        return true;
-    }
-
-    _console->select(msg::Action::Add, sel);
-    return true;
+    _console->select(console_id == kHolderNone ? msg::Action::Remove : msg::Action::Add, sel);
 }
 
 void CMech::block(bool blocked) noexcept

@@ -62,13 +62,7 @@ public:
 
     DSTATUS initialize() override
     {
-        /* Уже готов — не трогаем HAL (FatFs может звать disk_initialize повторно). */
-        if ((_stat & STA_NOINIT) == 0) {
-            SD_DBG("disk_initialize: already ready (stat=0x%02X)\n",
-                static_cast<unsigned>(_stat));
-            return status();
-        }
-
+        /* Всегда полный HAL init: hot-plug / remount. FatFs зовёт это только при mount. */
         SD_DBG("disk_initialize...\n");
         if (_sd.Init() != HAL_OK) {
             _stat = STA_NOINIT;

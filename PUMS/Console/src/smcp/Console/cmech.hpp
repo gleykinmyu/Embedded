@@ -24,8 +24,8 @@ public:
     [[nodiscard]] IConsole& console() noexcept { return *_console; }
     [[nodiscard]] const IConsole& console() const noexcept { return *_console; }
 
-    /** Select/Deselect этой оси (kHolderNone → Remove). TX всегда уходит. */
-    bool select(uint8_t console_id) noexcept override;
+    /** Select/Deselect этой оси (kHolderNone → Remove). TX всегда. */
+    void select(uint8_t console_id) noexcept override;
     /** Сегментный Block на сервер (не GRUP / не локальный Status). */
     void block(bool blocked) noexcept override;
     /** Уставка этой оси через пульт. */

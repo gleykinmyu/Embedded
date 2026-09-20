@@ -223,39 +223,72 @@ void Node::update() noexcept
 
 void Node::onAck(Session* session, const TxSlot& req) noexcept
 {
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("Ack s=%u p=%u #%u %s\n",
+             session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+             session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
+             static_cast<unsigned>(req.pkt_id),
+             msg::cstrS(msg::helpers::msgIdOf(req.body)));
+#else
     SMCP_NODE("[SMCP] Node::onAck session=%u peer=%u pkt=%u req=%s\n",
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
              msg::cstr(msg::helpers::msgIdOf(req.body)));
+#endif
 }
 
 void Node::onStatus(Status status) noexcept
 {
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("Nd %s id=%u\n",
+#else
     SMCP_NODE("[SMCP] Node::onStatus %s (id=%u)\n",
+#endif
              cstr(status), static_cast<unsigned>(id()));
 }
 
 void Node::onTxFull(Session* session) noexcept
 {
     if (session == nullptr) {
+#if defined(SMCP_TRACE_SHORT)
+        SMCP_NODE("TxFull bus id=%u\n", static_cast<unsigned>(id()));
+#else
         SMCP_NODE("[SMCP] Node::onTxFull bus (id=%u)\n", static_cast<unsigned>(id()));
+#endif
         return;
     }
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("TxFull s=%u p=%u\n",
+#else
     SMCP_NODE("[SMCP] Node::onTxFull session=%u peer=%u\n",
+#endif
              static_cast<unsigned>(session->id()),
              static_cast<unsigned>(session->peerId()));
 }
 
 void Node::onSessionFull(uint8_t peer_id) noexcept
 {
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("SessFull p=%u id=%u\n",
+#else
     SMCP_NODE("[SMCP] Node::onSessionFull peer=%u (id=%u)\n",
+#endif
              static_cast<unsigned>(peer_id),
              static_cast<unsigned>(id()));
 }
 
 void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
 {
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("Nk s=%u p=%u #%u %s %s %u\n",
+             session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+             session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
+             static_cast<unsigned>(req.pkt_id),
+             msg::cstrS(msg::helpers::msgIdOf(req.body)),
+             msg::cstrS(reply.code),
+             static_cast<unsigned>(reply.detail));
+#else
     SMCP_NODE("[SMCP] Node::onNack session=%u peer=%u pkt=%u req=%s code=%s detail=%u\n",
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
@@ -263,11 +296,16 @@ void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) n
              msg::cstr(msg::helpers::msgIdOf(req.body)),
              msg::cstr(reply.code),
              static_cast<unsigned>(reply.detail));
+#endif
 }
 
 void Node::onPktIdMismatch(Session* session, uint8_t expected, uint8_t got) noexcept
 {
+#if defined(SMCP_TRACE_SHORT)
+    SMCP_NODE("PktId s=%u p=%u %u!=%u\n",
+#else
     SMCP_NODE("[SMCP] Node::onPktIdMismatch session=%u peer=%u expect=%u got=%u\n",
+#endif
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(expected),

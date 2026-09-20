@@ -30,8 +30,8 @@ public:
     static constexpr std::size_t kPanelTxtMaxL = 1024u;
     static constexpr std::size_t kChunkCap = 48u;
 
-    SlidingLog(IPage& owner, const Literal& name, uint8_t id = 0)
-        : SlidingText<S, 0u>(owner, name, id)
+    SlidingLog(IPage& owner, const Literal& name, uint8_t id = 0, bool global = false)
+        : SlidingText<S, 0u>(owner, name, id, global)
     {}
 
     /** В кольцо (можно из UART callback). `\0` отбрасывается. */

@@ -15,6 +15,7 @@
  * Wire dump:
  *   `-DSMCP_TRACE_LINK`  — TX/RX на ILink с разбором Message (без Heartbeat)
  *   `-DSMCP_TRACE_HB`    — + Heartbeat в TRACE_LINK
+ *   `-DSMCP_TRACE_SHORT` — короткий формат (4.3" cnsl)
  */
 
 #pragma once
@@ -64,7 +65,7 @@ struct Packet;
 } // namespace msg
 
 #if defined(SMCP_TRACE_LINK)
-/** @a dir — "TX" / "RX"; @a node_id — ILink::nodeId(). */
+/** @a dir — "TX" / "RX". */
 void smcpTracePacket(const char* dir, uint8_t node_id, const msg::Packet& pkt) noexcept;
 #endif
 

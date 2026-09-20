@@ -3,6 +3,7 @@
  * @brief IGroupConsole + GroupConsole<N>: IConsole + queued recall.
  *
  * IGroupConsole — билет Select после CGroup::recall (Ack → onGroupAck).
+ * shownGroup — только active (после Ack), не queued.
  * GroupConsole<N> — primary Session + registry осей (как Console<N>).
  * CMechBank / Show / Browser — у leaf (MConsole).
  */
@@ -21,9 +22,16 @@ class CGroup;
 class IGroupConsole : public IConsole {
 public:
     static constexpr uint8_t kNoQueuedGroup = 0xFFu;
+    static constexpr uint8_t kNoActiveGroup = kNoQueuedGroup;
 
     /** Слот GRUP в полёте; нет — kNoQueuedGroup. */
     [[nodiscard]] uint8_t queuedGroup() const noexcept { return _queuedGroup; }
+    /** Слот после Ack Select; нет — kNoActiveGroup. */
+    [[nodiscard]] uint8_t activeGroup() const noexcept { return _activeGroup; }
+    /** queued, иначе active — нет: UI не бежит впереди Ack. */
+    [[nodiscard]] uint8_t shownGroup() const noexcept { return _activeGroup; }
+    /** Сброс queued/active и Select Set пустой маски. */
+    void clearActiveGroup() noexcept;
 
 protected:
     /** @a primary — слот сессии наследника (GroupConsole::_session). */
@@ -33,7 +41,7 @@ protected:
 
     /** Ack Select после CGroup::recall(); @a id — слот GRUP. */
     virtual void onGroupAck(uint8_t group_id) noexcept { (void)group_id; }
-    /** Queued recall: Select Ack → onGroupAck. UI дописывает поверх. */
+    /** Queued recall: Select Ack → active + onGroupAck. UI дописывает поверх. */
     void onAck(Session* session, const TxSlot& req) noexcept override;
     /** Сброс queued recall на Select Nack; UI дописывает разбор reply. */
     void onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept override;
@@ -45,6 +53,7 @@ private:
     void setQueuedGroup(uint8_t group_id) noexcept;
 
     uint8_t _queuedGroup = kNoQueuedGroup;
+    uint8_t _activeGroup = kNoActiveGroup;
 };
 
 /** GroupConsole<N>: сессии MaxSessions+1 + primary; CMech — leaf. */

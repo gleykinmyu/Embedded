@@ -48,8 +48,13 @@ public:
             return false;
 
         _can.ier.clear(::CAN::IER::TMEIE | ::CAN::IER::FMPIE0 | ::CAN::IER::FMPIE1 |
-                       ::CAN::IER::FOVIE0 | ::CAN::IER::ERRIE);
-        _can.ier.set(::CAN::IER::FMPIE0 | ::CAN::IER::ERRIE);
+                       ::CAN::IER::FOVIE0 | ::CAN::IER::FOVIE1 |
+                       ::CAN::IER::EWGIE | ::CAN::IER::EPVIE | ::CAN::IER::BOFIE |
+                       ::CAN::IER::LECIE | ::CAN::IER::ERRIE);
+        /* ERRI на SCE только если ERRIE и (EWGIE|EPVIE|BOFIE|LECIE). */
+        _can.ier.set(::CAN::IER::FMPIE0 | ::CAN::IER::FOVIE0 | ::CAN::IER::ERRIE |
+                     ::CAN::IER::EWGIE | ::CAN::IER::EPVIE | ::CAN::IER::BOFIE |
+                     ::CAN::IER::LECIE);
 
         Irq::TX.handler(this, &CanBus::irq_tx);
         Irq::RX0.handler(this, &CanBus::irq_rx0);
@@ -85,7 +90,9 @@ public:
         Irq::SCE.unregister_handler();
 
         _can.ier.clear(::CAN::IER::TMEIE | ::CAN::IER::FMPIE0 | ::CAN::IER::FMPIE1 |
-                       ::CAN::IER::FOVIE0 | ::CAN::IER::ERRIE);
+                       ::CAN::IER::FOVIE0 | ::CAN::IER::FOVIE1 |
+                       ::CAN::IER::EWGIE | ::CAN::IER::EPVIE | ::CAN::IER::BOFIE |
+                       ::CAN::IER::LECIE | ::CAN::IER::ERRIE);
 
         _can.Shutdown();
         this->_isOpen = false;
@@ -93,6 +100,8 @@ public:
 
     void irq_tx() noexcept
     {
+        /* RQCPx rc_w1: писать только их (не RMW — в TSR ещё ABRQ). */
+        _can.tsr.write(::CAN::TSR::RQCP0 | ::CAN::TSR::RQCP1 | ::CAN::TSR::RQCP2);
         if (_can.ier.any(::CAN::IER::TMEIE) &&
             _can.tsr.any(::CAN::TSR::TME0 | ::CAN::TSR::TME1 | ::CAN::TSR::TME2)) {
             this->IRQ_TX_Handler();
