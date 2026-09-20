@@ -101,11 +101,11 @@ public:
 
     void irq_rx0() noexcept
     {
-        if (_can.rf0r.any(::CAN::RF0R::FOVR0)) {
+        if (_can.rx[0].overrun()) {
             this->_hwOverrunRx = true;
-            _can.rf0r.set(::CAN::RF0R::FOVR0);
+            _can.rx[0].clearOverrun();
         }
-        if (_can.ier.any(::CAN::IER::FMPIE0) && _can.rf0r.any(::CAN::RF0R::FMP0)) {
+        if (_can.ier.any(::CAN::IER::FMPIE0) && !_can.rx[0].empty()) {
             this->IRQ_RX0_Handler();
         }
     }
@@ -125,12 +125,12 @@ protected:
 
     bool tryTransmitHardware(const BIF::CAN::Frame& frame) override
     {
-        return _can.tryTransmit(frame);
+        return _can.tx.tryLoad(frame);
     }
 
     bool tryReceiveHardware(BIF::CAN::Frame& out) override
     {
-        return _can.tryReceive(out);
+        return _can.rx[0].pop(out);
     }
 
     bool isHardwareTxBusy() const override

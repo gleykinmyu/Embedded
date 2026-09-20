@@ -81,6 +81,14 @@ enum class RF0R : uint32_t {
     RFOM0 = CAN_RF0R_RFOM0, ///< RFOM0: освободить выходной mailbox FIFO0.
 };
 
+/// Маски CAN->RF1R (те же биты, что RF0R).
+enum class RF1R : uint32_t {
+    FMP1  = CAN_RF1R_FMP1,
+    FULL1 = CAN_RF1R_FULL1,
+    FOVR1 = CAN_RF1R_FOVR1,
+    RFOM1 = CAN_RF1R_RFOM1,
+};
+
 /// Маски CAN->IER.
 enum class IER : uint32_t {
     TMEIE  = CAN_IER_TMEIE,
@@ -121,6 +129,7 @@ REG_BITMASK_ENUM_OPS(MCR)
 REG_BITMASK_ENUM_OPS(MSR)
 REG_BITMASK_ENUM_OPS(TSR)
 REG_BITMASK_ENUM_OPS(RF0R)
+REG_BITMASK_ENUM_OPS(RF1R)
 REG_BITMASK_ENUM_OPS(IER)
 REG_BITMASK_ENUM_OPS(ESR)
 REG_BITMASK_ENUM_OPS(BTR)
@@ -128,6 +137,41 @@ REG_BITMASK_ENUM_OPS(FMR)
 
 /// Число filter bank’ов bxCAN (F4: 28, биты в FM1R/FS1R/FFA1R/FA1R).
 inline constexpr uint8_t kFilterBankCount = 28;
+inline constexpr uint8_t kTxMailboxCount = 3;
+inline constexpr uint8_t kRxFifoCount = 2;
+
+namespace detail {
+
+inline void writeMailboxData(CAN_TxMailBox_TypeDef& box, const Frame& frame) noexcept
+{
+    box.TDTR = static_cast<uint32_t>(frame.dlc) & CAN_TDT0R_DLC;
+    box.TDLR = (static_cast<uint32_t>(frame.data[0]))
+               | (static_cast<uint32_t>(frame.data[1]) << 8)
+               | (static_cast<uint32_t>(frame.data[2]) << 16)
+               | (static_cast<uint32_t>(frame.data[3]) << 24);
+    box.TDHR = (static_cast<uint32_t>(frame.data[4]))
+               | (static_cast<uint32_t>(frame.data[5]) << 8)
+               | (static_cast<uint32_t>(frame.data[6]) << 16)
+               | (static_cast<uint32_t>(frame.data[7]) << 24);
+}
+
+inline void readMailboxData(const CAN_FIFOMailBox_TypeDef& box, Frame& out) noexcept
+{
+    out.id = Frame::Id::unpack(box.RIR);
+    out.dlc = static_cast<uint8_t>(box.RDTR & CAN_RDT0R_DLC);
+    const uint32_t lo = box.RDLR;
+    const uint32_t hi = box.RDHR;
+    out.data[0] = static_cast<uint8_t>(lo);
+    out.data[1] = static_cast<uint8_t>(lo >> 8);
+    out.data[2] = static_cast<uint8_t>(lo >> 16);
+    out.data[3] = static_cast<uint8_t>(lo >> 24);
+    out.data[4] = static_cast<uint8_t>(hi);
+    out.data[5] = static_cast<uint8_t>(hi >> 8);
+    out.data[6] = static_cast<uint8_t>(hi >> 16);
+    out.data[7] = static_cast<uint8_t>(hi >> 24);
+}
+
+} // namespace detail
 
 /**
  * Bit timing bxCAN.
@@ -216,8 +260,8 @@ struct BitTiming {
 
 /**
  * bxCAN по PHL::ID.
- * mcr/msr/… — REG::PropertyBits; mailbox — instance->sTxMailBox / sFIFOMailBox.
- * Фильтры — can.filter[i].setActive / mode / …; tryTransmit / tryReceive (FIFO0).
+ * mcr/msr/… — REG::PropertyBits; tx[i] / rx[i] — Frame↔mailbox.
+ * Фильтры — can.filter[i]; TX/RX — tx.tryLoad / rx[i].pop.
  */
 template <PHL::ID CanId>
 class CAN : public PHL::IBase<CanId> {
@@ -229,17 +273,160 @@ public:
     REG::PropertyBits<MCR, CanId, offsetof(CAN_TypeDef, MCR)> mcr;
     REG::PropertyBits<MSR, CanId, offsetof(CAN_TypeDef, MSR)> msr;
     REG::PropertyBits<TSR, CanId, offsetof(CAN_TypeDef, TSR)> tsr;
-    REG::PropertyBits<RF0R, CanId, offsetof(CAN_TypeDef, RF0R)> rf0r;
     REG::PropertyBits<IER, CanId, offsetof(CAN_TypeDef, IER)> ier;
     REG::PropertyBits<ESR, CanId, offsetof(CAN_TypeDef, ESR)> esr;
     /// BTR целиком (toBtr) или биты LBKM/SILM через set/clear.
     REG::PropertyBits<BTR, CanId, offsetof(CAN_TypeDef, BTR)> btr;
 
     /**
+     * TX mailbox 0…2: `can.tx[i].load(frame)`.
+     * Выбор свободного — `tx.tryLoad`.
+     */
+    class Tx {
+        CAN_TypeDef* _instance;
+        REG::PropertyBits<TSR, CanId, offsetof(CAN_TypeDef, TSR)>& _tsr;
+
+        friend class Mailbox;
+
+    public:
+        class Mailbox {
+            Tx& _tx;
+            uint8_t _index;
+
+        public:
+            Mailbox(Tx& tx, uint8_t index) noexcept
+                : _tx(tx)
+                , _index(index)
+            {}
+
+            [[nodiscard]] bool empty() const noexcept
+            {
+                static constexpr TSR kTme[kTxMailboxCount] = {TSR::TME0, TSR::TME1, TSR::TME2};
+                return _tx._tsr.any(kTme[_index]);
+            }
+
+            /**
+             * Записать Frame и выставить TXRQ (TIR последним).
+             * Не проверяет empty() — вызывающий обязан.
+             */
+            [[nodiscard]] bool load(const Frame& frame) noexcept
+            {
+                if (frame.dlc > BIF::CAN::kMaxDataLength)
+                    return false;
+                CAN_TxMailBox_TypeDef& box = _tx._instance->sTxMailBox[_index];
+                detail::writeMailboxData(box, frame);
+                box.TIR = frame.id.pack() | CAN_TI0R_TXRQ;
+                return true;
+            }
+        };
+
+        Tx(CAN_TypeDef* inst,
+           REG::PropertyBits<TSR, CanId, offsetof(CAN_TypeDef, TSR)>& tsr) noexcept
+            : _instance(inst)
+            , _tsr(tsr)
+        {}
+
+        [[nodiscard]] Mailbox operator[](uint8_t i) noexcept
+        {
+            return Mailbox{*this, (i < kTxMailboxCount) ? i : uint8_t{0}};
+        }
+
+        /** Первый свободный mailbox → load. false — все заняты / плохой DLC. */
+        [[nodiscard]] bool tryLoad(const Frame& frame) noexcept
+        {
+            for (uint8_t i = 0; i < kTxMailboxCount; ++i) {
+                Mailbox mb = (*this)[i];
+                if (mb.empty())
+                    return mb.load(frame);
+            }
+            return false;
+        }
+    };
+
+    /**
+     * RX FIFO 0…1: `can.rx[i].pop(frame)`.
+     * RFxR — `rx.rf0` / `rx.rf1`.
+     */
+    class Rx {
+        CAN_TypeDef* _instance;
+
+        friend class Fifo;
+
+    public:
+        REG::PropertyBits<RF0R, CanId, offsetof(CAN_TypeDef, RF0R)> rf0;
+        REG::PropertyBits<RF1R, CanId, offsetof(CAN_TypeDef, RF1R)> rf1;
+
+        class Fifo {
+            Rx& _rx;
+            uint8_t _index;
+
+        public:
+            Fifo(Rx& rx, uint8_t index) noexcept
+                : _rx(rx)
+                , _index(index)
+            {}
+
+            /** FMP: 0…3. */
+            [[nodiscard]] uint8_t pending() const noexcept
+            {
+                const uint32_t raw =
+                    (_index == 0u) ? _rx.rf0.read_raw() : _rx.rf1.read_raw();
+                return static_cast<uint8_t>(raw & 0x3u);
+            }
+
+            [[nodiscard]] bool empty() const noexcept { return pending() == 0u; }
+
+            [[nodiscard]] bool full() const noexcept
+            {
+                return (_index == 0u) ? _rx.rf0.any(RF0R::FULL0) : _rx.rf1.any(RF1R::FULL1);
+            }
+
+            [[nodiscard]] bool overrun() const noexcept
+            {
+                return (_index == 0u) ? _rx.rf0.any(RF0R::FOVR0) : _rx.rf1.any(RF1R::FOVR1);
+            }
+
+            void clearOverrun() noexcept
+            {
+                if (_index == 0u)
+                    _rx.rf0.set(RF0R::FOVR0);
+                else
+                    _rx.rf1.set(RF1R::FOVR1);
+            }
+
+            /** Прочитать выходной кадр и RFOM. false — пусто. */
+            [[nodiscard]] bool pop(Frame& out) noexcept
+            {
+                if (empty())
+                    return false;
+                detail::readMailboxData(_rx._instance->sFIFOMailBox[_index], out);
+                if (_index == 0u)
+                    _rx.rf0.set(RF0R::RFOM0);
+                else
+                    _rx.rf1.set(RF1R::RFOM1);
+                return true;
+            }
+        };
+
+        explicit Rx(CAN_TypeDef* inst) noexcept : _instance(inst) {}
+
+        [[nodiscard]] Fifo operator[](uint8_t i) noexcept
+        {
+            return Fifo{*this, (i < kRxFifoCount) ? i : uint8_t{0}};
+        }
+    };
+
+    /**
      * Хелпер filter bank’ов: `can.filter[i].setActive(true)`.
      * Хранит instance + FMR/FM1R/FS1R/FFA1R/FA1R.
      * Запись конфигурации — только при FINIT: initEnter() … initLeave().
      * Чтение (isActive / mode / fr1 / …) FINIT не требует.
+     *
+     * TODO: FilterInitGuard (RAII) — initEnter в ctor, initLeave в dtor;
+     *       счётчик вложенности, если guard уже внутри FINIT.
+     *       Пачка bank’ов в одном scope; configure/set* без авто-FINIT
+     *       (остаются «требуют isInit»). Опционально: configure сам
+     *       enter/leave, если !isInit() — сахар для одного bank.
      */
     class Filter {
     public:
@@ -255,6 +442,7 @@ public:
 
         void initEnter() noexcept { fmr.set(FMR::FINIT); }
         void initLeave() noexcept { fmr.clear(FMR::FINIT); }
+        [[nodiscard]] bool isInit() const noexcept { return fmr.any(FMR::FINIT); }
 
         /// Прокси одного bank: `filter[3].setMode(…)`.
         class Bank {
@@ -269,7 +457,7 @@ public:
 
             [[nodiscard]] bool setActive(bool active) noexcept
             {
-                if (!valid())
+                if (!valid() || !_filters.isInit())
                     return false;
                 _filters.fa1r.writeBit(_index, active);
                 return true;
@@ -282,7 +470,7 @@ public:
 
             [[nodiscard]] bool setMode(FilterMode mode) noexcept
             {
-                if (!valid())
+                if (!valid() || !_filters.isInit())
                     return false;
                 _filters.fm1r.writeBit(_index, mode == FilterMode::List);
                 return true;
@@ -295,7 +483,7 @@ public:
 
             [[nodiscard]] bool setScale(FilterScale scale) noexcept
             {
-                if (!valid())
+                if (!valid() || !_filters.isInit())
                     return false;
                 _filters.fs1r.writeBit(_index, scale == FilterScale::Single32);
                 return true;
@@ -309,7 +497,7 @@ public:
 
             [[nodiscard]] bool setFifo(FilterFifo fifo) noexcept
             {
-                if (!valid())
+                if (!valid() || !_filters.isInit())
                     return false;
                 _filters.ffa1r.writeBit(_index, fifo == FilterFifo::Fifo1);
                 return true;
@@ -323,7 +511,7 @@ public:
 
             [[nodiscard]] bool write(uint32_t fr1, uint32_t fr2) noexcept
             {
-                if (!valid())
+                if (!valid() || !_filters.isInit())
                     return false;
                 _filters.instance->sFilterRegister[_index].FR1 = fr1;
                 _filters.instance->sFilterRegister[_index].FR2 = fr2;
@@ -399,13 +587,17 @@ public:
             {
                 if (!valid())
                     return false;
-                (void)setActive(false);
-                (void)setMode(mode);
-                (void)setScale(scale);
-                (void)setFifo(fifo);
-                (void)write(fr1, fr2);
-                (void)setActive(active);
-                return true;
+                if (!setActive(false))
+                    return false;
+                if (!setMode(mode))
+                    return false;
+                if (!setScale(scale))
+                    return false;
+                if (!setFifo(fifo))
+                    return false;
+                if (!write(fr1, fr2))
+                    return false;
+                return setActive(active);
             }
 
             /// 32-bit mask, ID/mask = 0 → accept all → FIFO0. Требует FINIT снаружи.
@@ -419,10 +611,17 @@ public:
     };
 
     Filter filter;
+    Tx tx;
+    Rx rx;
+
+    /** Совместимость: тот же регистр, что rx.rf0. */
+    REG::PropertyBits<RF0R, CanId, offsetof(CAN_TypeDef, RF0R)>& rf0r = rx.rf0;
 
     CAN()
         : instance(reinterpret_cast<CAN_TypeDef*>(static_cast<uintptr_t>(CanId)))
         , filter(instance)
+        , tx(instance, tsr)
+        , rx(instance)
     {
     }
 
@@ -454,7 +653,11 @@ public:
 
         btr.write(timing.toBtr());
         filter.initEnter();
-        (void)filter[0].acceptAll();
+        if (!filter[0].acceptAll()) {
+            filter.initLeave();
+            (void)leaveInitMode();
+            return false;
+        }
         filter.initLeave();
 
         if (!leaveInitMode())
@@ -467,66 +670,6 @@ public:
     {
         (void)enterInitMode();
         mcr.set(MCR::SLEEP);
-    }
-
-    /**
-     * Положить кадр в свободный TX mailbox (0…2). false — все заняты / плохой DLC.
-     */
-    bool tryTransmit(const Frame& frame) noexcept
-    {
-        if (frame.dlc > BIF::CAN::kMaxDataLength)
-            return false;
-
-        uint32_t mb = 0xFFU;
-        const REG::BitMask<TSR> st = tsr.read();
-        if (st.any(TSR::TME0))
-            mb = 0U;
-        else if (st.any(TSR::TME1))
-            mb = 1U;
-        else if (st.any(TSR::TME2))
-            mb = 2U;
-        else
-            return false;
-
-        CAN_TxMailBox_TypeDef& box = instance->sTxMailBox[mb];
-
-        uint32_t tir_v = frame.id.pack();
-        box.TDTR = static_cast<uint32_t>(frame.dlc) & CAN_TDT0R_DLC;
-        box.TDLR = (static_cast<uint32_t>(frame.data[0]))
-                   | (static_cast<uint32_t>(frame.data[1]) << 8)
-                   | (static_cast<uint32_t>(frame.data[2]) << 16)
-                   | (static_cast<uint32_t>(frame.data[3]) << 24);
-        box.TDHR = (static_cast<uint32_t>(frame.data[4]))
-                   | (static_cast<uint32_t>(frame.data[5]) << 8)
-                   | (static_cast<uint32_t>(frame.data[6]) << 16)
-                   | (static_cast<uint32_t>(frame.data[7]) << 24);
-        box.TIR = tir_v | CAN_TI0R_TXRQ;
-        return true;
-    }
-
-    /// Прочитать кадр из FIFO0 и освободить mailbox. false — FIFO пуст.
-    bool tryReceive(Frame& out) noexcept
-    {
-        if (!rf0r.any(RF0R::FMP0))
-            return false;
-
-        const CAN_FIFOMailBox_TypeDef& box = instance->sFIFOMailBox[0];
-        out.id = Frame::Id::unpack(box.RIR);
-        out.dlc = static_cast<uint8_t>(box.RDTR & CAN_RDT0R_DLC);
-
-        const uint32_t rdlr_v = box.RDLR;
-        const uint32_t rdhr_v = box.RDHR;
-        out.data[0] = static_cast<uint8_t>(rdlr_v);
-        out.data[1] = static_cast<uint8_t>(rdlr_v >> 8);
-        out.data[2] = static_cast<uint8_t>(rdlr_v >> 16);
-        out.data[3] = static_cast<uint8_t>(rdlr_v >> 24);
-        out.data[4] = static_cast<uint8_t>(rdhr_v);
-        out.data[5] = static_cast<uint8_t>(rdhr_v >> 8);
-        out.data[6] = static_cast<uint8_t>(rdhr_v >> 16);
-        out.data[7] = static_cast<uint8_t>(rdhr_v >> 24);
-
-        rf0r.set(RF0R::RFOM0);
-        return true;
     }
 
 private:
