@@ -93,6 +93,7 @@ bool IBrowser::refresh() noexcept
     if (_entries == nullptr || _cacheCapacity == 0u) {
         return fail(Status::IoError);
     }
+    /* CD (PD3) → STA_NODISK. Если том уже жив — не гоняем HAL_SD_Init. */
     if (!ensureMounted()) {
         return false;
     }
@@ -104,7 +105,7 @@ bool IBrowser::refresh() noexcept
 
     if (!_dir.open(_dirPath)) {
         if (!_volume.remount() || !_dir.open(_dirPath)) {
-            return fail(Status::OpenDirFailed);
+            return fail(_volume.isMounted() ? Status::OpenDirFailed : Status::NotMounted);
         }
     }
 

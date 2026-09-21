@@ -155,7 +155,8 @@ struct BrwStateColors {
 static constexpr BrwStateColors kBrwStateColors[] = {
     {AppColors::kPage,    AppColors::kBorder,AppColors::kBorder},
     {AppColors::kDefault, AppColors::kText,  AppColors::kBorder},
-    {AppColors::kDefault,    AppColors::kText,  AppColors::kMain},
+    {AppColors::kDefault, AppColors::kText,  AppColors::kMain},
+    {AppColors::kDefault, AppColors::kBorder,AppColors::kBorder},
 };
 
 class BrowserBtn : public nex::comp::Textual<> {
@@ -164,6 +165,7 @@ public:
         Disabled,
         Active,
         Selected,
+        Dir, /**< Каталог: видно, не выбирается. */
     };
 
     BrowserBtn(nex::IPage& owner, const nex::Literal& name, uint8_t id = 0) noexcept

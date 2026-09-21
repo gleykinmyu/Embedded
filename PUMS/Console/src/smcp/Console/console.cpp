@@ -6,8 +6,6 @@
 #include "smcp/Console/console.hpp"
 #include "smcp/debug.hpp"
 
-#include <variant>
-
 namespace smcp {
 
 namespace detail {
@@ -117,7 +115,7 @@ void IConsole::begin(uint8_t server_id) noexcept
     if (getStatus() != Status::OK) {
         clearError();
     }
-    _listen.start(clockMs(), msg::kHeartbeatTimeoutMs);
+    _listen.start(clockMs(), msg::Heartbeat::kTimeoutMs);
     setPhase(Phase::Listen);
 }
 
@@ -182,9 +180,9 @@ void IConsole::getTelemetry(Selection selection) noexcept
 
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
 {
-    if (const auto* tel = std::get_if<msg::Telemetry>(&pkt.body)) {
-        onTelemetry(pkt.hdr, *tel);
-    }
+    (void)msg::helpers::take<msg::Telemetry>(pkt, [&](const msg::Telemetry& tel) {
+        onTelemetry(pkt.src_id, tel);
+    });
 }
 
 void IConsole::onStatus(Status status) noexcept
@@ -210,13 +208,13 @@ void IConsole::onHbLost(Session* session) noexcept
     setPhase(Phase::Connecting);
 }
 
-void IConsole::onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept
+void IConsole::onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept
 {
     CMech* m = mech(body.mech_id);
     if (m == nullptr) {
         return;
     }
-    m->onTelemetry(hdr.src_id, body);
+    m->onTelemetry(src_id, body);
 }
 
 void IConsole::tryGoOnline() noexcept

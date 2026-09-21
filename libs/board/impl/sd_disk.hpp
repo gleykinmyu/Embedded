@@ -57,6 +57,15 @@ class SdDisk : public BIF::IDisk {
         }
     }
 
+    void markEmpty() noexcept
+    {
+        if ((_stat & STA_NODISK) == 0) {
+            SD_DBG("SD CD out\n");
+            _sd.busIdle();
+        }
+        _stat = static_cast<DSTATUS>(STA_NOINIT | STA_NODISK);
+    }
+
 public:
     SdDisk() : IDisk(0) {}
 
@@ -64,10 +73,14 @@ public:
     {
         /* Всегда полный HAL init: hot-plug / remount. FatFs зовёт это только при mount. */
         SD_DBG("disk_initialize...\n");
+        if (status() & STA_NODISK) {
+            SD_DBG("disk_initialize FAIL no card (stat=0x%02X)\n", static_cast<unsigned>(_stat));
+            return _stat;
+        }
         if (_sd.Init() != HAL_OK) {
             _stat = STA_NOINIT;
             if (!_sd.IsDetected()) {
-                _stat = static_cast<DSTATUS>(STA_NOINIT | STA_NODISK);
+                markEmpty();
             }
             SD_DBG("disk_initialize FAIL (stat=0x%02X)\n", static_cast<unsigned>(_stat));
             return _stat;
@@ -79,14 +92,21 @@ public:
 
     DSTATUS status() override
     {
-        /* Не звать GetCardState (CMD13) здесь: при мёртвой карте это до ~5 с на каждый
-           disk_status() от FatFs. Ошибки ловим в read/write → STA_NOINIT. */
+        /* CD — GPIO. Не звать GetCardState (CMD13): при мёртвой карте до ~5 с. */
+        if (!_sd.IsDetected()) {
+            markEmpty();
+            return _stat;
+        }
+        if (_stat & STA_NODISK) {
+            SD_DBG("SD CD in\n");
+            _stat = STA_NOINIT;
+        }
         return _stat;
     }
 
     DRESULT read(BYTE* buff, DWORD sector, UINT count) override
     {
-        if (_stat & STA_NOINIT) {
+        if (status() & STA_NOINIT) {
             return RES_NOTRDY;
         }
         DRESULT res = RES_ERROR;
@@ -106,7 +126,7 @@ public:
 #if _USE_WRITE == 1
     DRESULT write(const BYTE* buff, DWORD sector, UINT count) override
     {
-        if (_stat & STA_NOINIT) {
+        if (status() & STA_NOINIT) {
             return RES_NOTRDY;
         }
         DRESULT res = RES_ERROR;
@@ -130,8 +150,9 @@ public:
         DRESULT  res       = RES_ERROR;
         CardInfo card_info{};
 
-        if (_stat & STA_NOINIT)
+        if (status() & STA_NOINIT) {
             return RES_NOTRDY;
+        }
 
         switch (cmd) {
         case CTRL_SYNC:

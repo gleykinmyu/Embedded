@@ -24,8 +24,8 @@ public:
     static constexpr uint8_t kFieldCount = Count;
     static constexpr nex::Coord kDefaultHeight = 48;
     static constexpr nex::Coord kOriginY = 974;
-    /** Хватает под `Connecting (NNNk)`; остаток ширины — имени файла. */
-    static constexpr nex::Coord kStatusColumnWidth = 180;
+    /** Хватает под `SD Connecting (NNNk)`; остаток ширины — имени файла. */
+    static constexpr nex::Coord kStatusColumnWidth = 220;
     static constexpr nex::Coord kSideColumnWidth = 120;
     static constexpr size_t kTextCap = 64u;
 

@@ -17,8 +17,8 @@
 #include "ms_timer.hpp"
 #include "obj_registry.hpp"
 #include "smcp/Console/cmech.hpp"
+#include "smcp/Console/console_message.hpp"
 #include "smcp/transport/ilink.hpp"
-#include "smcp/transport/message.hpp"
 #include "smcp/transport/node.hpp"
 #include "smcp/transport/session.hpp"
 
@@ -131,7 +131,7 @@ protected:
     void onHbLost(Session* session) noexcept override;
 
     /** По умолчанию: CMech::onTelemetry. */
-    virtual void onTelemetry(const msg::Header& hdr, const msg::Telemetry& body) noexcept;
+    virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept;
     /** Edge Phase — UI. */
     virtual void onPhase(Phase phase) noexcept { (void)phase; }
     /** Согласие наследника на Connecting → Online. По умолчанию сразу. */

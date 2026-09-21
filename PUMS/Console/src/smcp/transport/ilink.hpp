@@ -1,6 +1,6 @@
 /**
  * @file ilink.hpp
- * @brief Абстракция SMCP-линка: Message/Packet без привязки к среде.
+ * @brief Абстракция SMCP-линка: Packet без привязки к среде.
  *
  * send/receive — общая SMCP-логика; среда — isOpen / write / read.
  * Реализации: CanLink (ICAN) и т.п. Heartbeat / peer / pkt_id — у Session.
@@ -34,12 +34,10 @@ public:
     [[nodiscard]] virtual bool isOpen() noexcept = 0;
 
     /**
-     * Unicast / broadcast: собирает Packet (src/prio/msg_id), затем write().
+     * Unicast / broadcast: дописывает src, затем write().
      * Broadcast: dst_id = msg::kBroadcastId.
      */
-    [[nodiscard]] bool send(const msg::Message& body,
-                            uint8_t dst_id = msg::kBroadcastId,
-                            uint8_t pkt_id = 0) noexcept;
+    [[nodiscard]] bool send(msg::Packet pkt) noexcept;
 
     /**
      * Один входящий кадр → Packet (через read()).

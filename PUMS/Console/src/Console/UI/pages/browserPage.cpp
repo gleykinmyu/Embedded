@@ -85,6 +85,7 @@ void BrowserPage::onLoad()
         _pending = Pending::None;
         _page = 0u;
         if (!console.browser.refresh()) {
+
             ui().showBrowserStatus();
             return;
         }
@@ -136,6 +137,7 @@ void BrowserPage::onResponse(const nex::msg::getNumeric& response, nex::Route ro
     _pending = Pending::None;
     _page = 0u;
     if (!console.browser.refresh()) {
+        redrawRows();
         ui().showBrowserStatus();
         return;
     }
@@ -216,13 +218,18 @@ void BrowserPage::redrawRows() noexcept
         fileRows[i].setText("  ");
         fileRows[i].appendText(entry->name);
         fileRows[i].appendText("\r ");
+        formatFatStamp(stamp, sizeof(stamp), entry->date, entry->time);
+        fileDates[i].txt.set(stamp);
+
+        if (entry->isDir()) {
+            fileRows[i].setState(BtnState::Dir);
+            continue;
+        }
         const bool rowSelected = (_selected != npos) && (_selected == index);
         fileRows[i].setState(rowSelected ? BtnState::Selected : BtnState::Active);
         if (rowSelected) {
             BrowserBtn::active_id = fileRows[i].id();
         }
-        formatFatStamp(stamp, sizeof(stamp), entry->date, entry->time);
-        fileDates[i].txt.set(stamp);
     }
 
     updateStatusTexts();
@@ -234,16 +241,14 @@ void BrowserPage::onFileRow(std::size_t row) noexcept
         return;
     }
     const std::size_t index = _page * visibleRows() + row;
-    if (index >= console.browser.cacheCount()) {
+    const auto* entry = console.browser.at(static_cast<uint16_t>(index));
+    if (entry == nullptr || entry->isDir()) {
         return;
     }
     _selected = index;
 
-    if (currentMode() == Mode::SaveAs) {
-        const auto* entry = console.browser.at(static_cast<uint16_t>(index));
-        if (entry != nullptr && entry->name[0] != '\0') {
-            fNameStr.txt.set(entry->name);
-        }
+    if (currentMode() == Mode::SaveAs && entry->name[0] != '\0') {
+        fNameStr.txt.set(entry->name);
     }
     redrawRows();
 }
@@ -382,6 +387,16 @@ void BrowserPage::doDelete() noexcept
         return;
     }
 
+    char path[smcp::file::kBrowserPathSize]{};
+    if (!console.browser.makePath(path, sizeof(path), entry->name)) {
+        ui().showBrowserStatus();
+        return;
+    }
+    if (console.show.name()[0] != '\0' && std::strcmp(path, console.show.name()) == 0) {
+        ui().showFileMsg(0u, uiMsg::kBrowserOpenProtected);
+        return;
+    }
+
     _msg = Msg::ConfirmDelete;
     ui().showFileYesNo(kTagConfirmDelete, uiMsg::kConfirmDeleteFile);
 }
@@ -437,10 +452,19 @@ void BrowserPage::onAfterMsgBox(const nex::msg::evMsgBox& e)
     if (e.action == nex::msg::evMsgBox::Action::Yes) {
         return;
     }
-    if (!console.browser.refresh()) {
+    (void)console.browser.refresh();
+    clearFileRowSelection();
+    redrawRows();
+}
+
+void BrowserPage::reloadOnCardChange() noexcept
+{
+    if (_pending != Pending::None || _msg != Msg::None) {
         return;
     }
+    _page = 0u;
     clearFileRowSelection();
+    (void)console.browser.refresh();
     redrawRows();
 }
 

@@ -38,6 +38,7 @@ private:
         GPIO::PortC::pin<11>.Init(GPIO::ModeAlt::PP, af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
         GPIO::PortC::pin<12>.Init(GPIO::ModeAlt::PP, af, GPIO::Pull::None, GPIO::Speed::VeryHigh);
         GPIO::PortD::pin<2>.Init(GPIO::ModeAlt::PP, af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
+        GPIO::PortD::pin<3>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
     }
 
     static void idle_sdio_gpios()
@@ -49,6 +50,7 @@ private:
         GPIO::PortC::pin<11>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
         GPIO::PortC::pin<12>.Init(GPIO::Mode::Input, GPIO::Pull::Down);
         GPIO::PortD::pin<2>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
+        GPIO::PortD::pin<3>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
     }
 
     /* HAL_SD_DeInit: POWER=0, пустой MspDeInit, State=RESET. Пины/RCC — наши. */
@@ -60,13 +62,6 @@ private:
         hsd.ErrorCode = HAL_SD_ERROR_NONE;
         hsd.Context   = SD_CONTEXT_NONE;
         hsd.State     = HAL_SD_STATE_RESET;
-    }
-
-    void busIdle()
-    {
-        stopPeripheral();
-        idle_sdio_gpios();
-        this->DisableClock();
     }
 
 public:
@@ -90,12 +85,22 @@ public:
         hsd.Init.ClockDiv            = 0u;
     }
 
+    void busIdle()
+    {
+        stopPeripheral();
+        idle_sdio_gpios();
+        this->DisableClock();
+    }
+
     CHW_Status Init()
     {
         CHW_Status sd_state = HAL_OK;
         SD_DBG("SDIO Init...\n");
         if (!IsDetected()) {
             SDIO_DETAIL_ERRORMSG("SD isn't present in slot.");
+            if (hsd.State != HAL_SD_STATE_RESET) {
+                busIdle();
+            }
             return HAL_ERROR;
         }
 
@@ -106,11 +111,14 @@ public:
                 static_cast<unsigned long>(hsd.ErrorCode));
             stopPeripheral();
         }
+
+        /* Пауза на тихой шине (вход + pull-up), не в AF: при POWER=0 AF может держать CMD в 0. */
+        idle_sdio_gpios();
+        HAL_Delay(kCardSettleMs);
+
         this->Reset();
         this->EnableClock();
         this->init_sdio_gpios();
-
-        HAL_Delay(kCardSettleMs);
         sd_state = HAL_SD_Init(&hsd);
         if (sd_state != HAL_OK) {
             SDIO_DETAIL_ERRORMSG("Error HAL_SD_Init.");
@@ -120,21 +128,15 @@ public:
             return HAL_ERROR;
         }
 
-        if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK) {
-            /* 4 бита не обязательны: после hot-plug ACMD6 иногда падает. */
-            SD_DBG("SDIO 4B failed, retry 1B\n");
+        const bool wide4 =
+            (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) == HAL_OK);
+        if (!wide4) {
+            /* Карта уже в 1 бите после HAL_SD_Init — не сносить сессию. */
+            SD_DBG("SDIO 4B failed, stay 1B err=0x%lX\n",
+                static_cast<unsigned long>(hsd.ErrorCode));
             SDIO_DETAIL_ERRORMSG("Error config bus wide 4B.");
-            stopPeripheral();
-            this->EnableClock();
-            this->init_sdio_gpios();
-            sd_state = HAL_SD_Init(&hsd);
-            if (sd_state != HAL_OK) {
-                SDIO_DETAIL_ERRORMSG("Error HAL_SD_Init (1B fallback).");
-                busIdle();
-                return HAL_ERROR;
-            }
         }
-        SD_DBG("SDIO Init -> OK\n");
+        SD_DBG("SDIO Init -> OK (4B=%s)\n", wide4 ? "yes" : "no");
         return HAL_OK;
     }
 
@@ -178,7 +180,12 @@ public:
         return st;
     }
 
-    bool IsDetected() { return true; }
+    /** Карта в слоте: CD/PD3 = 0 (к корпусу). */
+    bool IsDetected()
+    {
+        GPIO::PortD::pin<3>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
+        return !GPIO::PortD::pin<3>.Read();
+    }
 };
 
 using CHW_SD = SD<PHL::ID::SDIO>;

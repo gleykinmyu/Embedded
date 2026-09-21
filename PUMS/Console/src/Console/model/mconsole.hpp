@@ -94,7 +94,7 @@ public:
     void setMode(Mode mode) noexcept { _mode = mode; }
 
     [[nodiscard]] const smcp::msg::Nack& lastNack() const noexcept { return _lastNack; }
-    [[nodiscard]] smcp::msg::MsgId lastNackReq() const noexcept { return _lastNackReq; }
+    [[nodiscard]] uint8_t lastNackReq() const noexcept { return _lastNackReq; }
 
     /** UI загружен (wait.onLoad): можно Online и GetTelemetry. */
     void setUiReady() noexcept;
@@ -104,7 +104,7 @@ protected:
     virtual void onMechChanged(uint8_t mech_id) noexcept { (void)mech_id; }
     virtual void onConsoleChanged() noexcept {}
 
-    void onTelemetry(const smcp::msg::Header& hdr, const smcp::msg::Telemetry& body) noexcept override;
+    void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept override;
     void onNack(smcp::Session* session, const smcp::TxSlot& req,
                 const smcp::msg::Nack& reply) noexcept override;
     void onPhase(Phase phase) noexcept override;
@@ -116,6 +116,6 @@ private:
 
     Mode _mode = Mode::Work;
     smcp::msg::Nack _lastNack{smcp::msg::ErrorCode::Ok};
-    smcp::msg::MsgId _lastNackReq = smcp::msg::MsgId::Select;
+    uint8_t _lastNackReq = smcp::msg::Select::kId;
     bool _uiReady = false;
 };

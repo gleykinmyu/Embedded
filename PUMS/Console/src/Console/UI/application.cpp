@@ -132,6 +132,7 @@ void Application::boot() noexcept
     syncStatusBarFile();
     syncStatusBarLink();
     syncStatusBarTime();
+    _sdNoDisk = (board.SD.status() & STA_NODISK) != 0;
 }
 
 void Application::goWork(bool syncScene) noexcept
@@ -174,6 +175,13 @@ void Application::update() noexcept
     _statusBarTickMs = now;
     syncStatusBarLink();
     syncStatusBarTime();
+
+    const bool noDisk = (board.SD.status() & STA_NODISK) != 0;
+    if (noDisk != _sdNoDisk
+        && currentPage() == nex::hmi::Page_browser::kPageId && !overlay.isModal()) {
+        browser.reloadOnCardChange();
+    }
+    _sdNoDisk = noDisk;
 }
 
 void Application::showUtf8Msg(const char* titleUtf8, nex::ovl::MsgBox::Preset preset, uint8_t tag,
@@ -233,7 +241,8 @@ void Application::syncStatusBarLink() noexcept
     char buf[32]{};
     const unsigned freeKb =
         static_cast<unsigned>((memstat::freeMinBytes() + 512u) / 1024u);
-    std::snprintf(buf, sizeof(buf), "%s (%uk)",
+    std::snprintf(buf, sizeof(buf), "%s %s (%uk)",
+        (board.SD.status() & STA_NODISK) != 0 ? "--" : "SD",
         smcp::IConsole::cstr(console.phase()), freeKb);
     statusBar.setStatus(buf);
     memstat::resetFreeMin();

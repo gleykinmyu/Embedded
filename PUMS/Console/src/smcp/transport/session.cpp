@@ -6,8 +6,6 @@
 #include "smcp/transport/node.hpp"
 #include "smcp/debug.hpp"
 
-#include <variant>
-
 namespace smcp {
 
 // --- ctor / helpers ---
@@ -121,36 +119,38 @@ void Session::hbLost() noexcept
 
 // --- исходящие PDU ---
 
-bool Session::transmit(const msg::Message& body, uint8_t pkt_id) noexcept
+bool Session::transmit(msg::Message msg, uint8_t pkt_id, bool needs_ack) noexcept
 {
     if (!nodeOk() || _peer_id == 0u) {
         return false;
     }
 
-    TxSlot item{};
-    item.body = body;
-    item.dst_id = _peer_id;
-    item.pkt_id = pkt_id;
+    if (msg.dlc > msg::Message::kMaxDlc) {
+        msg.dlc = msg::Message::kMaxDlc;
+    }
 
-    const bool is_req = msg::helpers::requiresAck(msg::helpers::msgIdOf(body));
-    const bool ok = is_req ? _tx_req.enqueue(item, _node) : _tx_ctrl.enqueue(item, _node);
-    const bool full = is_req ? _tx_req.isFull() : _tx_ctrl.isFull();
+    TxSlot item{};
+    item.msg = msg;
+    item.dst_id = _peer_id;
+    item.pkt_id = static_cast<uint8_t>(pkt_id & msg::kPktIdMax);
+    item.needs_ack = needs_ack;
+
+    const bool ok = needs_ack ? _tx_req.enqueue(item, _node) : _tx_ctrl.enqueue(item, _node);
+    const bool full = needs_ack ? _tx_req.isFull() : _tx_ctrl.isFull();
     if (!ok && full) {
         _node.onTxFull(this);
     }
     return ok;
 }
 
-void Session::send(const msg::Message& body) noexcept
+void Session::send(msg::Message msg, bool needs_ack) noexcept
 {
     if (!isOpen()) {
         return;
     }
-    const msg::MsgId id = msg::helpers::msgIdOf(body);
-    const bool need_ack = msg::helpers::requiresAck(id);
-    const uint8_t pkt_id = need_ack ? _pkt_tx : uint8_t{0};
-    if (transmit(body, pkt_id) && need_ack) {
-        ++_pkt_tx;
+    const uint8_t pkt_id = needs_ack ? _pkt_tx : uint8_t{0};
+    if (transmit(msg, pkt_id, needs_ack) && needs_ack) {
+        _pkt_tx = static_cast<uint8_t>((_pkt_tx + 1u) & msg::kPktIdMax);
     }
 }
 
@@ -160,7 +160,9 @@ void Session::sendAck(uint8_t req_pkt_id) noexcept
         return;
     }
 
-    transmit(msg::Ack{}, req_pkt_id);
+    msg::Message m{};
+    m.id = msg::Ack::kId;
+    transmit(m, req_pkt_id, false);
 }
 
 void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code, uint8_t detail) noexcept
@@ -199,7 +201,10 @@ void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code, uint8_t detail) 
     msg::Nack body{};
     body.code = code;
     body.detail = detail;
-    transmit(body, req_pkt_id);
+    msg::Message m{};
+    m.id = msg::Nack::kId;
+    body.pack(m);
+    transmit(m, req_pkt_id, false);
 }
 
 void Session::clearTx() noexcept
@@ -263,7 +268,7 @@ void Session::onTxResult(bool ok) noexcept
     switch (_out) {
     case OutSrc::Req:
         /* голова остаётся до onAck; start — первый раз или retry */
-        _ack.start(_node.clockMs(), msg::kAckTimeoutControlMs);
+        _ack.start(_node.clockMs(), msg::Ack::kTimeoutMs);
         break;
 
     case OutSrc::Ctrl:
@@ -294,8 +299,13 @@ void Session::onAck(const msg::Packet& pkt) noexcept
         return;
     }
     _ack.clear();
-    if (const auto* nack = std::get_if<msg::Nack>(&pkt.body)) {
-        _node.onNack(this, *head, *nack);
+    if (pkt.msg.id == msg::Nack::kId) {
+        msg::Nack nack{};
+        if (!nack.unpack(pkt.msg)) {
+            _tx_req.drop();
+            return;
+        }
+        _node.onNack(this, *head, nack);
     } else {
         _node.onAck(this, *head);
     }
@@ -310,11 +320,12 @@ void Session::onAckTimeout() noexcept
 
     const TxSlot* head = peekReq(true);
     msg::Packet pkt{};
+    pkt.msg.id = msg::Nack::kId;
     pkt.pkt_id = head != nullptr ? head->pkt_id : uint8_t{0};
     msg::Nack body{};
     body.code = msg::ErrorCode::Timeout;
     body.detail = msg::kNackDetailNone;
-    pkt.body = body;
+    body.pack(pkt.msg);
     onAck(pkt);
 }
 
@@ -322,29 +333,33 @@ void Session::onAckTimeout() noexcept
 
 void Session::ping() noexcept
 {
-    if (!transmit(msg::Heartbeat{})) {
+    msg::Message m{};
+    m.id = msg::Heartbeat::kId;
+    if (!transmit(m, 0, false)) {
         return;
     }
     if (_status != Status::Open) {
         setStatus(Status::Awaiting);
     }
-    _hb.start(_node.clockMs(), msg::kHeartbeatTimeoutMs);
+    _hb.start(_node.clockMs(), msg::Heartbeat::kTimeoutMs);
 }
 
 void Session::pong() noexcept
 {
-    transmit(msg::Heartbeat{});
+    msg::Message m{};
+    m.id = msg::Heartbeat::kId;
+    transmit(m, 0, false);
 }
 
-void Session::onHeartbeat(const msg::Header& hdr) noexcept
+void Session::onHeartbeat(uint8_t src_id) noexcept
 {
-    if (!nodeOk() || hdr.src_id == 0u) {
+    if (!nodeOk() || src_id == 0u) {
         return;
     }
 
     if (_status == Status::Idle || _status == Status::Connecting) {
-        open(hdr.src_id);
-    } else if (hdr.src_id != _peer_id) {
+        open(src_id);
+    } else if (src_id != _peer_id) {
         return;
     }
 
@@ -353,20 +368,19 @@ void Session::onHeartbeat(const msg::Header& hdr) noexcept
     }
     setStatus(Status::Open);
     _hb.clear();
-    _hb.start(_node.clockMs(), msg::kHeartbeatTimeoutMs, false);
+    _hb.start(_node.clockMs(), msg::Heartbeat::kTimeoutMs, false);
 }
 
 // --- pump (Node::update) ---
 
 bool Session::onPacket(const msg::Packet& pkt) noexcept
 {
-    if (std::get_if<msg::Heartbeat>(&pkt.body) != nullptr) {
-        onHeartbeat(pkt.hdr);
+    if (pkt.msg.id == msg::Heartbeat::kId) {
+        onHeartbeat(pkt.src_id);
         return true;
     }
 
-    if (std::holds_alternative<msg::Ack>(pkt.body)
-        || std::holds_alternative<msg::Nack>(pkt.body)) {
+    if (pkt.msg.id == msg::Ack::kId || pkt.msg.id == msg::Nack::kId) {
         onAck(pkt);
         return true;
     }
@@ -399,7 +413,7 @@ void Session::tick() noexcept
             if (_hb.isReplyLimit()) {
                 hbLost();
             } else {
-                _hb.start(_node.clockMs(), msg::kHeartbeatTimeoutMs, false);
+                _hb.start(_node.clockMs(), msg::Heartbeat::kTimeoutMs, false);
             }
         }
     }

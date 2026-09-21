@@ -24,7 +24,7 @@ namespace smcp {
 #endif
 
 #ifndef SMCP_TX_STALL_MS
-#define SMCP_TX_STALL_MS msg::kAckTimeoutControlMs
+#define SMCP_TX_STALL_MS msg::Ack::kTimeoutMs
 #endif
 
 #ifndef SMCP_MAX_UPDATE_DEPTH
@@ -36,9 +36,10 @@ class Node;
 
 /** Слот исходящего SMCP до сборки Packet в ILink. */
 struct TxSlot {
-    msg::Message body{};
+    msg::Message msg{};
     uint8_t dst_id = msg::kBroadcastId;
     uint8_t pkt_id = 0;
+    bool needs_ack = false;
 };
 
 /**
@@ -155,9 +156,16 @@ public:
      * Non-session TX (обычно broadcast). Unicast — Session::send.
      * Full → stall update() до SMCP_TX_STALL_MS, иначе onTxFull(nullptr).
      */
-    void send(const msg::Message& body,
-              uint8_t dst_id = msg::kBroadcastId,
-              uint8_t pkt_id = 0) noexcept;
+    void send(msg::Message msg, uint8_t dst_id = msg::kBroadcastId, uint8_t pkt_id = 0) noexcept;
+
+    template <typename T>
+    void send(const T& pdu, uint8_t dst_id = msg::kBroadcastId, uint8_t pkt_id = 0) noexcept
+    {
+        msg::Message m{};
+        m.id = T::kId;
+        pdu.pack(m);
+        send(m, dst_id, pkt_id);
+    }
 
     /** RX → acceptRx → session/onPacket → tick → RR Session TX + bus. */
     void update() noexcept;

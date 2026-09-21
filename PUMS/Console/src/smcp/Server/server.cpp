@@ -5,8 +5,6 @@
 
 #include "smcp/Server/server.hpp"
 
-#include <variant>
-
 namespace smcp {
 
 // =============================================================================
@@ -64,20 +62,24 @@ bool SessionConsole::onPacket(const msg::Packet& pkt) noexcept
     if (Session::onPacket(pkt)) {
         return true;
     }
-    if (const auto* sel = std::get_if<msg::Select>(&pkt.body)) {
-        handleMaskOp(MaskKind::Select, sel->action, sel->selection, pkt.pkt_id);
+    if (msg::helpers::take<msg::Select>(pkt, [&](const msg::Select& sel) {
+            handleMaskOp(MaskKind::Select, sel.action, sel.selection, pkt.pkt_id);
+        })) {
         return true;
     }
-    if (const auto* blk = std::get_if<msg::Block>(&pkt.body)) {
-        handleMaskOp(MaskKind::Block, blk->action, blk->selection, pkt.pkt_id);
+    if (msg::helpers::take<msg::Block>(pkt, [&](const msg::Block& blk) {
+            handleMaskOp(MaskKind::Block, blk.action, blk.selection, pkt.pkt_id);
+        })) {
         return true;
     }
-    if (const auto* tgt = std::get_if<msg::SetTarget>(&pkt.body)) {
-        onSetTarget(*tgt, pkt.pkt_id);
+    if (msg::helpers::take<msg::SetTarget>(pkt, [&](const msg::SetTarget& tgt) {
+            onSetTarget(tgt, pkt.pkt_id);
+        })) {
         return true;
     }
-    if (const auto* gt = std::get_if<msg::GetTelemetry>(&pkt.body)) {
-        onGetTelemetry(*gt, pkt.pkt_id);
+    if (msg::helpers::take<msg::GetTelemetry>(pkt, [&](const msg::GetTelemetry& gt) {
+            onGetTelemetry(gt, pkt.pkt_id);
+        })) {
         return true;
     }
     return false;
@@ -92,7 +94,7 @@ void SessionConsole::handleMaskOp(MaskKind kind,
                                   Selection selection,
                                   uint8_t pkt_id) noexcept
 {
-    if (!msg::helpers::isConsoleId(peerId())) {
+    if (!msg::isConsoleId(peerId())) {
         return;
     }
 
@@ -151,7 +153,7 @@ void SessionConsole::handleMaskOp(MaskKind kind,
 
 void SessionConsole::onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noexcept
 {
-    if (!msg::helpers::isConsoleId(peerId())) {
+    if (!msg::isConsoleId(peerId())) {
         return;
     }
 
@@ -181,7 +183,7 @@ void SessionConsole::onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noe
 
 void SessionConsole::onGetTelemetry(const msg::GetTelemetry& body, uint8_t pkt_id) noexcept
 {
-    if (!msg::helpers::isConsoleId(peerId())) {
+    if (!msg::isConsoleId(peerId())) {
         return;
     }
 

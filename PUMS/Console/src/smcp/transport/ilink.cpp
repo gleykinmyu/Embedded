@@ -8,22 +8,14 @@
 
 namespace smcp {
 
-bool ILink::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexcept
+bool ILink::send(msg::Packet pkt) noexcept
 {
     if (!isOpen()) {
         _status = Status::Closed;
         return false;
     }
 
-    const msg::MsgId id = msg::helpers::msgIdOf(body);
-
-    msg::Packet pkt{};
-    pkt.hdr.prio = msg::helpers::defaultPrio(id);
-    pkt.hdr.src_id = _node_id;
-    pkt.hdr.dst_id = dst_id;
-    pkt.hdr.msg_id = id;
-    pkt.pkt_id = pkt_id;
-    pkt.body = body;
+    pkt.src_id = _node_id;
 
     SMCP_TRACE_PKT("TX", _node_id, pkt);
     return write(pkt);

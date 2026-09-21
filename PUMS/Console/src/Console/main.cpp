@@ -134,6 +134,7 @@ int main(void)
     board.setLedAlive(true);
 
     NEX_DBG("PUMS Console boot: log=serial1 Nextion=serial2 250000 flashSpi=SPI3 8MHz\n");
+    NEX_DBG("SD CD PD3 %s\n", (board.SD.status() & STA_NODISK) != 0 ? "empty" : "present");
     if (!board.flash.begin()) {
         NEX_DBG("W25Q begin failed\n");
     } else {

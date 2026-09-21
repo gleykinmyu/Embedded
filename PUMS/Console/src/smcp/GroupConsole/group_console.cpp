@@ -13,7 +13,7 @@ void IGroupConsole::onAck(Session* session, const TxSlot& req) noexcept
     if (session != &_primary) {
         return;
     }
-    if (msg::helpers::msgIdOf(req.body) != msg::MsgId::Select) {
+    if (req.msg.id != msg::Select::kId) {
         return;
     }
     if (_queuedGroup == kNoQueuedGroup) {
@@ -28,7 +28,7 @@ void IGroupConsole::onAck(Session* session, const TxSlot& req) noexcept
 void IGroupConsole::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
 {
     Node::onNack(session, req, reply);
-    if (session == &_primary && msg::helpers::msgIdOf(req.body) == msg::MsgId::Select) {
+    if (session == &_primary && req.msg.id == msg::Select::kId) {
         _queuedGroup = kNoQueuedGroup;
     }
 }

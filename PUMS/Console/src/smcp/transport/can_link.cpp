@@ -20,7 +20,7 @@ bool CanLink::isOpen() noexcept
 bool CanLink::write(const msg::Packet& pkt) noexcept
 {
     BIF::CAN::Frame frame;
-    if (!msg::helpers::toCanFrame(pkt, frame)) {
+    if (!pkt.pack(frame)) {
         _status = Status::EncodeFailed;
         return false;
     }
@@ -41,7 +41,7 @@ bool CanLink::read(msg::Packet& out) noexcept
         return false;
     }
 
-    if (!msg::helpers::fromCanFrame(frame, out)) {
+    if (!out.unpack(frame)) {
         _status = Status::DecodeFailed;
         return false;
     }

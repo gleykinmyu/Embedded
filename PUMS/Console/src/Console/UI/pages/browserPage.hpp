@@ -49,6 +49,9 @@ struct BrowserPage : nex::Page<37> {
     void onMsgBox(const nex::msg::evMsgBox& e) override;
     void onAfterMsgBox(const nex::msg::evMsgBox& e) override;
 
+    /** CD сменился, пока открыт браузер: refresh + все ячейки. Без MsgBox. */
+    void reloadOnCardChange() noexcept;
+
 private:
     enum class Mode : int32_t {
         Open = 0,

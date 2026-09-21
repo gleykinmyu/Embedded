@@ -6,8 +6,6 @@
 #include "smcp/transport/session.hpp"
 #include "smcp/debug.hpp"
 
-#include <variant>
-
 namespace smcp {
 
 namespace detail {
@@ -67,10 +65,10 @@ Session* Node::sessionByPeer(uint8_t peer_id) noexcept
 
 Session* Node::openNewSession(const msg::Packet& pkt) noexcept
 {
-    if (std::get_if<msg::Heartbeat>(&pkt.body) == nullptr) {
+    if (pkt.msg.id != msg::Heartbeat::kId) {
         return nullptr;
     }
-    if (pkt.hdr.dst_id != id()) {
+    if (pkt.dst_id != id()) {
         return nullptr; /* bind только unicast, не broadcast */
     }
 
@@ -82,18 +80,22 @@ Session* Node::openNewSession(const msg::Packet& pkt) noexcept
             return slot;
         }
     }
-    onSessionFull(pkt.hdr.src_id);
+    onSessionFull(pkt.src_id);
     return nullptr;
 }
 
-void Node::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexcept
+void Node::send(msg::Message msg, uint8_t dst_id, uint8_t pkt_id) noexcept
 {
     if (_status == Status::IdConflict) {
         return;
     }
 
+    if (msg.dlc > msg::Message::kMaxDlc) {
+        msg.dlc = msg::Message::kMaxDlc;
+    }
+
     TxSlot item{};
-    item.body = body;
+    item.msg = msg;
     item.dst_id = dst_id;
     item.pkt_id = pkt_id;
 
@@ -105,7 +107,7 @@ void Node::send(const msg::Message& body, uint8_t dst_id, uint8_t pkt_id) noexce
 bool Node::acceptRx(const msg::Packet& pkt) noexcept
 {
     /* Слушаем эфир с первого RX — до и после открытия сессий. */
-    if (pkt.hdr.src_id == id()) {
+    if (pkt.src_id == id()) {
         setStatus(Status::IdConflict);
         return false;
     }
@@ -114,7 +116,7 @@ bool Node::acceptRx(const msg::Packet& pkt) noexcept
         return false;
     }
 
-    return pkt.hdr.isAddressedTo(id());
+    return pkt.isAddressedTo(id());
 }
 
 bool Node::sendWire(const TxSlot& item) noexcept
@@ -123,7 +125,12 @@ bool Node::sendWire(const TxSlot& item) noexcept
         return false;
     }
 
-    if (!_link.send(item.body, item.dst_id, item.pkt_id)) {
+    msg::Packet pkt{};
+    pkt.dst_id = item.dst_id;
+    pkt.pkt_id = item.pkt_id;
+    pkt.msg = item.msg;
+
+    if (!_link.send(pkt)) {
         setStatus(Status::LinkError);
         return false;
     }
@@ -201,7 +208,7 @@ void Node::update() noexcept
                 continue;
             }
 
-            Session* s = sessionByPeer(pkt.hdr.src_id);
+            Session* s = sessionByPeer(pkt.src_id);
             if (s == nullptr) {
                 s = openNewSession(pkt);
             }
@@ -228,13 +235,13 @@ void Node::onAck(Session* session, const TxSlot& req) noexcept
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
-             msg::cstrS(msg::helpers::msgIdOf(req.body)));
+             msg::cstrMsgS(req.msg.id));
 #else
     SMCP_NODE("[SMCP] Node::onAck session=%u peer=%u pkt=%u req=%s\n",
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
-             msg::cstr(msg::helpers::msgIdOf(req.body)));
+             msg::cstrMsg(req.msg.id));
 #endif
 }
 
@@ -285,7 +292,7 @@ void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) n
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
-             msg::cstrS(msg::helpers::msgIdOf(req.body)),
+             msg::cstrMsgS(req.msg.id),
              msg::cstrS(reply.code),
              static_cast<unsigned>(reply.detail));
 #else
@@ -293,7 +300,7 @@ void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) n
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
-             msg::cstr(msg::helpers::msgIdOf(req.body)),
+             msg::cstrMsg(req.msg.id),
              msg::cstr(reply.code),
              static_cast<unsigned>(reply.detail));
 #endif

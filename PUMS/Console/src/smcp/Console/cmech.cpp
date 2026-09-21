@@ -41,7 +41,7 @@ void CMech::resetFault() noexcept
 
 void CMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {
-    if (!msg::helpers::isServerId(src_id) || telemetry.mech_id != _id) {
+    if (!msg::isServerId(src_id) || telemetry.mech_id != _id) {
         return;
     }
 

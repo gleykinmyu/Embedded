@@ -85,9 +85,19 @@ public:
 
     /**
      * Unicast к peer при isOpen().
-     * requiresAck → `_tx_req` + pkt_id; иначе `_tx_ctrl`.
+     * needs_ack → `_tx_req` + pkt_id; иначе `_tx_ctrl`.
      */
-    void send(const msg::Message& body) noexcept;
+    void send(msg::Message msg, bool needs_ack) noexcept;
+
+    template <typename T>
+    void send(const T& pdu) noexcept
+    {
+        msg::Message m{};
+        m.id = T::kId;
+        pdu.pack(m);
+        send(m, T::kNeedsAck);
+    }
+
     void sendAck(uint8_t req_pkt_id) noexcept;
     void sendNack(uint8_t req_pkt_id, msg::ErrorCode code,
                   uint8_t detail = msg::kNackDetailNone) noexcept;
@@ -117,7 +127,7 @@ private:
 
     void ping() noexcept;
     void pong() noexcept;
-    void onHeartbeat(const msg::Header& hdr) noexcept;
+    void onHeartbeat(uint8_t src_id) noexcept;
     void hbLost() noexcept;
 
     // --- Ack window ---
@@ -130,7 +140,7 @@ private:
 
     enum class OutSrc : uint8_t { None, Ctrl, Req };
 
-    bool transmit(const msg::Message& body, uint8_t pkt_id = 0) noexcept;
+    bool transmit(msg::Message msg, uint8_t pkt_id, bool needs_ack) noexcept;
     void clearTx() noexcept;
     [[nodiscard]] const TxSlot* peekCtrl() noexcept;
     /** @param allow_waiting true — голова при wait (match/abort); false — TX/retry. */
@@ -145,8 +155,8 @@ private:
 
     Status _status = Status::Idle;
     bool _master = false;
-    MISC::ReplyTimer _hb{msg::kHeartbeatMissMax};
-    MISC::ReplyTimer _ack{msg::kAckRetryControl};
+    MISC::ReplyTimer _hb{msg::Heartbeat::kMissMax};
+    MISC::ReplyTimer _ack{msg::Ack::kRetry};
     OutSrc _out = OutSrc::None;
     bool _rr_ctrl = true;
 

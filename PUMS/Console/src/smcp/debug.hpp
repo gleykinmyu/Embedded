@@ -13,7 +13,7 @@
  *   `-DSMCP_DBG_SHOW`    — ShowFile Reader/Writer
  *
  * Wire dump:
- *   `-DSMCP_TRACE_LINK`  — TX/RX на ILink с разбором Message (без Heartbeat)
+ *   `-DSMCP_TRACE_LINK`  — TX/RX на ILink (без Heartbeat)
  *   `-DSMCP_TRACE_HB`    — + Heartbeat в TRACE_LINK
  *   `-DSMCP_TRACE_SHORT` — короткий формат (4.3" cnsl)
  */

@@ -1,6 +1,6 @@
 # SMCP — выжимка для следующего агента
 
-Архитектура, не реализация. Вынос PDU / второй `Node` в коде **не начинали**.
+Архитектура. Вынос north-PDU из транспорта **сделан**. Второй `Node` (CAN2) в коде **не начинали**.
 
 ## Контекст
 
@@ -10,6 +10,7 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 `DriveMech::setTarget` — заглушка.
 
 Будет **вторая шина CAN** (CAN2) под железо механизмов. Сервер — шлюз.
+Свои платы — второй `Node` + `SessionDrive`. Чужие частотники CiA 402 — отдельный мастер на сервере, не SMCP.
 
 ## Решения
 
@@ -19,40 +20,34 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - `DriveMech` мапит устройство(я) на CAN2 → логический `IMech` для пульта.
   Композиция плат — только на сервере. Пульт видит «ось N на `server_id`».
 - Southbound **не** слой над `Select`/`Telemetry` и не вложенный протокол в payload.
-- Транспорт заморозить: HB, Ack/Nack, `pkt_id`, очереди, `IdConflict`.
-  Прикладные PDU — отдельные файлы, свои `MsgId`, наследник сессии
-  (`SessionConsole` / будущий `SessionDrive`).
-- `Packet` сейчас `{Header, pkt_id, variant body}`.
-  Цель: конверт `{hdr, pkt_id, data[8], dlc}` без мирового `variant`.
-  Demux приложения — `switch (msg_id)` → свои struct.
-  Локальный variant только у протокола — по желанию.
-- Кадр CAN **не перенарезать** ради независимости протоколов.
-  Независимость: непрозрачный payload + диапазоны `msg_id`.
-- **`pkt_id` нужен** (корреляция class A ↔ Ack/Nack при retry/timeout).
-  У HB/Telemetry — нет.
-- Не класть opcode внутрь data «чтобы протоколы не пересекались».
-  Не сжимать `msg_id` до 5 бит как приоритет, если потом всё равно нужен внутренний тип.
-- Если когда-нибудь выносить `pkt_id` в ID ради 8 байт payload:
-  лучше коротко `prio` + 8-битный `msg_id` + короткий `pkt_id`,
-  не `msg5|dst|src|pkt8`.
-  Сейчас 7 байт у class A терпимо — раскладку можно не трогать.
+- Транспорт: HB, Ack/Nack, `pkt_id` в CAN ID, очереди, `IdConflict`.
+  North PDU: `Console/console_message.hpp`. Drive PDU — свой файл, не `message.hpp`.
+- Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
+  Demux: `helpers::take<T>` в `SessionConsole` (unicast A) / `IConsole::onPacket` (class D).
+- Независимость протоколов: непрозрачный payload + диапазоны `msg_id`.
+- **`pkt_id`** в ID (6 бит, LSB). Между узлами арбитраж до него не доходит (уникальный `src`).
+  Class C/D/E: `pkt_id=0`. Не поле Select/Telemetry.
+- Не класть opcode внутрь data. Не резать `msg_id` на proto+cmd в ID.
 
 ## ID на шине (north)
 
-- Консоли `0x01…0x0F`, серверы `0x10…0xEF`, broadcast `0xFF`.
-- CAN ID сейчас: `prio[28:24] | dst[23:16] | src[15:8] | msg_id[7:0]`.
-- Class A: `data[0]=pkt_id`, дальше body. C/D: только payload.
+- Консоли `0x01…0x0F`, серверы `0x10…0xEF`, broadcast `0xFF`. `0` не занимать.
+- CAN ID: `msg_id[7] | dst[8] | src[8] | pkt_id[6]` в битах `[28:0]`.
+- Приоритет = `msg_id`: Ack/Nack → команды → HB `0x30` → Telemetry `0x40`.
+- Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack DLC=2).
 
 ## Что не делать
 
 - Тащить `Select`/`Block`/`holder` на CAN2.
-- Расширять `message.hpp` новыми приводными PDU.
-- Второй стек «поверх TCP-SMCP» с заголовком в data.
+- Расширять `message.hpp` приводными / north PDU.
+- Второй стек «поверх SMCP» с заголовком в data.
 - Один `Node` на два `ILink`.
+- Разбор broadcast в Session — только в наследнике Node.
 
 ## Код
 
 - Протокол: `PROTOCOL.md` (классы A–E, чеклист MsgId).
 - Транспорт: `transport/{node,session,message,ilink,can_link}`.
+- North PDU: `Console/console_message.hpp`.
 - Сервер: `Server/`, `src/Server/model/{mserver,drive_mech}`.
 - Плата: только CAN1 (`board.can`, PD0/PD1). F407 умеет CAN2 — ещё не открыт.

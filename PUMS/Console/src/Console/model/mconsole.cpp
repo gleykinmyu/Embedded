@@ -59,9 +59,9 @@ void MConsole::onFioEvent(smcp::file::FIOManager::Event ev) noexcept
     }
 }
 
-void MConsole::onTelemetry(const smcp::msg::Header& hdr, const smcp::msg::Telemetry& body) noexcept
+void MConsole::onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept
 {
-    GroupConsole::onTelemetry(hdr, body);
+    GroupConsole::onTelemetry(src_id, body);
     onMechChanged(body.mech_id);
 }
 
@@ -73,12 +73,12 @@ void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
         return;
     }
     _lastNack = reply;
-    _lastNackReq = smcp::msg::helpers::msgIdOf(req.body);
+    _lastNackReq = req.msg.id;
 
     const uint8_t detail = _lastNack.detail;
     if (detail != smcp::msg::kNackDetailNone && detail < kMechCount
-        && (_lastNackReq == smcp::msg::MsgId::Select || _lastNackReq == smcp::msg::MsgId::SetTarget
-            || _lastNackReq == smcp::msg::MsgId::Block)) {
+        && (_lastNackReq == smcp::msg::Select::kId || _lastNackReq == smcp::msg::SetTarget::kId
+            || _lastNackReq == smcp::msg::Block::kId)) {
         smcp::Selection mask;
         mask.add(detail);
         getTelemetry(mask);

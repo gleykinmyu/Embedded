@@ -9,7 +9,7 @@
 
 #include "obj_bank.hpp"
 #include "smcp/mech.hpp"
-#include "smcp/transport/message.hpp"
+#include "smcp/Console/console_message.hpp"
 
 namespace smcp {
 

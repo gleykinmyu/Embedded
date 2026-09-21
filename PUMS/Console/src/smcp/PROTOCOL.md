@@ -1,7 +1,19 @@
 # SMCP MVP — протокол (консоль ↔ сервер сегмента)
 
-Канал: CAN extended ID, `smcp::msg` (см. `message.hpp`).  
-Wire set: **Ack, Nack, Heartbeat, Select, Block, GetTelemetry, SetTarget, Telemetry**.
+Канал: CAN extended ID.  
+Транспорт: `smcp/transport/message.hpp` (Ack, Nack, Heartbeat, конверт).  
+Northbound PDU: `smcp/Console/console_message.hpp` (Select, Block, GetTelemetry, SetTarget, Telemetry).
+
+```text
+CAN ID (29 bit, IDE=1):
+  msg_id[28:22] | dst[21:14] | src[13:6] | pkt_id[5:0]
+data[0..7]: непрозрачный payload (без pkt_id).
+Class C/D/E: pkt_id = 0. Младший msg_id выигрывает арбитраж.
+```
+
+Нумерация (QoS): Ack/Nack `0x01…` → команды `0x10…` → HB `0x30` → Telemetry `0x40…`.
+
+Консоли `0x01…0x0F`, серверы `0x10…0xEF`, broadcast `0xFF`. Id `0` не занимать.
 
 Лимит Select на сегменте — leaf в `acceptSelect`: слияние (чужие Selected ∪ маска консоли) → **SelectLimit**.
 
@@ -142,7 +154,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 Правило на консоли (first-wins): `IConsole::Phase` + `onPhase`
 (`Idle` / `Listen` / `Connecting` / `Online` / `Fault`):
-1. `begin(server)` → **Listen** ~`kHeartbeatTimeoutMs`.
+1. `begin(server)` → **Listen** ~`Heartbeat::kTimeoutMs`.
 2. Кадр с `src_id == мой id` → **Fault** (`Node::IdConflict`).
 3. Listen OK → **Connecting** → **Online**. HB lost → снова **Connecting**.
 4. `setConsoleId` → снова `begin(server)` (новый Listen).
@@ -156,7 +168,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 ## Очереди
 
 - Очередь **кадров** — в `ICAN` (драйвер / `MockCan`).
-- Очередь **bus / broadcast** `(body, dst, pkt_id)` — `Node::_tx` (`Node::send`, класс **D**).
+- Очередь **bus / broadcast** `(msg_id, data, dlc, dst, pkt_id)` — `Node::_tx` (`Node::send`, класс **D**).
   `TxQueue::isFull` после stall → `onTxFull(nullptr)`.
 - Очередь **session unicast** — снаружи одна (`transmit` / `isTxFull`);
   внутри `Session::_tx_req` (A) + `_tx_ctrl` (HB/Ack/Nack).
@@ -187,45 +199,42 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 
 Примеры: Select/Block/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
 
-**pkt_id** — признак сессии (`Packet.pkt_id`), не поле body. На wire для A/B:
-`data[0]=pkt_id`, дальше payload body. `msg::helpers::carriesPktId(msg_id)`; body без `pkt_id`.
+**pkt_id** — признак сессии (`Packet.pkt_id`), не поле body. На wire — в CAN ID (6 бит).  
+Class C/D/E: `pkt_id=0`. Body/`data[]` без `pkt_id`.
 
-### 2. Wire / codec (`message.hpp` + `msg::helpers`)
+### 2. Wire / codec
 
-1. Добавить `MsgId` и `struct` body (+ `kId`) — только семантика сообщения.
-2. Класс **A**/**B** → `helpers::carriesPktId=true`; codec пишет/читает `Packet.pkt_id` в data[0].
-3. Класс **C**/**D**/**E** → `carriesPktId=false`.
-4. body `serialize`/`deserialize` = payload **без** pkt_id; `helpers::toCanFrame`/`fromCanFrame` клеят pkt_id.
-5. `helpers::requiresAck(id) == true` **только** для класса **A**.
-6. `helpers::defaultPrio(id)` — по смыслу (команды выше, telemetry/HB ниже).
-7. `msg::Message` (`variant`) — **только codec + RX demux**, не API сессии.
+1. Транспортные PDU — `message.hpp`. Прикладные — свой файл (`console_message.hpp`, не `message.hpp`).
+2. Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
+3. `Packet::pack` / `Packet::unpack` не demux'ят приложение: неизвестный `msg_id` — валидный opaque payload.
+4. `struct` PDU: `kId`, `kNeedsAck`, `pack` / `unpack` (payload без pkt_id).
+5. Класс **A**: `T::kNeedsAck == true` — окно Session. **B/C/D/E** — false.
+6. Приоритет = номер `msg_id` (без отдельного `prio`). Не класть opcode в data.
+7. Demux: `helpers::take<T>(pkt, fn)` в наследнике Session (unicast A/E) или Node (class D).
 
 ### 3. Session API (не плодить метод на каждый MsgId)
 
-- Класс **A**: `send(Select)` / `send(SetTarget)` или общий  
-  `Request = variant<Select, SetTarget, …>` → `send(Request)` (pkt_id внутри Session).  
-  Новый request = тип в `Request`, не поле в message и не новый «pkt_id в struct».
+- Класс **A**: `Session::send(Select{})` / шаблон `send(T)` (`pkt_id` внутри Session).
 - Класс **B**: `sendAck(req_pkt_id)` / `sendNack(req_pkt_id, code, detail=0xFF)`.
-  Nack DLC=3: `pkt_id | code | detail` (`detail` обычно `mech_id`, `kNackDetailNone` = нет).
+  Nack DLC=2: `code | detail` (`detail` обычно `mech_id`, `kNackDetailNone` = нет). Ack DLC=0.
 - Класс **C**: логика внутри Session (`tick` / `onHeartbeat`).
 - Фасады `IConsole::select` / `setTarget` — над `send`, не транспорт.
 
-Виртуальный `IMessage` — не правило; при росте очереди возможен полиморфизм команд (Nextion),
-пока — перегрузки / `Request` variant.
+Виртуальный `IMessage` — не правило. Новый PDU = struct + `take<T>` в нужном листе.
 
 ### 4. Узел (IConsole / IServer)
 
 - RX: `Node::update` → `acceptRx` → `sessionByPeer` / `Session::onPacket` → иначе `Node::onPacket`.
-- Новые **A** на сервере: `SessionConsole::onPacket` → Select/Block/GetTelemetry/SetTarget + Ack/Nack; смена оси / snapshot — Telemetry (**D**).
-- Новые **D**: `Node::send(body, kBroadcastId)`; не через Session.
+- Новые **A** на сервере: `SessionConsole::onPacket` → `take<Select/…>` + Ack/Nack; снимок — Telemetry (**D**).
+- Новые **D**: `Node::send(Telemetry{}, kBroadcastId)` и разбор в **наследнике Node** (`IConsole::onPacket`). Не через Session.
 - Политика отказа Select (`acceptSelect`) / Block (`acceptBlock`) / SetTarget (Limits) — в наследниках.
 
 ### 5. Чеклист «добавил MsgId»
 
 - [ ] Класс A–E выбран и записан в таблицу «Роли сообщений»
-- [ ] Codec + `requiresAck` / `carriesPktId` согласованы с классом
-- [ ] TX путь: Session queue (**A**), reply (**B**), internal (**C**), broadcast (**D**), notify (**E**)
-- [ ] RX путь на нужном узле
+- [ ] `kId` / `kNeedsAck` / pack/unpack согласованы с классом (PDU не в `message.hpp`, если не транспорт)
+- [ ] TX путь: Session queue (**A**), reply (**B**), internal (**C**), broadcast Node (**D**), notify (**E**)
+- [ ] RX путь: наследник Session (unicast) или наследник Node (broadcast)
 - [ ] `PROTOCOL.md` обновлён (роль + кто → кому)
 
 ---

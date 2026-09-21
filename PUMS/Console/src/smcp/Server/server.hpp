@@ -14,8 +14,8 @@
 #include "obj_registry.hpp"
 #include "smcp/GroupConsole/group.hpp"
 #include "smcp/mech.hpp"
+#include "smcp/Console/console_message.hpp"
 #include "smcp/transport/ilink.hpp"
-#include "smcp/transport/message.hpp"
 #include "smcp/transport/node.hpp"
 #include "smcp/transport/session.hpp"
 

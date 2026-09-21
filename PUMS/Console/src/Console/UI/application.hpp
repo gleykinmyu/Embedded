@@ -75,12 +75,13 @@ public:
     void onPageChange(const nex::msg::evPage& e) noexcept override;
 
     void syncStatusBarFile() noexcept;
-    /** Phase + free RAM, напр. `Online (92k)`. */
+    /** CD + phase + free RAM, напр. `SD Online (92k)` / `-- Online (92k)`. */
     void syncStatusBarLink() noexcept;
     void syncStatusBarTime() noexcept;
 
 private:
     uint32_t _statusBarTickMs = 0u;
+    bool _sdNoDisk = true;
 };
 
 } // namespace server

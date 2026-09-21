@@ -76,6 +76,7 @@ public:
     /**
      * Сканировать текущий каталог в кэш.
      * cacheCount() ≤ cacheCapacity; dirCount() — сколько имён в папке.
+     * Remount только если том не смонтирован или open каталога не удался.
      */
     [[nodiscard]] bool refresh() noexcept;
 
