@@ -25,8 +25,8 @@
 namespace {
 
 constexpr uint32_t kWatchdogTimeoutMs = 6000u;
-constexpr uint32_t kUiPeriodMs = 50u;
 constexpr uint32_t kDmxTxPeriodMs = 25u;
+constexpr uint32_t kDmxRxPeriodMs = 100u;
 
 char g_stdoutBuf[256];
 
@@ -49,14 +49,16 @@ int main()
     board.flashSpi.InitPins(GPIO::PortB::pin<3>, GPIO::PortB::pin<4>, GPIO::PortB::pin<5>);
 
     board.serial1.open(250000);
-    board.serial2.open(250000);
+    board.serial2.open(ui::Application::kLinkBaudBoot);
     board.flashSpi.open(8'000'000);
 
     setSerial1LogEnabled(true);
     std::setvbuf(stdout, g_stdoutBuf, _IOLBF, sizeof(g_stdoutBuf));
     board.setLedAlive(true);
 
-    NEX_DBG("DMX tester boot: log=serial1 Nextion=serial2 250000 flashSpi=SPI3 8MHz\n");
+    NEX_DBG("DMX tester boot: log=serial1 Nextion=serial2 %u->%u flashSpi=SPI3 8MHz\n",
+        static_cast<unsigned>(ui::Application::kLinkBaudBoot),
+        static_cast<unsigned>(ui::Application::kLinkBaudFast));
     if (!board.flash.begin())
         NEX_DBG("W25Q begin failed\n");
     else
@@ -111,26 +113,39 @@ int main()
 
     board.watchdog.kick();
     app.view.bind(&tester);
+    app.graph.bind(&tester);
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
 
-    uint32_t lastUiMs = boardClockMs();
-    uint32_t lastTxMs = lastUiMs;
+    uint32_t lastTxMs = boardClockMs();
+    uint32_t lastRxMs = lastTxMs;
+    uint32_t lastTraceMs = lastTxMs;
 
     for (;;) {
         board.tick();
-        tester.tick();
+        tester.poll();
         app.update();
+        app.applyFastBaudIfNeeded();
 
         const uint32_t now = boardClockMs();
-        if ((now - lastUiMs) >= kUiPeriodMs) {
-            lastUiMs = now;
-            app.view.refresh();
+        if (dmxPort.isOpen() && dmxPort.direction() == dmx::Direction::Receive
+            && (now - lastRxMs) >= kDmxRxPeriodMs) {
+            lastRxMs = now;
+            tester.tick();
         }
         if (dmxPort.isOpen() && dmxPort.direction() == dmx::Direction::Transmit
             && (now - lastTxMs) >= kDmxTxPeriodMs) {
             lastTxMs = now;
             tester.sendLive();
         }
+        if (app.graph.isVisible()) {
+            if ((now - lastTraceMs) >= ui::kTracePeriodMs) {
+                lastTraceMs = now;
+                tester.sampleTrace();
+            }
+        } else {
+            lastTraceMs = now;
+        }
+        app.refreshUi();
     }
 }

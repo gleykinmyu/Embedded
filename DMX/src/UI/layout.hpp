@@ -14,12 +14,13 @@ inline constexpr nex::Coord kScreenW = 1024;
 inline constexpr nex::Coord kScreenH = 600;
 inline constexpr nex::Coord kTopH = 48;
 inline constexpr nex::Coord kColHdrH = 28;
+inline constexpr nex::Coord kRowHdrW = 48;
 inline constexpr nex::Coord kFootH = 104;
 inline constexpr nex::Coord kPad = 8;
 
 [[nodiscard]] constexpr nex::Coord cellW() noexcept
 {
-    return static_cast<nex::Coord>(kScreenW / static_cast<nex::Coord>(kCols));
+    return static_cast<nex::Coord>((kScreenW - kRowHdrW) / static_cast<nex::Coord>(kCols));
 }
 
 [[nodiscard]] constexpr nex::Coord gridY() noexcept
@@ -34,13 +35,7 @@ inline constexpr nex::Coord kPad = 8;
 
 [[nodiscard]] constexpr uint8_t rowsFit() noexcept
 {
-    const nex::Coord h = gridAvailH();
-    uint8_t rows = static_cast<uint8_t>(h / static_cast<nex::Coord>(kMinCellH));
-    if (rows == 0u)
-        rows = 1u;
-    if (rows > kMaxRows)
-        rows = kMaxRows;
-    return rows;
+    return kRows;
 }
 
 [[nodiscard]] constexpr nex::Coord cellH() noexcept

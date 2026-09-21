@@ -8,6 +8,7 @@
 #include "UI/layout.hpp"
 #include "idmx.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 namespace ui {
@@ -96,26 +97,86 @@ public:
         return ch != 0u && _changed[ch - 1u] != 0u;
     }
 
-    void setChannel(uint16_t ch, uint8_t v) noexcept
+    void setChannel(uint16_t ch, uint8_t v) noexcept { _live.set(ch, v); }
+
+    void setSelectedValues(uint8_t v) noexcept
     {
-        _live.set(ch, v);
-        _selected = ch;
+        for (uint8_t i = 0; i < _selN; ++i)
+            _live.set(_sel[i], v);
     }
 
-    [[nodiscard]] uint16_t selected() const noexcept { return _selected; }
-
-    void select(uint16_t ch) noexcept
+    [[nodiscard]] uint16_t selected() const noexcept { return (_selN == 0u) ? 0u : _sel[_selN - 1u]; }
+    [[nodiscard]] uint8_t selectedCount() const noexcept { return _selN; }
+    [[nodiscard]] uint16_t selectedAt(uint8_t i) const noexcept
     {
-        if (ch >= 1u && ch <= dmx::kMaxChannels)
-            _selected = ch;
+        return (i < _selN) ? _sel[i] : 0u;
+    }
+    [[nodiscard]] bool isSelected(uint16_t ch) const noexcept
+    {
+        for (uint8_t i = 0; i < _selN; ++i) {
+            if (_sel[i] == ch)
+                return true;
+        }
+        return false;
+    }
+
+    enum class SelectResult : uint8_t { Added, Removed, Full, Invalid };
+
+    SelectResult toggleSelect(uint16_t ch) noexcept
+    {
+        if (ch < 1u || ch > dmx::kMaxChannels)
+            return SelectResult::Invalid;
+        for (uint8_t i = 0; i < _selN; ++i) {
+            if (_sel[i] != ch)
+                continue;
+            for (uint8_t j = i; j + 1u < _selN; ++j)
+                _sel[j] = _sel[j + 1u];
+            --_selN;
+            clearTrace();
+            return SelectResult::Removed;
+        }
+        if (_selN >= kMaxSelect)
+            return SelectResult::Full;
+        _sel[_selN++] = ch;
+        clearTrace();
+        return SelectResult::Added;
+    }
+
+    void formatSelection(char* dst, std::size_t cap) const noexcept
+    {
+        if (dst == nullptr || cap == 0u)
+            return;
+        if (_selN == 0u) {
+            dst[0] = '-';
+            dst[1] = '\0';
+            return;
+        }
+        if (_selN == 1u) {
+            std::snprintf(dst, cap, "ch %u = %u", static_cast<unsigned>(_sel[0]),
+                static_cast<unsigned>(_live.get(_sel[0])));
+            return;
+        }
+        int n = std::snprintf(dst, cap, "%u:", static_cast<unsigned>(_selN));
+        if (n < 0 || static_cast<std::size_t>(n) >= cap)
+            return;
+        for (uint8_t i = 0; i < _selN; ++i) {
+            const int add = std::snprintf(dst + n, cap - static_cast<std::size_t>(n), "%s%u",
+                (i == 0u) ? " " : ",", static_cast<unsigned>(_sel[i]));
+            if (add < 0)
+                return;
+            n += add;
+            if (static_cast<std::size_t>(n) >= cap)
+                return;
+        }
     }
 
     void blackout() noexcept { _live.fill(0); }
     void full() noexcept { _live.fill(255); }
 
+    void poll() noexcept { _port.poll(); }
+
     void tick() noexcept
     {
-        _port.poll();
         std::memset(_changed, 0, sizeof(_changed));
 
         if (_port.direction() != dmx::Direction::Receive)
@@ -148,6 +209,35 @@ public:
 
     bool sendLive() noexcept { return _port.send(_live); }
 
+    void sampleTrace() noexcept
+    {
+        if (_selN == 0u)
+            return;
+        if (_traceN >= kTraceLen) {
+            _traceN = 0;
+            ++_traceGen;
+        }
+        for (uint8_t i = 0; i < kMaxSelect; ++i)
+            _trace[i][_traceN] = (i < _selN) ? _live.get(_sel[i]) : 0;
+        ++_traceN;
+    }
+
+    [[nodiscard]] uint8_t traceCount() const noexcept { return _selN; }
+    [[nodiscard]] uint16_t traceLen() const noexcept { return _traceN; }
+    [[nodiscard]] uint16_t traceGen() const noexcept { return _traceGen; }
+    [[nodiscard]] uint8_t traceAt(uint8_t series, uint16_t i) const noexcept
+    {
+        if (series >= _selN || i >= _traceN)
+            return 0;
+        return _trace[series][i];
+    }
+
+    void clearTrace() noexcept
+    {
+        _traceN = 0;
+        ++_traceGen;
+    }
+
 private:
     void resetLog() noexcept
     {
@@ -163,7 +253,11 @@ private:
     uint8_t _min[dmx::kMaxChannels]{};
     uint8_t _max[dmx::kMaxChannels]{};
     uint8_t _changed[dmx::kMaxChannels]{};
-    uint16_t _selected = 1;
+    uint16_t _sel[kMaxSelect]{1};
+    uint8_t _selN = 1;
+    uint8_t _trace[kMaxSelect][kTraceLen]{};
+    uint16_t _traceN = 0;
+    uint16_t _traceGen = 1;
     uint8_t _rows = layout::rowsFit();
     uint8_t _page = 0;
     ViewMode _view = ViewMode::Current;

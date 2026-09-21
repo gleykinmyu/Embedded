@@ -1,11 +1,4 @@
-# compile_commands.json: pio run -t compiledb -e console -e server -e test
+# compile_commands.json: pio run -t compiledb -e tester
 # QueryDriver нужен, чтобы clangd подхватил libstdc++ (<cstdint> и т.д.) из arm-none-eabi-g++
 CompileFlags:
   CompilationDatabase: .
-
----
-If:
-  PathMatch: .*[/\\]src[/\\]main_test\.cpp
-CompileFlags:
-  CompilationDatabase: .
-  Add: [-Isrc/Console, -Isrc/Server]

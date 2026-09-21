@@ -17,11 +17,11 @@ class CBoard : public CBaseBoard
 public:
     static constexpr uint32_t kCanBitrate = 1'000'000u;
 
-    PHL::Serial<PHL::ID::SERIAL1, 2048, 64> serial1;
-    PHL::Serial<PHL::ID::SERIAL2, 512, 128> serial2;
+    PHL::Serial<PHL::ID::SERIAL1, 128, 64> serial1;
+    PHL::Serial<PHL::ID::SERIAL2, 5000, 128> serial2;
 
     /** DMX512 / RS485: USART3 PB10 TX / PB11 RX, DE=PB1. Кадр 8N2, буфер ≥ одного кадра. */
-    PHL::Serial<PHL::ID::SERIAL3, 1024, 1024> dmx;
+    PHL::Serial<PHL::ID::SERIAL3, 16, 1024> dmx;
     GPIO::Pin dmxDe{GPIO::PortB::pin<1>};
     GPIO::Pin dmxTx{GPIO::PortB::pin<10>};
 

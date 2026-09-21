@@ -1,6 +1,6 @@
 /**
  * @file cellMap.hpp
- * @brief Сетка монитора: 16 каналов в ряд, рядов — сколько влезет по высоте.
+ * @brief Сетка монитора: 16 каналов в ряд, 8 рядов, 4 страницы (ровно 512).
  *
  * Канал = page * (rows*16) + row * 16 + col + 1  (1…512).
  */
@@ -13,9 +13,14 @@
 namespace ui {
 
 inline constexpr uint8_t kCols = 16u;
-inline constexpr uint8_t kMinCellH = 32u;
-inline constexpr uint8_t kMaxRows = static_cast<uint8_t>(dmx::kMaxChannels / kCols); ///< 32
-inline constexpr uint8_t kMaxPages = 8u;
+inline constexpr uint8_t kRows = 8u;
+inline constexpr uint8_t kMaxRows = kRows;
+inline constexpr uint8_t kMaxPages = 4u;
+inline constexpr uint8_t kMaxSelect = 8u;
+inline constexpr uint16_t kTraceLen = 200u;
+inline constexpr uint16_t kTracePeriodMs = 100u;
+static_assert(static_cast<uint16_t>(kRows) * kCols * kMaxPages == dmx::kMaxChannels,
+    "8×16×4 must cover 512 channels");
 
 enum class ViewMode : uint8_t {
     Current = 0,
