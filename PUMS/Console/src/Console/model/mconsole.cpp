@@ -76,7 +76,7 @@ void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
     _lastNackReq = req.msg.id;
 
     const uint8_t detail = _lastNack.detail;
-    if (detail != smcp::msg::kNackDetailNone && detail < kMechCount
+    if (detail != smcp::msg::Nack::kDetailNone && detail < kMechCount
         && (_lastNackReq == smcp::msg::Select::kId || _lastNackReq == smcp::msg::SetTarget::kId
             || _lastNackReq == smcp::msg::Block::kId)) {
         smcp::Selection mask;

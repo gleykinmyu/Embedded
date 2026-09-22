@@ -28,7 +28,8 @@ void printBody(const msg::Packet& pkt) noexcept
     if (pkt.msg.id == msg::Nack::kId) {
         msg::Nack nack{};
         if (nack.unpack(pkt.msg)) {
-            std::printf("Nk %s %u", msg::cstrS(nack.code),
+            std::printf("Nk %s %u",
+                msg::cstrS(static_cast<msg::ErrorCode>(nack.error)),
                 static_cast<unsigned>(nack.detail));
             return;
         }
@@ -85,12 +86,13 @@ void printBody(const msg::Packet& pkt) noexcept
             return;
         }
     }
-    std::printf("%s", msg::cstrPduS(pkt.msg.id));
+    std::printf("%s", msg::cstrPduS(static_cast<msg::CMsgId>(pkt.msg.id)));
 #else
     if (pkt.msg.id == msg::Nack::kId) {
         msg::Nack nack{};
         if (nack.unpack(pkt.msg)) {
-            std::printf("Nack code=%s detail=%u", msg::cstr(nack.code),
+            std::printf("Nack error=%s detail=%u",
+                msg::cstr(static_cast<msg::ErrorCode>(nack.error)),
                 static_cast<unsigned>(nack.detail));
             return;
         }
@@ -150,7 +152,7 @@ void printBody(const msg::Packet& pkt) noexcept
             return;
         }
     }
-    std::printf("%s", msg::cstrPdu(pkt.msg.id));
+    std::printf("%s", msg::cstrPdu(static_cast<msg::CMsgId>(pkt.msg.id)));
 #endif
 }
 

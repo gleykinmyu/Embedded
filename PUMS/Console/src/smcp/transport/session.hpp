@@ -94,13 +94,22 @@ public:
     {
         msg::Message m{};
         m.id = T::kId;
-        pdu.pack(m);
+        if (!pdu.pack(m)) {
+            return;
+        }
         send(m, T::kNeedsAck);
     }
 
     void sendAck(uint8_t req_pkt_id) noexcept;
-    void sendNack(uint8_t req_pkt_id, msg::ErrorCode code,
-                  uint8_t detail = msg::kNackDetailNone) noexcept;
+    void sendNack(uint8_t req_pkt_id, uint8_t error,
+                  uint8_t detail = msg::Nack::kDetailNone) noexcept;
+
+    template <typename E>
+    void sendNack(uint8_t req_pkt_id, E error,
+                  uint8_t detail = msg::Nack::kDetailNone) noexcept
+    {
+        sendNack(req_pkt_id, static_cast<uint8_t>(error), detail);
+    }
 
 protected:
     /** HB / Ack / Nack. true — Node не зовёт Node::onPacket. */

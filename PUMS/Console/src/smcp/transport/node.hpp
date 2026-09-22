@@ -56,18 +56,14 @@ public:
      */
     [[nodiscard]] bool enqueue(const TxSlot& item, Node& node) noexcept;
 
-    [[nodiscard]] const TxSlot* peek() const noexcept { return _q.peek(); }
-    void drop() noexcept { _q.drop(); }
-    void clear() noexcept
-    {
-        _q.clear();
-        _full = false;
-    }
+    [[nodiscard]] const TxSlot* peek() const noexcept;
+    void drop() noexcept;
+    void clear() noexcept;
 
-    [[nodiscard]] bool isFull() const noexcept { return _full; }
-    [[nodiscard]] std::size_t size() const noexcept { return _q.size(); }
-    [[nodiscard]] std::size_t space() const noexcept { return _q.space(); }
-    [[nodiscard]] bool empty() const noexcept { return _q.empty(); }
+    [[nodiscard]] bool isFull() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] std::size_t space() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
 private:
     MISC::RingBuffer<TxSlot, Cap> _q;
@@ -163,7 +159,9 @@ public:
     {
         msg::Message m{};
         m.id = T::kId;
-        pdu.pack(m);
+        if (!pdu.pack(m)) {
+            return;
+        }
         send(m, dst_id, pkt_id);
     }
 

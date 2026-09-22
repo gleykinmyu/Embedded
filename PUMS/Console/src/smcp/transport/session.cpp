@@ -68,8 +68,8 @@ void Session::abortAck() noexcept
         return;
     }
     msg::Nack reply{};
-    reply.code = msg::ErrorCode::Timeout;
-    reply.detail = msg::kNackDetailNone;
+    reply.error = msg::Nack::kTimeout;
+    reply.detail = msg::Nack::kDetailNone;
     _node.onNack(this, *head, reply);
     _tx_req.drop();
 }
@@ -165,45 +165,47 @@ void Session::sendAck(uint8_t req_pkt_id) noexcept
     transmit(m, req_pkt_id, false);
 }
 
-void Session::sendNack(uint8_t req_pkt_id, msg::ErrorCode code, uint8_t detail) noexcept
+void Session::sendNack(uint8_t req_pkt_id, uint8_t error, uint8_t detail) noexcept
 {
     if (!isOpen()) {
 #if defined(SMCP_TRACE_SHORT)
-        SMCP_SESS("S%u Nk! #%u %s %u\n",
+        SMCP_SESS("S%u Nk! #%u %u %u\n",
                  static_cast<unsigned>(_id),
                  static_cast<unsigned>(req_pkt_id),
-                 msg::cstrS(code),
+                 static_cast<unsigned>(error),
                  static_cast<unsigned>(detail));
 #else
-        SMCP_SESS("[SMCP] Session[%u] sendNack drop (!Open) pkt=%u code=%s detail=%u\n",
+        SMCP_SESS("[SMCP] Session[%u] sendNack drop (!Open) pkt=%u error=%u detail=%u\n",
                  static_cast<unsigned>(_id),
                  static_cast<unsigned>(req_pkt_id),
-                 msg::cstr(code),
+                 static_cast<unsigned>(error),
                  static_cast<unsigned>(detail));
 #endif
         return;
     }
 #if defined(SMCP_TRACE_SHORT)
-    SMCP_SESS("S%u Nk p=%u #%u %s %u\n",
+    SMCP_SESS("S%u Nk p=%u #%u %u %u\n",
              static_cast<unsigned>(_id),
              static_cast<unsigned>(_peer_id),
              static_cast<unsigned>(req_pkt_id),
-             msg::cstrS(code),
+             static_cast<unsigned>(error),
              static_cast<unsigned>(detail));
 #else
-    SMCP_SESS("[SMCP] Session[%u] sendNack peer=%u pkt=%u code=%s detail=%u\n",
+    SMCP_SESS("[SMCP] Session[%u] sendNack peer=%u pkt=%u error=%u detail=%u\n",
              static_cast<unsigned>(_id),
              static_cast<unsigned>(_peer_id),
              static_cast<unsigned>(req_pkt_id),
-             msg::cstr(code),
+             static_cast<unsigned>(error),
              static_cast<unsigned>(detail));
 #endif
     msg::Nack body{};
-    body.code = code;
+    body.error = error;
     body.detail = detail;
     msg::Message m{};
     m.id = msg::Nack::kId;
-    body.pack(m);
+    if (!body.pack(m)) {
+        return;
+    }
     transmit(m, req_pkt_id, false);
 }
 
@@ -323,9 +325,11 @@ void Session::onAckTimeout() noexcept
     pkt.msg.id = msg::Nack::kId;
     pkt.pkt_id = head != nullptr ? head->pkt_id : uint8_t{0};
     msg::Nack body{};
-    body.code = msg::ErrorCode::Timeout;
-    body.detail = msg::kNackDetailNone;
-    body.pack(pkt.msg);
+    body.error = msg::Nack::kTimeout;
+    body.detail = msg::Nack::kDetailNone;
+    if (!body.pack(pkt.msg)) {
+        return;
+    }
     onAck(pkt);
 }
 
@@ -375,17 +379,15 @@ void Session::onHeartbeat(uint8_t src_id) noexcept
 
 bool Session::onPacket(const msg::Packet& pkt) noexcept
 {
+    if (!pkt.msg.isTransport()) {
+        return false;
+    }
     if (pkt.msg.id == msg::Heartbeat::kId) {
         onHeartbeat(pkt.src_id);
         return true;
     }
-
-    if (pkt.msg.id == msg::Ack::kId || pkt.msg.id == msg::Nack::kId) {
-        onAck(pkt);
-        return true;
-    }
-
-    return false;
+    onAck(pkt);
+    return true;
 }
 
 void Session::tick() noexcept

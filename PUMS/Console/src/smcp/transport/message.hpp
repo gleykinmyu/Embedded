@@ -32,47 +32,19 @@ inline constexpr unsigned kCanIdSrcPos = 6;
 inline constexpr unsigned kCanIdDstPos = 14;
 inline constexpr unsigned kCanIdMsgPos = 22;
 
-/** Служебные MsgId (диапазон 0x00…0x0F). Прикладные — в своих заголовках. */
-enum class MsgId : uint8_t {
+/** Служебные TMsgId (диапазон 0x00…0x0F). Прикладные — в своих заголовках. */
+enum class TMsgId : uint8_t {
     Ack       = 0x01,
     Nack      = 0x02,
     Heartbeat = 0x30, /**< Ниже команд: keep-alive не забивает Select/SetTarget. */
 };
 
-enum class ErrorCode : uint8_t {
-    Ok           = 0x00, /**< Успех (не в Nack; возврат политики acceptSelect). */
-    Busy         = 0x01, /**< Ось уже выделена другой консолью. */
-    Limits       = 0x02, /**< Концевики / пределы хода (SetTarget). */
-    Crc          = 0x03, /**< Ошибка CRC / целостности. */
-    MechNotFound = 0x04, /**< Нет механизма с таким id. */
-    Safety       = 0x05, /**< Blocked / запрет безопасности. */
-    NotReady     = 0x06, /**< Привод не Ready. */
-    SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
-    Timeout      = 0x08, /**< Локально: исчерпан retry Ack (не с шины). */
-};
-
-[[nodiscard]] inline const char* cstr(ErrorCode code) noexcept
-{
-    switch (code) {
-    case ErrorCode::Ok: return "Ok";
-    case ErrorCode::Busy: return "Busy";
-    case ErrorCode::Limits: return "Limits";
-    case ErrorCode::Crc: return "Crc";
-    case ErrorCode::MechNotFound: return "MechNotFound";
-    case ErrorCode::Safety: return "Safety";
-    case ErrorCode::NotReady: return "NotReady";
-    case ErrorCode::SelectLimit: return "SelectLimit";
-    case ErrorCode::Timeout: return "Timeout";
-    }
-    return "?";
-}
-
-[[nodiscard]] inline const char* cstr(MsgId id) noexcept
+[[nodiscard]] inline const char* cstr(TMsgId id) noexcept
 {
     switch (id) {
-    case MsgId::Ack: return "Ack";
-    case MsgId::Nack: return "Nack";
-    case MsgId::Heartbeat: return "Heartbeat";
+    case TMsgId::Ack: return "Ack";
+    case TMsgId::Nack: return "Nack";
+    case TMsgId::Heartbeat: return "Heartbeat";
     }
     return "?";
 }
@@ -80,36 +52,20 @@ enum class ErrorCode : uint8_t {
 [[nodiscard]] inline const char* cstrMsg(uint8_t id) noexcept
 {
     switch (id) {
-    case static_cast<uint8_t>(MsgId::Ack): return "Ack";
-    case static_cast<uint8_t>(MsgId::Nack): return "Nack";
-    case static_cast<uint8_t>(MsgId::Heartbeat): return "Heartbeat";
+    case static_cast<uint8_t>(TMsgId::Ack): return "Ack";
+    case static_cast<uint8_t>(TMsgId::Nack): return "Nack";
+    case static_cast<uint8_t>(TMsgId::Heartbeat): return "Heartbeat";
     default: return "?";
     }
 }
 
 #if defined(SMCP_TRACE_SHORT)
-[[nodiscard]] inline const char* cstrS(ErrorCode code) noexcept
-{
-    switch (code) {
-    case ErrorCode::Ok: return "Ok";
-    case ErrorCode::Busy: return "Busy";
-    case ErrorCode::Limits: return "Lim";
-    case ErrorCode::Crc: return "Crc";
-    case ErrorCode::MechNotFound: return "Mech";
-    case ErrorCode::Safety: return "Safe";
-    case ErrorCode::NotReady: return "NRdy";
-    case ErrorCode::SelectLimit: return "SLim";
-    case ErrorCode::Timeout: return "Tmo";
-    }
-    return "?";
-}
-
-[[nodiscard]] inline const char* cstrS(MsgId id) noexcept
+[[nodiscard]] inline const char* cstrS(TMsgId id) noexcept
 {
     switch (id) {
-    case MsgId::Ack: return "Ack";
-    case MsgId::Nack: return "Nk";
-    case MsgId::Heartbeat: return "HB";
+    case TMsgId::Ack: return "Ack";
+    case TMsgId::Nack: return "Nk";
+    case TMsgId::Heartbeat: return "HB";
     }
     return "?";
 }
@@ -117,9 +73,9 @@ enum class ErrorCode : uint8_t {
 [[nodiscard]] inline const char* cstrMsgS(uint8_t id) noexcept
 {
     switch (id) {
-    case static_cast<uint8_t>(MsgId::Ack): return "Ack";
-    case static_cast<uint8_t>(MsgId::Nack): return "Nk";
-    case static_cast<uint8_t>(MsgId::Heartbeat): return "HB";
+    case static_cast<uint8_t>(TMsgId::Ack): return "Ack";
+    case static_cast<uint8_t>(TMsgId::Nack): return "Nk";
+    case static_cast<uint8_t>(TMsgId::Heartbeat): return "HB";
     default: return "?";
     }
 }
@@ -144,11 +100,17 @@ struct Message {
 
     void setPayload(const uint8_t* src, uint8_t n) noexcept;
     [[nodiscard]] bool push(uint8_t b) noexcept;
-    [[nodiscard]] bool push_le16(uint16_t v) noexcept;
-    [[nodiscard]] bool push_le32(uint32_t v) noexcept;
-    [[nodiscard]] uint16_t load_le16(uint8_t off) const noexcept;
-    [[nodiscard]] uint32_t load_le32(uint8_t off) const noexcept;
-    [[nodiscard]] bool expectDlc(uint8_t want) const noexcept;
+    [[nodiscard]] bool pushU16(uint16_t v) noexcept;
+    [[nodiscard]] bool pushU32(uint32_t v) noexcept;
+    [[nodiscard]] uint16_t loadU16(uint8_t off) const noexcept;
+    [[nodiscard]] uint32_t loadU32(uint8_t off) const noexcept;
+
+    [[nodiscard]] constexpr bool isTransport() const noexcept
+    {
+        return id == static_cast<uint8_t>(TMsgId::Ack)
+            || id == static_cast<uint8_t>(TMsgId::Nack)
+            || id == static_cast<uint8_t>(TMsgId::Heartbeat);
+    }
 };
 
 struct Packet {
@@ -158,45 +120,45 @@ struct Packet {
     Message msg{};
 
     /** Кадр адресован этому узлу (или broadcast). */
-    [[nodiscard]] constexpr bool isAddressedTo(uint8_t node_id) const noexcept
-    {
-        return dst_id == node_id || dst_id == kBroadcastId;
-    }
-
+    [[nodiscard]] bool isAddressedTo(uint8_t node_id) const noexcept;
     [[nodiscard]] bool pack(BIF::CAN::Frame& frame) const noexcept;
     [[nodiscard]] bool unpack(const BIF::CAN::Frame& frame) noexcept;
 };
 
-inline constexpr uint8_t kNackDetailNone = 0xFFu;
 /**
- * Ack — DLC=0 (pkt_id в CAN ID).
+ * Ack — DLC=0 (pkt_id запроса в CAN ID).
  */
 struct Ack {
-    static constexpr uint8_t kId = static_cast<uint8_t>(MsgId::Ack);
+    static constexpr uint8_t kId = static_cast<uint8_t>(TMsgId::Ack);
     static constexpr bool kNeedsAck = false;
     static constexpr uint16_t kTimeoutMs = 100u;
     static constexpr uint8_t kRetry = 3u;
 
-    void pack(Message& m) const noexcept;
+    [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
 };
 
 /**
  * Nack — DLC=2
- *   +------+--------+
- *   | code | detail |
- *   +------+--------+
- *    data[0] data[1]   (pkt_id → CAN ID)
+ *   +-------+--------+
+ *   | error | detail |
+ *   +-------+--------+
+ *    data[0]  data[1]   (pkt_id запроса → CAN ID)
  *
- * @a detail — контекст отказа (обычно mech_id); @c kNackDetailNone = нет.
+ * @a error — код отказа (вышестоящий протокол). @a detail — контекст
+ * (обычно mech_id); @c kDetailNone = нет.
+ * @c kTimeout — локальный abort Ack (не с шины).
  */
 struct Nack {
-    static constexpr uint8_t kId = static_cast<uint8_t>(MsgId::Nack);
+    static constexpr uint8_t kId = static_cast<uint8_t>(TMsgId::Nack);
     static constexpr bool kNeedsAck = false;
-    ErrorCode code = ErrorCode::Busy;
-    uint8_t detail = kNackDetailNone;
+    static constexpr uint8_t kTimeout = 0x08u;
+    static constexpr uint8_t kDetailNone = 0xFFu;
 
-    void pack(Message& m) const noexcept;
+    uint8_t error = 0;
+    uint8_t detail = kDetailNone;
+
+    [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
 };
 
@@ -204,47 +166,36 @@ struct Nack {
  * Heartbeat — DLC=0 (только ID, pkt_id=0).
  */
 struct Heartbeat {
-    static constexpr uint8_t kId = static_cast<uint8_t>(MsgId::Heartbeat);
+    static constexpr uint8_t kId = static_cast<uint8_t>(TMsgId::Heartbeat);
     static constexpr bool kNeedsAck = false;
     static constexpr uint16_t kTimeoutMs = 500u;
     /** Сколько интервалов T без RX HB до down. */
     static constexpr uint8_t kMissMax = 3u;
 
-    void pack(Message& m) const noexcept;
+    [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
 };
-
-/** Свободные хелперы wire/правил (не поля body). */
-namespace helpers {
 
 [[nodiscard]] constexpr bool isBroadcastId(uint8_t id) noexcept
 {
     return id == kBroadcastId;
 }
 
-[[nodiscard]] constexpr bool isTransportMsg(uint8_t id) noexcept
-{
-    return id == Ack::kId || id == Nack::kId || id == Heartbeat::kId;
-}
-
-/**
- * Свой msg_id съели (даже если unpack не удался).
- * false — не этот тип.
- */
-template <typename T, typename F>
-[[nodiscard]] bool take(const Packet& pkt, F&& fn) noexcept
-{
-    if (pkt.msg.id != T::kId) {
-        return false;
-    }
-    T body{};
-    if (body.unpack(pkt.msg)) {
-        fn(body);
-    }
-    return true;
-}
-
-} // namespace helpers
-
 } // namespace msg
 } // namespace smcp
+
+/**
+ * Demux PDU в `onPacket(const Packet& pkt)`: id совпал и unpack удался — `body` в блоке.
+ * Цепочка: `else SMCP_IF_MSG` (макрос сам `if`). Ждёт имя `pkt` в скоупе.
+ *
+ *   SMCP_IF_MSG(msg::Select) {
+ *       onSelect(body, pkt.pkt_id);
+ *   } else SMCP_IF_MSG(msg::SetTarget) {
+ *       onSetTarget(body, pkt.pkt_id);
+ *   } else {
+ *       return false;
+ *   }
+ *   return true;
+ */
+#define SMCP_IF_MSG(Type) \
+    if (Type body{}; pkt.msg.id == Type::kId && body.unpack(pkt.msg))

@@ -288,20 +288,20 @@ void Node::onSessionFull(uint8_t peer_id) noexcept
 void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
 {
 #if defined(SMCP_TRACE_SHORT)
-    SMCP_NODE("Nk s=%u p=%u #%u %s %s %u\n",
+    SMCP_NODE("Nk s=%u p=%u #%u %s %u %u\n",
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
              msg::cstrMsgS(req.msg.id),
-             msg::cstrS(reply.code),
+             static_cast<unsigned>(reply.error),
              static_cast<unsigned>(reply.detail));
 #else
-    SMCP_NODE("[SMCP] Node::onNack session=%u peer=%u pkt=%u req=%s code=%s detail=%u\n",
+    SMCP_NODE("[SMCP] Node::onNack session=%u peer=%u pkt=%u req=%s error=%u detail=%u\n",
              session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
              session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
              static_cast<unsigned>(req.pkt_id),
              msg::cstrMsg(req.msg.id),
-             msg::cstr(reply.code),
+             static_cast<unsigned>(reply.error),
              static_cast<unsigned>(reply.detail));
 #endif
 }
@@ -318,5 +318,55 @@ void Node::onPktIdMismatch(Session* session, uint8_t expected, uint8_t got) noex
              static_cast<unsigned>(expected),
              static_cast<unsigned>(got));
 }
+
+template <std::size_t Cap>
+const TxSlot* TxQueue<Cap>::peek() const noexcept
+{
+    return _q.peek();
+}
+
+template <std::size_t Cap>
+void TxQueue<Cap>::drop() noexcept
+{
+    _q.drop();
+}
+
+template <std::size_t Cap>
+void TxQueue<Cap>::clear() noexcept
+{
+    _q.clear();
+    _full = false;
+}
+
+template <std::size_t Cap>
+bool TxQueue<Cap>::isFull() const noexcept
+{
+    return _full;
+}
+
+template <std::size_t Cap>
+std::size_t TxQueue<Cap>::size() const noexcept
+{
+    return _q.size();
+}
+
+template <std::size_t Cap>
+std::size_t TxQueue<Cap>::space() const noexcept
+{
+    return _q.space();
+}
+
+template <std::size_t Cap>
+bool TxQueue<Cap>::empty() const noexcept
+{
+    return _q.empty();
+}
+
+template class TxQueue<SMCP_TX_QUEUE_CAPACITY>;
+template class TxQueue<SMCP_SESSION_CTRL_TX_CAPACITY>;
+#if SMCP_SESSION_TX_CAPACITY != SMCP_TX_QUEUE_CAPACITY \
+    && SMCP_SESSION_TX_CAPACITY != SMCP_SESSION_CTRL_TX_CAPACITY
+template class TxQueue<SMCP_SESSION_TX_CAPACITY>;
+#endif
 
 } // namespace smcp

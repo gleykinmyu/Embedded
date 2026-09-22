@@ -62,27 +62,18 @@ bool SessionConsole::onPacket(const msg::Packet& pkt) noexcept
     if (Session::onPacket(pkt)) {
         return true;
     }
-    if (msg::helpers::take<msg::Select>(pkt, [&](const msg::Select& sel) {
-            handleMaskOp(MaskKind::Select, sel.action, sel.selection, pkt.pkt_id);
-        })) {
-        return true;
+    SMCP_IF_MSG(msg::Select) {
+        handleMaskOp(MaskKind::Select, body.action, body.selection, pkt.pkt_id);
+    } else SMCP_IF_MSG(msg::Block) {
+        handleMaskOp(MaskKind::Block, body.action, body.selection, pkt.pkt_id);
+    } else SMCP_IF_MSG(msg::SetTarget) {
+        onSetTarget(body, pkt.pkt_id);
+    } else SMCP_IF_MSG(msg::GetTelemetry) {
+        onGetTelemetry(body, pkt.pkt_id);
+    } else {
+        return false;
     }
-    if (msg::helpers::take<msg::Block>(pkt, [&](const msg::Block& blk) {
-            handleMaskOp(MaskKind::Block, blk.action, blk.selection, pkt.pkt_id);
-        })) {
-        return true;
-    }
-    if (msg::helpers::take<msg::SetTarget>(pkt, [&](const msg::SetTarget& tgt) {
-            onSetTarget(tgt, pkt.pkt_id);
-        })) {
-        return true;
-    }
-    if (msg::helpers::take<msg::GetTelemetry>(pkt, [&](const msg::GetTelemetry& gt) {
-            onGetTelemetry(gt, pkt.pkt_id);
-        })) {
-        return true;
-    }
-    return false;
+    return true;
 }
 
 // =============================================================================

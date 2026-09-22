@@ -26,7 +26,7 @@ Class C/D/E: pkt_id = 0. Младший msg_id выигрывает арбитр
 | **Select** | Console → Server | Выделение осей (Action Add / Remove / Set) |
 | **Block** | Console → Server | Сегментный Blocked (Action Add / Remove / Set) |
 | **GetTelemetry** | Console → Server | Запрос снимков осей по маске (без смены состояния) |
-| **Ack / Nack** | Server → Console | Принятие / отказ **запроса** (`pkt_id` = запроса; Nack: `code` + `detail`) |
+| **Ack / Nack** | Server → Console | Принятие / отказ **запроса** (`pkt_id` = запроса; Nack: `error` + `detail`) |
 | **Telemetry** | Server → (обычно broadcast) | Снимок оси после **изменения** состояния / движения / GetTelemetry |
 | **Heartbeat** | Console → Server (первый ping); далее ping/pong | Линк + «мягкая» регистрация консоли |
 | **SetTarget** | Console → Server | Цель движения (класс A) |
@@ -200,32 +200,36 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 Примеры: Select/Block/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
 
 **pkt_id** — признак сессии (`Packet.pkt_id`), не поле body. На wire — в CAN ID (6 бит).  
-Class C/D/E: `pkt_id=0`. Body/`data[]` без `pkt_id`.
+Class C/D/E: `pkt_id=0`. Body/`data[]` без `pkt_id`.  
+Class B: echo `pkt_id` запроса в CAN ID (Ack DLC=0). Счётчик `_pkt_tx` растёт только на class A.
 
 ### 2. Wire / codec
 
 1. Транспортные PDU — `message.hpp`. Прикладные — свой файл (`console_message.hpp`, не `message.hpp`).
+   Nack несёт opaque `error`/`detail`; коды northbound — `ErrorCode` в `console_message.hpp`.
+   Локальный abort Ack — `Nack::kTimeout` (не с шины).
 2. Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
 3. `Packet::pack` / `Packet::unpack` не demux'ят приложение: неизвестный `msg_id` — валидный opaque payload.
 4. `struct` PDU: `kId`, `kNeedsAck`, `pack` / `unpack` (payload без pkt_id).
 5. Класс **A**: `T::kNeedsAck == true` — окно Session. **B/C/D/E** — false.
 6. Приоритет = номер `msg_id` (без отдельного `prio`). Не класть opcode в data.
-7. Demux: `helpers::take<T>(pkt, fn)` в наследнике Session (unicast A/E) или Node (class D).
+7. Demux: `SMCP_IF_MSG(Type) { … body … }` в `onPacket(pkt)` (имя `pkt` в скоупе).
+   Цепочка `else SMCP_IF_MSG`. `body` свой в каждой ветке.
 
 ### 3. Session API (не плодить метод на каждый MsgId)
 
 - Класс **A**: `Session::send(Select{})` / шаблон `send(T)` (`pkt_id` внутри Session).
-- Класс **B**: `sendAck(req_pkt_id)` / `sendNack(req_pkt_id, code, detail=0xFF)`.
-  Nack DLC=2: `code | detail` (`detail` обычно `mech_id`, `kNackDetailNone` = нет). Ack DLC=0.
+- Класс **B**: `sendAck(req_pkt_id)` / `sendNack(req_pkt_id, error, detail=0xFF)`.
+  Nack DLC=2: `error | detail` (`error` — код вышестоящего протокола; `detail` обычно `mech_id`, `Nack::kDetailNone` = нет). Ack DLC=0.
 - Класс **C**: логика внутри Session (`tick` / `onHeartbeat`).
 - Фасады `IConsole::select` / `setTarget` — над `send`, не транспорт.
 
-Виртуальный `IMessage` — не правило. Новый PDU = struct + `take<T>` в нужном листе.
+Виртуальный `IMessage` — не правило. Новый PDU = struct + `SMCP_IF_MSG` в нужном листе.
 
 ### 4. Узел (IConsole / IServer)
 
 - RX: `Node::update` → `acceptRx` → `sessionByPeer` / `Session::onPacket` → иначе `Node::onPacket`.
-- Новые **A** на сервере: `SessionConsole::onPacket` → `take<Select/…>` + Ack/Nack; снимок — Telemetry (**D**).
+- Новые **A** на сервере: `SessionConsole::onPacket` → `SMCP_IF_MSG(Select/…)` + Ack/Nack; снимок — Telemetry (**D**).
 - Новые **D**: `Node::send(Telemetry{}, kBroadcastId)` и разбор в **наследнике Node** (`IConsole::onPacket`). Не через Session.
 - Политика отказа Select (`acceptSelect`) / Block (`acceptBlock`) / SetTarget (Limits) — в наследниках.
 

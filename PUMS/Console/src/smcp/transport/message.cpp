@@ -30,7 +30,7 @@ bool Message::push(uint8_t b) noexcept
     return true;
 }
 
-bool Message::push_le16(uint16_t v) noexcept
+bool Message::pushU16(uint16_t v) noexcept
 {
     if (static_cast<unsigned>(dlc) + 2u > kMaxDlc) {
         return false;
@@ -41,7 +41,7 @@ bool Message::push_le16(uint16_t v) noexcept
     return true;
 }
 
-bool Message::push_le32(uint32_t v) noexcept
+bool Message::pushU32(uint32_t v) noexcept
 {
     if (static_cast<unsigned>(dlc) + 4u > kMaxDlc) {
         return false;
@@ -54,21 +54,21 @@ bool Message::push_le32(uint32_t v) noexcept
     return true;
 }
 
-uint16_t Message::load_le16(uint8_t off) const noexcept
+uint16_t Message::loadU16(uint8_t off) const noexcept
 {
     return static_cast<uint16_t>(data[off] | (static_cast<uint16_t>(data[off + 1u]) << 8));
 }
 
-uint32_t Message::load_le32(uint8_t off) const noexcept
+uint32_t Message::loadU32(uint8_t off) const noexcept
 {
     return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1u]) << 8)
          | (static_cast<uint32_t>(data[off + 2u]) << 16)
          | (static_cast<uint32_t>(data[off + 3u]) << 24);
 }
 
-bool Message::expectDlc(uint8_t want) const noexcept
+bool Packet::isAddressedTo(uint8_t node_id) const noexcept
 {
-    return dlc == want;
+    return dst_id == node_id || dst_id == kBroadcastId;
 }
 
 bool Packet::pack(BIF::CAN::Frame& frame) const noexcept
@@ -107,40 +107,41 @@ bool Packet::unpack(const BIF::CAN::Frame& frame) noexcept
     return true;
 }
 
-void Ack::pack(Message& m) const noexcept
+bool Ack::pack(Message& m) const noexcept
 {
     (void)m;
+    return true;
 }
 
 bool Ack::unpack(const Message& m) noexcept
 {
-    return m.expectDlc(0);
+    return m.dlc == 0;
 }
 
-void Nack::pack(Message& m) const noexcept
+bool Nack::pack(Message& m) const noexcept
 {
-    (void)m.push(static_cast<uint8_t>(code));
-    (void)m.push(detail);
+    return m.push(error) && m.push(detail);
 }
 
 bool Nack::unpack(const Message& m) noexcept
 {
-    if (!m.expectDlc(2)) {
+    if (m.dlc != 2) {
         return false;
     }
-    code = static_cast<ErrorCode>(m.data[0]);
+    error = m.data[0];
     detail = m.data[1];
     return true;
 }
 
-void Heartbeat::pack(Message& m) const noexcept
+bool Heartbeat::pack(Message& m) const noexcept
 {
     (void)m;
+    return true;
 }
 
 bool Heartbeat::unpack(const Message& m) noexcept
 {
-    return m.expectDlc(0);
+    return m.dlc == 0;
 }
 
 } // namespace msg

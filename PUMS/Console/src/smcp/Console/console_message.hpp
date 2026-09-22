@@ -17,11 +17,13 @@ namespace smcp {
 namespace msg {
 
 /** Northbound MsgId: 0x10… команды, 0x40… telemetry. */
-inline constexpr uint8_t kMsgSelect = 0x10u;
-inline constexpr uint8_t kMsgBlock = 0x11u;
-inline constexpr uint8_t kMsgSetTarget = 0x20u;
-inline constexpr uint8_t kMsgGetTelemetry = 0x21u;
-inline constexpr uint8_t kMsgTelemetry = 0x40u;
+enum class CMsgId : uint8_t {
+    Select       = 0x10,
+    Block        = 0x11,
+    SetTarget    = 0x20,
+    GetTelemetry = 0x21,
+    Telemetry    = 0x40,
+};
 
 /** Адреса northbound. Broadcast 0xFF — транспорт (`kBroadcastId`). */
 inline constexpr uint8_t kConsoleIdMin = 0x01u;
@@ -30,6 +32,56 @@ inline constexpr uint8_t kConsoleIdMax = 0x0Fu;
 inline constexpr uint8_t kMaxConsoles = kConsoleIdMax - kConsoleIdMin + 1u;
 inline constexpr uint8_t kServerIdMin = 0x10u;
 inline constexpr uint8_t kServerIdMax = 0xEFu;
+
+/**
+ * Коды Nack northbound. Транспорт несёт raw `uint8_t` (Nack::error).
+ * Timeout совпадает с Nack::kTimeout (локальный abort Ack в Session).
+ */
+enum class ErrorCode : uint8_t {
+    Ok           = 0x00, /**< Успех (не в Nack; возврат политики acceptSelect). */
+    Busy         = 0x01, /**< Ось уже выделена другой консолью. */
+    Limits       = 0x02, /**< Концевики / пределы хода (SetTarget). */
+    Crc          = 0x03, /**< Ошибка CRC / целостности. */
+    MechNotFound = 0x04, /**< Нет механизма с таким id. */
+    Safety       = 0x05, /**< Blocked / запрет безопасности. */
+    NotReady     = 0x06, /**< Привод не Ready. */
+    SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
+    Timeout      = Nack::kTimeout, /**< Локально: исчерпан retry Ack (не с шины). */
+};
+
+[[nodiscard]] inline const char* cstr(ErrorCode code) noexcept
+{
+    switch (code) {
+    case ErrorCode::Ok: return "Ok";
+    case ErrorCode::Busy: return "Busy";
+    case ErrorCode::Limits: return "Limits";
+    case ErrorCode::Crc: return "Crc";
+    case ErrorCode::MechNotFound: return "MechNotFound";
+    case ErrorCode::Safety: return "Safety";
+    case ErrorCode::NotReady: return "NotReady";
+    case ErrorCode::SelectLimit: return "SelectLimit";
+    case ErrorCode::Timeout: return "Timeout";
+    }
+    return "?";
+}
+
+#if defined(SMCP_TRACE_SHORT)
+[[nodiscard]] inline const char* cstrS(ErrorCode code) noexcept
+{
+    switch (code) {
+    case ErrorCode::Ok: return "Ok";
+    case ErrorCode::Busy: return "Busy";
+    case ErrorCode::Limits: return "Lim";
+    case ErrorCode::Crc: return "Crc";
+    case ErrorCode::MechNotFound: return "Mech";
+    case ErrorCode::Safety: return "Safe";
+    case ErrorCode::NotReady: return "NRdy";
+    case ErrorCode::SelectLimit: return "SLim";
+    case ErrorCode::Timeout: return "Tmo";
+    }
+    return "?";
+}
+#endif
 
 /**
  * Общий action для Select / Block (маска осей).
@@ -61,7 +113,7 @@ namespace detail {
 [[nodiscard]] inline bool unpackMaskOp(const Message& m, Action& action,
                                        Selection& selection) noexcept
 {
-    if (!m.expectDlc(5)) {
+    if (m.dlc != 5) {
         return false;
     }
     const auto a = static_cast<Action>(m.data[0]);
@@ -69,14 +121,13 @@ namespace detail {
         return false;
     }
     action = a;
-    selection = Selection::from_raw(m.load_le32(1));
+    selection = Selection::from_raw(m.loadU32(1));
     return true;
 }
 
-inline void packMaskOp(Message& m, Action action, Selection selection) noexcept
+[[nodiscard]] inline bool packMaskOp(Message& m, Action action, Selection selection) noexcept
 {
-    (void)m.push(static_cast<uint8_t>(action));
-    (void)m.push_le32(selection.raw());
+    return m.push(static_cast<uint8_t>(action)) && m.pushU32(selection.raw());
 }
 
 } // namespace detail
@@ -89,15 +140,15 @@ inline void packMaskOp(Message& m, Action action, Selection selection) noexcept
  *    data[0]  data[1..4]     (pkt_id → CAN ID)
  */
 struct Select {
-    static constexpr uint8_t kId = kMsgSelect;
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Select);
     static constexpr bool kNeedsAck = true;
 
     Action action = Action::Add;
     Selection selection{};
 
-    void pack(Message& m) const noexcept
+    [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        detail::packMaskOp(m, action, selection);
+        return detail::packMaskOp(m, action, selection);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
@@ -109,15 +160,15 @@ struct Select {
  * Block — DLC=5 (как Select)
  */
 struct Block {
-    static constexpr uint8_t kId = kMsgBlock;
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Block);
     static constexpr bool kNeedsAck = true;
 
     Action action = Action::Add;
     Selection selection{};
 
-    void pack(Message& m) const noexcept
+    [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        detail::packMaskOp(m, action, selection);
+        return detail::packMaskOp(m, action, selection);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
@@ -136,21 +187,21 @@ struct Block {
  * Ответ: Ack, затем Telemetry (D).
  */
 struct GetTelemetry {
-    static constexpr uint8_t kId = kMsgGetTelemetry;
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::GetTelemetry);
     static constexpr bool kNeedsAck = true;
 
     Selection selection{};
 
-    void pack(Message& m) const noexcept
+    [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        (void)m.push_le32(selection.raw());
+        return m.pushU32(selection.raw());
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
-        if (!m.expectDlc(4)) {
+        if (m.dlc != 4) {
             return false;
         }
-        selection = Selection::from_raw(m.load_le32(0));
+        selection = Selection::from_raw(m.loadU32(0));
         return true;
     }
 };
@@ -164,25 +215,25 @@ struct GetTelemetry {
  *    data[0]   data[1..4]      data[5..6]
  */
 struct SetTarget {
-    static constexpr uint8_t kId = kMsgSetTarget;
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::SetTarget);
     static constexpr bool kNeedsAck = true;
     uint8_t mech_id = 0;
     MotionTarget target{};
 
-    void pack(Message& m) const noexcept
+    [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        (void)m.push(mech_id);
-        (void)m.push_le32(static_cast<uint32_t>(target.target_mm));
-        (void)m.push_le16(target.speed_mm_s);
+        return m.push(mech_id)
+            && m.pushU32(static_cast<uint32_t>(target.target_mm))
+            && m.pushU16(target.speed_mm_s);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
-        if (!m.expectDlc(7)) {
+        if (m.dlc != 7) {
             return false;
         }
         mech_id = m.data[0];
-        target.target_mm = static_cast<int32_t>(m.load_le32(1));
-        target.speed_mm_s = m.load_le16(5);
+        target.target_mm = static_cast<int32_t>(m.loadU32(1));
+        target.speed_mm_s = m.loadU16(5);
         target.accel_mm_s2 = 0;
         return true;
     }
@@ -196,7 +247,7 @@ struct SetTarget {
  *   +---------+----------+--------+--------+--------------+
  */
 struct Telemetry {
-    static constexpr uint8_t kId = kMsgTelemetry;
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Telemetry);
     static constexpr bool kNeedsAck = false;
 
     uint8_t mech_id = 0;
@@ -205,51 +256,51 @@ struct Telemetry {
     REG::BitMask<IMech::Status> status{};
     int32_t position_mm = 0;
 
-    void pack(Message& m) const noexcept
+    [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        (void)m.push(mech_id);
-        (void)m.push(reserved);
-        (void)m.push(holder_id);
-        (void)m.push(static_cast<uint8_t>(status.raw()));
-        (void)m.push_le32(static_cast<uint32_t>(position_mm));
+        return m.push(mech_id)
+            && m.push(reserved)
+            && m.push(holder_id)
+            && m.push(static_cast<uint8_t>(status.raw()))
+            && m.pushU32(static_cast<uint32_t>(position_mm));
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
-        if (!m.expectDlc(8)) {
+        if (m.dlc != 8) {
             return false;
         }
         mech_id = m.data[0];
         reserved = m.data[1];
         holder_id = m.data[2];
         status = REG::BitMask<IMech::Status>::from_raw(m.data[3]);
-        position_mm = static_cast<int32_t>(m.load_le32(4));
+        position_mm = static_cast<int32_t>(m.loadU32(4));
         return true;
     }
 };
 
-[[nodiscard]] inline const char* cstrPdu(uint8_t id) noexcept
+[[nodiscard]] inline const char* cstrPdu(CMsgId id) noexcept
 {
     switch (id) {
-    case kMsgSelect: return "Select";
-    case kMsgBlock: return "Block";
-    case kMsgGetTelemetry: return "GetTelemetry";
-    case kMsgSetTarget: return "SetTarget";
-    case kMsgTelemetry: return "Telemetry";
-    default: return cstrMsg(id);
+    case CMsgId::Select: return "Select";
+    case CMsgId::Block: return "Block";
+    case CMsgId::GetTelemetry: return "GetTelemetry";
+    case CMsgId::SetTarget: return "SetTarget";
+    case CMsgId::Telemetry: return "Telemetry";
     }
+    return cstrMsg(static_cast<uint8_t>(id));
 }
 
 #if defined(SMCP_TRACE_SHORT)
-[[nodiscard]] inline const char* cstrPduS(uint8_t id) noexcept
+[[nodiscard]] inline const char* cstrPduS(CMsgId id) noexcept
 {
     switch (id) {
-    case kMsgSelect: return "Sel";
-    case kMsgBlock: return "Blk";
-    case kMsgGetTelemetry: return "GT";
-    case kMsgSetTarget: return "Tg";
-    case kMsgTelemetry: return "Te";
-    default: return cstrMsgS(id);
+    case CMsgId::Select: return "Sel";
+    case CMsgId::Block: return "Blk";
+    case CMsgId::GetTelemetry: return "GT";
+    case CMsgId::SetTarget: return "Tg";
+    case CMsgId::Telemetry: return "Te";
     }
+    return cstrMsgS(static_cast<uint8_t>(id));
 }
 #endif
 

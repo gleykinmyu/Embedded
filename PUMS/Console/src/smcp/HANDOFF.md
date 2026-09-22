@@ -23,7 +23,7 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - Транспорт: HB, Ack/Nack, `pkt_id` в CAN ID, очереди, `IdConflict`.
   North PDU: `Console/console_message.hpp`. Drive PDU — свой файл, не `message.hpp`.
 - Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
-  Demux: `helpers::take<T>` в `SessionConsole` (unicast A) / `IConsole::onPacket` (class D).
+  Demux: `SMCP_IF_MSG` в `SessionConsole` (unicast A) / `IConsole::onPacket` (class D).
 - Независимость протоколов: непрозрачный payload + диапазоны `msg_id`.
 - **`pkt_id`** в ID (6 бит, LSB). Между узлами арбитраж до него не доходит (уникальный `src`).
   Class C/D/E: `pkt_id=0`. Не поле Select/Telemetry.
@@ -34,7 +34,8 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - Консоли `0x01…0x0F`, серверы `0x10…0xEF`, broadcast `0xFF`. `0` не занимать.
 - CAN ID: `msg_id[7] | dst[8] | src[8] | pkt_id[6]` в битах `[28:0]`.
 - Приоритет = `msg_id`: Ack/Nack → команды → HB `0x30` → Telemetry `0x40`.
-- Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack DLC=2).
+- Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack DLC=2 `error|detail`).
+  Коды Nack — у northbound (`ErrorCode` в `console_message.hpp`), транспорт несёт raw `uint8_t`.
 
 ## Что не делать
 

@@ -115,7 +115,7 @@ private:
     void requestMechTelemetry() noexcept;
 
     Mode _mode = Mode::Work;
-    smcp::msg::Nack _lastNack{smcp::msg::ErrorCode::Ok};
+    smcp::msg::Nack _lastNack{};
     uint8_t _lastNackReq = smcp::msg::Select::kId;
     bool _uiReady = false;
 };

@@ -227,7 +227,8 @@ void Application::showBrowserStatus(uint8_t tag) noexcept
 void Application::showSmcpNack(uint8_t tag) noexcept
 {
     showUtf8Msg(uiMsg::kTitleSmcp, nex::ovl::MsgBox::Preset::OK, tag,
-        nex::ovl::MsgBox::Action::Ok, nackText(console.lastNack().code));
+        nex::ovl::MsgBox::Action::Ok,
+        nackText(static_cast<smcp::msg::ErrorCode>(console.lastNack().error)));
 }
 
 void Application::syncStatusBarFile() noexcept

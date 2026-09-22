@@ -180,9 +180,9 @@ void IConsole::getTelemetry(Selection selection) noexcept
 
 void IConsole::onPacket(const msg::Packet& pkt) noexcept
 {
-    (void)msg::helpers::take<msg::Telemetry>(pkt, [&](const msg::Telemetry& tel) {
-        onTelemetry(pkt.src_id, tel);
-    });
+    SMCP_IF_MSG(msg::Telemetry) {
+        onTelemetry(pkt.src_id, body);
+    }
 }
 
 void IConsole::onStatus(Status status) noexcept
