@@ -1,17 +1,16 @@
 /**
- * @file show_model.cpp
- * @brief Регистрация секций, CRC, разбор каталога, load/save IShowFile.
+ * @file showFile.cpp
+ * @brief Регистрация секций, CRC, разбор каталога, load/save IShow.
  */
 
-#include "smcp/Console/show_model.hpp"
+#include "showFile.hpp"
 
 #include <cstring>
 
 #include "crc.hpp"
-#include "smcp/debug.hpp"
+#include "debug.hpp"
 
-namespace smcp {
-namespace file {
+namespace sf {
 
 uint16_t computeHeaderCrc16(const Header& hdr) noexcept
 {
@@ -91,7 +90,7 @@ Status checkSectionDesc(const SectionDesc& desc, std::size_t expectedOffset,
     return Status::Ok;
 }
 
-ISection::ISection(IShowFile& file, uint32_t tag, uint16_t slotCount, uint16_t slotSize,
+ISection::ISection(IShow& file, uint32_t tag, uint16_t slotCount, uint16_t slotSize,
                    bool required, void* data) noexcept
     : _required(required)
     , _slotCount(slotCount)
@@ -121,19 +120,19 @@ bool ISection::copyFrom(const ISection& src) noexcept
     return true;
 }
 
-Status IShowFile::fail(Status st) noexcept
+Status IShow::fail(Status st) noexcept
 {
     _status = st;
     return st;
 }
 
-Status IShowFile::fail(IFile& io, Status st) noexcept
+Status IShow::fail(IFile& io, Status st) noexcept
 {
     io.close();
     return fail(st);
 }
 
-void detail::registerSection(IShowFile& file, ISection& sec) noexcept
+void detail::registerSection(IShow& file, ISection& sec) noexcept
 {
     if (sec.tag() == 0u || sec.slotCount() == 0u || sec.slotSize() == 0u) {
         return;
@@ -146,7 +145,7 @@ void detail::registerSection(IShowFile& file, ISection& sec) noexcept
     (void)file._sections.registerAuto(&sec, id);
 }
 
-void IShowFile::setName(const char* name) noexcept
+void IShow::setName(const char* name) noexcept
 {
     if (name == nullptr) {
         _name[0] = '\0';
@@ -156,7 +155,7 @@ void IShowFile::setName(const char* name) noexcept
     _name[sizeof(_name) - 1u] = '\0';
 }
 
-void IShowFile::clearData() noexcept
+void IShow::clearData() noexcept
 {
     setName(nullptr);
     _status = Status::Ok;
@@ -168,7 +167,7 @@ void IShowFile::clearData() noexcept
     forEachSection([](ISection& sec) { sec.clearData(); });
 }
 
-bool IShowFile::copyFrom(const IShowFile& src) noexcept
+bool IShow::copyFrom(const IShow& src) noexcept
 {
     if (&src == this) {
         return true;
@@ -203,7 +202,7 @@ bool IShowFile::copyFrom(const IShowFile& src) noexcept
     return true;
 }
 
-void IShowFile::addMismatch(Diff kind, uint32_t tag, uint16_t expected, uint16_t found) noexcept
+void IShow::addMismatch(Diff kind, uint32_t tag, uint16_t expected, uint16_t found) noexcept
 {
     if (_mismatchCount >= kMaxMismatches) {
         return;
@@ -213,12 +212,12 @@ void IShowFile::addMismatch(Diff kind, uint32_t tag, uint16_t expected, uint16_t
     m.tag = tag;
     m.expected = expected;
     m.found = found;
-    SMCP_SHOW("[SMCP] show mismatch kind=%u tag=0x%08lX exp=%u got=%u\n",
+    SF_DBG("[SF] show mismatch kind=%u tag=0x%08lX exp=%u got=%u\n",
         static_cast<unsigned>(kind), static_cast<unsigned long>(tag),
         static_cast<unsigned>(expected), static_cast<unsigned>(found));
 }
 
-ISection* IShowFile::find(uint32_t tag) noexcept
+ISection* IShow::find(uint32_t tag) noexcept
 {
     const uint8_t first = _sections.firstId();
     const uint8_t end = _sections.endId();
@@ -231,12 +230,12 @@ ISection* IShowFile::find(uint32_t tag) noexcept
     return nullptr;
 }
 
-const ISection* IShowFile::find(uint32_t tag) const noexcept
+const ISection* IShow::find(uint32_t tag) const noexcept
 {
-    return const_cast<IShowFile*>(this)->find(tag);
+    return const_cast<IShow*>(this)->find(tag);
 }
 
-uint32_t IShowFile::crcBody() const noexcept
+uint32_t IShow::crcBody() const noexcept
 {
     uint32_t crc = MISC::crc32Init();
     forEachSection([&](const ISection& sec) {
@@ -253,7 +252,7 @@ uint32_t IShowFile::crcBody() const noexcept
     return MISC::crc32Final(crc);
 }
 
-bool IShowFile::allRequiredPresent() const noexcept
+bool IShow::allRequiredPresent() const noexcept
 {
     bool ok = true;
     forEachSection([&](const ISection& s) {
@@ -264,7 +263,7 @@ bool IShowFile::allRequiredPresent() const noexcept
     return ok;
 }
 
-bool IShowFile::isValid() const noexcept
+bool IShow::isValid() const noexcept
 {
     bool ok = true;
     forEachSection([&](const ISection& s) {
@@ -275,13 +274,13 @@ bool IShowFile::isValid() const noexcept
     return ok;
 }
 
-Status IShowFile::load(IFile& io, const char* path) noexcept
+Status IShow::load(IFile& io, const char* path) noexcept
 {
     _mismatchCount = 0;
     _status = Status::Ok;
 
     if (path == nullptr || !io.open(path, false)) {
-        SMCP_SHOW("[SMCP] ShowFile::load open fail %s\n", cstr(Status::IoError));
+        SF_DBG("[SF] Show::load open fail %s\n", cstr(Status::IoError));
         return fail(Status::IoError);
     }
 
@@ -319,7 +318,7 @@ Status IShowFile::load(IFile& io, const char* path) noexcept
         if (ds != Status::Ok) {
             return fail(io, ds);
         }
-        SMCP_SHOW("[SMCP] catalog[%u] tag=0x%08lX off=%u bytes=%u rec=%u\n",
+        SF_DBG("[SF] catalog[%u] tag=0x%08lX off=%u bytes=%u rec=%u\n",
             static_cast<unsigned>(i), static_cast<unsigned long>(d.tag),
             static_cast<unsigned>(d.offset), static_cast<unsigned>(d.byte_size),
             static_cast<unsigned>(d.record_count));
@@ -389,12 +388,12 @@ Status IShowFile::load(IFile& io, const char* path) noexcept
 
     io.close();
     _status = Status::Ok;
-    SMCP_SHOW("[SMCP] ShowFile::load ok name=\"%s\" mismatches=%u\n", _name,
+    SF_DBG("[SF] Show::load ok name=\"%s\" mismatches=%u\n", _name,
         static_cast<unsigned>(_mismatchCount));
     return _status;
 }
 
-Status IShowFile::save(IFile& io, const char* path) noexcept
+Status IShow::save(IFile& io, const char* path) noexcept
 {
     _status = Status::Ok;
     const uint16_t nsec = sectionCount();
@@ -403,7 +402,7 @@ Status IShowFile::save(IFile& io, const char* path) noexcept
     }
 
     if (!io.open(path, true)) {
-        SMCP_SHOW("[SMCP] ShowFile::save open fail %s\n", cstr(Status::IoError));
+        SF_DBG("[SF] Show::save open fail %s\n", cstr(Status::IoError));
         return fail(Status::IoError);
     }
 
@@ -468,10 +467,9 @@ Status IShowFile::save(IFile& io, const char* path) noexcept
 
     io.close();
     _status = Status::Ok;
-    SMCP_SHOW("[SMCP] ShowFile::save ok name=\"%s\" total=%u\n", _name,
+    SF_DBG("[SF] Show::save ok name=\"%s\" total=%u\n", _name,
         static_cast<unsigned>(hdr.total_size));
     return _status;
 }
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

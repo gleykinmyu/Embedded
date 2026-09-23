@@ -27,37 +27,37 @@ namespace {
     }
 }
 
-[[nodiscard]] const char* fileSystemText(smcp::file::Status st) noexcept
+[[nodiscard]] const char* fileSystemText(sf::Status st) noexcept
 {
     switch (st) {
-    case smcp::file::Status::BadMagic: return uiMsg::kConsoleBadMagic;
-    case smcp::file::Status::BadVersion: return uiMsg::kConsoleBadVersion;
-    case smcp::file::Status::BadHeaderCrc:
-    case smcp::file::Status::BadBodyCrc: return uiMsg::kConsoleBadCrc;
-    case smcp::file::Status::BadLayout: return uiMsg::kConsoleBadLayout;
-    case smcp::file::Status::Truncated: return uiMsg::kConsoleTruncated;
-    case smcp::file::Status::IoError:
+    case sf::Status::BadMagic: return uiMsg::kConsoleBadMagic;
+    case sf::Status::BadVersion: return uiMsg::kConsoleBadVersion;
+    case sf::Status::BadHeaderCrc:
+    case sf::Status::BadBodyCrc: return uiMsg::kConsoleBadCrc;
+    case sf::Status::BadLayout: return uiMsg::kConsoleBadLayout;
+    case sf::Status::Truncated: return uiMsg::kConsoleTruncated;
+    case sf::Status::IoError:
     default: return uiMsg::kStorageError;
     }
 }
 
-[[nodiscard]] const char* fileSystemText(smcp::file::IBrowser::Status st) noexcept
+[[nodiscard]] const char* fileSystemText(sf::IBrowser::Status st) noexcept
 {
     switch (st) {
-    case smcp::file::IBrowser::Status::NotMounted: return uiMsg::kBrowserNotMounted;
-    case smcp::file::IBrowser::Status::OpenDirFailed: return uiMsg::kBrowserOpenDirFailed;
-    case smcp::file::IBrowser::Status::InvalidName: return uiMsg::kBrowserInvalidName;
-    case smcp::file::IBrowser::Status::NotFound: return uiMsg::kBrowserNotFound;
-    case smcp::file::IBrowser::Status::FileExists: return uiMsg::kBrowserFileExists;
-    case smcp::file::IBrowser::Status::PathTooLong: return uiMsg::kBrowserPathTooLong;
-    case smcp::file::IBrowser::Status::IoError:
+    case sf::IBrowser::Status::NotMounted: return uiMsg::kBrowserNotMounted;
+    case sf::IBrowser::Status::OpenDirFailed: return uiMsg::kBrowserOpenDirFailed;
+    case sf::IBrowser::Status::InvalidName: return uiMsg::kBrowserInvalidName;
+    case sf::IBrowser::Status::NotFound: return uiMsg::kBrowserNotFound;
+    case sf::IBrowser::Status::FileExists: return uiMsg::kBrowserFileExists;
+    case sf::IBrowser::Status::PathTooLong: return uiMsg::kBrowserPathTooLong;
+    case sf::IBrowser::Status::IoError:
     default: return uiMsg::kStorageError;
     }
 }
 
-[[nodiscard]] const char* fileSystemText(smcp::file::FIOManager::Status st) noexcept
+[[nodiscard]] const char* fileSystemText(sf::Fio::Status st) noexcept
 {
-    using St = smcp::file::FIOManager::Status;
+    using St = sf::Fio::Status;
     switch (st) {
     case St::NoShowOpen: return uiMsg::kConsoleNoShowOpen;
     case St::MissingSection: return uiMsg::kConsoleMissingGrup;
@@ -67,9 +67,9 @@ namespace {
     case St::MainFail:
     case St::BakFail:
     case St::RestoreFail: {
-        const smcp::file::Status fs = (console.show.status() != smcp::file::Status::Ok)
+        const sf::Status fs = (console.show.status() != sf::Status::Ok)
             ? console.show.status()
-            : smcp::file::Status::IoError;
+            : sf::Status::IoError;
         return fileSystemText(fs);
     }
     case St::Ok:
@@ -233,7 +233,7 @@ void Application::showSmcpNack(uint8_t tag) noexcept
 
 void Application::syncStatusBarFile() noexcept
 {
-    statusBar.setFile(smcp::file::FIOManager::showBaseName(console.show.name()), console.show.isEdited());
+    statusBar.setFile(sf::Fio::showBaseName(console.show.name()), console.show.isEdited());
     mFile.refreshSaveBtn();
 }
 

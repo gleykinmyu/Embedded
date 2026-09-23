@@ -6,8 +6,8 @@
 #pragma once
 
 #include "obj_bank.hpp"
+#include "showFile.hpp"
 #include "smcp/Console/cmech.hpp"
-#include "smcp/Console/show_model.hpp"
 #include "smcp/GroupConsole/group.hpp"
 #include "smcp/GroupConsole/group_console.hpp"
 
@@ -133,14 +133,14 @@ private:
  * Секция GRUP + банк слотов: payload — Group[N], operator[] даёт временный CGroup.
  */
 template <uint8_t N>
-class CGroupBank : public file::Section<Group, N>, public IGroupBank {
-    using Base = file::Section<Group, N>;
+class CGroupBank : public sf::Section<Group, N>, public IGroupBank {
+    using Base = sf::Section<Group, N>;
 
 public:
     static constexpr uint8_t kCount = N;
 
     /** Id слотов = индекс 0…N-1. */
-    CGroupBank(file::IShowFile& file, IGroupConsole& console, bool required = true) noexcept
+    CGroupBank(sf::IShow& file, IGroupConsole& console, bool required = true) noexcept
         : Base(file, kGroupSectionTag, required)
         , _console(console)
     {

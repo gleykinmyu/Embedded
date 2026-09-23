@@ -1,21 +1,20 @@
 /**
- * @file fiomanager.cpp
- * @brief FIOManager: open / save (tmp+replaceWith) / restore / bak.
+ * @file fio.cpp
+ * @brief Fio: open / save (tmp+replaceWith) / restore / bak.
  */
 
-#include "smcp/Console/fiomanager.hpp"
+#include "fio.hpp"
 
 #include <cstring>
 
-namespace smcp {
-namespace file {
+namespace sf {
 namespace {
 
 constexpr const char kTempBaseName[] = "tmp";
 
 } // namespace
 
-const char* FIOManager::cstr(Status st) noexcept
+const char* Fio::cstr(Status st) noexcept
 {
     switch (st) {
     case Status::Ok: return "Ok";
@@ -31,7 +30,7 @@ const char* FIOManager::cstr(Status st) noexcept
     }
 }
 
-void FIOManager::newShow() noexcept
+void Fio::newShow() noexcept
 {
     /* RAM сбрасывается; edited — да: файла на носителе ещё нет. */
     _live.clearData();
@@ -40,7 +39,7 @@ void FIOManager::newShow() noexcept
     onEvent(Event::New);
 }
 
-bool FIOManager::restore() noexcept
+bool Fio::restore() noexcept
 {
     /* Пустой path в loadShows читает bak, не main. */
     if (!loadShows("")) {
@@ -49,7 +48,7 @@ bool FIOManager::restore() noexcept
     return acceptLoaded();
 }
 
-bool FIOManager::openShow(const char* name) noexcept
+bool Fio::openShow(const char* name) noexcept
 {
     if (!ensureDir()) {
         return false;
@@ -64,7 +63,7 @@ bool FIOManager::openShow(const char* name) noexcept
     return acceptLoaded();
 }
 
-bool FIOManager::saveShow() noexcept
+bool Fio::saveShow() noexcept
 {
     if (_live.name()[0] == '\0') {
         return fail(Status::NoShowOpen);
@@ -73,7 +72,7 @@ bool FIOManager::saveShow() noexcept
     return saveShowAs(showBaseName(_live.name()), true);
 }
 
-bool FIOManager::saveShowAs(const char* name, bool confirmed) noexcept
+bool Fio::saveShowAs(const char* name, bool confirmed) noexcept
 {
     if (!ensureDir()) {
         return false;
@@ -112,7 +111,7 @@ bool FIOManager::saveShowAs(const char* name, bool confirmed) noexcept
     return succeed(Event::Saved);
 }
 
-bool FIOManager::removeShow(const char* name) noexcept
+bool Fio::removeShow(const char* name) noexcept
 {
     if (!ensureDir()) {
         return false;
@@ -131,7 +130,7 @@ bool FIOManager::removeShow(const char* name) noexcept
     return succeed(Event::Removed);
 }
 
-const char* FIOManager::showBaseName(const char* path) noexcept
+const char* Fio::showBaseName(const char* path) noexcept
 {
     if (path == nullptr || path[0] == '\0') {
         return "";
@@ -145,7 +144,7 @@ const char* FIOManager::showBaseName(const char* path) noexcept
     return base;
 }
 
-bool FIOManager::acceptLoaded() noexcept
+bool Fio::acceptLoaded() noexcept
 {
     if (!_live.allRequiredPresent()) {
         return fail(Status::MissingSection);
@@ -158,7 +157,7 @@ bool FIOManager::acceptLoaded() noexcept
     return succeed(Event::Loaded);
 }
 
-bool FIOManager::ensureDir() noexcept
+bool Fio::ensureDir() noexcept
 {
     if (_browser.dirPath()[0] == '\0' && !_browser.open(nullptr)) {
         return fail(Status::BrowserFail);
@@ -166,14 +165,14 @@ bool FIOManager::ensureDir() noexcept
     return true;
 }
 
-bool FIOManager::loadShows(const char* path) noexcept
+bool Fio::loadShows(const char* path) noexcept
 {
     /* Непустой path — main (SD); пустой — bak (вспышка / тот же IFile). */
     const bool fromMain = (path != nullptr && path[0] != '\0');
     IFile& src = fromMain ? _main : _bak;
     const char* p = fromMain ? path : "";
-    const file::Status st = _incoming.load(src, p);
-    if (st != file::Status::Ok) {
+    const ::sf::Status st = _incoming.load(src, p);
+    if (st != ::sf::Status::Ok) {
         return fail(fromMain ? Status::MainFail : Status::BakFail);
     }
     /* Live не трогаем, пока staging не скопировался целиком. */
@@ -183,26 +182,25 @@ bool FIOManager::loadShows(const char* path) noexcept
     return true;
 }
 
-bool FIOManager::saveMain(const char* path) noexcept
+bool Fio::saveMain(const char* path) noexcept
 {
-    const file::Status st = _live.save(_main, path);
-    if (st != file::Status::Ok) {
+    const ::sf::Status st = _live.save(_main, path);
+    if (st != ::sf::Status::Ok) {
         return fail(Status::MainFail);
     }
     return true;
 }
 
-bool FIOManager::syncBak() noexcept
+bool Fio::syncBak() noexcept
 {
     if (!hasBak()) {
         return true;
     }
-    const file::Status st = _live.save(_bak, "");
-    if (st != file::Status::Ok) {
+    const ::sf::Status st = _live.save(_bak, "");
+    if (st != ::sf::Status::Ok) {
         return fail(Status::BakFail);
     }
     return true;
 }
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

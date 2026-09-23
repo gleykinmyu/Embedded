@@ -4,13 +4,11 @@
  *
  * Master:
  *   `-DSMCP_DEBUG` — включает NODE + SESSION + CONSOLE
- *                    (не SHOW — слишком шумно).
  *
  * Слои (можно включать по отдельности без SMCP_DEBUG):
  *   `-DSMCP_DBG_NODE`    — Node hooks: status, Ack/Nack, TxFull, SessionFull, …
  *   `-DSMCP_DBG_SESSION` — Session: setStatus, open reject, sendNack
  *   `-DSMCP_DBG_CONSOLE` — IConsole: setPhase
- *   `-DSMCP_DBG_SHOW`    — ShowFile Reader/Writer
  *
  * Wire dump:
  *   `-DSMCP_TRACE_LINK`  — TX/RX на ILink (без Heartbeat)
@@ -51,12 +49,6 @@
 #  define SMCP_CONS(...) std::printf(__VA_ARGS__)
 #else
 #  define SMCP_CONS(...) ((void)0)
-#endif
-
-#if defined(SMCP_DBG_SHOW)
-#  define SMCP_SHOW(...) std::printf(__VA_ARGS__)
-#else
-#  define SMCP_SHOW(...) ((void)0)
 #endif
 
 namespace smcp {

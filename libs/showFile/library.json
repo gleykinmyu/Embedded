@@ -1,0 +1,10 @@
+{
+  "name": "showFile",
+  "version": "1.0.0",
+  "description": "Show file format (sections/CRC), directory browser, live/bak FIO",
+  "build": {
+    "libArchive": false,
+    "srcDir": ".",
+    "srcFilter": "+<*.cpp> -<src/>"
+  }
+}

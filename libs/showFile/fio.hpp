@@ -1,21 +1,20 @@
 /**
- * @file fiomanager.hpp
- * @brief FIOManager — live/staging + main/bak на носителях, каталог через IBrowser.
+ * @file fio.hpp
+ * @brief Fio — live/staging + main/bak на носителях, каталог через IBrowser.
  *
- * IFile не внутри IShowFile: шоу — RAM, IFile — ручка тома. Live пишется в оба слота.
+ * IFile не внутри IShow: шоу — RAM, IFile — ручка тома. Live пишется в оба слота.
  * Один и тот же IFile на main и bak — резерва нет (сравнение по адресу).
  * Пустой path у load — читать резерв. Резерв пишется только в save.
  */
 
 #pragma once
 
-#include "smcp/Console/browser.hpp"
-#include "smcp/Console/show_model.hpp"
+#include "browser.hpp"
+#include "showFile.hpp"
 
-namespace smcp {
-namespace file {
+namespace sf {
 
-class FIOManager {
+class Fio {
 public:
     enum class Status : uint8_t {
         Ok = 0,
@@ -24,8 +23,8 @@ public:
         InvalidData,       /**< Секция отвергла payload (isValid). */
         OpenFileProtected, /**< Нельзя удалить сейчас открытый файл. */
         BrowserFail,       /**< Каталог. Код — IBrowser::status(). */
-        MainFail,          /**< Основной IFile. Код — IShowFile::status(). */
-        BakFail,           /**< Резерв. Код — IShowFile::status(). */
+        MainFail,          /**< Основной IFile. Код — IShow::status(). */
+        BakFail,           /**< Резерв. Код — IShow::status(). */
         RestoreFail,       /**< Не удалось прочитать резерв. */
     };
 
@@ -37,8 +36,7 @@ public:
         Removed,  /**< Файл каталога удалён, live не трогали. */
     };
 
-    FIOManager(IBrowser& browser, IShowFile& live, IShowFile& incoming, IFile& main,
-               IFile& bak) noexcept
+    Fio(IBrowser& browser, IShow& live, IShow& incoming, IFile& main, IFile& bak) noexcept
         : _browser(browser)
         , _live(live)
         , _incoming(incoming)
@@ -46,9 +44,9 @@ public:
         , _bak(bak)
     {}
 
-    FIOManager(const FIOManager&) = delete;
-    FIOManager& operator=(const FIOManager&) = delete;
-    virtual ~FIOManager() = default;
+    Fio(const Fio&) = delete;
+    Fio& operator=(const Fio&) = delete;
+    virtual ~Fio() = default;
 
     [[nodiscard]] Status status() const noexcept { return _status; }
     [[nodiscard]] static const char* cstr(Status st) noexcept;
@@ -90,12 +88,11 @@ private:
     [[nodiscard]] bool syncBak() noexcept;
 
     IBrowser& _browser;
-    IShowFile& _live;
-    IShowFile& _incoming;
+    IShow& _live;
+    IShow& _incoming;
     IFile& _main;
     IFile& _bak;
     Status _status = Status::Ok;
 };
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

@@ -203,7 +203,7 @@ int main(void)
         NEX_DBG("Restored show from W25Q: '%s'\n", console.show.name());
     } else {
         NEX_DBG("No valid show mirror in W25Q (%s)\n",
-            smcp::file::FIOManager::cstr(console.fio.status()));
+            sf::Fio::cstr(console.fio.status()));
     }
 
     board.watchdog.kick();

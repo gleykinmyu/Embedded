@@ -37,7 +37,7 @@ void MFilePage::doSave() noexcept
     }
 
     switch (console.fio.status()) {
-    case smcp::file::FIOManager::Status::NoShowOpen:
+    case sf::Fio::Status::NoShowOpen:
         ui().showFileMsg(Msg::GoSaveAs, uiMsg::kConsoleNoShowOpen);
         break;
     default:

@@ -1,11 +1,11 @@
 /**
- * @file show_model.hpp
- * @brief Шоуфайл: формат на диске + ISection / Section<Rec, N> / ShowFile<SecN>.
+ * @file showFile.hpp
+ * @brief Шоуфайл: формат на диске + ISection / Section<Rec, N> / Show<SecN>.
  *
- * Секции — члены наследника ShowFile<SecN>: конструктор берёт IShowFile& и регистрируется.
+ * Секции — члены наследника Show<SecN>: конструктор берёт IShow& и регистрируется.
  * Порядок объявления членов = порядок записи.
- * load/save — на IShowFile (обход реестра). CRC/magic — отказ; секции/слоты — Mismatch.
- * edited — на IShowFile; секция помечает через ISection::markEdited() при правке payload.
+ * load/save — на IShow (обход реестра). CRC/magic — отказ; секции/слоты — Mismatch.
+ * edited — на IShow; секция помечает через ISection::markEdited() при правке payload.
  */
 
 #pragma once
@@ -17,10 +17,9 @@
 #include "iFileSystem.hpp"
 #include "obj_registry.hpp"
 
-namespace smcp {
-namespace file {
+namespace sf {
 
-class IShowFile;
+class IShow;
 class ISection;
 
 using BIF::IFile;
@@ -112,7 +111,7 @@ constexpr std::size_t Header::payloadBase() const noexcept
                                       uint32_t totalSize) noexcept;
 
 namespace detail {
-void registerSection(IShowFile& file, ISection& sec) noexcept;
+void registerSection(IShow& file, ISection& sec) noexcept;
 } // namespace detail
 
 enum class Diff : uint8_t {
@@ -132,13 +131,13 @@ struct Mismatch {
 
 /**
  * Секция каталога. Тег FourCC — поле, не id реестра.
- * Конструктор принимает IShowFile& и регистрируется сам.
+ * Конструктор принимает IShow& и регистрируется сам.
  * Payload — у наследника (Section<Rec, N>: Rec[N]).
  */
 class ISection {
 public:
     /** @a data — начало payload наследника (массив Rec[N]). */
-    ISection(IShowFile& file, uint32_t tag, uint16_t slotCount, uint16_t slotSize, bool required,
+    ISection(IShow& file, uint32_t tag, uint16_t slotCount, uint16_t slotSize, bool required,
              void* data) noexcept;
 
     ISection(const ISection&) = delete;
@@ -151,8 +150,8 @@ public:
     [[nodiscard]] virtual bool isValid() const noexcept { return true; }
 
     /** Владелец секции. */
-    [[nodiscard]] IShowFile& showFile() noexcept { return _file; }
-    [[nodiscard]] const IShowFile& showFile() const noexcept { return _file; }
+    [[nodiscard]] IShow& showFile() noexcept { return _file; }
+    [[nodiscard]] const IShow& showFile() const noexcept { return _file; }
     /** Пометить шоуфайл edited. */
     void markEdited() noexcept;
 
@@ -215,14 +214,14 @@ private:
     uint32_t _tag = 0;
     SectionDesc _desc{};
     uint8_t& _data;
-    IShowFile& _file;
+    IShow& _file;
 };
 
-class IShowFile {
+class IShow {
 public:
-    IShowFile(const IShowFile&) = delete;
-    IShowFile& operator=(const IShowFile&) = delete;
-    virtual ~IShowFile() = default;
+    IShow(const IShow&) = delete;
+    IShow& operator=(const IShow&) = delete;
+    virtual ~IShow() = default;
 
     /** Сбросить имя, mismatches и payload всех секций. edited не трогает. */
     virtual void clearData() noexcept;
@@ -237,7 +236,7 @@ public:
     [[nodiscard]] ISection* section(uint8_t id) noexcept { return _sections.get(id); }
     [[nodiscard]] const ISection* section(uint8_t id) const noexcept
     {
-        return const_cast<IShowFile*>(this)->_sections.get(id);
+        return const_cast<IShow*>(this)->_sections.get(id);
     }
     /** Секция по FourCC. */
     [[nodiscard]] ISection* find(uint32_t tag) noexcept;
@@ -273,16 +272,16 @@ public:
      * Имя, mismatches, payload по id реестра. edited не копируется.
      * Оба файла — один конкретный тип (тот же набор секций). Иначе false, dest не меняется.
      */
-    [[nodiscard]] bool copyFrom(const IShowFile& src) noexcept;
+    [[nodiscard]] bool copyFrom(const IShow& src) noexcept;
 
 protected:
-    /** Реестр секций (storage наследника ShowFile<N>). */
-    explicit IShowFile(MISC::ObjRegistry<ISection, uint8_t>& sections) noexcept
+    /** Реестр секций (storage наследника Show<N>). */
+    explicit IShow(MISC::ObjRegistry<ISection, uint8_t>& sections) noexcept
         : _sections(sections)
     {}
 
 private:
-    friend void detail::registerSection(IShowFile& file, ISection& sec) noexcept;
+    friend void detail::registerSection(IShow& file, ISection& sec) noexcept;
 
     void addMismatch(Diff kind, uint32_t tag, uint16_t expected = 0, uint16_t found = 0) noexcept;
     /** CRC каталога + payload всех секций (как на диске после save). */
@@ -311,7 +310,7 @@ private:
         const uint8_t first = _sections.firstId();
         const uint8_t end = _sections.endId();
         for (uint8_t id = first; id < end; ++id) {
-            const ISection* s = const_cast<IShowFile*>(this)->_sections.get(id);
+            const ISection* s = const_cast<IShow*>(this)->_sections.get(id);
             if (s != nullptr) {
                 fn(*s);
             }
@@ -338,7 +337,7 @@ public:
     static constexpr std::size_t kPayloadBytes = static_cast<std::size_t>(N) * sizeof(Rec);
 
     /** Регистрирует секцию в @a file; payload — _rec. */
-    explicit Section(IShowFile& file, uint32_t tag, bool required = false) noexcept
+    explicit Section(IShow& file, uint32_t tag, bool required = false) noexcept
         : ISection(file, tag, kSlotCount, kSlotSize, required, _rec)
     {}
 
@@ -367,19 +366,18 @@ private:
 };
 
 template <uint8_t N>
-class ShowFile : public IShowFile {
-    static_assert(N > 0u, "ShowFile: N > 0");
+class Show : public IShow {
+    static_assert(N > 0u, "Show: N > 0");
 
 public:
     static constexpr uint8_t kSectionMax = N;
 
     /** Реестр секций — _store; секции-члены наследника регистрируются в своих ctor. */
-    ShowFile() noexcept : IShowFile(_store) {}
+    Show() noexcept : IShow(_store) {}
 
 private:
     using Store = MISC::ObjStorage<ISection, N, uint8_t, 0>;
     Store _store{};
 };
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

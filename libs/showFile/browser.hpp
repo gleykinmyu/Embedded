@@ -13,8 +13,7 @@
 
 #include "iFileSystem.hpp"
 
-namespace smcp {
-namespace file {
+namespace sf {
 
 inline constexpr std::size_t kBrowserPathPrefix = 16u;
 inline constexpr std::size_t kBrowserPathSize = BIF::kDirNameSize + kBrowserPathPrefix;
@@ -158,5 +157,4 @@ private:
     Entry _entries[N]{};
 };
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

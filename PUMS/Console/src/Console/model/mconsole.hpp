@@ -10,9 +10,9 @@
 #include <cstdint>
 
 #include "iFileSystem.hpp"
-#include "smcp/Console/browser.hpp"
-#include "smcp/Console/fiomanager.hpp"
-#include "smcp/Console/show_model.hpp"
+#include "browser.hpp"
+#include "fio.hpp"
+#include "showFile.hpp"
 #include "smcp/GroupConsole/group_bank.hpp"
 #include "smcp/GroupConsole/group_console.hpp"
 #include "smcp/transport/ilink.hpp"
@@ -24,12 +24,12 @@ struct Settings {
 static_assert(sizeof(Settings) == 8u, "SETT wire size");
 
 /** Шоуфайл: GRUP = CGroupBank, SETT. Живой и staging — один тип. */
-class Show : public smcp::file::ShowFile<2> {
+class Show : public sf::Show<2> {
 public:
     static constexpr uint32_t kSettingsSectionTag = 0x54544553u;
 
     smcp::CGroupBank<smcp::kGroupMaxCount> group;
-    smcp::file::Section<Settings, 1> sett;
+    sf::Section<Settings, 1> sett;
 
     explicit Show(smcp::IGroupConsole& console) noexcept
         : group{*this, console, true}
@@ -43,11 +43,11 @@ public:
 class MConsole;
 
 /** FIO с хуком в пульт. */
-class Fio final : public smcp::file::FIOManager {
+class Fio final : public sf::Fio {
 public:
-    Fio(MConsole& owner, smcp::file::IBrowser& browser, smcp::file::IShowFile& live,
-        smcp::file::IShowFile& incoming, BIF::IFile& main, BIF::IFile& bak) noexcept
-        : FIOManager(browser, live, incoming, main, bak)
+    Fio(MConsole& owner, sf::IBrowser& browser, sf::IShow& live, sf::IShow& incoming,
+        BIF::IFile& main, BIF::IFile& bak) noexcept
+        : sf::Fio(browser, live, incoming, main, bak)
         , _owner(owner)
     {}
 
@@ -80,7 +80,7 @@ private:
 public:
     Show show;
     smcp::CGMechBank<kMechCount> cmechs;
-    smcp::file::Browser<kFileCache> browser;
+    sf::Browser<kFileCache> browser;
     Fio fio;
 
     [[nodiscard]] bool hasSelection() const noexcept;
@@ -111,7 +111,7 @@ protected:
     [[nodiscard]] bool readyForOnline() const noexcept override { return _uiReady; }
 
 private:
-    void onFioEvent(smcp::file::FIOManager::Event ev) noexcept;
+    void onFioEvent(sf::Fio::Event ev) noexcept;
     void requestMechTelemetry() noexcept;
 
     Mode _mode = Mode::Work;

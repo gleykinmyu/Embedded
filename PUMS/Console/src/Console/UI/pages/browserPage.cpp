@@ -37,7 +37,7 @@ void formatFatStamp(char* out, std::size_t outLen, uint16_t date, uint16_t time)
         static_cast<char>(0xEC), static_cast<char>(0xEF), static_cast<char>(0xEE),
         '\0',
     };
-    const char* base = smcp::file::FIOManager::showBaseName(name);
+    const char* base = sf::Fio::showBaseName(name);
     return base != nullptr && std::strncmp(base, kTemplate, sizeof(kTemplate) - 1u) == 0;
 }
 
@@ -337,8 +337,8 @@ void BrowserPage::finishSaveAs() noexcept
         return;
     }
     if (!console.fio.saveShowAs(_saveAsName)) {
-        if (console.fio.status() == smcp::file::FIOManager::Status::BrowserFail
-            && console.browser.status() == smcp::file::IBrowser::Status::FileExists) {
+        if (console.fio.status() == sf::Fio::Status::BrowserFail
+            && console.browser.status() == sf::IBrowser::Status::FileExists) {
             _msg = Msg::OverwriteSave;
             ui().showFileYesNo(kTagOverwriteSave, uiMsg::kConfirmOverwriteFile);
             return;
@@ -387,7 +387,7 @@ void BrowserPage::doDelete() noexcept
         return;
     }
 
-    char path[smcp::file::kBrowserPathSize]{};
+    char path[sf::kBrowserPathSize]{};
     if (!console.browser.makePath(path, sizeof(path), entry->name)) {
         ui().showBrowserStatus();
         return;

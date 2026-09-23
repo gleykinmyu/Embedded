@@ -10,10 +10,10 @@
 #include <cstring>
 
 #include "board.hpp"
+#include "debug.hpp"
 #include "impl/w25q.hpp"
 #include "iFileSystem.hpp"
-#include "smcp/debug.hpp"
-#include "smcp/Console/show_model.hpp"
+#include "showFile.hpp"
 #include "smcp/GroupConsole/group.hpp"
 
 namespace smcp {
@@ -24,7 +24,7 @@ public:
     static constexpr uint32_t kSectorSize = PHL::W25Q::kSectorSize;
     static constexpr uint32_t kSectorAddr = PHL::W25Q::kSize - PHL::W25Q::kSectorSize;
 
-    static_assert(sizeof(Header) + 2u * sizeof(SectionDesc)
+    static_assert(sizeof(sf::Header) + 2u * sizeof(sf::SectionDesc)
                           + 8u /* SETT: MConsole::kSettingsWireSize */
                           + smcp::kGroupMaxCount * sizeof(smcp::Group)
                       <= kSectorSize,
@@ -45,27 +45,27 @@ public:
             std::memset(_buf, 0xFF, sizeof(_buf));
             _size = 0u;
             _open = true;
-            SMCP_SHOW("[SMCP] W25Q open write sector=0x%06lX\n",
+            SF_DBG("[SF] W25Q open write sector=0x%06lX\n",
                 static_cast<unsigned long>(kSectorAddr));
             return true;
         }
 
         board.watchdog.kick();
         if (!_flash.read(kSectorAddr, _buf, sizeof(_buf))) {
-            SMCP_SHOW("[SMCP] W25Q open read fail @0x%06lX\n",
+            SF_DBG("[SF] W25Q open read fail @0x%06lX\n",
                 static_cast<unsigned long>(kSectorAddr));
             return false;
         }
 
-        const auto& hdr = *reinterpret_cast<const Header*>(_buf);
-        if (hdr.magic == kMagic && hdr.total_size > 0u && hdr.total_size <= kSectorSize) {
+        const auto& hdr = *reinterpret_cast<const sf::Header*>(_buf);
+        if (hdr.magic == sf::kMagic && hdr.total_size > 0u && hdr.total_size <= kSectorSize) {
             _size = static_cast<std::size_t>(hdr.total_size);
         } else {
             /* Дать Reader прочитать заголовок и вернуть BadMagic/BadVersion/… */
-            _size = sizeof(Header);
+            _size = sizeof(sf::Header);
         }
         _open = true;
-        SMCP_SHOW("[SMCP] W25Q open read size=%u\n", static_cast<unsigned>(_size));
+        SF_DBG("[SF] W25Q open read size=%u\n", static_cast<unsigned>(_size));
         return true;
     }
 
@@ -74,7 +74,7 @@ public:
         /* Не auto-sync: flush только через sync() из Writer::finalize.
          * Иначе close-on-error повторно жжёт сектор / пишет хвост без заголовка. */
         if (_open) {
-            SMCP_SHOW("[SMCP] W25Q close dirty=%u size=%u\n", _dirty ? 1u : 0u,
+            SF_DBG("[SF] W25Q close dirty=%u size=%u\n", _dirty ? 1u : 0u,
                 static_cast<unsigned>(_size));
         }
         _open = false;
@@ -135,24 +135,24 @@ public:
         }
         /* После erase хвост сектора = 0xFF; достаточно запрограммировать SMCP. */
         board.watchdog.kick();
-        SMCP_SHOW("[SMCP] W25Q sync @0x%06lX len=%u\n",
+        SF_DBG("[SF] W25Q sync @0x%06lX len=%u\n",
             static_cast<unsigned long>(kSectorAddr), static_cast<unsigned>(_size));
         if (!_flash.eraseSector(kSectorAddr)) {
-            SMCP_SHOW("[SMCP] W25Q erase FAIL @0x%06lX sr=0x%02X\n",
+            SF_DBG("[SF] W25Q erase FAIL @0x%06lX sr=0x%02X\n",
                 static_cast<unsigned long>(kSectorAddr),
                 static_cast<unsigned>(_flash.readStatus1()));
             return false;
         }
         board.watchdog.kick();
         if (!_flash.program(kSectorAddr, _buf, _size)) {
-            SMCP_SHOW("[SMCP] W25Q program FAIL @0x%06lX len=%u sr=0x%02X\n",
+            SF_DBG("[SF] W25Q program FAIL @0x%06lX len=%u sr=0x%02X\n",
                 static_cast<unsigned long>(kSectorAddr), static_cast<unsigned>(_size),
                 static_cast<unsigned>(_flash.readStatus1()));
             return false;
         }
         board.watchdog.kick();
         _dirty = false;
-        SMCP_SHOW("[SMCP] W25Q sync OK len=%u\n", static_cast<unsigned>(_size));
+        SF_DBG("[SF] W25Q sync OK len=%u\n", static_cast<unsigned>(_size));
         return true;
     }
 
@@ -162,7 +162,7 @@ public:
 
 private:
     PHL::W25Q& _flash;
-    alignas(Header) uint8_t _buf[kSectorSize]{};
+    alignas(sf::Header) uint8_t _buf[kSectorSize]{};
     std::size_t _size = 0u;
     std::size_t _pos = 0u;
     bool _open = false;

@@ -3,12 +3,11 @@
  * @brief IBrowser: mount, cwd, refresh, remove / rename / replaceWith / copy.
  */
 
-#include "smcp/Console/browser.hpp"
+#include "browser.hpp"
 
 #include <cstring>
 
-namespace smcp {
-namespace file {
+namespace sf {
 
 IBrowser::IBrowser(BIF::IVolume& volume, BIF::IDirectory& dir, Entry* entries,
                  uint16_t cacheCapacity) noexcept
@@ -415,5 +414,4 @@ bool IBrowser::join(char* out, std::size_t outLen, const char* root, const char*
     return true;
 }
 
-} // namespace file
-} // namespace smcp
+} // namespace sf

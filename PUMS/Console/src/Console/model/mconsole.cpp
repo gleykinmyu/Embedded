@@ -41,9 +41,9 @@ smcp::Selection MConsole::selectionFromMechs() const noexcept
     return selection;
 }
 
-void MConsole::onFioEvent(smcp::file::FIOManager::Event ev) noexcept
+void MConsole::onFioEvent(sf::Fio::Event ev) noexcept
 {
-    using Event = smcp::file::FIOManager::Event;
+    using Event = sf::Fio::Event;
     switch (ev) {
     case Event::New:
     case Event::Loaded:
