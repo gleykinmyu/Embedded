@@ -1,59 +1,60 @@
-#include "board.hpp"
-
-CBoard board;
+#include "periph.hpp"
+#include <util/delay.h>
 
 namespace {
 
-void log(const char* text)
-{
-    while (*text != '\0') {
-        const uint8_t byte = static_cast<uint8_t>(*text++);
-        while (board.serial0.write(&byte, 1) != 1) {
-        }
-    }
-}
-
-void logHex8(uint8_t value)
-{
-    static const char kHex[] = "0123456789ABCDEF";
-    const char text[] = {
-        '0', 'x',
-        kHex[value >> 4],
-        kHex[value & 0x0Fu],
-        '\0',
-    };
-    log(text);
-}
-
-/** 24 реле: PF0..PF7, PK0..PK7, PC0..PC7. Ноль включает реле. */
-constexpr uint8_t kRelayCount = 24;
-constexpr uint32_t kRelayStepMs = 1000;
+#define RELAYS(F) \
+    F(GPIO::PortF::pin<0>) F(GPIO::PortF::pin<1>) F(GPIO::PortF::pin<2>) F(GPIO::PortF::pin<3>) \
+    F(GPIO::PortF::pin<4>) F(GPIO::PortF::pin<5>) F(GPIO::PortF::pin<6>) F(GPIO::PortF::pin<7>) \
+    F(GPIO::PortK::pin<0>) F(GPIO::PortK::pin<1>) F(GPIO::PortK::pin<2>) F(GPIO::PortK::pin<3>) \
+    F(GPIO::PortK::pin<4>) F(GPIO::PortK::pin<5>) F(GPIO::PortK::pin<6>) F(GPIO::PortK::pin<7>) \
+    F(GPIO::PortC::pin<0>) F(GPIO::PortC::pin<1>) F(GPIO::PortC::pin<2>) F(GPIO::PortC::pin<3>) \
+    F(GPIO::PortC::pin<4>) F(GPIO::PortC::pin<5>) F(GPIO::PortC::pin<6>) F(GPIO::PortC::pin<7>)
 
 void relaysInit()
 {
-    PORTF = 0xFFu;
-    PORTK = 0xFFu;
-    PORTC = 0xFFu;
-    DDRF = 0xFFu;
-    DDRK = 0xFFu;
-    DDRC = 0xFFu;
+#define INIT_ONE(pin) pin.Set(); pin.Init(GPIO::Mode::Output);
+    RELAYS(INIT_ONE)
+#undef INIT_ONE
 }
 
+void relaysOff()
+{
+#define SET_ONE(pin) pin.Set();
+    RELAYS(SET_ONE)
+#undef SET_ONE
+}
+
+/** Ноль включает реле. Шаг называет константный пин, без таблицы указателей. */
 void relaysApply(uint8_t index)
 {
-    uint8_t f = 0xFFu;
-    uint8_t k = 0xFFu;
-    uint8_t c = 0xFFu;
-    if (index < 8u)
-        f = static_cast<uint8_t>(~static_cast<uint8_t>(1u << index));
-    else if (index < 16u)
-        k = static_cast<uint8_t>(~static_cast<uint8_t>(1u << (index - 8u)));
-    else
-        c = static_cast<uint8_t>(~static_cast<uint8_t>(1u << (index - 16u)));
-
-    PORTF = f;
-    PORTK = k;
-    PORTC = c;
+    relaysOff();
+    switch (index) {
+    case 0: GPIO::PortF::pin<0>.Clear(); break;
+    case 1: GPIO::PortF::pin<1>.Clear(); break;
+    case 2: GPIO::PortF::pin<2>.Clear(); break;
+    case 3: GPIO::PortF::pin<3>.Clear(); break;
+    case 4: GPIO::PortF::pin<4>.Clear(); break;
+    case 5: GPIO::PortF::pin<5>.Clear(); break;
+    case 6: GPIO::PortF::pin<6>.Clear(); break;
+    case 7: GPIO::PortF::pin<7>.Clear(); break;
+    case 8: GPIO::PortK::pin<0>.Clear(); break;
+    case 9: GPIO::PortK::pin<1>.Clear(); break;
+    case 10: GPIO::PortK::pin<2>.Clear(); break;
+    case 11: GPIO::PortK::pin<3>.Clear(); break;
+    case 12: GPIO::PortK::pin<4>.Clear(); break;
+    case 13: GPIO::PortK::pin<5>.Clear(); break;
+    case 14: GPIO::PortK::pin<6>.Clear(); break;
+    case 15: GPIO::PortK::pin<7>.Clear(); break;
+    case 16: GPIO::PortC::pin<0>.Clear(); break;
+    case 17: GPIO::PortC::pin<1>.Clear(); break;
+    case 18: GPIO::PortC::pin<2>.Clear(); break;
+    case 19: GPIO::PortC::pin<3>.Clear(); break;
+    case 20: GPIO::PortC::pin<4>.Clear(); break;
+    case 21: GPIO::PortC::pin<5>.Clear(); break;
+    case 22: GPIO::PortC::pin<6>.Clear(); break;
+    default: GPIO::PortC::pin<7>.Clear(); break;
+    }
 }
 
 } // namespace
@@ -62,31 +63,12 @@ int main()
 {
     relaysInit();
 
-    board.serial0.InitPins();
-    if (!board.serial0.open(115200)) {
-        for (;;) {
-            board.led.Toggle();
-            board.Delay(100);
-        }
-    }
-
-    log("relay ATmega2560 reset ");
-    logHex8(PHL::ResetFlags::raw());
-    log("\r\n");
-
     uint8_t step = 0;
-    uint32_t stepMs = board.GetTick();
-    relaysApply(step);
-
     for (;;) {
-        if (board.tick())
-            log("tick\r\n");
-
-        const uint32_t now = board.GetTick();
-        if ((now - stepMs) < kRelayStepMs)
-            continue;
-        stepMs += kRelayStepMs;
-        step = static_cast<uint8_t>((step + 1u) % kRelayCount);
         relaysApply(step);
+        _delay_ms(1000);
+        step = static_cast<uint8_t>(step + 1u);
+        if (step == 24u)
+            step = 0;
     }
 }
