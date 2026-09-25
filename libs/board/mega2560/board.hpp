@@ -9,7 +9,6 @@
 #include "led.hpp"
 #include "serial.hpp"
 #include "spi.hpp"
-#include "twi.hpp"
 #include "watchdog.hpp"
 
 class CHW_Core {
@@ -33,13 +32,12 @@ public:
 
 class CBoard : public CBaseBoard {
 public:
-    PHL::Serial<PHL::ID::SERIAL0, 128, 64> serial0;
-    PHL::Serial<PHL::ID::SERIAL1, 32, 32> serial1;
-    PHL::Serial<PHL::ID::SERIAL2, 32, 32> serial2;
-    PHL::Serial<PHL::ID::SERIAL3, 32, 32> serial3;
-    PHL::SpiMaster spi;
-    PHL::TwiMaster twi;
-    PHL::WatchDog watchdog;
+    Usart::Serial<0, 128, 64> serial0;
+    Usart::Serial<1, 32, 32> serial1;
+    Usart::Serial<2, 32, 32> serial2;
+    Usart::Serial<3, 32, 32> serial3;
+    Spi::Master spi;
+    WatchDog watchdog;
 
     /** Kick IWDG, если он запущен; мигание LED раз в 1 с. */
     bool tick() noexcept

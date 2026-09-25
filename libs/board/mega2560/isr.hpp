@@ -5,7 +5,7 @@
  * До конструкторов гасим watchdog, оставленный бутлоадером Mega, и копируем MCUSR.
  */
 #include "clock.hpp"
-#include "phl.hpp"
+#include "serial.hpp"
 #include "watchdog.hpp"
 
 #include <avr/interrupt.h>
@@ -31,31 +31,22 @@ void board_wdt_early_off()
 
 volatile uint32_t BoardClock::ms = 0;
 
-template <>
-void (*PHL::Irq<PHL::ID::SERIAL0>::handler)() noexcept = nullptr;
-template <>
-void (*PHL::Irq<PHL::ID::SERIAL1>::handler)() noexcept = nullptr;
-template <>
-void (*PHL::Irq<PHL::ID::SERIAL2>::handler)() noexcept = nullptr;
-template <>
-void (*PHL::Irq<PHL::ID::SERIAL3>::handler)() noexcept = nullptr;
-
 ISR(TIMER0_COMPA_vect)
 {
     ++BoardClock::ms;
 }
 
-ISR(USART0_RX_vect) { PHL::Irq<PHL::ID::SERIAL0>::invoke(); }
-ISR(USART0_UDRE_vect) { PHL::Irq<PHL::ID::SERIAL0>::invoke(); }
+ISR(USART0_RX_vect) { if (Usart::irq[0]) Usart::irq[0](); }
+ISR(USART0_UDRE_vect) { if (Usart::irq[0]) Usart::irq[0](); }
 
-ISR(USART1_RX_vect) { PHL::Irq<PHL::ID::SERIAL1>::invoke(); }
-ISR(USART1_UDRE_vect) { PHL::Irq<PHL::ID::SERIAL1>::invoke(); }
+ISR(USART1_RX_vect) { if (Usart::irq[1]) Usart::irq[1](); }
+ISR(USART1_UDRE_vect) { if (Usart::irq[1]) Usart::irq[1](); }
 
-ISR(USART2_RX_vect) { PHL::Irq<PHL::ID::SERIAL2>::invoke(); }
-ISR(USART2_UDRE_vect) { PHL::Irq<PHL::ID::SERIAL2>::invoke(); }
+ISR(USART2_RX_vect) { if (Usart::irq[2]) Usart::irq[2](); }
+ISR(USART2_UDRE_vect) { if (Usart::irq[2]) Usart::irq[2](); }
 
-ISR(USART3_RX_vect) { PHL::Irq<PHL::ID::SERIAL3>::invoke(); }
-ISR(USART3_UDRE_vect) { PHL::Irq<PHL::ID::SERIAL3>::invoke(); }
+ISR(USART3_RX_vect) { if (Usart::irq[3]) Usart::irq[3](); }
+ISR(USART3_UDRE_vect) { if (Usart::irq[3]) Usart::irq[3](); }
 
 /* Виртуальный деструктор ISerial ссылается на sized delete. Куча не используется. */
 void operator delete(void*) noexcept {}

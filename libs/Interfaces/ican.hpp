@@ -18,7 +18,7 @@ inline constexpr uint32_t kIde = 1u << 2;
 inline constexpr unsigned kExidPos = 3;
 inline constexpr uint32_t kExidMsk = 0x3FFFFu << 3;
 inline constexpr unsigned kStidPos = 21;
-inline constexpr uint32_t kStidMsk = 0x7FFu << 21;
+inline constexpr uint32_t kStidMsk = 0x7FFUL << 21;
 } // namespace bits
 
 inline constexpr uint8_t kMaxDataLength = 8;

@@ -11,8 +11,6 @@
 
 extern "C" uint8_t board_reset_flags;
 
-namespace PHL {
-
 struct ResetFlags {
     [[nodiscard]] static uint8_t raw() noexcept { return board_reset_flags; }
     [[nodiscard]] static bool powerOn() noexcept { return (raw() & static_cast<uint8_t>(1u << PORF)) != 0; }
@@ -82,5 +80,3 @@ private:
     bool _enabled = false;
     uint32_t _timeoutMs = 0;
 };
-
-} // namespace PHL

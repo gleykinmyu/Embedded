@@ -1,106 +1,201 @@
 #pragma once
 
 /**
- * SPI master, один модуль ATmega2560.
- * SCK PB1 (D52), MOSI PB2 (D51), MISO PB3 (D50), SS PB0 (D53).
- * SS выводится наружу и держится высоким: низкий вход SS в master сбрасывает бит MSTR.
- * CS устройства — отдельный GPIO.
+ * SPI master ATmega2560, один модуль, опрос SPIF без прерывания.
+ * Пины фиксированы: SS PB0, SCK PB1, MOSI PB2, MISO PB3.
+ * SS модуля — выход и держится высоким, иначе низкий вход сбрасывает MSTR.
+ * CS устройства — отдельная ножка IDigitalPin, активный низкий уровень.
  */
-#include "gpio.hpp"
-#include "phl.hpp"
+#include "digital_pin.hpp"
+#include "iex_byte_stream.hpp"
 
+#include <avr/io.h>
+#include <stddef.h>
 #include <stdint.h>
 
-namespace PHL {
+namespace Spi {
 
-struct SpiMode {
-    bool idle_high;
-    bool second_edge;
-    bool lsb_first;
-
-    static constexpr SpiMode make(bool cpol, bool cpha, bool lsb = false) noexcept
-    {
-        return {cpol, cpha, lsb};
-    }
-
-    static constexpr SpiMode Mode0() noexcept { return make(false, false); }
-    static constexpr SpiMode Mode1() noexcept { return make(false, true); }
-    static constexpr SpiMode Mode2() noexcept { return make(true, false); }
-    static constexpr SpiMode Mode3() noexcept { return make(true, true); }
+struct Regs {
+    static inline volatile uint8_t& cr = SPCR;
+    static inline volatile uint8_t& sr = SPSR;
+    static inline volatile uint8_t& dr = SPDR;
 };
 
-class SpiMaster {
+enum class Mode : uint8_t { Mode0, Mode1, Mode2, Mode3 };
+
+class Master : public BIF::IExByteStream {
 public:
-    void InitPins() const noexcept
+    /** SCK/MOSI/SS — выходы, MISO — вход, SS модуля высокий. */
+    void InitPins() const
     {
-        GPIO::PortB::pin<0>.Init(GPIO::Mode::Output);
-        GPIO::PortB::pin<0>.Set();
-        GPIO::PortB::pin<1>.Init(GPIO::Mode::Output);
-        GPIO::PortB::pin<2>.Init(GPIO::Mode::Output);
-        GPIO::PortB::pin<3>.Init(GPIO::Mode::Input, GPIO::Pull::Up);
+        DigitalPin<Port::B, 0> ss;
+        DigitalPin<Port::B, 1> sck;
+        DigitalPin<Port::B, 2> mosi;
+        DigitalPin<Port::B, 3> miso;
+        ss.Init(BIF::PinMode::Output);
+        ss.Set();
+        sck.Init(BIF::PinMode::Output);
+        mosi.Init(BIF::PinMode::Output);
+        miso.Init(BIF::PinMode::Input);
     }
 
-    /**
-     * Делитель SCK — самый быстрый, при котором F_CPU/div не выше baud_hz.
-     * Если ни одна ступень не укладывается — берётся /128.
-     * SS (PB0) переводится в выход до установки MSTR.
-     */
-    [[nodiscard]] bool ConfigureMaster(uint32_t baud_hz, SpiMode mode = SpiMode::Mode0()) noexcept
+    /** Мягкий CS. Ножка должна жить дольше мастера. До обмена — высокий уровень. */
+    void setCs(BIF::IDigitalPin& cs) noexcept
     {
-        if (baud_hz == 0u)
+        _cs = &cs;
+        cs.Init(BIF::PinMode::Output);
+        cs.Set();
+    }
+
+    void select() noexcept
+    {
+        if (_cs != nullptr)
+            _cs->Clear();
+    }
+
+    void deselect() noexcept
+    {
+        if (_cs != nullptr)
+            _cs->Set();
+    }
+
+    /** Только при закрытом порте. Иначе false. */
+    bool setMode(Mode mode, bool lsbFirst = false) noexcept
+    {
+        if (_isOpen)
             return false;
-
-        GPIO::PortB::pin<0>.Init(GPIO::Mode::Output);
-        GPIO::PortB::pin<0>.Set();
-
-        const Div div = pickDiv(baud_hz);
-        uint8_t spcr = static_cast<uint8_t>((1u << SPE) | (1u << MSTR) | div.spr);
-        if (mode.second_edge)
-            spcr = static_cast<uint8_t>(spcr | (1u << CPHA));
-        if (mode.idle_high)
-            spcr = static_cast<uint8_t>(spcr | (1u << CPOL));
-        if (mode.lsb_first)
-            spcr = static_cast<uint8_t>(spcr | (1u << DORD));
-
-        SPSR = div.spi2x ? static_cast<uint8_t>(1u << SPI2X) : 0u;
-        SPCR = spcr;
+        _mode = mode;
+        _lsbFirst = lsbFirst;
         return true;
     }
 
-    void Shutdown() noexcept { SPCR = static_cast<uint8_t>(SPCR & static_cast<uint8_t>(~(1u << SPE))); }
-
-    [[nodiscard]] uint8_t transfer(uint8_t tx) noexcept
+    bool open(uint32_t baudrate) noexcept
     {
-        SPDR = tx;
-        while ((SPSR & static_cast<uint8_t>(1u << SPIF)) == 0) {
-        }
-        return SPDR;
+        if (baudrate == 0u)
+            return false;
+
+        uint8_t spr = 0;
+        bool spi2x = false;
+        if (!divider(baudrate, spr, spi2x))
+            return false;
+
+        DigitalPin<Port::B, 0>{}.Init(BIF::PinMode::Output);
+        DigitalPin<Port::B, 0>{}.Set();
+
+        if (spi2x)
+            Regs::sr |= static_cast<uint8_t>(1u << SPI2X);
+        else
+            Regs::sr &= static_cast<uint8_t>(~(1u << SPI2X));
+
+        uint8_t cr = static_cast<uint8_t>((1u << SPE) | (1u << MSTR) | spr);
+        if (_mode == Mode::Mode2 || _mode == Mode::Mode3)
+            cr = static_cast<uint8_t>(cr | (1u << CPOL));
+        if (_mode == Mode::Mode1 || _mode == Mode::Mode3)
+            cr = static_cast<uint8_t>(cr | (1u << CPHA));
+        if (_lsbFirst)
+            cr = static_cast<uint8_t>(cr | (1u << DORD));
+        Regs::cr = cr;
+
+        _isOpen = true;
+        clearErrors();
+        return true;
     }
+
+    void close() noexcept
+    {
+        deselect();
+        Regs::cr &= static_cast<uint8_t>(~(1u << SPE));
+        _isOpen = false;
+    }
+
+    [[nodiscard]] bool exchange(const uint8_t* tx, uint8_t* rx, size_t n) noexcept override
+    {
+        if (!_isOpen || n == 0u)
+            return n == 0u;
+
+        for (size_t i = 0; i < n; ++i) {
+            const uint8_t out = (tx != nullptr) ? tx[i] : 0xFFu;
+            Regs::dr = out;
+            while ((Regs::sr & static_cast<uint8_t>(1u << SPIF)) == 0) {
+            }
+            if ((Regs::sr & static_cast<uint8_t>(1u << WCOL)) != 0)
+                _dataError = true;
+            const uint8_t in = Regs::dr;
+            if (rx != nullptr)
+                rx[i] = in;
+        }
+        return true;
+    }
+
+    size_t write(const uint8_t* data, size_t size) override
+    {
+        if (!_isOpen || data == nullptr || size == 0u)
+            return 0;
+        return exchange(data, nullptr, size) ? size : 0u;
+    }
+
+    size_t read(uint8_t* buffer, size_t maxSize) override
+    {
+        if (!_isOpen || buffer == nullptr || maxSize == 0u)
+            return 0;
+        return exchange(nullptr, buffer, maxSize) ? maxSize : 0u;
+    }
+
+    size_t available() const override { return 0; }
+
+    size_t availableForWrite() const override
+    {
+        return _isOpen ? static_cast<size_t>(-1) : 0u;
+    }
+
+    void purge() override {}
+    void purgeOutput() override {}
+    void flush() override {}
+
+    bool isOpen() override { return _isOpen; }
+
+    Status getStatus() override
+    {
+        if (!_isOpen)
+            return Status::OK;
+        if (_dataError)
+            return Status::DataError;
+        return Status::OK;
+    }
+
+    void clearErrors() override { _dataError = false; }
 
 private:
-    struct Div {
-        uint8_t spr;
-        bool spi2x;
-        uint16_t div;
-    };
-
-    static Div pickDiv(uint32_t baud_hz) noexcept
+    /** Самый быстрый делитель, при котором SCK не выше baudrate. Медленнее /128 нельзя. */
+    [[nodiscard]] static bool divider(uint32_t baud, uint8_t& spr, bool& spi2x) noexcept
     {
-        constexpr Div table[] = {
-            {0u, true, 2u},
-            {0u, false, 4u},
-            {static_cast<uint8_t>(1u << SPR0), true, 8u},
-            {static_cast<uint8_t>(1u << SPR0), false, 16u},
-            {static_cast<uint8_t>(1u << SPR1), true, 32u},
-            {static_cast<uint8_t>(1u << SPR1), false, 64u},
-            {static_cast<uint8_t>((1u << SPR1) | (1u << SPR0)), false, 128u},
+        struct Opt {
+            uint16_t div;
+            uint8_t spr;
+            bool x2;
         };
-        for (const Div& d : table) {
-            if ((static_cast<uint32_t>(F_CPU) / d.div) <= baud_hz)
-                return d;
+        static constexpr Opt kOpt[] = {
+            {2, 0u << SPR0, true},  {4, 0u << SPR0, false}, {8, 1u << SPR0, true},
+            {16, 1u << SPR0, false}, {32, 1u << SPR1, true}, {64, 1u << SPR1, false},
+            {128, (1u << SPR1) | (1u << SPR0), false},
+        };
+        const uint32_t cpu = static_cast<uint32_t>(F_CPU);
+        for (const Opt& opt : kOpt) {
+            if ((cpu / opt.div) <= baud) {
+                spr = opt.spr;
+                spi2x = opt.x2;
+                return true;
+            }
         }
-        return table[sizeof(table) / sizeof(table[0]) - 1u];
+        spr = kOpt[6].spr;
+        spi2x = false;
+        return true;
     }
-};
 
-} // namespace PHL
+    Mode _mode = Mode::Mode0;
+    bool _lsbFirst = false;
+    BIF::IDigitalPin* _cs = nullptr;
+    bool _isOpen = false;
+    bool _dataError = false;
+};
+} // namespace Spi
