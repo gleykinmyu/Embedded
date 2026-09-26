@@ -1,0 +1,4 @@
+# База генерируется gen-compile-commands.ps1 и не коммитится:
+# в ней абсолютный путь к avr-g++ этой машины.
+CompileFlags:
+  CompilationDatabase: .

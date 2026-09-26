@@ -2,6 +2,7 @@
 
 /**
  * BIF::ISerial для USART0..USART3 ATmega2560.
+ * Слот Regs появляется, только если в avr/io.h есть соответствующий UCSRnA.
  * Пины фиксированы: 0 — PE1/PE0, 1 — PD3/PD2, 2 — PH1/PH0, 3 — PJ1/PJ0.
  */
 #include "critical_section.hpp"
@@ -47,49 +48,84 @@ struct Frame {
 template <uint8_t N>
 struct Regs;
 
+template <uint8_t N>
+inline constexpr bool kIndexPresent = false;
+
+#ifdef UCSR0A
+template <>
+inline constexpr bool kIndexPresent<0> = true;
 template <>
 struct Regs<0> {
-    static inline volatile uint8_t& a = UCSR0A;
-    static inline volatile uint8_t& b = UCSR0B;
-    static inline volatile uint8_t& c = UCSR0C;
-    static inline volatile uint8_t& ubrrl = UBRR0L;
-    static inline volatile uint8_t& ubrrh = UBRR0H;
-    static inline volatile uint8_t& d = UDR0;
+    static inline volatile uint8_t& UCSRA = UCSR0A;
+    static inline volatile uint8_t& UCSRB = UCSR0B;
+    static inline volatile uint8_t& UCSRC = UCSR0C;
+    static inline volatile uint8_t& UBRRL = UBRR0L;
+    static inline volatile uint8_t& UBRRH = UBRR0H;
+    static inline volatile uint8_t& UDR = UDR0;
 };
+#endif
 
+#ifdef UCSR1A
+template <>
+inline constexpr bool kIndexPresent<1> = true;
 template <>
 struct Regs<1> {
-    static inline volatile uint8_t& a = UCSR1A;
-    static inline volatile uint8_t& b = UCSR1B;
-    static inline volatile uint8_t& c = UCSR1C;
-    static inline volatile uint8_t& ubrrl = UBRR1L;
-    static inline volatile uint8_t& ubrrh = UBRR1H;
-    static inline volatile uint8_t& d = UDR1;
+    static inline volatile uint8_t& UCSRA = UCSR1A;
+    static inline volatile uint8_t& UCSRB = UCSR1B;
+    static inline volatile uint8_t& UCSRC = UCSR1C;
+    static inline volatile uint8_t& UBRRL = UBRR1L;
+    static inline volatile uint8_t& UBRRH = UBRR1H;
+    static inline volatile uint8_t& UDR = UDR1;
 };
+#endif
 
+#ifdef UCSR2A
+template <>
+inline constexpr bool kIndexPresent<2> = true;
 template <>
 struct Regs<2> {
-    static inline volatile uint8_t& a = UCSR2A;
-    static inline volatile uint8_t& b = UCSR2B;
-    static inline volatile uint8_t& c = UCSR2C;
-    static inline volatile uint8_t& ubrrl = UBRR2L;
-    static inline volatile uint8_t& ubrrh = UBRR2H;
-    static inline volatile uint8_t& d = UDR2;
+    static inline volatile uint8_t& UCSRA = UCSR2A;
+    static inline volatile uint8_t& UCSRB = UCSR2B;
+    static inline volatile uint8_t& UCSRC = UCSR2C;
+    static inline volatile uint8_t& UBRRL = UBRR2L;
+    static inline volatile uint8_t& UBRRH = UBRR2H;
+    static inline volatile uint8_t& UDR = UDR2;
 };
+#endif
 
+#ifdef UCSR3A
+template <>
+inline constexpr bool kIndexPresent<3> = true;
 template <>
 struct Regs<3> {
-    static inline volatile uint8_t& a = UCSR3A;
-    static inline volatile uint8_t& b = UCSR3B;
-    static inline volatile uint8_t& c = UCSR3C;
-    static inline volatile uint8_t& ubrrl = UBRR3L;
-    static inline volatile uint8_t& ubrrh = UBRR3H;
-    static inline volatile uint8_t& d = UDR3;
+    static inline volatile uint8_t& UCSRA = UCSR3A;
+    static inline volatile uint8_t& UCSRB = UCSR3B;
+    static inline volatile uint8_t& UCSRC = UCSR3C;
+    static inline volatile uint8_t& UBRRL = UBRR3L;
+    static inline volatile uint8_t& UBRRH = UBRR3H;
+    static inline volatile uint8_t& UDR = UDR3;
 };
+#endif
+
+namespace detail {
+
+inline void setBit(volatile uint8_t& r, uint8_t mask) noexcept
+{
+    CriticalSection cs;
+    r |= mask;
+}
+
+inline void clearBit(volatile uint8_t& r, uint8_t mask) noexcept
+{
+    CriticalSection cs;
+    r &= ~mask;
+}
+
+} // namespace detail
 
 template <uint8_t N, size_t TxSize = 128, size_t RxSize = 128>
 class Serial : public BIF::ISerial<TxSize, RxSize> {
-    static_assert(N < 4, "USART 0..3");
+    static_assert(kIndexPresent<N>, "USART index is not present in avr/io.h");
 
     using R = Regs<N>;
     Frame _frame = Frame::_8N1();
@@ -132,7 +168,7 @@ public:
         self_ = this;
         _txArmed = false;
         irq[N] = &Serial::route;
-        setBitB(static_cast<uint8_t>(1u << RXCIE0), true);
+        detail::setBit(R::UCSRB, 1 << RXCIE0);
         this->clearErrors();
         this->_isOpen = true;
         return true;
@@ -148,13 +184,13 @@ public:
 
     void close() override
     {
-        setBitB(static_cast<uint8_t>(1u << RXCIE0), false);
-        setBitB(static_cast<uint8_t>(1u << UDRIE0), false);
+        detail::clearBit(R::UCSRB, 1 << RXCIE0);
+        detail::clearBit(R::UCSRB, 1 << UDRIE0);
         irq[N] = nullptr;
         if (self_ == this)
             self_ = nullptr;
         CriticalSection cs;
-        R::b = 0;
+        R::UCSRB = 0;
         _txArmed = false;
         this->_isOpen = false;
     }
@@ -168,11 +204,9 @@ private:
 
     void uart_irq() noexcept
     {
-        while ((R::a & static_cast<uint8_t>(1u << RXC0)) != 0 &&
-               (R::b & static_cast<uint8_t>(1u << RXCIE0)) != 0)
+        while ((R::UCSRA & (1 << RXC0)) != 0 && (R::UCSRB & (1 << RXCIE0)) != 0)
             this->IRQ_RX_Handler();
-        if ((R::a & static_cast<uint8_t>(1u << UDRE0)) != 0 &&
-            (R::b & static_cast<uint8_t>(1u << UDRIE0)) != 0)
+        if ((R::UCSRA & (1 << UDRE0)) != 0 && (R::UCSRB & (1 << UDRIE0)) != 0)
             this->IRQ_TX_Handler();
     }
 
@@ -195,52 +229,43 @@ private:
             c = static_cast<uint8_t>(c | (1u << UPM01) | (1u << UPM00));
 
         CriticalSection cs;
-        R::b = 0;
-        uint8_t a = R::a;
+        R::UCSRB = 0;
+        uint8_t a = R::UCSRA;
         a = static_cast<uint8_t>(a & static_cast<uint8_t>(~((1u << TXC0) | (1u << U2X0))));
         if (u2x)
             a = static_cast<uint8_t>(a | (1u << U2X0));
-        R::a = a;
-        R::ubrrh = static_cast<uint8_t>(ubrr >> 8);
-        R::ubrrl = static_cast<uint8_t>(ubrr);
-        R::c = c;
-        R::b = static_cast<uint8_t>((1u << RXEN0) | (1u << TXEN0));
+        R::UCSRA = a;
+        R::UBRRH = static_cast<uint8_t>(ubrr >> 8);
+        R::UBRRL = static_cast<uint8_t>(ubrr);
+        R::UCSRC = c;
+        R::UCSRB = static_cast<uint8_t>((1u << RXEN0) | (1u << TXEN0));
         return true;
     }
 
-    static void setBitB(uint8_t mask, bool on) noexcept
-    {
-        CriticalSection cs;
-        if (on)
-            R::b = static_cast<uint8_t>(R::b | mask);
-        else
-            R::b = static_cast<uint8_t>(R::b & static_cast<uint8_t>(~mask));
-    }
-
 protected:
-    void IRQ_TX_Enable() override { setBitB(static_cast<uint8_t>(1u << UDRIE0), true); }
-    void IRQ_TX_Disable() override { setBitB(static_cast<uint8_t>(1u << UDRIE0), false); }
+    void IRQ_TX_Enable() override { detail::setBit(R::UCSRB, 1 << UDRIE0); }
+    void IRQ_TX_Disable() override { detail::clearBit(R::UCSRB, 1 << UDRIE0); }
 
     bool isHardwareTxBusy() const override
     {
-        if ((R::a & static_cast<uint8_t>(1u << UDRE0)) == 0)
+        if ((R::UCSRA & static_cast<uint8_t>(1u << UDRE0)) == 0)
             return true;
         if (!_txArmed)
             return false;
-        return (R::a & static_cast<uint8_t>(1u << TXC0)) == 0;
+        return (R::UCSRA & static_cast<uint8_t>(1u << TXC0)) == 0;
     }
 
-    uint8_t readHardware() override { return R::d; }
+    uint8_t readHardware() override { return R::UDR; }
 
     void writeHardware(uint8_t data) override
     {
         _txArmed = true;
-        R::d = data;
+        R::UDR = data;
     }
 
     bool checkErrors() override
     {
-        const uint8_t a = R::a;
+        const uint8_t a = R::UCSRA;
         const uint8_t fe = static_cast<uint8_t>(1u << FE0);
         const uint8_t upe = static_cast<uint8_t>(1u << UPE0);
         const uint8_t dor = static_cast<uint8_t>(1u << DOR0);
