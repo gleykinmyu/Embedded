@@ -1,0 +1,13 @@
+# compile_commands.json: pio run -t compiledb
+CompileFlags:
+  CompilationDatabase: .
+  Remove:
+    - -mlongcalls
+    - -mdisable-hardware-atomics
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -fno-shrink-wrap
+    - -fno-jump-tables
+    - -fdiagnostics-color=*
+    - -fmacro-prefix-map=*
+    - -fno-builtin-*

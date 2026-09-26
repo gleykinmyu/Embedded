@@ -1,0 +1,15 @@
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.enableAutomaticKitScan": false,
+    "clangd.arguments": [
+        "--background-index",
+        "--header-insertion=never",
+        "--query-driver=**/xtensa-esp32s3-elf-g++*",
+        "--query-driver=**/xtensa-esp32s3-elf-gcc*",
+        "--query-driver=**/xtensa-esp32s3-elf-g++.exe",
+        "--query-driver=**/xtensa-esp32s3-elf-gcc.exe"
+    ]
+}
