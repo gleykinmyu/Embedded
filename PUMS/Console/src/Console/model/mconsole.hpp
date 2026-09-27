@@ -13,9 +13,9 @@
 #include "browser.hpp"
 #include "fio.hpp"
 #include "showFile.hpp"
-#include "smcp/GroupConsole/group_bank.hpp"
-#include "smcp/GroupConsole/group_console.hpp"
-#include "smcp/transport/ilink.hpp"
+#include "smcp/mech/Console/group_bank.hpp"
+#include "smcp/mech/Console/group_console.hpp"
+#include "smcp/ilink.hpp"
 
 struct Settings {
     bool isolateGroup = false;
@@ -96,7 +96,7 @@ public:
     [[nodiscard]] const smcp::msg::Nack& lastNack() const noexcept { return _lastNack; }
     [[nodiscard]] uint8_t lastNackReq() const noexcept { return _lastNackReq; }
 
-    /** UI загружен (wait.onLoad): можно Online и GetTelemetry. */
+    /** UI загружен (wait.onLoad): можно GetTelemetry. */
     void setUiReady() noexcept;
     [[nodiscard]] bool uiReady() const noexcept { return _uiReady; }
 
@@ -108,11 +108,11 @@ protected:
     void onNack(smcp::Session* session, const smcp::TxSlot& req,
                 const smcp::msg::Nack& reply) noexcept override;
     void onPhase(Phase phase) noexcept override;
-    [[nodiscard]] bool readyForOnline() const noexcept override { return _uiReady; }
+    void onLink(uint8_t server_id, bool up) noexcept override;
 
 private:
     void onFioEvent(sf::Fio::Event ev) noexcept;
-    void requestMechTelemetry() noexcept;
+    void requestMechTelemetry(uint8_t server_id = smcp::CMech::kPrimaryServer) noexcept;
 
     Mode _mode = Mode::Work;
     smcp::msg::Nack _lastNack{};

@@ -7,7 +7,7 @@
 
 #if defined(SMCP_TRACE_LINK)
 
-#include "smcp/Console/console_message.hpp"
+#include "smcp/mech/message.hpp"
 
 namespace smcp {
 namespace {
@@ -22,7 +22,7 @@ namespace {
     return '?';
 }
 
-void printBody(const msg::Packet& pkt) noexcept
+void printBody(const Packet& pkt) noexcept
 {
 #if defined(SMCP_TRACE_SHORT)
     if (pkt.msg.id == msg::Nack::kId) {
@@ -158,7 +158,7 @@ void printBody(const msg::Packet& pkt) noexcept
 
 } // namespace
 
-void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const msg::Packet& pkt) noexcept
+void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) noexcept
 {
 #if !defined(SMCP_TRACE_HB)
     if (pkt.msg.id == msg::Heartbeat::kId) {

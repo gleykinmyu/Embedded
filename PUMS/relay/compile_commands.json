@@ -1,0 +1,14 @@
+[
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/src/avr_isr.o -c -Wno-error=narrowing -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++17 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -fno-rtti -DF_CPU=16000000L -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -Iinclude -Isrc -I../../libs/board/mega2560/cxx -I../../libs/board/mega2560 -I../../libs/Interfaces src/avr_isr.cpp",
+        "directory": "C:/GitHub/Embedded/PUMS/relay",
+        "file": "src/avr_isr.cpp",
+        "output": ".pio/build/megaatmega2560/src/avr_isr.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/src/main.o -c -Wno-error=narrowing -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++17 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -fno-rtti -DF_CPU=16000000L -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -Iinclude -Isrc -I../../libs/board/mega2560/cxx -I../../libs/board/mega2560 -I../../libs/Interfaces src/main.cpp",
+        "directory": "C:/GitHub/Embedded/PUMS/relay",
+        "file": "src/main.cpp",
+        "output": ".pio/build/megaatmega2560/src/main.o"
+    }
+]

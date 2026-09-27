@@ -16,7 +16,7 @@ Segment Motion Control Protocol: `src/smcp`, leaf `MConsole` / `MServer` / `Driv
 
 ## Слои
 
-Зависимости сверху вниз. Утечка одна: `message.hpp` тянет `Selection` из GroupConsole.
+Зависимости сверху вниз. Утечка одна: `smcp/mech/message.hpp` тянет `Selection` из `mech/group.hpp`.
 
 | Слой | Типы | Ответственность |
 |------|------|-----------------|

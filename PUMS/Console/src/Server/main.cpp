@@ -19,7 +19,7 @@
 #include "core/nexDebug.hpp"
 #include "model/mserver.hpp"
 #include "nex.hpp"
-#include "smcp/transport/can_link.hpp"
+#include "smcp/can_link.hpp"
 
 smcp::CanLink linkServer(board.can, smcp::msg::kServerIdMin);
 MServer mServer(linkServer, boardClockMs);

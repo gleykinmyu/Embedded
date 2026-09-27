@@ -20,8 +20,8 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - `DriveMech` мапит устройство(я) на CAN2 → логический `IMech` для пульта.
   Композиция плат — только на сервере. Пульт видит «ось N на `server_id`».
 - Southbound **не** слой над `Select`/`Telemetry` и не вложенный протокол в payload.
-- Транспорт: HB, Ack/Nack, `pkt_id` в CAN ID, очереди, `IdConflict`.
-  North PDU: `Console/console_message.hpp`. Drive PDU — свой файл, не `message.hpp`.
+- Транспорт: lib `libs/smcp` (`smcp/message.hpp`, Node, Session, CanLink).
+  North PDU: `smcp/mech/message.hpp`. Drive PDU — свой файл, не транспортный `smcp/message.hpp`.
 - Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
   Demux: `SMCP_IF_MSG` в `SessionConsole` (unicast A) / `IConsole::onPacket` (class D).
 - Независимость протоколов: непрозрачный payload + диапазоны `msg_id`.
@@ -35,7 +35,7 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - CAN ID: `msg_id[7] | dst[8] | src[8] | pkt_id[6]` в битах `[28:0]`.
 - Приоритет = `msg_id`: Ack/Nack → команды → HB `0x30` → Telemetry `0x40`.
 - Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack DLC=2 `error|detail`).
-  Коды Nack — у northbound (`ErrorCode` в `console_message.hpp`), транспорт несёт raw `uint8_t`.
+  Коды Nack — у northbound (`ErrorCode` в `smcp/mech/message.hpp`), транспорт несёт raw `uint8_t`.
 
 ## Что не делать
 
@@ -48,7 +48,8 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 ## Код
 
 - Протокол: `PROTOCOL.md` (классы A–E, чеклист MsgId).
-- Транспорт: `transport/{node,session,message,ilink,can_link}`.
-- North PDU: `Console/console_message.hpp`.
-- Сервер: `Server/`, `src/Server/model/{mserver,drive_mech}`.
+- Транспорт: lib `libs/smcp`.
+- North PDU / оси / `Group`: `src/smcp/mech/`. Пульт: `mech/Console/` (в т.ч. GRUP/`group_bank`). Сегмент: `mech/Server/`.
+- Пульт: `begin(console_id)` / `end` / `start(server_id)` / `stop`. Phase Idle/Listen/Ready/Fault. Peer в Session, не `_server_id`.
+- Сервер leaf: `src/Server/model/{mserver,drive_mech}`.
 - Плата: только CAN1 (`board.can`, PD0/PD1). F407 умеет CAN2 — ещё не открыт.

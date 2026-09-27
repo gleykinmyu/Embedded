@@ -1,4 +1,2 @@
-libs/Nextion/examples/stm/compile_commands.json
-PUMS/Console/compile_commands.json
-PUMS/relay/compile_commands.json
-libs/board/mega2560/compile_commands.json
+# Локальная ссылка на ~/.platformio этой машины. compile_commands.json проектов в Git входит.
+.pio_core_root

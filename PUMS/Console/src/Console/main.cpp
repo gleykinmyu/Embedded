@@ -19,7 +19,7 @@
 #include "core/memstat.hpp"
 #include "core/crash_dump.hpp"
 #include "fat_file.hpp"
-#include "smcp/transport/can_link.hpp"
+#include "smcp/can_link.hpp"
 #include "w25q_show_file.hpp"
 
 smcp::file::FatVolume sdVolume(board.SD.volumePath());
@@ -197,7 +197,7 @@ int main(void)
     logCanDebug();
 #endif
 
-    console.begin(smcp::msg::kServerIdMin);
+    console.begin(smcp::msg::kConsoleIdMin);
 
     if (console.fio.restore()) {
         NEX_DBG("Restored show from W25Q: '%s'\n", console.show.name());

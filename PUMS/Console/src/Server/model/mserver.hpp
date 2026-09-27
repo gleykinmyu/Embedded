@@ -5,11 +5,11 @@
 
 #pragma once
 
-#include "model/drive_mech.hpp"
-#include "smcp/GroupConsole/group.hpp"
-#include "smcp/Server/server.hpp"
-#include "smcp/transport/ilink.hpp"
-#include "smcp/transport/session.hpp"
+#include "Server/model/drive_mech.hpp"
+#include "smcp/mech/group.hpp"
+#include "smcp/mech/Server/server.hpp"
+#include "smcp/ilink.hpp"
+#include "smcp/session.hpp"
 
 class MServer : public smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles> {
 public:

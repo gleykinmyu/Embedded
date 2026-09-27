@@ -14,7 +14,7 @@
 #include "impl/w25q.hpp"
 #include "iFileSystem.hpp"
 #include "showFile.hpp"
-#include "smcp/GroupConsole/group.hpp"
+#include "smcp/mech/group.hpp"
 
 namespace smcp {
 namespace file {

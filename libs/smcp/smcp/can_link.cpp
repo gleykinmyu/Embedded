@@ -1,0 +1,53 @@
+/**
+ * @file can_link.cpp
+ * @brief Реализация smcp::CanLink (ICAN gateway).
+ */
+
+#include "smcp/can_link.hpp"
+
+namespace smcp {
+
+CanLink::CanLink(BIF::CAN::ICAN& can, uint8_t node_id) noexcept
+    : ILink(node_id)
+    , _can(can)
+{}
+
+bool CanLink::isOpen() noexcept
+{
+    return _can.isOpen();
+}
+
+bool CanLink::write(const Packet& pkt) noexcept
+{
+    BIF::CAN::Frame frame;
+    if (!pkt.pack(frame)) {
+        _status = Status::EncodeFailed;
+        return false;
+    }
+
+    if (!_can.send(frame)) {
+        _status = Status::SendFailed;
+        return false;
+    }
+
+    _status = Status::OK;
+    return true;
+}
+
+bool CanLink::read(Packet& out) noexcept
+{
+    BIF::CAN::Frame frame;
+    if (!_can.recv(frame)) {
+        return false;
+    }
+
+    if (!out.unpack(frame)) {
+        _status = Status::DecodeFailed;
+        return false;
+    }
+
+    _status = Status::OK;
+    return true;
+}
+
+} // namespace smcp

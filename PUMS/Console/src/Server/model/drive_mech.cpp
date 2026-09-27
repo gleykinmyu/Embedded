@@ -2,9 +2,7 @@
  * @file drive_mech.cpp
  */
 
-#include "model/drive_mech.hpp"
-
-uint8_t DriveMech::s_selectedCount = 0u;
+#include "Server/model/drive_mech.hpp"
 
 DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
     : IMech(id)
@@ -16,30 +14,7 @@ DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
 
 void DriveMech::select(uint8_t console_id) noexcept
 {
-    if (console_id == smcp::kHolderNone) {
-        if (isSelected()) {
-            _holder = smcp::kHolderNone;
-            if (s_selectedCount > 0u) {
-                --s_selectedCount;
-            }
-        }
-        return;
-    }
-
-    if (isSelected()) {
-        return;
-    }
-
-    if (_status.any(Status::Blocked) || !_status.any(Status::Ready)) {
-        return;
-    }
-
-    if (s_selectedCount >= kMaxSelected) {
-        return;
-    }
-
     _holder = console_id;
-    ++s_selectedCount;
 }
 
 void DriveMech::block(bool blocked) noexcept

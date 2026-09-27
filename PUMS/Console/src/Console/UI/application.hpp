@@ -69,7 +69,7 @@ public:
     /** На work. `syncScene` — группы/tgPage и клетки до `page work`. */
     void goWork(bool syncScene = false) noexcept;
 
-    /** wait.onLoad: группы/tgPage, затем Online + телеметрия (клетки). */
+    /** wait.onLoad: группы/tgPage, затем GetTelemetry (клетки). */
     void onUiReady() noexcept;
 
     void onPageChange(const nex::msg::evPage& e) noexcept override;

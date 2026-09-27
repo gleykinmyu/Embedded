@@ -1,6 +1,6 @@
-# --query-driver в .vscode/settings.json подтягивает sysroot xtensa-g++.
+# compile_commands.json в корне проекта: pio run -t compiledb
 CompileFlags:
-  CompilationDatabase: C:/Users/User/.platformio/build/TEST-ESP32-Relay/esp32s3_poe_eth_8di_8ro
+  CompilationDatabase: .
   Remove:
     - -mlongcalls
     - -mdisable-hardware-atomics

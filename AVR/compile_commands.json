@@ -1,0 +1,464 @@
+[
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/CDC.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/CDC.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/CDC.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/CDC.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/HardwareSerial.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/HardwareSerial.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/HardwareSerial0.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial0.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial0.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/HardwareSerial0.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/HardwareSerial1.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial1.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial1.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/HardwareSerial1.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/HardwareSerial2.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial2.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial2.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/HardwareSerial2.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/HardwareSerial3.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial3.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/HardwareSerial3.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/HardwareSerial3.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/IPAddress.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/IPAddress.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/IPAddress.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/IPAddress.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/PluggableUSB.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/PluggableUSB.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/PluggableUSB.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/PluggableUSB.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/Print.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Print.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Print.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/Print.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/Stream.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Stream.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Stream.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/Stream.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/Tone.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Tone.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/Tone.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/Tone.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/USBCore.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/USBCore.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/USBCore.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/USBCore.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/WInterrupts.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WInterrupts.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WInterrupts.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/WInterrupts.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/WMath.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WMath.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WMath.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/WMath.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/WString.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WString.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/WString.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/WString.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/abi.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/abi.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/abi.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/abi.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/hooks.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/hooks.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/hooks.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/hooks.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/main.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/main.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/main.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/main.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/FrameworkArduino/new.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/new.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/new.cpp",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/new.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/wiring.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/wiring_analog.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_analog.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_analog.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring_analog.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/wiring_digital.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_digital.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_digital.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring_digital.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -mmcu=atmega2560 -x assembler-with-cpp -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega -c -o .pio/build/megaatmega2560/FrameworkArduino/wiring_pulse.S.o C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_pulse.S",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_pulse.S",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring_pulse.S.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/wiring_pulse.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_pulse.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_pulse.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring_pulse.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe -o .pio/build/megaatmega2560/FrameworkArduino/wiring_shift.c.o -c -std=gnu11 -fno-fat-lto-objects -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_shift.c",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino/wiring_shift.c",
+        "output": ".pio/build/megaatmega2560/FrameworkArduino/wiring_shift.c.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib1fb/SPI/SPI.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega C:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src/SPI.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "C:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src/SPI.cpp",
+        "output": ".pio/build/megaatmega2560/lib1fb/SPI/SPI.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatDbg.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatDbg.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatDbg.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatDbg.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFile.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFile.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFile.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFile.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFilePrint.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFilePrint.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFilePrint.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFilePrint.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFileWrite.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFileWrite.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFileWrite.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFileWrite.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFormatter.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFormatter.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatFormatter.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatFormatter.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatName.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatName.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatName.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatName.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatPartition.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatPartition.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatPartition.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatPartition.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatVolume.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatVolume.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/ExFatLib/ExFatVolume.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/ExFatLib/ExFatVolume.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatDbg.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatDbg.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatDbg.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatDbg.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFile.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFile.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFile.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFile.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFileLFN.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFileLFN.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFileLFN.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFileLFN.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFilePrint.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFilePrint.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFilePrint.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFilePrint.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFileSFN.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFileSFN.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFileSFN.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFileSFN.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFormatter.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFormatter.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatFormatter.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatFormatter.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatName.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatName.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatName.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatName.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatPartition.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatPartition.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatPartition.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatPartition.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FatLib/FatVolume.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatVolume.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FatLib/FatVolume.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FatLib/FatVolume.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FreeStack.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FreeStack.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FreeStack.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FreeStack.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FsLib/FsFile.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsFile.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsFile.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FsLib/FsFile.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FsLib/FsNew.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsNew.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsNew.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FsLib/FsNew.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/FsLib/FsVolume.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsVolume.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/FsLib/FsVolume.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/FsLib/FsVolume.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/MinimumSerial.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/MinimumSerial.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/MinimumSerial.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/MinimumSerial.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SdCard/Rp2040Sdio/PioSdioCard.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SdCard/Rp2040Sdio/PioSdioCard.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SdCard/Rp2040Sdio/PioSdioCard.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SdCard/Rp2040Sdio/PioSdioCard.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SdCard/SdCardInfo.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SdCard/SdCardInfo.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SdCard/SdCardInfo.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SdCard/SdCardInfo.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SdCard/SdSpiCard.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SdCard/SdSpiCard.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SdCard/SdSpiCard.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SdCard/SdSpiCard.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SdCard/TeensySdio/TeensySdio.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SdCard/TeensySdio/TeensySdio.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SdCard/TeensySdio/TeensySdio.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SdCard/TeensySdio/TeensySdio.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiArtemis.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiArtemis.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiArtemis.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiArtemis.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiChipSelect.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiChipSelect.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiChipSelect.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiChipSelect.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiDue.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiDue.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiDue.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiDue.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiParticle.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiParticle.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiParticle.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiParticle.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiSTM32.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiSTM32.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiSTM32.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiSTM32.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiSTM32Core.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiSTM32Core.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiSTM32Core.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiSTM32Core.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiTeensy3.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiTeensy3.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/SpiDriver/SdSpiTeensy3.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/SpiDriver/SdSpiTeensy3.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FmtNumber.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FmtNumber.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FmtNumber.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FmtNumber.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FsCache.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FsCache.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FsCache.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FsCache.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FsDateTime.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FsDateTime.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FsDateTime.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FsDateTime.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FsName.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FsName.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FsName.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FsName.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FsStructs.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FsStructs.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FsStructs.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FsStructs.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/FsUtf.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/FsUtf.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/FsUtf.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/FsUtf.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/PrintBasic.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/PrintBasic.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/PrintBasic.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/PrintBasic.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/common/upcase.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/common/upcase.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/common/upcase.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/common/upcase.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/iostream/StdioStream.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/iostream/StdioStream.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/iostream/StdioStream.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/iostream/StdioStream.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/iostream/StreamBaseClass.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/iostream/StreamBaseClass.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/iostream/StreamBaseClass.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/iostream/StreamBaseClass.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/iostream/istream.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/iostream/istream.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/iostream/istream.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/iostream/istream.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/lib874/SdFat/iostream/ostream.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega .pio/libdeps/megaatmega2560/SdFat/src/iostream/ostream.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/SdFat/src/iostream/ostream.cpp",
+        "output": ".pio/build/megaatmega2560/lib874/SdFat/iostream/ostream.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o \".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/EasyNextionLibrary.cpp.o\" -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega\".pio/libdeps/megaatmega2560/Easy Nextion Library/src/EasyNextionLibrary.cpp\"",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/Easy Nextion Library/src/EasyNextionLibrary.cpp",
+        "output": ".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/EasyNextionLibrary.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o \".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/callTriggers.cpp.o\" -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega\".pio/libdeps/megaatmega2560/Easy Nextion Library/src/callTriggers.cpp\"",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/Easy Nextion Library/src/callTriggers.cpp",
+        "output": ".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/callTriggers.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o \".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/readCustomCommands.cpp.o\" -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega\".pio/libdeps/megaatmega2560/Easy Nextion Library/src/readCustomCommands.cpp\"",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": ".pio/libdeps/megaatmega2560/Easy Nextion Library/src/readCustomCommands.cpp",
+        "output": ".pio/build/megaatmega2560/lib9b8/Easy Nextion Library/readCustomCommands.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/src/Console.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -Iinclude -Isrc \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega src/Console.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "src/Console.cpp",
+        "output": ".pio/build/megaatmega2560/src/Console.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/src/SDCard.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -Iinclude -Isrc \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega src/SDCard.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "src/SDCard.cpp",
+        "output": ".pio/build/megaatmega2560/src/SDCard.cpp.o"
+    },
+    {
+        "command": "C:/Users/User/.platformio/packages/toolchain-atmelavr/bin/avr-g++.exe -o .pio/build/megaatmega2560/src/main.cpp.o -c -fno-exceptions -fno-threadsafe-statics -fpermissive -std=gnu++11 -mmcu=atmega2560 -Os -Wall -ffunction-sections -fdata-sections -flto -DPLATFORMIO=60200 -DARDUINO_AVR_MEGA2560 -DF_CPU=16000000L -DARDUINO_ARCH_AVR -DARDUINO=10808 -Iinclude -Isrc \"-I.pio/libdeps/megaatmega2560/Easy Nextion Library/src\" -I.pio/libdeps/megaatmega2560/SdFat/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/libraries/SPI/src -IC:/Users/User/.platformio/packages/framework-arduino-avr/cores/arduino -IC:/Users/User/.platformio/packages/framework-arduino-avr/variants/mega src/main.cpp",
+        "directory": "C:/GitHub/Embedded/AVR",
+        "file": "src/main.cpp",
+        "output": ".pio/build/megaatmega2560/src/main.cpp.o"
+    }
+]

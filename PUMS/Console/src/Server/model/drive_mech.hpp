@@ -8,10 +8,10 @@
 #include <cstdint>
 
 #include "obj_bank.hpp"
-#include "smcp/mech.hpp"
-#include "smcp/Server/server.hpp"
+#include "smcp/mech/mech.hpp"
+#include "smcp/mech/Server/server.hpp"
 
-/** IMech на сервере: select сразу, лимит Selected. */
+/** IMech на сервере: commit Select/Block; лимит Selected — `MServer::acceptSelect`. */
 class DriveMech : public smcp::IMech {
 public:
     static constexpr uint8_t kMaxSelected = 3u;
@@ -32,7 +32,6 @@ public:
 
 private:
     Type _type = Type::Rope;
-    static uint8_t s_selectedCount;
 };
 
 /** Банк DriveMech[N]: ctor регистрирует каждый в IServer. */

@@ -1,8 +1,8 @@
 # SMCP MVP — протокол (консоль ↔ сервер сегмента)
 
 Канал: CAN extended ID.  
-Транспорт: `smcp/transport/message.hpp` (Ack, Nack, Heartbeat, конверт).  
-Northbound PDU: `smcp/Console/console_message.hpp` (Select, Block, GetTelemetry, SetTarget, Telemetry).
+Транспорт: `smcp/message.hpp` (Ack, Nack, Heartbeat, конверт; lib `libs/smcp`).  
+Northbound PDU: `smcp/mech/message.hpp` (Select, Block, GetTelemetry, SetTarget, Telemetry).
 
 ```text
 CAN ID (29 bit, IDE=1):
@@ -44,6 +44,8 @@ Server:   1) Проверка (без изменений): маска валид
 ```
 
 - Deselect снимает **только своё**; бит чужого holder → Nack Busy. Set с bit=0 чужого не трогает.
+- Потеря HB на сервере (`onHbLost`): снять Select этого peer + Telemetry по сменившимся (как Deselect всех своих). Block не трогаем.
+- Консоль кладёт Telemetry только в `segment(src)`. По умолчанию один банк: `kPrimaryServer` и единственный `start()`. Чужой / второй src без override — отбросить.
 - В Telemetry есть **`holder_id`** (кто держит Select). Смена `0 ↔ console` = изменение → Telemetry обязателен.
 - Повторный Select без изменений → **Ack**, Telemetry можно не слать.
 - Массовый Set на 32 оси с 32 изменениями → 1 Ack + 32 Telemetry (редко; ок для CAN).
@@ -64,7 +66,7 @@ Server:   1) Оси из mask существуют (иначе Nack MechNotFound
           2) Ack + Telemetry (D) по каждой запрошенной оси — снимок без commit
 ```
 
-После Online консоль обычно запрашивает маску своих слотов (зеркало Ready/holder до первого Select).
+После `onLink(server, true)` консоль обычно запрашивает маску своих слотов (зеркало Ready/holder до первого Select).
 
 ---
 
@@ -103,7 +105,7 @@ Open/Close на wire нет. Локально: `Session::Status` / `linkUp()`.
 В Node нет ролей «консоль/сервер». Сессия: `Idle` / `Connecting` / `Awaiting` / `Open`
 (`Awaiting` = первый ping, ещё не up; keep-alive из `Open` — только `_hb.isWaiting()`).
 `_master` (`start(peer)`) — кто шлёт keep-alive HB; без `start` — только pong + сторож тишины.
-Кто master, решает приложение (консоль: `begin(server_id)`; сервер: слоты без `start`).
+Кто master, решает приложение (консоль: `start(server_id)` после Listen; сервер: слоты без `start`).
 
 | | Master (`_master` / `start`) | Slave |
 |--|---------|---------|
@@ -124,7 +126,7 @@ Master:  start → Connecting → ping → Awaiting → RX → Open
 Один `MsTimer` + счётчик `_hb_misses`.  
 «Сессия открыта» = `Session::isOpen()`.
 
-API консоли: `setConsoleId` / `begin(server)` / `serverId` / `update` / `linkUp` / `onPhase`.
+API консоли: `begin(console_id)` / `end` / `start(server)` / `stop(server)` / `update` / `linkUp` / `onPhase` / `onLink`.
 Сервер: `sessionByPeer` / `SessionBank<SessionConsole>`, без единого `consoleId`.
 `Node::getStatus`/`clearError`; часы — в ctor `Node` (stall enqueue).
 
@@ -144,7 +146,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 | **Session** | peer, `Status`, pkt_id, **своя TX-очередь**; `open`/`close` чистят очередь |
 
 `IConsole` / `IServer` наследуют **Node**, держат registry `Session*`;
-объекты: `Console` — primary `Session` (+ `MaxSessions+1` слотов);
+объекты: `Console` — primary `Session` (`MaxSessions` слотов, без запасного);
 `MServer` — `SessionBank<SessionConsole>`. Leaf может добавить ещё Session в свободные слоты.
 
 ### Конфликт одинаковых `console_id`
@@ -153,13 +155,14 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 Отдельный Register / участие сервера в разруливании дубля **не нужны**.
 
 Правило на консоли (first-wins): `IConsole::Phase` + `onPhase`
-(`Idle` / `Listen` / `Connecting` / `Online` / `Fault`):
-1. `begin(server)` → **Listen** ~`Heartbeat::kTimeoutMs`.
+(`Idle` / `Listen` / `Ready` / `Fault`):
+1. `begin(console_id)` → **Listen** ~`Heartbeat::kTimeoutMs` (свой id на шине, не peer).
 2. Кадр с `src_id == мой id` → **Fault** (`Node::IdConflict`).
-3. Listen OK → **Connecting** → **Online**. HB lost → снова **Connecting**.
-4. `setConsoleId` → снова `begin(server)` (новый Listen).
+3. Listen OK → **Ready**. Дальше `start(server_id)` (master HB). `end()` → Idle.
+4. HB lost: Phase остаётся Ready, сессия close, `start` помнит peer и открывает снова. `stop` — без reconnect.
+5. Смена `console_id` — снова `begin(id)` (новый Listen; живые start закрываются).
    TxFull / Nack / LinkError — `SMCP_NODE` / `SMCP_SESS` / `SMCP_CONS` (см. `debug.hpp`), не Phase.
-   Повтор после Fault: `setConsoleId` и/или `begin()` (`clearError` внутри).
+   Повтор после Fault: `begin(console_id)` (`clearError` внутри).
 
 Тот же пункт у сервера — для **своего** id.
 
@@ -176,9 +179,11 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 - Drain: один RR на `sessionCapacity + 1` (слоты сессий + bus), **по одному кадру** за заход.
 - Окно Ack = **1**: class A после wire — голова `_tx_req` + `_ack` (не drop до reply);
   `_tx_ctrl` / `_tx_req` — RR в `peekTx` (после успешного wire).
-  Retry головы req по timeout; Ack/Nack / `Timeout` → hook (`onAck`/`onNack`, `req` жив)
+  Retry головы req по timeout; Ack/Nack / `Timeout` → hook (`onAck`/`onNack`, `req` и `reply` живы)
   → затем drop головы `_tx_req`.
-  Diag (default empty): `onPktIdMismatch(expected, got)` (reply ≠ pending). Сессию не рвём.
+  Diag (default лог): `onPktIdMismatch(expected, got)` (reply ≠ pending);
+  `onPackFailed(session, msg_id)` — PDU не pack, кадр не в очередь (`nullptr` — bus).
+  Свой pkt_id, но Ack/Nack не unpack — окно не закрываем, дальше retry / Timeout.
 - Dual-axis Telemetry — **не** в MVP.
 
 ---
@@ -194,7 +199,7 @@ RX любого кадра с `src_id == мой id` → **`Node::Status::IdConfl
 | **A. Session request** | unicast → peer, ждёт Ack/Nack | `Session` | `Packet.pkt_id`, TX назначает | `_tx_req` (retry/окно) |
 | **B. Session reply** | Ack/Nack (или аналог) на request | `Session::sendAck/Nack` | echo → `Packet.pkt_id` | `_tx_ctrl` |
 | **C. Session control** | линк/сессия без RPC (сейчас HB) | внутри `Session` | нет | `_tx_ctrl` |
-| **D. Broadcast / announce** | `dst=0xFF`, без диалога | `Node::send(body, kBroadcastId)` | нет | нет (`Node::_tx`) |
+| **D. Broadcast / announce** | `dst=0xFF`, без диалога | `Node::send(body, Packet::kBroadcastId)` | нет | нет (`Node::_tx`) |
 | **E. Unicast notify** | unicast, **без** Ack (событие) | `Session` / `Node::send` | нет | `_tx_ctrl` / `Node::_tx` |
 
 Примеры: Select/Block/SetTarget → **A**; Ack/Nack → **B**; Heartbeat → **C**; Telemetry → **D**.
@@ -205,8 +210,8 @@ Class B: echo `pkt_id` запроса в CAN ID (Ack DLC=0). Счётчик `_pk
 
 ### 2. Wire / codec
 
-1. Транспортные PDU — `message.hpp`. Прикладные — свой файл (`console_message.hpp`, не `message.hpp`).
-   Nack несёт opaque `error`/`detail`; коды northbound — `ErrorCode` в `console_message.hpp`.
+1. Транспортные PDU — `smcp/message.hpp`. Прикладные — свой файл в слое (`smcp/mech/message.hpp`).
+   Nack несёт opaque `error`/`detail`; коды northbound — `ErrorCode` в `smcp/mech/message.hpp`.
    Локальный abort Ack — `Nack::kTimeout` (не с шины).
 2. Конверт: `Packet { src, dst, pkt_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
 3. `Packet::pack` / `Packet::unpack` не demux'ят приложение: неизвестный `msg_id` — валидный opaque payload.
@@ -230,7 +235,7 @@ Class B: echo `pkt_id` запроса в CAN ID (Ack DLC=0). Счётчик `_pk
 
 - RX: `Node::update` → `acceptRx` → `sessionByPeer` / `Session::onPacket` → иначе `Node::onPacket`.
 - Новые **A** на сервере: `SessionConsole::onPacket` → `SMCP_IF_MSG(Select/…)` + Ack/Nack; снимок — Telemetry (**D**).
-- Новые **D**: `Node::send(Telemetry{}, kBroadcastId)` и разбор в **наследнике Node** (`IConsole::onPacket`). Не через Session.
+- Новые **D**: `Node::send(Telemetry{}, Packet::kBroadcastId)` и разбор в **наследнике Node** (`IConsole::onPacket`). Не через Session.
 - Политика отказа Select (`acceptSelect`) / Block (`acceptBlock`) / SetTarget (Limits) — в наследниках.
 
 ### 5. Чеклист «добавил MsgId»

@@ -81,29 +81,39 @@ void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
             || _lastNackReq == smcp::msg::Block::kId)) {
         smcp::Selection mask;
         mask.add(detail);
-        getTelemetry(mask);
+        getTelemetry(mask, session->peerId());
     }
 }
 
-void MConsole::requestMechTelemetry() noexcept
+void MConsole::requestMechTelemetry(uint8_t server_id) noexcept
 {
     smcp::Selection mask;
     for (uint8_t i = 0; i < kMechCount; ++i) {
         mask.add(i);
     }
-    getTelemetry(mask);
+    getTelemetry(mask, server_id);
 }
 
 void MConsole::setUiReady() noexcept
 {
     _uiReady = true;
-    tryGoOnline();
+    if (linkUp()) {
+        requestMechTelemetry();
+    }
 }
 
 void MConsole::onPhase(Phase phase) noexcept
 {
-    if (phase == Phase::Online) {
-        requestMechTelemetry();
+    if (phase == Phase::Ready) {
+        start(smcp::msg::kServerIdMin);
+    }
+    onConsoleChanged();
+}
+
+void MConsole::onLink(uint8_t server_id, bool up) noexcept
+{
+    if (up && _uiReady) {
+        requestMechTelemetry(server_id);
     }
     onConsoleChanged();
 }

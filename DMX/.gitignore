@@ -1,9 +1,6 @@
 # Официальный бинарник clangd (скрипт tools/bootstrap-clangd.sh), не коммитить
 tools/clangd-portable/
 
-# Абсолютные пути к toolchain/фреймворку — только локально (pio run -t compiledb)
-compile_commands.json
-
 .pio
 __pycache__/
 *.py[cod]
