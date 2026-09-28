@@ -190,20 +190,20 @@ void MonitorView::syncChrome() noexcept
     const uint8_t nPages = pages();
     uint8_t page = 0;
     ViewMode view = ViewMode::Current;
-    dmx::Direction dir = dmx::Direction::Receive;
+    dmx::Role dir = dmx::Role::Receive;
     uint32_t cycle = 0;
     const char* link = "-";
     if (_tester != nullptr) {
         _tester->setRows(nRows);
         page = _tester->page();
         view = _tester->view();
-        dir = _tester->port().direction();
+        dir = _tester->port().role();
         cycle = _tester->port().frameCount();
-        link = dmx::cstr(_tester->port().getStatus());
+        link = statusText(_tester->port().getStatus());
     }
 
-    RadioGroup::setLabel(_dir, dir == dmx::Direction::Transmit ? "TX" : "RX");
-    RadioGroup::style(_dir, dir == dmx::Direction::Transmit);
+    RadioGroup::setLabel(_dir, dir == dmx::Role::Transmit ? "TX" : "RX");
+    RadioGroup::style(_dir, dir == dmx::Role::Transmit);
     _views.sync(static_cast<uint8_t>(view));
     if (view == ViewMode::Log && (_tester == nullptr || !_tester->logging()))
         RadioGroup::style(_viewBtn[2], false);
@@ -323,11 +323,11 @@ void MonitorView::onClick(nex::ovl::Object* const target) noexcept
         return;
 
     if (target == &_dir) {
-        const auto next = (_tester->port().direction() == dmx::Direction::Receive)
-            ? dmx::Direction::Transmit
-            : dmx::Direction::Receive;
-        _tester->port().setDirection(next);
-        const bool tx = next == dmx::Direction::Transmit;
+        const auto next = (_tester->port().role() == dmx::Role::Receive)
+            ? dmx::Role::Transmit
+            : dmx::Role::Receive;
+        _tester->port().setRole(next);
+        const bool tx = next == dmx::Role::Transmit;
         RadioGroup::setLabel(_dir, tx ? "TX" : "RX");
         RadioGroup::style(_dir, tx);
         present(_dir);
@@ -341,7 +341,7 @@ void MonitorView::onClick(nex::ovl::Object* const target) noexcept
             _tester->setSelectedValues(255);
         else
             _tester->blackout();
-        if (_tester->port().direction() == dmx::Direction::Transmit)
+        if (_tester->port().role() == dmx::Role::Transmit)
             _tester->sendLive();
         present(*static_cast<nex::ovl::Button*>(target));
         _grid.presentDirty();
