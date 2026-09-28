@@ -1,6 +1,9 @@
 /**
  * @file rs485.hpp
- * @brief Half-duplex IDmx: один USART + опциональный DE/RE трансивера.
+ * @brief Half-duplex композиция Rs485Tx + Rs485Rx для тестера (исключение).
+ *
+ * Пульт/прибор используют Rs485Tx или Rs485Rx напрямую через BIF::dmx::iTx / iRx.
+ * DE=nullptr — линия всегда в том режиме, как разведена плата.
  */
 #pragma once
 
@@ -8,13 +11,16 @@
 
 namespace dmx {
 
+enum class Role : uint8_t {
+    Receive = 0,
+    Transmit = 1,
+};
+
 /**
- * Порт RS485: Transmitter и Receiver на одном UART, направление через DE.
- *
- * DE=nullptr — линия всегда в том режиме, как разведена плата (только RX или только TX).
- * DE и RE обычно связаны: high = TX, low = RX.
+ * Порт RS485 для тестера: переключение DE и активной роли TX/RX.
+ * Не реализует iTx/iRx сам — отдаёт ссылки на внутренние порты.
  */
-class Rs485Port : public IDmx {
+class Rs485Port {
 public:
     Rs485Port(BIF::IHardwareSerial& serial, GPIO::Pin tx, GPIO::AF af, DelayUsFn delayUs,
               const GPIO::Pin* de = nullptr, GPIO::ModeAlt modeAlt = GPIO::ModeAlt::PP) noexcept
@@ -24,20 +30,20 @@ public:
     {
     }
 
-    bool open() override
+    bool open()
     {
         if (_isOpen)
             return true;
         if (_de != nullptr)
             _de->Init(GPIO::Mode::Output, GPIO::Pull::None, GPIO::Speed::VeryHigh);
         applyDe();
-        if (!active().open())
+        if (!activeOpen())
             return false;
         _isOpen = true;
         return true;
     }
 
-    void close() override
+    void close()
     {
         _tx.close();
         _rx.close();
@@ -46,99 +52,101 @@ public:
             _de->Write(false);
     }
 
-    [[nodiscard]] bool isOpen() const override { return _isOpen; }
-    [[nodiscard]] Transport transport() const override { return Transport::Rs485; }
-    [[nodiscard]] Direction direction() const override { return _dir; }
+    [[nodiscard]] bool isOpen() const { return _isOpen; }
+    [[nodiscard]] Role role() const { return _role; }
 
-    bool setDirection(Direction dir) override
+    bool setRole(Role role)
     {
-        if (dir == _dir)
+        if (role == _role)
             return true;
         const bool wasOpen = _isOpen;
         if (wasOpen)
-            active().close();
-        _dir = dir;
+            activeClose();
+        _role = role;
         applyDe();
-        if (wasOpen && !active().open()) {
+        if (wasOpen && !activeOpen()) {
             _isOpen = false;
             return false;
         }
         return true;
     }
 
-    [[nodiscard]] uint16_t universe() const override { return _universe; }
+    [[nodiscard]] iTx& tx() noexcept { return _tx; }
+    [[nodiscard]] iRx& rx() noexcept { return _rx; }
+    [[nodiscard]] const iTx& tx() const noexcept { return _tx; }
+    [[nodiscard]] const iRx& rx() const noexcept { return _rx; }
 
-    void setUniverse(uint16_t universe) override
+    bool send(const Frame& frame)
     {
-        _universe = universe;
-        _tx.setUniverse(universe);
-        _rx.setUniverse(universe);
-    }
-
-    bool send(const Frame& frame) override
-    {
-        if (!_isOpen || _dir != Direction::Transmit)
+        if (!_isOpen || _role != Role::Transmit)
             return false;
         return _tx.send(frame);
     }
 
-    bool recv(Frame& frame) override
+    bool recv(Frame& frame)
     {
-        if (!_isOpen || _dir != Direction::Receive)
+        if (!_isOpen || _role != Role::Receive)
             return false;
         return _rx.recv(frame);
     }
 
-    void poll() override
+    void poll()
     {
-        if (_isOpen && _dir == Direction::Receive)
+        if (_isOpen && _role == Role::Receive)
             _rx.poll();
     }
 
-    [[nodiscard]] std::size_t available() const override
+    [[nodiscard]] std::size_t available() const
     {
-        return (_isOpen && _dir == Direction::Receive) ? _rx.available() : 0u;
+        return (_isOpen && _role == Role::Receive) ? _rx.available() : 0u;
     }
 
-    void purge() override
+    void purge()
     {
-        if (_dir == Direction::Receive)
+        if (_role == Role::Receive)
             _rx.purge();
     }
 
-    Status getStatus() override
+    Status getStatus()
     {
-        return _dir == Direction::Receive ? _rx.getStatus() : Status::OK;
+        return _role == Role::Receive ? _rx.getStatus() : Status::OK;
     }
 
-    void clearErrors() override
+    void clearErrors()
     {
-        if (_dir == Direction::Receive)
+        if (_role == Role::Receive)
             _rx.clearErrors();
     }
 
-    [[nodiscard]] uint32_t frameCount() const override
+    [[nodiscard]] uint32_t frameCount() const
     {
-        return _dir == Direction::Transmit ? _tx.frameCount() : _rx.frameCount();
+        return _role == Role::Transmit ? _tx.frameCount() : _rx.frameCount();
     }
 
 private:
-    IDmx& active() noexcept
+    bool activeOpen() noexcept
     {
-        return _dir == Direction::Transmit ? static_cast<IDmx&>(_tx) : static_cast<IDmx&>(_rx);
+        return _role == Role::Transmit ? _tx.open() : _rx.open();
+    }
+
+    void activeClose() noexcept
+    {
+        if (_role == Role::Transmit)
+            _tx.close();
+        else
+            _rx.close();
     }
 
     void applyDe() noexcept
     {
         if (_de != nullptr)
-            _de->Write(_dir == Direction::Transmit);
+            _de->Write(_role == Role::Transmit);
     }
 
-    Transmitter _tx;
-    Receiver _rx;
+    Rs485Tx _tx;
+    Rs485Rx _rx;
     const GPIO::Pin* _de;
-    Direction _dir = Direction::Receive;
-    uint16_t _universe = 0;
+    Role _role = Role::Receive;
     bool _isOpen = false;
 };
 

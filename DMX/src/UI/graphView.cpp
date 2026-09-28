@@ -164,16 +164,16 @@ void GraphView::layoutChrome() noexcept
 
 void GraphView::syncChrome() noexcept
 {
-    dmx::Direction dir = dmx::Direction::Receive;
+    dmx::Role dir = dmx::Role::Receive;
     uint32_t cycle = 0;
     const char* link = "-";
     if (_tester != nullptr) {
-        dir = _tester->port().direction();
+        dir = _tester->port().role();
         cycle = _tester->port().frameCount();
-        link = dmx::cstr(_tester->port().getStatus());
+        link = statusText(_tester->port().getStatus());
     }
-    RadioGroup::setLabel(_dir, dir == dmx::Direction::Transmit ? "TX" : "RX");
-    RadioGroup::style(_dir, dir == dmx::Direction::Transmit);
+    RadioGroup::setLabel(_dir, dir == dmx::Role::Transmit ? "TX" : "RX");
+    RadioGroup::style(_dir, dir == dmx::Role::Transmit);
 
     char buf[36]{};
     _link.setText(link);
@@ -233,11 +233,11 @@ void GraphView::onClick(nex::ovl::Object* const target) noexcept
     if (_tester == nullptr)
         return;
     if (target == &_dir) {
-        const auto next = (_tester->port().direction() == dmx::Direction::Receive)
-            ? dmx::Direction::Transmit
-            : dmx::Direction::Receive;
-        _tester->port().setDirection(next);
-        const bool tx = next == dmx::Direction::Transmit;
+        const auto next = (_tester->port().role() == dmx::Role::Receive)
+            ? dmx::Role::Transmit
+            : dmx::Role::Receive;
+        _tester->port().setRole(next);
+        const bool tx = next == dmx::Role::Transmit;
         RadioGroup::setLabel(_dir, tx ? "TX" : "RX");
         RadioGroup::style(_dir, tx);
         present(_dir);
@@ -250,7 +250,7 @@ void GraphView::onClick(nex::ovl::Object* const target) noexcept
             _tester->setSelectedValues(255);
         else
             _tester->blackout();
-        if (_tester->port().direction() == dmx::Direction::Transmit)
+        if (_tester->port().role() == dmx::Role::Transmit)
             _tester->sendLive();
         present(*static_cast<nex::ovl::Button*>(target));
         presentDirtyLabels();

@@ -7,22 +7,33 @@
 #include "UI/cellMap.hpp"
 #include "UI/layout.hpp"
 #include "idmx.hpp"
+#include "rs485.hpp"
 
 #include <cstdio>
 #include <cstring>
 
 namespace ui {
 
+inline const char* statusText(BIF::dmx::Status s) noexcept
+{
+    switch (s) {
+    case BIF::dmx::Status::OK: return "OK";
+    case BIF::dmx::Status::OverFlowRX: return "OverFlowRX";
+    case BIF::dmx::Status::DataError: return "DataError";
+    default: return "?";
+    }
+}
+
 class Tester {
 public:
-    explicit Tester(dmx::IDmx& port) noexcept
+    explicit Tester(dmx::Rs485Port& port) noexcept
         : _port(port)
     {
         resetLog();
     }
 
-    [[nodiscard]] dmx::IDmx& port() noexcept { return _port; }
-    [[nodiscard]] const dmx::Frame& live() const noexcept { return _live; }
+    [[nodiscard]] dmx::Rs485Port& port() noexcept { return _port; }
+    [[nodiscard]] const BIF::dmx::Frame& live() const noexcept { return _live; }
 
     void setRows(uint8_t rows) noexcept
     {
@@ -78,19 +89,6 @@ public:
         }
     }
 
-    [[nodiscard]] bool pageHasSignal(uint8_t page) const noexcept
-    {
-        const uint16_t a = pageFirst(page, _rows);
-        const uint16_t b = pageLast(page, _rows);
-        if (a == 0u)
-            return false;
-        for (uint16_t ch = a; ch <= b; ++ch) {
-            if (_live.get(ch) != 0u)
-                return true;
-        }
-        return false;
-    }
-
     [[nodiscard]] bool cellChanged(uint8_t col, uint8_t row) const noexcept
     {
         const uint16_t ch = channelOf(_page, _rows, col, row);
@@ -124,7 +122,7 @@ public:
 
     SelectResult toggleSelect(uint16_t ch) noexcept
     {
-        if (ch < 1u || ch > dmx::kMaxChannels)
+        if (ch < 1u || ch > BIF::dmx::kMaxChannels)
             return SelectResult::Invalid;
         for (uint8_t i = 0; i < _selN; ++i) {
             if (_sel[i] != ch)
@@ -179,14 +177,14 @@ public:
     {
         std::memset(_changed, 0, sizeof(_changed));
 
-        if (_port.direction() != dmx::Direction::Receive)
+        if (_port.role() != dmx::Role::Receive)
             return;
 
-        dmx::Frame next{};
+        BIF::dmx::Frame next{};
         if (!_port.recv(next))
             return;
 
-        for (uint16_t i = 0; i < dmx::kMaxChannels; ++i) {
+        for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
             if (next.slots[i] != _live.slots[i])
                 _changed[i] = 1;
         }
@@ -195,8 +193,7 @@ public:
         if (!_logging)
             return;
 
-        const uint16_t n = _live.count == 0u ? static_cast<uint16_t>(dmx::kMaxChannels) : _live.count;
-        for (uint16_t i = 0; i < n; ++i) {
+        for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
             const uint8_t v = _live.slots[i];
             if (v == 0u)
                 continue;
@@ -241,18 +238,18 @@ public:
 private:
     void resetLog() noexcept
     {
-        for (std::size_t i = 0; i < dmx::kMaxChannels; ++i) {
+        for (std::size_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
             _min[i] = 255;
             _max[i] = 0;
         }
         std::memset(_changed, 0, sizeof(_changed));
     }
 
-    dmx::IDmx& _port;
-    dmx::Frame _live{};
-    uint8_t _min[dmx::kMaxChannels]{};
-    uint8_t _max[dmx::kMaxChannels]{};
-    uint8_t _changed[dmx::kMaxChannels]{};
+    dmx::Rs485Port& _port;
+    BIF::dmx::Frame _live{};
+    uint8_t _min[BIF::dmx::kMaxChannels]{};
+    uint8_t _max[BIF::dmx::kMaxChannels]{};
+    uint8_t _changed[BIF::dmx::kMaxChannels]{};
     uint16_t _sel[kMaxSelect]{1};
     uint8_t _selN = 1;
     uint8_t _trace[kMaxSelect][kTraceLen]{};

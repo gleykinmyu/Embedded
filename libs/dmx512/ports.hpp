@@ -1,6 +1,6 @@
 /**
  * @file ports.hpp
- * @brief Все реализации IDmx.
+ * @brief Реализации BIF::dmx::iTx / iRx.
  */
 #pragma once
 

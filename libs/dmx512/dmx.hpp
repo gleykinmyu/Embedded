@@ -1,9 +1,9 @@
 /**
  * @file dmx.hpp
- * @brief DMX512 UART: Transmitter (GPIO Break) и Receiver (sync по FE/DataError).
+ * @brief DMX512 UART: Rs485Tx (GPIO Break) и Rs485Rx (sync по FE/DataError).
  *
  * Кадр UART: 8N2 @ 250000 — плата вызывает PHL::Serial::setFrameFormat до open().
- * Оба класса реализуют IDmx; на одном USART одновременно открыт только один.
+ * Start code 0 вставляет Tx / снимает Rx; в BIF::dmx::Frame его нет.
  */
 #pragma once
 
@@ -14,16 +14,26 @@
 
 namespace dmx {
 
+using Frame = BIF::dmx::Frame;
+using Status = BIF::dmx::Status;
+using iTx = BIF::dmx::iTx;
+using iRx = BIF::dmx::iRx;
+
 using DelayUsFn = void (*)(uint32_t us) noexcept;
 
+inline constexpr uint32_t kBaud = 250000u;
+inline constexpr uint16_t kBreakUs = 100u; ///< ≥88 µs по ANSI E1.11
+inline constexpr uint16_t kMabUs = 12u;    ///< ≥8 µs Mark After Break
+inline constexpr std::size_t kWireFrameSize = 1u + BIF::dmx::kMaxChannels; ///< SC + 512
+
 // ---------------------------------------------------------------------------
-// Transmitter
+// Rs485Tx
 // ---------------------------------------------------------------------------
 
-class Transmitter : public IDmx {
+class Rs485Tx : public iTx {
 public:
-    Transmitter(BIF::IHardwareSerial& serial, GPIO::Pin tx, GPIO::AF af, DelayUsFn delayUs,
-                GPIO::ModeAlt modeAlt = GPIO::ModeAlt::PP) noexcept
+    Rs485Tx(BIF::IHardwareSerial& serial, GPIO::Pin tx, GPIO::AF af, DelayUsFn delayUs,
+            GPIO::ModeAlt modeAlt = GPIO::ModeAlt::PP) noexcept
         : _serial(serial)
         , _tx(tx)
         , _af(af)
@@ -49,22 +59,11 @@ public:
     }
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
-    [[nodiscard]] Transport transport() const override { return Transport::Rs485; }
-    [[nodiscard]] Direction direction() const override { return Direction::Transmit; }
-
-    bool setDirection(Direction dir) override { return dir == Direction::Transmit; }
-
-    [[nodiscard]] uint16_t universe() const override { return _universe; }
-    void setUniverse(uint16_t universe) override { _universe = universe; }
 
     bool send(const Frame& frame) override
     {
         if (!_isOpen || _delayUs == nullptr)
             return false;
-
-        std::size_t n = frame.count;
-        if (n > kMaxChannels)
-            n = kMaxChannels;
 
         _serial.flush();
 
@@ -75,21 +74,16 @@ public:
         _tx.Init(_modeAlt, _af, GPIO::Pull::Up, GPIO::Speed::VeryHigh);
         _delayUs(kMabUs);
 
-        uint8_t sc = frame.startCode;
-        if (!writeAll(&sc, 1u))
+        constexpr uint8_t kStartCode = 0u;
+        if (!writeAll(&kStartCode, 1u))
             return false;
-        if (n > 0u && !writeAll(frame.slots, n))
+        if (!writeAll(frame.slots, BIF::dmx::kMaxChannels))
             return false;
 
         _serial.flush();
         ++_frameCount;
         return true;
     }
-
-    bool recv(Frame&) override { return false; }
-    void poll() override {}
-    [[nodiscard]] std::size_t available() const override { return 0u; }
-    void purge() override {}
 
     Status getStatus() override { return Status::OK; }
     void clearErrors() override {}
@@ -113,18 +107,17 @@ private:
     GPIO::AF _af;
     GPIO::ModeAlt _modeAlt;
     DelayUsFn _delayUs;
-    uint16_t _universe = 0;
     uint32_t _frameCount = 0;
     bool _isOpen = false;
 };
 
 // ---------------------------------------------------------------------------
-// Receiver — sync: Serial FE → sticky DataError (байт Break отбрасывается драйвером)
+// Rs485Rx — sync: Serial FE → sticky DataError (байт Break отбрасывается драйвером)
 // ---------------------------------------------------------------------------
 
-class Receiver : public IDmx {
+class Rs485Rx : public iRx {
 public:
-    explicit Receiver(BIF::IHardwareSerial& serial) noexcept
+    explicit Rs485Rx(BIF::IHardwareSerial& serial) noexcept
         : _serial(serial)
     {
     }
@@ -148,31 +141,21 @@ public:
     }
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
-    [[nodiscard]] Transport transport() const override { return Transport::Rs485; }
-    [[nodiscard]] Direction direction() const override { return Direction::Receive; }
-
-    bool setDirection(Direction dir) override { return dir == Direction::Receive; }
-
-    [[nodiscard]] uint16_t universe() const override { return _universe; }
-    void setUniverse(uint16_t universe) override { _universe = universe; }
-
-    bool send(const Frame&) override { return false; }
 
     bool recv(Frame& frame) override
     {
         if (!_frameReady)
             return false;
 
-        frame.startCode = _frame[0];
-        std::size_t channels = (_frameLen > 0u) ? (_frameLen - 1u) : 0u;
-        if (channels > kMaxChannels)
-            channels = kMaxChannels;
+        // _wire[0] = start code (отбрасываем); слоты с 1.
+        std::size_t channels = (_wireLen > 0u) ? (_wireLen - 1u) : 0u;
+        if (channels > BIF::dmx::kMaxChannels)
+            channels = BIF::dmx::kMaxChannels;
 
         for (std::size_t i = 0u; i < channels; ++i)
-            frame.slots[i] = _frame[1u + i];
-        for (std::size_t i = channels; i < kMaxChannels; ++i)
+            frame.slots[i] = _wire[1u + i];
+        for (std::size_t i = channels; i < BIF::dmx::kMaxChannels; ++i)
             frame.slots[i] = 0;
-        frame.count = static_cast<uint16_t>(channels);
 
         _frameReady = false;
         return true;
@@ -185,7 +168,7 @@ public:
 
         if (_serial.getStatus() == BIF::IByteStream::Status::DataError) {
             if (_index > 0u) {
-                _frameLen = _index;
+                _wireLen = _index;
                 _frameReady = true;
                 ++_frameCount;
             }
@@ -201,15 +184,15 @@ public:
         if (!_inFrame)
             return;
 
-        while (_index < kFrameSize) {
+        while (_index < kWireFrameSize) {
             uint8_t b = 0;
             if (_serial.read(&b, 1u) != 1u)
                 break;
-            _frame[_index++] = b;
+            _wire[_index++] = b;
         }
 
-        if (_index >= kFrameSize) {
-            _frameLen = kFrameSize;
+        if (_index >= kWireFrameSize) {
+            _wireLen = kWireFrameSize;
             _frameReady = true;
             ++_frameCount;
             _index = 0u;
@@ -240,20 +223,23 @@ private:
     void resetCollect() noexcept
     {
         _index = 0u;
-        _frameLen = 0u;
+        _wireLen = 0u;
         _inFrame = false;
     }
 
     BIF::IHardwareSerial& _serial;
-    uint8_t _frame[kFrameSize]{};
+    uint8_t _wire[kWireFrameSize]{};
     std::size_t _index = 0u;
-    std::size_t _frameLen = 0u;
-    uint16_t _universe = 0;
+    std::size_t _wireLen = 0u;
     uint32_t _frameCount = 0;
     Status _status = Status::OK;
     bool _inFrame = false;
     bool _frameReady = false;
     bool _isOpen = false;
 };
+
+// Имена прежней редакции (concrete TX/RX на одном USART).
+using Transmitter = Rs485Tx;
+using Receiver = Rs485Rx;
 
 } // namespace dmx

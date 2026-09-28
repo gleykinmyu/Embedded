@@ -107,7 +107,7 @@ int main()
     } else if (!dmxPort.open()) {
         NEX_DBG("DMX port open failed\n");
     } else {
-        dmxPort.setDirection(dmx::Direction::Receive);
+        dmxPort.setRole(dmx::Role::Receive);
         NEX_DBG("DMX RS485 RX: USART3 PB10 TX / PB11 RX DE=PB1 250000 8N2\n");
     }
 
@@ -128,12 +128,12 @@ int main()
         app.applyFastBaudIfNeeded();
 
         const uint32_t now = boardClockMs();
-        if (dmxPort.isOpen() && dmxPort.direction() == dmx::Direction::Receive
+        if (dmxPort.isOpen() && dmxPort.role() == dmx::Role::Receive
             && (now - lastRxMs) >= kDmxRxPeriodMs) {
             lastRxMs = now;
             tester.tick();
         }
-        if (dmxPort.isOpen() && dmxPort.direction() == dmx::Direction::Transmit
+        if (dmxPort.isOpen() && dmxPort.role() == dmx::Role::Transmit
             && (now - lastTxMs) >= kDmxTxPeriodMs) {
             lastTxMs = now;
             tester.sendLive();
