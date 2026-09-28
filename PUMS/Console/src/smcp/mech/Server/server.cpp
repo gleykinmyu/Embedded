@@ -18,7 +18,9 @@ void registerMech(IServer& server, IMech& mech) noexcept
     const MISC::RegStatus st = server.storage().registerAt(mech.id(), &mech);
     if (st != MISC::RegStatus::Ok) {
         server.setStatus(Node::Status::RegisterFailed);
+        return;
     }
+    server._mechRegistered.add(mech.id());
 }
 
 } // namespace detail
@@ -30,6 +32,14 @@ void registerMech(IServer& server, IMech& mech) noexcept
 IServer::IServer(ILink& link, ClockFn clock) noexcept
     : Node(link, clock)
 {}
+
+void IServer::begin(uint8_t server_id) noexcept
+{
+    if (!msg::isServerId(server_id)) {
+        return;
+    }
+    Node::begin(server_id);
+}
 
 void IServer::pushTelemetry(uint8_t mech_id) noexcept
 {
@@ -48,7 +58,7 @@ void IServer::pushTelemetry(uint8_t mech_id) noexcept
     send(tel, Packet::kBroadcastId);
 }
 
-void IServer::onHbLost(Session* session) noexcept
+void IServer::dropPeerSelect(Session* session, bool telemetry) noexcept
 {
     if (session == nullptr) {
         return;
@@ -65,7 +75,26 @@ void IServer::onHbLost(Session* session) noexcept
             continue;
         }
         m->select(kHolderNone);
-        pushTelemetry(mid);
+        if (telemetry) {
+            pushTelemetry(mid);
+        }
+    }
+}
+
+void IServer::onFault(Session* session, Fault reason) noexcept
+{
+    Node::onFault(session, reason);
+    if (session != nullptr || reason != Fault::IdConflict) {
+        return;
+    }
+
+    const uint8_t cap = mechCapacity();
+    for (uint8_t mid = 0; mid < cap; ++mid) {
+        IMech* m = mech(mid);
+        if (m == nullptr || m->holder() == kHolderNone) {
+            continue;
+        }
+        m->select(kHolderNone);
     }
 }
 
@@ -77,6 +106,12 @@ SessionConsole::SessionConsole(IServer& server) noexcept
     : Session(server)
     , _server(server)
 {}
+
+void SessionConsole::onFault(Fault reason) noexcept
+{
+    _server.dropPeerSelect(this, /*telemetry=*/true);
+    Session::onFault(reason);
+}
 
 bool SessionConsole::onPacket(const Packet& pkt) noexcept
 {
@@ -114,16 +149,16 @@ void SessionConsole::handleMaskOp(MaskKind kind,
     const uint8_t cap = _server.mechCapacity();
     const bool is_select = (kind == MaskKind::Select);
 
+    if (checkMechId(selection, pkt_id)) {
+        return;
+    }
+
     MaskPlan plan{};
     for (uint8_t mid = 0; mid < cap; ++mid) {
         const bool in_mask = selection.contains(mid);
         IMech* m = _server.mech(mid);
 
         if (m == nullptr) {
-            if (in_mask) {
-                sendNack(pkt_id, msg::ErrorCode::MechNotFound, mid);
-                return;
-            }
             continue;
         }
 
@@ -135,7 +170,7 @@ void SessionConsole::handleMaskOp(MaskKind kind,
         if (is_select && in_mask) {
             const msg::ErrorCode guard = mechGuard(*m, src, /*must_own=*/false);
             if (guard != msg::ErrorCode::Ok) {
-                sendNack(pkt_id, guard, mid);
+                sendNack(pkt_id, guard, Selection::of(mid));
                 return;
             }
         }
@@ -172,19 +207,19 @@ void SessionConsole::onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noe
     const uint8_t src = peerId();
     IMech* m = _server.mech(body.mech_id);
     if (m == nullptr) {
-        sendNack(pkt_id, msg::ErrorCode::MechNotFound, body.mech_id);
+        sendNack(pkt_id, msg::ErrorCode::MechNotFound, Selection::of(body.mech_id));
         return;
     }
 
     const msg::ErrorCode guard = mechGuard(*m, src, /*must_own=*/true);
     if (guard != msg::ErrorCode::Ok) {
-        sendNack(pkt_id, guard, body.mech_id);
+        sendNack(pkt_id, guard, Selection::of(body.mech_id));
         return;
     }
 
     const msg::ErrorCode policy = _server.acceptSetTarget(src, body.mech_id, body.target);
     if (policy != msg::ErrorCode::Ok) {
-        sendNack(pkt_id, policy, body.mech_id);
+        sendNack(pkt_id, policy, Selection::of(body.mech_id));
         return;
     }
 
@@ -199,30 +234,15 @@ void SessionConsole::onGetTelemetry(const msg::GetTelemetry& body, uint8_t pkt_i
         return;
     }
 
-    const uint8_t cap = _server.mechCapacity();
     Selection want = body.selection;
     if (want.empty()) {
-        for (uint8_t mid = 0; mid < cap; ++mid) {
-            if (_server.mech(mid) != nullptr) {
-                want.add(mid);
-            }
-        }
-    }
-
-    Selection push{};
-    for (uint8_t mid = 0; mid < cap; ++mid) {
-        if (!want.contains(mid)) {
-            continue;
-        }
-        if (_server.mech(mid) == nullptr) {
-            sendNack(pkt_id, msg::ErrorCode::MechNotFound, mid);
-            return;
-        }
-        push.add(mid);
+        want = _server.mechRegistered();
+    } else if (checkMechId(want, pkt_id)) {
+        return;
     }
 
     sendAck(pkt_id);
-    pushTelemetryMask(push);
+    pushTelemetryMask(want);
 }
 
 // =============================================================================
@@ -267,6 +287,16 @@ msg::ErrorCode SessionConsole::mechGuard(const IMech& m, uint8_t src, bool must_
         return msg::ErrorCode::NotReady;
     }
     return msg::ErrorCode::Ok;
+}
+
+bool SessionConsole::checkMechId(Selection selection, uint8_t pkt_id) noexcept
+{
+    const Selection missing = selection & ~_server.mechRegistered();
+    if (missing.empty()) {
+        return false;
+    }
+    sendNack(pkt_id, msg::ErrorCode::MechNotFound, missing);
+    return true;
 }
 
 void SessionConsole::commitSelect(uint8_t src, const MaskPlan& plan) noexcept

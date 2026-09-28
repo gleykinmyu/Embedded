@@ -15,7 +15,7 @@ namespace smcp {
 
 inline constexpr std::size_t kGroupWireSize = 64u;
 inline constexpr std::size_t kGroupNameSize = 48u;
-/** Осей на один server ID. Физический сервер на 64 оси → два SMCP ID. */
+/** Максимум осей на один server ID (бит Selection / GRUP). 64 оси → два SMCP ID. Inventory — MaxMechs у Server/Console. */
 inline constexpr uint8_t kMechCount = 32u;
 /** Пользовательских групп в шоуфайле (слоты UI 0…31). */
 inline constexpr uint8_t kGroupMaxCount = 32u;
@@ -35,6 +35,7 @@ public:
     }
 
     [[nodiscard]] constexpr uint32_t raw() const noexcept { return bits_; }
+    [[nodiscard]] constexpr operator uint32_t() const noexcept { return bits_; }
     [[nodiscard]] constexpr bool empty() const noexcept { return bits_ == 0u; }
     [[nodiscard]] constexpr bool any() const noexcept { return !empty(); }
 
@@ -60,6 +61,14 @@ public:
         if (id < kMechCount) {
             bits_ |= (1u << id);
         }
+    }
+
+    /** Маска из одной оси. */
+    [[nodiscard]] static constexpr Selection of(uint8_t id) noexcept
+    {
+        Selection s{};
+        s.add(id);
+        return s;
     }
     /** Снять бит оси; id вне 0..31 — no-op. */
     constexpr void remove(uint8_t id) noexcept

@@ -28,9 +28,18 @@ void printBody(const Packet& pkt) noexcept
     if (pkt.msg.id == msg::Nack::kId) {
         msg::Nack nack{};
         if (nack.unpack(pkt.msg)) {
-            std::printf("Nk %s %u",
+            std::printf("Nk %s %08lX",
                 msg::cstrS(static_cast<msg::ErrorCode>(nack.error)),
-                static_cast<unsigned>(nack.detail));
+                static_cast<unsigned long>(nack.detail));
+            return;
+        }
+    }
+    if (pkt.msg.id == msg::Fault::kId) {
+        msg::Fault fault{};
+        if (fault.unpack(pkt.msg)) {
+            std::printf("Ft %s %08lX",
+                msg::Fault::cstr(fault.error),
+                static_cast<unsigned long>(fault.detail));
             return;
         }
     }
@@ -91,9 +100,18 @@ void printBody(const Packet& pkt) noexcept
     if (pkt.msg.id == msg::Nack::kId) {
         msg::Nack nack{};
         if (nack.unpack(pkt.msg)) {
-            std::printf("Nack error=%s detail=%u",
+            std::printf("Nack error=%s detail=0x%08lX",
                 msg::cstr(static_cast<msg::ErrorCode>(nack.error)),
-                static_cast<unsigned>(nack.detail));
+                static_cast<unsigned long>(nack.detail));
+            return;
+        }
+    }
+    if (pkt.msg.id == msg::Fault::kId) {
+        msg::Fault fault{};
+        if (fault.unpack(pkt.msg)) {
+            std::printf("Fault error=%s detail=0x%08lX",
+                msg::Fault::cstr(fault.error),
+                static_cast<unsigned long>(fault.detail));
             return;
         }
     }

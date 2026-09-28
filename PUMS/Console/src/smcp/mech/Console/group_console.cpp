@@ -1,6 +1,6 @@
 /**
  * @file group_console.cpp
- * @brief IGroupConsole: билет queued group на Select Ack/Nack.
+ * @brief IGroupConsole: билет queued group на Select Ack/Nack; HB lost чистит active.
  */
 
 #include "smcp/mech/Console/group_console.hpp"
@@ -29,6 +29,33 @@ void IGroupConsole::onNack(Session* session, const TxSlot& req, const msg::Nack&
 {
     Node::onNack(session, req, reply);
     if (session == &_primary && req.msg.id == msg::Select::kId) {
+        _queuedGroup = kNoQueuedGroup;
+    }
+}
+
+void IGroupConsole::onFault(Session* session, Fault reason) noexcept
+{
+    Node::onFault(session, reason);
+    if (session == nullptr || session == &_primary) {
+        _activeGroup = kNoActiveGroup;
+        _queuedGroup = kNoQueuedGroup;
+    }
+}
+
+void IGroupConsole::onLink(Session* session, bool up) noexcept
+{
+    Node::onLink(session, up);
+    if (!up && session == &_primary) {
+        _activeGroup = kNoActiveGroup;
+        _queuedGroup = kNoQueuedGroup;
+    }
+}
+
+void IGroupConsole::onStatus(Status status) noexcept
+{
+    Node::onStatus(status);
+    if (status != Status::Ready && status != Status::LinkError) {
+        _activeGroup = kNoActiveGroup;
         _queuedGroup = kNoQueuedGroup;
     }
 }

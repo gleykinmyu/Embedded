@@ -61,6 +61,7 @@ class MConsole : public smcp::GroupConsole<24> {
 
 public:
     using GroupConsole::kMechCount;
+    static_assert(kMechCount <= smcp::kMechCount);
     using Settings = ::Settings;
     static constexpr uint8_t kGroupCount = smcp::kGroupMaxCount;
     static constexpr uint8_t kNoActiveGroup = smcp::IGroupConsole::kNoActiveGroup;
@@ -107,8 +108,8 @@ protected:
     void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept override;
     void onNack(smcp::Session* session, const smcp::TxSlot& req,
                 const smcp::msg::Nack& reply) noexcept override;
-    void onPhase(Phase phase) noexcept override;
-    void onLink(uint8_t server_id, bool up) noexcept override;
+    void onStatus(Status status) noexcept override;
+    void onLink(smcp::Session* session, bool up) noexcept override;
 
 private:
     void onFioEvent(sf::Fio::Event ev) noexcept;

@@ -11,10 +11,12 @@
 #include "smcp/ilink.hpp"
 #include "smcp/session.hpp"
 
-class MServer : public smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles> {
+class MServer : public smcp::Server<24, smcp::msg::kMaxConsoles> {
 public:
-    using Base = smcp::Server<smcp::kMechCount, smcp::msg::kMaxConsoles>;
+    using Base = smcp::Server<24, smcp::msg::kMaxConsoles>;
     using Base::kSessionCount;
+    using Base::kMechCount;
+    static_assert(kMechCount <= smcp::kMechCount);
 
     explicit MServer(smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
         : Base(link, clock)
@@ -40,7 +42,7 @@ protected:
 
         /* Сегмент после запроса: чужие Selected ∪ предлагаемая маска этой консоли. */
         smcp::Selection merged = selected;
-        for (uint8_t mid = 0; mid < smcp::kMechCount; ++mid) {
+        for (uint8_t mid = 0; mid < kMechCount; ++mid) {
             const DriveMech& m = _mechs[mid];
             if (m.isSelected() && !m.isSelectedBy(console_id)) {
                 merged.add(mid);
@@ -55,5 +57,5 @@ protected:
 private:
     /* После Base registry: SessionConsole регистрируется в Node::sessions(). */
     smcp::SessionBank<kSessionCount, smcp::SessionConsole> _sessionBank;
-    DriveMechBank<smcp::kMechCount> _mechs;
+    DriveMechBank<kMechCount> _mechs;
 };

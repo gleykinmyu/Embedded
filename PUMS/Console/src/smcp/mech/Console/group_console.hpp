@@ -4,6 +4,8 @@
  *
  * IGroupConsole — билет Select после CGroup::recall (Ack → onGroupAck).
  * shownGroup — только active (после Ack), не queued.
+ * Session::onFault(HbLost / IdConflict) на primary — сброс queued+active (без Select).
+ * close(None): сброс по onLink(false) / Status Idle·Listen·IdConflict·RegisterFailed.
  * GroupConsole<N> — primary Session + MaxSessions слотов (как Console<N>).
  * CMechBank / Show / Browser — у leaf (MConsole).
  */
@@ -41,6 +43,12 @@ protected:
 
     /** Ack Select после CGroup::recall(); @a id — слот GRUP. */
     virtual void onGroupAck(uint8_t group_id) noexcept { (void)group_id; }
+    /** Primary / свой узел (session == nullptr): сброс queued+active. */
+    void onFault(Session* session, Fault reason) noexcept override;
+    /** Primary down: сброс queued+active (в т.ч. close(None)). */
+    void onLink(Session* session, bool up) noexcept override;
+    /** Idle / Listen / IdConflict / RegisterFailed — сброс queued+active. */
+    void onStatus(Status status) noexcept override;
     /** Queued recall: Select Ack → active + onGroupAck. UI дописывает поверх. */
     void onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept override;
     /** Сброс queued recall на Select Nack; UI дописывает разбор reply. */

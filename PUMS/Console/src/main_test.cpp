@@ -131,6 +131,7 @@ int main(void)
     (void)canServer.open(1'000'000);
     canConsole.connect(canServer);
 
+    mServer.begin(smcp::msg::kServerIdMin);
     console.begin(smcp::msg::kConsoleIdMin);
 
     if (console.fio.restore()) {

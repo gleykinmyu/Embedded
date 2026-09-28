@@ -176,6 +176,7 @@ int main(void)
     }
 
     board.watchdog.kick();
+    mServer.begin(smcp::msg::kServerIdMin);
     probeNexLink();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");

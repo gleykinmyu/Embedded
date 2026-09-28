@@ -79,6 +79,7 @@ namespace msg {
 enum class Id : uint8_t {
     Ack       = 0x01,
     Nack      = 0x02,
+    Fault     = 0x03, /**< Broadcast: узел снимает себя (сейчас IdConflict). */
     Heartbeat = 0x30, /**< Ниже команд: keep-alive не забивает Select/SetTarget. */
 };
 
@@ -87,6 +88,7 @@ enum class Id : uint8_t {
     switch (id) {
     case Id::Ack: return "Ack";
     case Id::Nack: return "Nack";
+    case Id::Fault: return "Fault";
     case Id::Heartbeat: return "Heartbeat";
     }
     return "?";
@@ -97,6 +99,7 @@ enum class Id : uint8_t {
     switch (id) {
     case static_cast<uint8_t>(Id::Ack): return "Ack";
     case static_cast<uint8_t>(Id::Nack): return "Nack";
+    case static_cast<uint8_t>(Id::Fault): return "Fault";
     case static_cast<uint8_t>(Id::Heartbeat): return "Heartbeat";
     default: return "?";
     }
@@ -108,6 +111,7 @@ enum class Id : uint8_t {
     switch (id) {
     case Id::Ack: return "Ack";
     case Id::Nack: return "Nk";
+    case Id::Fault: return "Ft";
     case Id::Heartbeat: return "HB";
     }
     return "?";
@@ -118,6 +122,7 @@ enum class Id : uint8_t {
     switch (id) {
     case static_cast<uint8_t>(Id::Ack): return "Ack";
     case static_cast<uint8_t>(Id::Nack): return "Nk";
+    case static_cast<uint8_t>(Id::Fault): return "Ft";
     case static_cast<uint8_t>(Id::Heartbeat): return "HB";
     default: return "?";
     }
@@ -138,27 +143,50 @@ struct Ack {
 };
 
 /**
- * Nack — DLC=2
- *   +-------+--------+
- *   | error | detail |
- *   +-------+--------+
- *    data[0]  data[1]   (pkt_id запроса → CAN ID)
+ * Nack — DLC=5
+ *   +-------+------------------+
+ *   | error | detail (uint32)  |
+ *   +-------+------------------+
+ *    data[0]  data[1..4] LE     (pkt_id запроса → CAN ID)
  *
- * @a error — код отказа (вышестоящий протокол). @a detail — контекст
- * (обычно mech_id); @c kDetailNone = нет.
+ * @a error — код отказа (вышестоящий протокол). @a detail — непрозрачный;
+ * northbound: Selection.raw() (биты осей). @c kDetailNone = пустая маска.
  * @c kTimeout — локальный abort Ack (не с шины).
  */
 struct Nack {
     static constexpr uint8_t kId = static_cast<uint8_t>(Id::Nack);
     static constexpr bool kNeedsAck = false;
     static constexpr uint8_t kTimeout = 0x08u;
-    static constexpr uint8_t kDetailNone = 0xFFu;
+    static constexpr uint32_t kDetailNone = 0u;
 
     uint8_t error = 0;
-    uint8_t detail = kDetailNone;
+    uint32_t detail = kDetailNone;
 
     [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
+};
+
+/**
+ * Fault — DLC=5, как Nack: error | detail u32 LE. Class D, pkt_id=0, dst=FF.
+ * Не ответ на запрос: узел объявляет свой отказ и закрывает сессии.
+ * @c kIdConflict — на шине кадр с src == наш id.
+ */
+struct Fault {
+    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Fault);
+    static constexpr bool kNeedsAck = false;
+    static constexpr uint8_t kIdConflict = 0x01u;
+    static constexpr uint32_t kDetailNone = 0u;
+
+    uint8_t error = 0;
+    uint32_t detail = kDetailNone;
+
+    [[nodiscard]] bool pack(Message& m) const noexcept;
+    [[nodiscard]] bool unpack(const Message& m) noexcept;
+
+    [[nodiscard]] static const char* cstr(uint8_t error) noexcept
+    {
+        return (error == kIdConflict) ? "IdConflict" : "?";
+    }
 };
 
 /**

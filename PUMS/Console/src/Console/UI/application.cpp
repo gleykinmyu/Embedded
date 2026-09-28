@@ -244,7 +244,7 @@ void Application::syncStatusBarLink() noexcept
         static_cast<unsigned>((memstat::freeMinBytes() + 512u) / 1024u);
     std::snprintf(buf, sizeof(buf), "%s %s (%uk)",
         (board.SD.status() & STA_NODISK) != 0 ? "--" : "SD",
-        smcp::IConsole::cstr(console.phase()), freeKb);
+        smcp::Node::cstr(console.getStatus()), freeKb);
     statusBar.setStatus(buf);
     memstat::resetFreeMin();
 }

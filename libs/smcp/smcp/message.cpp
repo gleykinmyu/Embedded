@@ -69,6 +69,7 @@ bool Message::isTransport() const noexcept
 {
     return id == static_cast<uint8_t>(msg::Id::Ack)
         || id == static_cast<uint8_t>(msg::Id::Nack)
+        || id == static_cast<uint8_t>(msg::Id::Fault)
         || id == static_cast<uint8_t>(msg::Id::Heartbeat);
 }
 
@@ -128,16 +129,31 @@ bool Ack::unpack(const Message& m) noexcept
 
 bool Nack::pack(Message& m) const noexcept
 {
-    return m.push(error) && m.push(detail);
+    return m.push(error) && m.pushU32(detail);
 }
 
 bool Nack::unpack(const Message& m) noexcept
 {
-    if (m.dlc != 2) {
+    if (m.dlc != 5) {
         return false;
     }
     error = m.data[0];
-    detail = m.data[1];
+    detail = m.loadU32(1);
+    return true;
+}
+
+bool Fault::pack(Message& m) const noexcept
+{
+    return m.push(error) && m.pushU32(detail);
+}
+
+bool Fault::unpack(const Message& m) noexcept
+{
+    if (m.dlc != 5) {
+        return false;
+    }
+    error = m.data[0];
+    detail = m.loadU32(1);
     return true;
 }
 

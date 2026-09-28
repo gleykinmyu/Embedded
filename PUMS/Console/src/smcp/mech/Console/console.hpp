@@ -5,8 +5,8 @@
  * Наследует Node. Session* / CMech* — в registry; primary Session и слоты
  * MaxSessions — в Console / GroupConsole; CMechBank — у leaf.
  *
- * Lifecycle: begin(console_id) → Listen → Ready; start(server_id) — HB.
- * end() — уйти с шины. Смена id — снова begin. Phase — SMCP_CONS.
+ * Lifecycle: Node::begin(console_id) → Listen → Ready; start(server_id) — HB.
+ * end() — уйти с шины. Смена id — снова begin. Status — SMCP_NODE.
  */
 
 #pragma once
@@ -14,7 +14,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ms_timer.hpp"
 #include "obj_registry.hpp"
 #include "smcp/mech/Console/cmech.hpp"
 #include "smcp/mech/message.hpp"
@@ -31,31 +30,14 @@ namespace detail {
 void registerMech(IConsole& cons, CMech& mech) noexcept;
 } // namespace detail
 
-/** Узел пульта: CMech inventory, master-сессии к сегментам, Phase + Select/Block/SetTarget. */
+/** Узел пульта: CMech inventory, master-сессии к сегментам, Select/Block/SetTarget. */
 class IConsole : public Node {
 public:
     using MechReg = MISC::ObjRegistry<CMech, uint8_t>;
     template <uint8_t Cap>
     using MechStore = MISC::ObjStorage<CMech, Cap, uint8_t, 0>;
 
-    /**
-     * Sticky lifecycle узла (не сессии).
-     * Fault — IdConflict / RegisterFailed; деталь — Node::getStatus().
-     */
-    enum class Phase : uint8_t {
-        Idle = 0, /**< До begin() / после end(). */
-        Listen,   /**< Проверка шины на чужой тот же console_id. */
-        Ready,    /**< Listen прошёл; можно start(server_id). */
-        Fault,    /**< IdConflict / RegisterFailed. */
-    };
-
-    /** Имя фазы для лога / UI. */
-    [[nodiscard]] static const char* cstr(Phase phase) noexcept;
-
     virtual ~IConsole() = default;
-
-    /** Node::update + tick Phase. Вызывать из app loop (не через Node&). */
-    void update() noexcept;
 
     /** Ёмкость банка CMech (MaxMechs у Console<N>). */
     [[nodiscard]] uint8_t mechCapacity() const noexcept
@@ -71,34 +53,29 @@ public:
 
     /**
      * Банк осей сегмента @a server_id. Нет / чужой src — nullptr.
-     * По умолчанию: `kPrimaryServer` и единственный `start()` → `storage()`.
-     * Два start без override — оба src nullptr (leaf обязан перекрыть).
+     * По умолчанию: `kPrimaryServer` и `_primary.peerId()` → `storage()`.
+     * Второй src без override — nullptr (leaf обязан перекрыть).
      */
     [[nodiscard]] virtual MechReg* segment(uint8_t server_id) noexcept;
 
-    /** Текущая фаза lifecycle. */
-    [[nodiscard]] Phase phase() const noexcept { return _phase; }
     /** Primary-сессия открыта. */
     [[nodiscard]] bool linkUp() const noexcept;
-    /** Сессия к @a server_id открыта. `kPrimaryServer` — primary. */
-    [[nodiscard]] bool linkUp(uint8_t server_id) const noexcept;
 
     /** Наш id на шине (ILink / Node::id()). */
     [[nodiscard]] uint8_t consoleId() const noexcept { return id(); }
 
     /**
-     * Свой id на шине + Listen. Не start к серверу.
-     * Закрывает все сессии, clearError при Node fault.
+     * Node::begin, только `isConsoleId`. Не start к серверу.
      */
     void begin(uint8_t console_id) noexcept;
-    /** Уйти с шины: стоп Listen, close всех сессий → Idle. */
+    /** Node::end: closeAllSessions(None) → Idle. */
     void end() noexcept;
     /**
-     * Master-сессия к серверу сегмента. Только Phase::Ready; `isServerId`.
-     * Нет слота — onSessionFull, не запоминаем.
+     * Master-сессия к серверу сегмента. Только Node::Ready; `isServerId`.
+     * Нет слота — onSessionFull. После HbLost слот Idle — снова start() решает leaf.
      */
     void start(uint8_t server_id) noexcept;
-    /** Close сессии к @a server_id, без reconnect. `kPrimaryServer` — primary. */
+    /** Close сессии к @a server_id. `kPrimaryServer` — primary. */
     void stop(uint8_t server_id) noexcept;
 
     /** Select: Add / Remove / Set по маске. Пустая маска и не Set — no-op. */
@@ -141,43 +118,17 @@ protected:
     [[nodiscard]] virtual MechReg& storage() noexcept = 0;
 
     void onPacket(const Packet& pkt) noexcept override;
-    void onStatus(Status status) noexcept override;
-    /** HB lost: onLink(false); reconnect в update() по списку start(). */
-    void onHbLost(Session* session) noexcept override;
 
     /** По умолчанию: `segment(src)` → CMech::onTelemetry. */
     virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept;
-    /** Edge Phase — UI. */
-    virtual void onPhase(Phase phase) noexcept { (void)phase; }
-    /** Edge линка к серверу (после Open / перед close). */
-    virtual void onLink(uint8_t server_id, bool up) noexcept
-    {
-        (void)server_id;
-        (void)up;
-    }
 
     /** Primary-сессия; первый start() занимает её, если Idle. */
     Session& _primary;
 
 private:
-    static constexpr uint8_t kMaxStart = 8u;
-
-    void setPhase(Phase phase) noexcept;
-    void enterFault() noexcept;
-    void closeAllSessions() noexcept;
-    void pumpReconnect() noexcept;
-    void notifyLinkUp() noexcept;
     [[nodiscard]] Session* sessionTo(uint8_t server_id) noexcept;
     [[nodiscard]] const Session* sessionTo(uint8_t server_id) const noexcept;
     [[nodiscard]] Session* idleSession() noexcept;
-    [[nodiscard]] uint8_t startSlot(uint8_t server_id) const noexcept;
-    bool rememberStart(uint8_t server_id) noexcept;
-    void forgetStart(uint8_t server_id) noexcept;
-
-    Phase _phase = Phase::Idle;
-    uint8_t _started[kMaxStart]{};
-    bool _link_up[kMaxStart]{};
-    MISC::MsTimer _listen{};
 };
 
 /** Console<N>: registry сессий MaxSessions + primary Session; CMech — leaf. */

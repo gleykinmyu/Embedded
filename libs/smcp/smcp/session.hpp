@@ -32,7 +32,7 @@ public:
     /**
      * Линк. _master (start) — keep-alive ping.
      * Idle / Connecting / Awaiting / Open; isOpen = только Open.
-     * misses ≥ N → onHbLost + close.
+     * close(reason != None) → onFault + Idle. None — Idle без onFault.
      */
     enum class Status : uint8_t {
         Idle = 0,
@@ -41,7 +41,10 @@ public:
         Open,       /**< линк подтверждён RX HB */
     };
 
+    using Fault = Node::Fault;
+
     [[nodiscard]] static const char* cstr(Status status) noexcept;
+    [[nodiscard]] static const char* cstr(Fault reason) noexcept { return Node::cstr(reason); }
 
     // --- ctor / id ---
 
@@ -58,8 +61,8 @@ public:
     [[nodiscard]] Status getStatus() const noexcept { return _status; }
     [[nodiscard]] uint8_t peerId() const noexcept { return _peer_id; }
     /**
-     * Линк к peer (Open). При IdConflict Node режет TX/RX;
-     * isOpen может остаться true — close в onStatus наверху.
+     * Линк к peer (Open). Свой IdConflict: Node шлёт Fault и close
+     * (isOpen → false) до sticky Status.
      */
     [[nodiscard]] bool isOpen() const noexcept { return _status == Status::Open; }
     [[nodiscard]] bool isMaster() const noexcept { return _master; }
@@ -78,8 +81,11 @@ public:
     void open(uint8_t peer_id) noexcept;
     /** `_master` + abortAck + open. Ping — из tick (Connecting). */
     void start(uint8_t peer_id) noexcept;
-    /** Idle, peer=0, сброс TX/таймеров/ack; снимает _master. */
-    void close() noexcept;
+    /**
+     * Idle — no-op. reason != None → onFault, затем сброс.
+     * Штатное (None): без onFault, onLink(false) если был Open.
+     */
+    void close(Fault reason) noexcept;
 
     // --- исходящие PDU (app) ---
 
@@ -103,18 +109,20 @@ public:
 
     void sendAck(uint8_t req_pkt_id) noexcept;
     void sendNack(uint8_t req_pkt_id, uint8_t error,
-                  uint8_t detail = msg::Nack::kDetailNone) noexcept;
+                  uint32_t detail = msg::Nack::kDetailNone) noexcept;
 
     template <typename E>
     void sendNack(uint8_t req_pkt_id, E error,
-                  uint8_t detail = msg::Nack::kDetailNone) noexcept
+                  uint32_t detail = msg::Nack::kDetailNone) noexcept
     {
         sendNack(req_pkt_id, static_cast<uint8_t>(error), detail);
     }
 
 protected:
-    /** HB / Ack / Nack. true — Node не зовёт Node::onPacket. */
+    /** HB / Ack / Nack. Fault PDU не ест — Node::onPacket. true — Node не зовёт Node::onPacket. */
     [[nodiscard]] virtual bool onPacket(const Packet& pkt) noexcept;
+    /** Peer ещё жив; close(reason != None) до сброса статуса. */
+    virtual void onFault(Fault reason) noexcept;
 
 private:
     friend class Node;
@@ -122,9 +130,8 @@ private:
     friend class MISC::ObjRegistry;
 
     void set_id(uint8_t id) noexcept { _id = id; }
-    [[nodiscard]] bool nodeOk() const noexcept;
 
-    /** Смена `_status`; no-op если тот же; лог SMCP_SESS. */
+    /** Смена `_status`; no-op если тот же; ребро Open → Node::onLink. */
     void setStatus(Status status) noexcept;
 
     // --- pump (только Node) ---
@@ -138,7 +145,6 @@ private:
     void ping() noexcept;
     void pong() noexcept;
     void onHeartbeat(uint8_t src_id) noexcept;
-    void hbLost() noexcept;
 
     // --- Ack window ---
 

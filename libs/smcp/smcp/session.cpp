@@ -32,26 +32,23 @@ Session::Session(Node& node) noexcept
     detail::registerSession(node, *this);
 }
 
-bool Session::nodeOk() const noexcept
-{
-    return _node.getStatus() != Node::Status::IdConflict;
-}
-
 void Session::setStatus(Status status) noexcept
 {
     if (status == _status) {
         return;
     }
-#if defined(SMCP_TRACE_SHORT)
-    SMCP_SESS("S%u %s>%s p=%u\n",
-#else
-    SMCP_SESS("[SMCP] Session[%u] status %s -> %s peer=%u\n",
-#endif
-             static_cast<unsigned>(_id),
-             cstr(_status),
-             cstr(status),
-             static_cast<unsigned>(_peer_id));
+    const bool was_open = (_status == Status::Open);
+    SMCP_LOG(SMCP_SESS,
+        "S%u %s>%s p=%u\n",
+        "[SMCP] Session[%u] status %s -> %s peer=%u\n",
+        static_cast<unsigned>(_id),
+        cstr(_status),
+        cstr(status),
+        static_cast<unsigned>(_peer_id));
     _status = status;
+    if (was_open != (_status == Status::Open) && _peer_id != 0u) {
+        _node.onLink(this, _status == Status::Open);
+    }
 }
 
 // --- жизненный цикл ---
@@ -76,22 +73,21 @@ void Session::abortAck() noexcept
 
 void Session::open(uint8_t peer_id) noexcept
 {
-    if (!nodeOk() || peer_id == 0u) {
-#if defined(SMCP_TRACE_SHORT)
-        SMCP_SESS("S%u rej p=%u ok=%u\n",
-#else
-        SMCP_SESS("[SMCP] Session[%u] open reject peer=%u nodeOk=%u\n",
-#endif
-                 static_cast<unsigned>(_id),
-                 static_cast<unsigned>(peer_id),
-                 nodeOk() ? 1u : 0u);
+    if (!_node.isReady() || peer_id == 0u) {
+        SMCP_LOG(SMCP_SESS,
+            "S%u rej p=%u rdy=%u\n",
+            "[SMCP] Session[%u] open reject peer=%u ready=%u\n",
+            static_cast<unsigned>(_id),
+            static_cast<unsigned>(peer_id),
+            _node.isReady() ? 1u : 0u);
         return;
     }
     abortAck();
     _hb.clear();
     clearTx();
-    _peer_id = peer_id;
+    _pkt_tx = 0;
     setStatus(Status::Connecting);
+    _peer_id = peer_id;
 }
 
 void Session::start(uint8_t peer_id) noexcept
@@ -100,8 +96,14 @@ void Session::start(uint8_t peer_id) noexcept
     open(peer_id);
 }
 
-void Session::close() noexcept
+void Session::close(Fault reason) noexcept
 {
+    if (_status == Status::Idle) {
+        return;
+    }
+    if (reason != Fault::None) {
+        onFault(reason);
+    }
     abortAck();
     _hb.clear();
     _master = false;
@@ -111,17 +113,16 @@ void Session::close() noexcept
     clearTx();
 }
 
-void Session::hbLost() noexcept
+void Session::onFault(Fault reason) noexcept
 {
-    _node.onHbLost(this);
-    close();
+    _node.onFault(this, reason);
 }
 
 // --- исходящие PDU ---
 
 bool Session::transmit(Message msg, uint8_t pkt_id, bool needs_ack) noexcept
 {
-    if (!nodeOk() || _peer_id == 0u) {
+    if (!_node.isReady() || _peer_id == 0u) {
         return false;
     }
 
@@ -165,39 +166,26 @@ void Session::sendAck(uint8_t req_pkt_id) noexcept
     transmit(m, req_pkt_id, false);
 }
 
-void Session::sendNack(uint8_t req_pkt_id, uint8_t error, uint8_t detail) noexcept
+void Session::sendNack(uint8_t req_pkt_id, uint8_t error, uint32_t detail) noexcept
 {
     if (!isOpen()) {
-#if defined(SMCP_TRACE_SHORT)
-        SMCP_SESS("S%u Nk! #%u %u %u\n",
-                 static_cast<unsigned>(_id),
-                 static_cast<unsigned>(req_pkt_id),
-                 static_cast<unsigned>(error),
-                 static_cast<unsigned>(detail));
-#else
-        SMCP_SESS("[SMCP] Session[%u] sendNack drop (!Open) pkt=%u error=%u detail=%u\n",
-                 static_cast<unsigned>(_id),
-                 static_cast<unsigned>(req_pkt_id),
-                 static_cast<unsigned>(error),
-                 static_cast<unsigned>(detail));
-#endif
+        SMCP_LOG(SMCP_SESS,
+            "S%u Nk! #%u %u %08lX\n",
+            "[SMCP] Session[%u] sendNack drop (!Open) pkt=%u error=%u detail=0x%08lX\n",
+            static_cast<unsigned>(_id),
+            static_cast<unsigned>(req_pkt_id),
+            static_cast<unsigned>(error),
+            static_cast<unsigned long>(detail));
         return;
     }
-#if defined(SMCP_TRACE_SHORT)
-    SMCP_SESS("S%u Nk p=%u #%u %u %u\n",
-             static_cast<unsigned>(_id),
-             static_cast<unsigned>(_peer_id),
-             static_cast<unsigned>(req_pkt_id),
-             static_cast<unsigned>(error),
-             static_cast<unsigned>(detail));
-#else
-    SMCP_SESS("[SMCP] Session[%u] sendNack peer=%u pkt=%u error=%u detail=%u\n",
-             static_cast<unsigned>(_id),
-             static_cast<unsigned>(_peer_id),
-             static_cast<unsigned>(req_pkt_id),
-             static_cast<unsigned>(error),
-             static_cast<unsigned>(detail));
-#endif
+    SMCP_LOG(SMCP_SESS,
+        "S%u Nk p=%u #%u %u %08lX\n",
+        "[SMCP] Session[%u] sendNack peer=%u pkt=%u error=%u detail=0x%08lX\n",
+        static_cast<unsigned>(_id),
+        static_cast<unsigned>(_peer_id),
+        static_cast<unsigned>(req_pkt_id),
+        static_cast<unsigned>(error),
+        static_cast<unsigned long>(detail));
     msg::Nack body{};
     body.error = error;
     body.detail = detail;
@@ -345,7 +333,7 @@ void Session::pong() noexcept
 
 void Session::onHeartbeat(uint8_t src_id) noexcept
 {
-    if (!nodeOk() || src_id == 0u) {
+    if (!_node.isReady() || src_id == 0u) {
         return;
     }
 
@@ -374,13 +362,16 @@ bool Session::onPacket(const Packet& pkt) noexcept
         onHeartbeat(pkt.src_id);
         return true;
     }
-    onAck(pkt);
-    return true;
+    if (pkt.msg.id == msg::Ack::kId || pkt.msg.id == msg::Nack::kId) {
+        onAck(pkt);
+        return true;
+    }
+    return false; /* Fault — Node::onPacket */
 }
 
 void Session::tick() noexcept
 {
-    if (!nodeOk()) {
+    if (!_node.isReady()) {
         return;
     }
 
@@ -395,13 +386,13 @@ void Session::tick() noexcept
     if (_hb.timedOut(_node.clockMs())) {
         if (_master) {
             if (_hb.isWaiting() && _hb.isReplyLimit()) {
-                hbLost();
+                close(Fault::HbLost);
                 return;
             }
             ping();
         } else {
             if (_hb.isReplyLimit()) {
-                hbLost();
+                close(Fault::HbLost);
             } else {
                 _hb.start(_node.clockMs(), msg::Heartbeat::kTimeoutMs, false);
             }

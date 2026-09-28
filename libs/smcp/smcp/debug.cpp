@@ -22,23 +22,15 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
     }
 #endif
 
-#if defined(SMCP_TRACE_SHORT)
-    std::printf("%c %u>%u #%u %s dlc=%u\n",
-        (dir != nullptr && dir[0] == 'T') ? 'T' : 'R',
+    std::printf(SMCP_PICK(
+            "%c %u>%u #%u %s dlc=%u\n",
+            "[SMCP] %s %u>%u #%u id=%s dlc=%u\n"),
+        SMCP_PICK((dir != nullptr && dir[0] == 'T') ? 'T' : 'R', dir),
         static_cast<unsigned>(pkt.src_id),
         static_cast<unsigned>(pkt.dst_id),
         static_cast<unsigned>(pkt.pkt_id),
-        msg::cstrMsgS(pkt.msg.id),
+        SMCP_PICK(msg::cstrMsgS(pkt.msg.id), msg::cstrMsg(pkt.msg.id)),
         static_cast<unsigned>(pkt.msg.dlc));
-#else
-    std::printf("[SMCP] %s %u>%u #%u id=%s dlc=%u\n",
-        dir,
-        static_cast<unsigned>(pkt.src_id),
-        static_cast<unsigned>(pkt.dst_id),
-        static_cast<unsigned>(pkt.pkt_id),
-        msg::cstrMsg(pkt.msg.id),
-        static_cast<unsigned>(pkt.msg.dlc));
-#endif
 }
 
 } // namespace smcp

@@ -89,7 +89,7 @@ void logCanDebug() noexcept
 
     std::printf(
         "[CAN] hw=%s open=%u lec=%s tec=%u rec=%u %s%s%s tme=%u/3 fif0=%u rxq=%u txfree=%u "
-        "ph=%s node=%s link=%s up=%u\n",
+        "node=%s link=%s up=%u\n",
         BIF::CAN::cstr(board.can.getStatus()),
         board.can.isOpen() ? 1u : 0u,
         canLecCstr(lec),
@@ -102,7 +102,6 @@ void logCanDebug() noexcept
         static_cast<unsigned>(hw.rx[0].pending()),
         static_cast<unsigned>(board.can.available()),
         static_cast<unsigned>(board.can.availableForWrite()),
-        smcp::IConsole::cstr(console.phase()),
         smcp::Node::cstr(console.getStatus()),
         ilinkCstr(linkConsole.getStatus()),
         console.linkUp() ? 1u : 0u);

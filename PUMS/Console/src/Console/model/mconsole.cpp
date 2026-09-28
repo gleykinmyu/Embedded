@@ -75,12 +75,11 @@ void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
     _lastNack = reply;
     _lastNackReq = req.msg.id;
 
-    const uint8_t detail = _lastNack.detail;
-    if (detail != smcp::msg::Nack::kDetailNone && detail < kMechCount
+    const smcp::Selection mask = smcp::Selection::from_raw(_lastNack.detail);
+    if (!mask.empty()
+        && _lastNack.error != static_cast<uint8_t>(smcp::msg::ErrorCode::MechNotFound)
         && (_lastNackReq == smcp::msg::Select::kId || _lastNackReq == smcp::msg::SetTarget::kId
             || _lastNackReq == smcp::msg::Block::kId)) {
-        smcp::Selection mask;
-        mask.add(detail);
         getTelemetry(mask, session->peerId());
     }
 }
@@ -102,18 +101,20 @@ void MConsole::setUiReady() noexcept
     }
 }
 
-void MConsole::onPhase(Phase phase) noexcept
+void MConsole::onStatus(Status status) noexcept
 {
-    if (phase == Phase::Ready) {
+    IGroupConsole::onStatus(status);
+    if (status == Status::Ready) {
         start(smcp::msg::kServerIdMin);
     }
     onConsoleChanged();
 }
 
-void MConsole::onLink(uint8_t server_id, bool up) noexcept
+void MConsole::onLink(smcp::Session* session, bool up) noexcept
 {
-    if (up && _uiReady) {
-        requestMechTelemetry(server_id);
+    IGroupConsole::onLink(session, up);
+    if (up && _uiReady && session != nullptr) {
+        requestMechTelemetry(session->peerId());
     }
     onConsoleChanged();
 }

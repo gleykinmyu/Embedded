@@ -34,8 +34,9 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - Консоли `0x01…0x0F`, серверы `0x10…0xEF`, broadcast `0xFF`. `0` не занимать.
 - CAN ID: `msg_id[7] | dst[8] | src[8] | pkt_id[6]` в битах `[28:0]`.
 - Приоритет = `msg_id`: Ack/Nack → команды → HB `0x30` → Telemetry `0x40`.
-- Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack DLC=2 `error|detail`).
-  Коды Nack — у northbound (`ErrorCode` в `smcp/mech/message.hpp`), транспорт несёт raw `uint8_t`.
+- Payload class A без `pkt_id` в data (Select DLC=5, SetTarget DLC=7, Ack DLC=0, Nack/Fault DLC=5 `error|u32`).
+  Коды Nack — у northbound (`ErrorCode` в `smcp/mech/message.hpp`), транспорт: `error` uint8, `detail` uint32 (`Selection.raw()`).
+  Fault: `Fault::kIdConflict`; `detail` пока 0.
 
 ## Что не делать
 
@@ -50,6 +51,10 @@ SMCP сейчас — **northbound**: консоль ↔ сервер сегме
 - Протокол: `PROTOCOL.md` (классы A–E, чеклист MsgId).
 - Транспорт: lib `libs/smcp`.
 - North PDU / оси / `Group`: `src/smcp/mech/`. Пульт: `mech/Console/` (в т.ч. GRUP/`group_bank`). Сегмент: `mech/Server/`.
-- Пульт: `begin(console_id)` / `end` / `start(server_id)` / `stop`. Phase Idle/Listen/Ready/Fault. Peer в Session, не `_server_id`.
+- Пульт: `begin(console_id)` / `end` / `start(server_id)` / `stop`. `Node::Status` Idle/Listen/Ready + sticky отказы. Peer в Session, не `_server_id`.
+  IdConflict: Node шлёт Fault PDU, `Session::close(IdConflict)`; после нового `begin(id)` наследник снова `start()`.
+  HB lost: `Session::close(HbLost)`; снова `start()` решает leaf.
+  `begin`/`end` на **Node** (консоль/сервер — проверка диапазона id). `stop`: `close(None)` (без `onFault`).
+- Сервер: `begin(server_id)` в `main` (тот же Listen, что у пульта).
 - Сервер leaf: `src/Server/model/{mserver,drive_mech}`.
 - Плата: только CAN1 (`board.can`, PD0/PD1). F407 умеет CAN2 — ещё не открыт.

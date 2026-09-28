@@ -50,6 +50,13 @@ public:
     {
         return const_cast<IServer*>(this)->storage().get(id);
     }
+    /** Оси, прошедшие registerMech. */
+    [[nodiscard]] Selection mechRegistered() const noexcept { return _mechRegistered; }
+
+    /**
+     * Node::begin, только `isServerId`. Listen → Ready в Node::update.
+     */
+    void begin(uint8_t server_id) noexcept;
 
     // --- исходящие PDU ---
 
@@ -57,11 +64,8 @@ public:
     void pushTelemetry(uint8_t mech_id) noexcept;
 
 protected:
-    /**
-     * HB lost: снять Select этого peer, Telemetry по сменившимся.
-     * Сессия ещё Open (`peerId` жив); Session::close — после хука.
-     */
-    void onHbLost(Session* session) noexcept override;
+    /** session == nullptr (свой IdConflict): снять оставшиеся Select без Telemetry. */
+    void onFault(Session* session, Fault reason) noexcept override;
 
     friend void detail::registerMech(IServer& server, IMech& mech) noexcept;
     friend class SessionConsole;
@@ -112,6 +116,10 @@ protected:
         (void)target;
         return msg::ErrorCode::Ok;
     }
+
+private:
+    void dropPeerSelect(Session* session, bool telemetry) noexcept;
+    Selection _mechRegistered{};
 };
 
 /**
@@ -125,6 +133,7 @@ protected:
     // --- RX ---
 
     [[nodiscard]] bool onPacket(const Packet& pkt) noexcept override;
+    void onFault(Fault reason) noexcept override;
 
 private:
     /** Select (holder) vs Block (Status::Blocked) — общий пайплайн plan→accept→commit. */
@@ -157,6 +166,12 @@ private:
 
     /** GetTelemetry: проверка маски → Ack → Telemetry по осям (без commit). */
     void onGetTelemetry(const msg::GetTelemetry& body, uint8_t pkt_id) noexcept;
+
+    /**
+     * Бит маски не в mechRegistered → Nack MechNotFound, detail = лишние биты.
+     * @return true — уже Nack, выйти.
+     */
+    [[nodiscard]] bool checkMechId(Selection selection, uint8_t pkt_id) noexcept;
 
     /**
      * Проверка доступа к оси.
