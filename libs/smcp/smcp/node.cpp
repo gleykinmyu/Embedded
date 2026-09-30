@@ -92,6 +92,19 @@ Session* Node::sessionByPeer(uint8_t peer_id) noexcept
     return nullptr;
 }
 
+Session* Node::idleSession() noexcept
+{
+    auto& reg = sessions();
+    const uint8_t end = reg.endId();
+    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
+        Session* const s = reg.get(sid);
+        if (s != nullptr && s->getStatus() == Session::Status::Idle) {
+            return s;
+        }
+    }
+    return nullptr;
+}
+
 Session* Node::openNewSession(const Packet& pkt) noexcept
 {
     if (_status != Status::Ready) {
@@ -104,16 +117,11 @@ Session* Node::openNewSession(const Packet& pkt) noexcept
         return nullptr; /* bind только unicast, не broadcast */
     }
 
-    auto& reg = sessions();
-    const uint8_t end = reg.endId();
-    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
-        Session* slot = reg.get(sid);
-        if (slot != nullptr && slot->peerId() == 0u) {
-            return slot;
-        }
+    Session* const slot = idleSession();
+    if (slot == nullptr) {
+        onSessionFull(pkt.src_id);
     }
-    onSessionFull(pkt.src_id);
-    return nullptr;
+    return slot;
 }
 
 void Node::send(Message msg, uint8_t dst_id, uint8_t pkt_id) noexcept

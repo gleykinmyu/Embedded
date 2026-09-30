@@ -176,6 +176,12 @@ public:
     {
         return const_cast<Node*>(this)->sessionByPeer(peer_id);
     }
+    /** Первый слот Session::Status::Idle; нет — nullptr. */
+    [[nodiscard]] Session* idleSession() noexcept;
+    [[nodiscard]] const Session* idleSession() const noexcept
+    {
+        return const_cast<Node*>(this)->idleSession();
+    }
 
     // --- TX / pump (app) ---
 
@@ -232,7 +238,7 @@ protected:
     virtual void onTxFull(Session* session) noexcept;
 
     /**
-     * Unicast HB от @a peer_id, а свободного Session (peer_id==0) нет.
+     * Unicast HB от @a peer_id, а свободной Session (Status::Idle) нет.
      * Не sticky Status — событие ёмкости.
      */
     virtual void onSessionFull(uint8_t peer_id) noexcept;
@@ -303,7 +309,7 @@ private:
 
     [[nodiscard]] bool sendWire(const TxSlot& item) noexcept;
     void pumpTx(bool do_tick) noexcept;
-    /** Unicast HB → первый слот peer_id==0 (bind в Session::onHeartbeat). */
+    /** Unicast HB → idleSession() (bind в Session::onHeartbeat). */
     [[nodiscard]] Session* openNewSession(const Packet& pkt) noexcept;
 
     // --- данные ---

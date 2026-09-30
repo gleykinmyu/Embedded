@@ -128,7 +128,6 @@ protected:
 private:
     [[nodiscard]] Session* sessionTo(uint8_t server_id) noexcept;
     [[nodiscard]] const Session* sessionTo(uint8_t server_id) const noexcept;
-    [[nodiscard]] Session* idleSession() noexcept;
 };
 
 /** Console<N>: registry сессий MaxSessions + primary Session; CMech — leaf. */

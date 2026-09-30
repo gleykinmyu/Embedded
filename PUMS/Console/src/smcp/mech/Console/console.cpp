@@ -72,7 +72,7 @@ void IConsole::start(uint8_t server_id) noexcept
         return;
     }
 
-    Session* const slot = idleSession();
+    Session* const slot = Node::idleSession();
     if (slot == nullptr) {
         onSessionFull(server_id);
         return;
@@ -201,22 +201,6 @@ Session* IConsole::sessionTo(uint8_t server_id) noexcept
 const Session* IConsole::sessionTo(uint8_t server_id) const noexcept
 {
     return const_cast<IConsole*>(this)->sessionTo(server_id);
-}
-
-Session* IConsole::idleSession() noexcept
-{
-    if (_primary.getStatus() == Session::Status::Idle) {
-        return &_primary;
-    }
-    SessionReg& reg = sessions();
-    const uint8_t end = reg.endId();
-    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
-        Session* const s = reg.get(sid);
-        if (s != nullptr && s != &_primary && s->getStatus() == Session::Status::Idle) {
-            return s;
-        }
-    }
-    return nullptr;
 }
 
 } // namespace smcp
