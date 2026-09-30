@@ -195,7 +195,7 @@ struct Fault {
 struct Heartbeat {
     static constexpr uint8_t kId = static_cast<uint8_t>(Id::Heartbeat);
     static constexpr bool kNeedsAck = false;
-    static constexpr uint16_t kTimeoutMs = 500u;
+    static constexpr uint16_t kTimeoutMs = 200u;
     /** Сколько интервалов T без RX HB до down. */
     static constexpr uint8_t kMissMax = 3u;
 

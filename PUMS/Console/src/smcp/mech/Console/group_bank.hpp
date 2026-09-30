@@ -61,83 +61,26 @@ public:
     /** Ось входит в blocked-группу. */
     [[nodiscard]] virtual bool containsBlocked(uint8_t mech_id) const noexcept = 0;
     /**
-     * Пересечение @a mask с blocked, кроме @a except_id (kNoExcept — все).
-     * Пишет overlap(); true — есть общие оси.
+     * Пересечение @a mask маски @a index с blocked, кроме @a except_id (kNoExcept — все).
+     * @a index — номер с 0. Пишет overlap(); true — есть общие оси.
      */
-    virtual bool fillBlockedOverlap(uint8_t except_id, Selection mask) noexcept = 0;
+    virtual bool fillBlockedOverlap(uint8_t except_id, uint8_t index, Selection mask) noexcept = 0;
 
 protected:
     Overlap _overlap{};
 };
 
 /**
- * Прокси слота GRUP: запись в секции + пульт. В шоуфайл пишется Group, не этот объект.
- * Временный: не хранить, только сразу вызвать метод.
+ * Секция GRUP: payload — Group<Segments>[N]. operator[] даёт временный CGroup.
+ * Segments — сколько масок в слоте (серверов). По умолчанию 1, слот 64 байта.
  */
-class CGroup {
-public:
-    /** Прокси не владеет записью: @a rec живёт в секции. */
-    CGroup(Group& rec, IGroupBank& bank, IGroupConsole& console) noexcept;
-
-    [[nodiscard]] uint8_t id() const noexcept;
-    /** Маска осей слота. */
-    [[nodiscard]] const Selection& mech() const noexcept;
-    [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept;
-    [[nodiscard]] const char* name() const noexcept;
-
-    [[nodiscard]] bool isEmpty() const noexcept;
-    [[nodiscard]] bool isBlocked() const noexcept;
-    /** Ставит Blocked. При @a on: overlap (инфо); если это queued/active — сброс группы. */
-    void setBlocked(bool on = true) noexcept;
-
-    enum class Result : uint8_t {
-        Ok = 0,
-        Empty,           /**< Пустая маска / слот. */
-        Occupied,        /**< Слот непустой, нужен confirmed. */
-        Blocked,         /**< Сама группа blocked. */
-        OverlapsBlocked, /**< Пересечение с другой заблокированной группой. */
-    };
-
-    /**
-     * Select маски и билет queued group.
-     * Empty / Blocked / OverlapsBlocked — отказ.
-     */
-    [[nodiscard]] Result recall() noexcept;
-
-    /**
-     * Записать выделение в слот.
-     * Occupied снимается @a confirmed; OverlapsBlocked — нет.
-     */
-    [[nodiscard]] Result record(Selection selection, const char* name = nullptr,
-                                bool confirmed = false) noexcept;
-    /** Переименовать непустую группу. */
-    [[nodiscard]] bool rename(const char* name) noexcept;
-    /**
-     * Очистить слот.
-     * Пустая — true; непустая — только @a confirmed.
-     */
-    [[nodiscard]] bool clear(bool confirmed = false) noexcept;
-
-    /** Прочитать запись шоуфайла; id слота не меняется. */
-    void readFrom(const Group& rec) noexcept;
-    /** Выгрузить запись шоуфайла. */
-    void writeTo(Group& rec) const noexcept;
-
-private:
-    Group& _rec;
-    IGroupBank& _bank;
-    IGroupConsole& _console;
-};
-
-/**
- * Секция GRUP + банк слотов: payload — Group[N], operator[] даёт временный CGroup.
- */
-template <uint8_t N>
-class CGroupBank : public sf::Section<Group, N>, public IGroupBank {
-    using Base = sf::Section<Group, N>;
+template <uint8_t N, uint8_t Segments = 1u>
+class CGroupBank : public sf::Section<Group<Segments>, N>, public IGroupBank {
+    using Base = sf::Section<Group<Segments>, N>;
 
 public:
     static constexpr uint8_t kCount = N;
+    static constexpr uint8_t kSegments = Segments;
 
     /** Id слотов = индекс 0…N-1. */
     CGroupBank(sf::IShow& file, IGroupConsole& console, bool required = true) noexcept
@@ -145,15 +88,16 @@ public:
         , _console(console)
     {
         for (uint8_t i = 0; i < N; ++i) {
-            this->rec(i).id = i;
+            this->rec(i).head.id = i;
+            this->rec(i).head.count = Segments;
         }
     }
 
-    /** Сбросить все слоты, сохранив id = индекс. */
+    /** Сбросить заголовки слотов. id и count не трогаем. */
     void clearData() noexcept override
     {
         for (uint8_t i = 0; i < N; ++i) {
-            this->rec(i).clear();
+            this->rec(i).head.clear();
         }
         this->clearDesc();
         _overlap.count = 0;
@@ -162,14 +106,17 @@ public:
     /** Известные флаги и нуль-терминатор в имени. */
     [[nodiscard]] bool isValid() const noexcept override
     {
-        constexpr uint8_t kKnown = static_cast<uint8_t>(Group::Flag::Blocked)
-            | static_cast<uint8_t>(Group::Flag::Atomic);
+        constexpr uint8_t kKnown = static_cast<uint8_t>(GroupHeader::Flag::Blocked)
+            | static_cast<uint8_t>(GroupHeader::Flag::Atomic);
         for (uint8_t i = 0; i < N; ++i) {
-            const Group& g = this->rec(i);
-            if ((g.flag.raw() & static_cast<uint8_t>(~kKnown)) != 0u) {
+            const Group<Segments>& g = this->rec(i);
+            if (g.head.count != Segments) {
                 return false;
             }
-            if (std::memchr(g.name, '\0', kGroupNameSize) == nullptr) {
+            if ((g.head.flag.raw() & static_cast<uint8_t>(~kKnown)) != 0u) {
+                return false;
+            }
+            if (std::memchr(g.head.name, '\0', kGroupNameSize) == nullptr) {
                 return false;
             }
         }
@@ -183,7 +130,8 @@ public:
     }
     [[nodiscard]] const CGroup operator[](uint8_t i) const noexcept
     {
-        return CGroup(const_cast<Group&>(this->rec(i)), const_cast<CGroupBank&>(*this),
+        return CGroup(const_cast<Group<Segments>&>(this->rec(i)),
+                      const_cast<CGroupBank&>(*this),
                       const_cast<IGroupConsole&>(_console));
     }
 
@@ -192,31 +140,42 @@ public:
     [[nodiscard]] bool containsBlocked(uint8_t mech_id) const noexcept override
     {
         for (uint8_t i = 0; i < N; ++i) {
-            const Group& g = this->rec(i);
-            if (g.isBlocked() && g.mech.contains(mech_id)) {
-                return true;
+            const Group<Segments>& g = this->rec(i);
+            const CGroup group(const_cast<GroupHeader*>(&g.head), const_cast<Selection*>(g.sel));
+            if (!g.head.isBlocked()) {
+                continue;
+            }
+            for (uint8_t seg = 0u; seg < g.head.count; ++seg) {
+                if (group.contains(seg, mech_id)) {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    bool fillBlockedOverlap(uint8_t except_id, Selection mask) noexcept override
+    bool fillBlockedOverlap(uint8_t except_id, uint8_t index, Selection mask) noexcept override
     {
         _overlap.count = 0;
         bool any = false;
         for (uint8_t i = 0; i < N; ++i) {
-            const Group& g = this->rec(i);
-            if (g.id == except_id || !g.isBlocked()) {
+            const Group<Segments>& g = this->rec(i);
+            if (g.head.id == except_id || !g.head.isBlocked()) {
                 continue;
             }
-            const Selection hit = g.mech & mask;
+            const CGroup group(const_cast<GroupHeader*>(&g.head), const_cast<Selection*>(g.sel));
+            const Selection* const sel = group.at(index);
+            if (sel == nullptr) {
+                continue;
+            }
+            const Selection hit = *sel & mask;
             if (!hit.any()) {
                 continue;
             }
             any = true;
             if (_overlap.slot != nullptr && _overlap.count < _overlap.capacity) {
                 OverlapSlot& dst = _overlap.slot[_overlap.count++];
-                dst.group = g.id;
+                dst.group = g.head.id;
                 dst.mech = hit;
             }
         }
@@ -236,7 +195,7 @@ public:
     CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept;
     CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept;
 
-    /** Deselect — Ok + TX; Add — Blocked / OverlapsBlocked / Occupied, иначе TX. */
+    /** Deselect — Ok, если Select в очереди. Add — Blocked / OverlapsBlocked / Occupied / NotSent. */
     [[nodiscard]] CGroup::Result trySelect(uint8_t console_id) noexcept;
 
 private:

@@ -26,7 +26,7 @@ public:
 
     static_assert(sizeof(sf::Header) + 2u * sizeof(sf::SectionDesc)
                           + 8u /* SETT: MConsole::kSettingsWireSize */
-                          + smcp::kGroupMaxCount * sizeof(smcp::Group)
+                          + smcp::kGroupMaxCount * sizeof(smcp::Group<1>)
                       <= kSectorSize,
                   "SMCP show must fit in one W25Q sector");
 

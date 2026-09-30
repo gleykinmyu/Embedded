@@ -104,7 +104,7 @@ void logCanDebug() noexcept
         static_cast<unsigned>(board.can.availableForWrite()),
         smcp::Node::cstr(console.getStatus()),
         ilinkCstr(linkConsole.getStatus()),
-        console.linkUp() ? 1u : 0u);
+        (console.link() != nullptr && console.link()->isOpen()) ? 1u : 0u);
 }
 
 #endif

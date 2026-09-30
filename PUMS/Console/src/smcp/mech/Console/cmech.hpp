@@ -18,14 +18,9 @@ class IConsole;
 /** IMech на пульте: Select/Block/SetTarget — TX; holder/status — только Telemetry. */
 class CMech : public IMech {
 public:
-    /** 0 — не id на шине: primary-банк (`storage()`), пока один сегмент. */
-    static constexpr uint8_t kPrimaryServer = 0;
-
-    /** `segment(kPrimaryServer)` → `storage()`. */
+    /** Один сегмент: сервер `msg::kServerIdMin`. */
     CMech(IConsole& console, uint8_t id) noexcept;
-    /**
-     * `segment(server_id)`. Не 0 и нет банка в `segment()` — RegisterFailed.
-     */
+    /** Регистрация в storage(server_id). Нет банка — RegisterFailed. */
     CMech(IConsole& console, uint8_t server_id, uint8_t id) noexcept;
 
     [[nodiscard]] IConsole& console() noexcept { return *_console; }
@@ -46,7 +41,7 @@ public:
 
 private:
     IConsole* _console;
-    uint8_t _server_id = kPrimaryServer;
+    uint8_t _server_id = 0;
 };
 
 /** Банк CMech[N]: ctor регистрирует каждый в owner. */

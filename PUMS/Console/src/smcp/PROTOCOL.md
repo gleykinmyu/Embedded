@@ -47,7 +47,7 @@ Server:   1) Проверка (без изменений): маска валид
 
 - Deselect снимает **только своё**; бит чужого holder → Nack Busy. Set с bit=0 чужого не трогает.
 - Потеря HB на сервере (`Session::onFault(HbLost)`): снять Select этого peer + Telemetry по сменившимся (как Deselect всех своих). Block не трогаем.
-- Консоль кладёт Telemetry только в `segment(src)`. По умолчанию один банк: `kPrimaryServer` и `_primary.peerId()`. Чужой / второй src без override — отбросить.
+- Консоль кладёт Telemetry в `storage(src)`, только если сессия с этим peer Open. Нет банка или сессия не Open — отбросить. Второй сервер — свой банк в `storage(server_id)`.
 - В Telemetry есть **`holder_id`** (кто держит Select). Смена `0 ↔ console` = изменение → Telemetry обязателен.
 - Повторный Select без изменений → **Ack**, Telemetry можно не слать.
 - Массовый Set на 32 оси с 32 изменениями → 1 Ack + 32 Telemetry (редко; ок для CAN).
@@ -103,7 +103,7 @@ Server:   1) MechNotFound / не наш Select → Busy / Blocked → Safety /
 
 ## Heartbeat (линк + регистрация)
 
-Open/Close на wire нет. Локально: `Session::Status` / `linkUp()`.
+Open/Close на wire нет. Локально: `Session::isOpen()`.
 
 В Node нет ролей «консоль/сервер». Сессия: `Idle` / `Connecting` / `Awaiting` / `Open`
 (`Awaiting` = первый ping, ещё не up; keep-alive из `Open` — только `_hb.isWaiting()`).
@@ -129,7 +129,7 @@ Master:  start → Connecting → ping → Awaiting → RX → Open
 Один `MsTimer` + счётчик `_hb_misses`.  
 «Сессия открыта» = `Session::isOpen()`.
 
-API консоли: `begin(console_id)` / `end` / `start(server)` / `stop(server)` / `update` / `linkUp` / `onStatus` / `onLink`.
+API консоли: `begin(console_id)` / `end` / `start(server)` → `ServerSession*` / `server(peer)` / `update` / `onStatus` / `onLink`. Close — `Session::close`. Линк — `ServerSession::isOpen()`. Select/Block/SetTarget/GetTelemetry — методы `ServerSession`.
 Сервер: `begin(server_id)` / `sessionByPeer` / `SessionBank<SessionConsole>`.
 `Node::begin` / `end` / `getStatus` / `clearError`; часы — в ctor `Node` (stall enqueue).
 `Node::Status`: Idle → Listen (~`Heartbeat::kTimeoutMs` в `update`) → Ready; sticky LinkError / RegisterFailed / IdConflict.
@@ -152,8 +152,9 @@ RX любого кадра с `src_id == мой id` → **`Node::enterIdConflict
 | **Session** | peer, `Status`, pkt_id, **своя TX-очередь**; `open`/`close` чистят очередь |
 
 `IConsole` / `IServer` наследуют **Node**, держат registry `Session*`;
-объекты: `Console` — primary `Session` (`MaxSessions` слотов, без запасного);
-`MServer` — `SessionBank<SessionConsole>`. Leaf может добавить ещё Session в свободные слоты.
+объекты сессий — у leaf: `MConsole` — `SessionBank<GServerSession>`,
+`MServer` — `SessionBank<SessionConsole>` (`MaxSessions` слотов, без запасного).
+Leaf может добавить ещё Session в свободные слоты.
 
 ### Конфликт одинаковых `console_id`
 
@@ -233,7 +234,7 @@ Class B: echo `pkt_id` запроса в CAN ID (Ack DLC=0). Счётчик `_pk
 - Класс **B**: `sendAck(req_pkt_id)` / `sendNack(req_pkt_id, error, detail=0)`.
   Nack DLC=5: `error | uint32 LE` (`error` — код вышестоящего протокола; `detail` — opaque, northbound = `Selection.raw()`, `Nack::kDetailNone` = 0). Ack DLC=0.
 - Класс **C**: логика внутри Session (`tick` / `onHeartbeat`).
-- Фасады `IConsole::select` / `setTarget` — над `send`, не транспорт.
+- Фасады `ServerSession::select` / `setTarget` — над `send`, не транспорт.
 
 Виртуальный `IMessage` — не правило. Новый PDU = struct + `SMCP_IF_MSG` в нужном листе.
 

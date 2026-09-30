@@ -28,7 +28,7 @@ class Show : public sf::Show<2> {
 public:
     static constexpr uint32_t kSettingsSectionTag = 0x54544553u;
 
-    smcp::CGroupBank<smcp::kGroupMaxCount> group;
+    smcp::CGroupBank<smcp::kGroupMaxCount, 1> group;
     sf::Section<Settings, 1> sett;
 
     explicit Show(smcp::IGroupConsole& console) noexcept
@@ -60,7 +60,9 @@ class MConsole : public smcp::GroupConsole<24> {
     friend class Fio;
 
 public:
-    using GroupConsole::kMechCount;
+    using Base = smcp::GroupConsole<24>;
+    using Base::kMechCount;
+    using Base::kSessionCount;
     static_assert(kMechCount <= smcp::kMechCount);
     using Settings = ::Settings;
     static constexpr uint8_t kGroupCount = smcp::kGroupMaxCount;
@@ -75,6 +77,10 @@ public:
              smcp::ILink& link, smcp::Node::ClockFn clock) noexcept;
 
 private:
+    /* После Base registry: GServerSession регистрируется в Node::sessions(). */
+    smcp::SessionBank<kSessionCount, smcp::GServerSession> _sessionBank;
+    /* До cmechs: CMech ctor → storage() → registerAt. */
+    smcp::IConsole::MechStore<kMechCount> _mechs;
     /* Staging до fio; show до cmechs — CGMech смотрит live GRUP. */
     Show _incoming;
 
@@ -101,7 +107,28 @@ public:
     void setUiReady() noexcept;
     [[nodiscard]] bool uiReady() const noexcept { return _uiReady; }
 
+    /** Node::update, затем start() сохранённой сессии после HbLost. */
+    void update() noexcept;
+
+    /** Сессия, которую открыл start(). Нет — nullptr. */
+    [[nodiscard]] smcp::ServerSession* link() const noexcept { return _link; }
+
+    [[nodiscard]] uint8_t serverIndex(uint8_t server_id) const noexcept override
+    {
+        return server_id == smcp::msg::kServerIdMin ? 0u : 0xFFu;
+    }
+
+    [[nodiscard]] uint8_t serverId(uint8_t index) const noexcept override
+    {
+        return index == 0u ? smcp::msg::kServerIdMin : 0u;
+    }
+
 protected:
+    [[nodiscard]] smcp::IConsole::MechReg* storage(uint8_t server_id) noexcept override
+    {
+        return server_id == smcp::msg::kServerIdMin ? &_mechs : nullptr;
+    }
+
     virtual void onMechChanged(uint8_t mech_id) noexcept { (void)mech_id; }
     virtual void onConsoleChanged() noexcept {}
 
@@ -109,14 +136,19 @@ protected:
     void onNack(smcp::Session* session, const smcp::TxSlot& req,
                 const smcp::msg::Nack& reply) noexcept override;
     void onStatus(Status status) noexcept override;
+    void onFault(smcp::Session* session, smcp::Node::Fault reason) noexcept override;
     void onLink(smcp::Session* session, bool up) noexcept override;
 
 private:
     void onFioEvent(sf::Fio::Event ev) noexcept;
-    void requestMechTelemetry(uint8_t server_id = smcp::CMech::kPrimaryServer) noexcept;
+    void requestMechTelemetry() noexcept;
 
     Mode _mode = Mode::Work;
     smcp::msg::Nack _lastNack{};
     uint8_t _lastNackReq = smcp::msg::Select::kId;
+    /** Слот с start(). Тот же объект после close. */
+    smcp::ServerSession* _link = nullptr;
+    /** update() снова зовёт start() после HbLost. */
+    bool _retry = false;
     bool _uiReady = false;
 };

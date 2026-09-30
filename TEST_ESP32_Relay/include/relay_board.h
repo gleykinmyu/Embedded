@@ -43,9 +43,6 @@ private:
     void coil_off(size_t ch);
     void coils_off();
     bool coil_is_on(size_t ch) const;
-    bool di_active(size_t ch) const;
-    bool channel_is_on(size_t ch) const;
-    bool pulse_to(bool want_on);
     void chase_kick();
     void chase_loop();
     static void chase_task(void *arg);
@@ -54,7 +51,6 @@ private:
     SemaphoreHandle_t mu_{};
     TaskHandle_t chase_task_{};
     uint8_t shadow_{};
-    volatile bool pulse_busy_{};
     size_t chase_ch_{};
     bool chase_running_{};
 };

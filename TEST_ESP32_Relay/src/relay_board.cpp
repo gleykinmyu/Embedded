@@ -40,17 +40,6 @@ bool RelayBoard::coil_is_on(size_t ch) const {
     return (shadow_ & static_cast<uint8_t>(1u << PIN_RELAY[ch])) != 0;
 }
 
-bool RelayBoard::di_active(size_t ch) const {
-    if (ch >= RELAY_COUNT) {
-        return false;
-    }
-    return gpio_get_level(static_cast<gpio_num_t>(PIN_DI[ch])) == 0;
-}
-
-bool RelayBoard::channel_is_on(size_t ch) const {
-    return ch == PULSE_CH ? di_active(PULSE_CH) : coil_is_on(ch);
-}
-
 void RelayBoard::chase_kick() {
     if (chase_task_) {
         xTaskNotifyGive(chase_task_);
@@ -70,14 +59,8 @@ void RelayBoard::chase_loop() {
         }
         size_t ch = chase_ch_;
         chase_ch_ = (chase_ch_ + 1) % RELAY_COUNT;
-        if (ch == PULSE_CH) {
-            ch = chase_ch_;
-            chase_ch_ = (chase_ch_ + 1) % RELAY_COUNT;
-        }
         coils_off();
-        if (ch != PULSE_CH) {
-            coil_on(ch);
-        }
+        coil_on(ch);
     }
 }
 
@@ -125,38 +108,9 @@ void RelayBoard::begin() {
     xTaskCreate(chase_task, "chase", 2048, this, 5, &chase_task_);
 }
 
-bool RelayBoard::pulse_to(bool want_on) {
-    if (di_active(PULSE_CH) == want_on) {
-        return true;
-    }
-    if (pulse_busy_) {
-        return false;
-    }
-    pulse_busy_ = true;
-    {
-        Lock g(mu_);
-        if (!g) {
-            pulse_busy_ = false;
-            return false;
-        }
-        chase_running_ = false;
-        coil_on(PULSE_CH);
-    }
-    vTaskDelay(pdMS_TO_TICKS(PULSE_MS));
-    {
-        Lock g(mu_);
-        if (g) {
-            coil_off(PULSE_CH);
-        }
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-    pulse_busy_ = false;
-    return true;
-}
-
 bool RelayBoard::set(size_t ch, bool on) {
-    if (ch == PULSE_CH) {
-        return pulse_to(on);
+    if (ch >= RELAY_COUNT) {
+        return false;
     }
     Lock g(mu_);
     if (!g) {
@@ -173,30 +127,22 @@ bool RelayBoard::set(size_t ch, bool on) {
 
 bool RelayBoard::is_on(size_t ch) {
     Lock g(mu_, pdMS_TO_TICKS(50));
-    return g && channel_is_on(ch);
+    return g && coil_is_on(ch);
 }
 
 bool RelayBoard::all_on() {
-    if (!set(PULSE_CH, true)) {
-        return false;
-    }
     Lock g(mu_);
     if (!g) {
         return false;
     }
     chase_running_ = false;
     for (size_t ch = 0; ch < RELAY_COUNT; ++ch) {
-        if (ch != PULSE_CH) {
-            coil_on(ch);
-        }
+        coil_on(ch);
     }
     return true;
 }
 
 bool RelayBoard::all_off() {
-    if (!set(PULSE_CH, false)) {
-        return false;
-    }
     Lock g(mu_);
     if (!g) {
         return false;
@@ -235,7 +181,7 @@ RelayBoard::Snapshot RelayBoard::snapshot() {
     }
     s.chase = chase_running_;
     for (size_t ch = 0; ch < RELAY_COUNT; ++ch) {
-        s.on[ch] = channel_is_on(ch);
+        s.on[ch] = coil_is_on(ch);
     }
     return s;
 }
@@ -250,5 +196,5 @@ void RelayBoard::print() {
     for (size_t ch = 0; ch < RELAY_COUNT; ++ch) {
         printf(" CH%u=%s", static_cast<unsigned>(ch + 1), s.on[ch] ? "ON" : "OFF");
     }
-    printf(" chase=%s DI1=%d\n", s.chase ? "run" : "stop", s.on[PULSE_CH] ? 1 : 0);
+    printf(" chase=%s\n", s.chase ? "run" : "stop");
 }

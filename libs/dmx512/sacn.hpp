@@ -13,6 +13,7 @@
 namespace dmx {
 
 using Frame = BIF::dmx::Frame;
+using Universe = BIF::dmx::Universe;
 using Status = BIF::dmx::Status;
 using iTx = BIF::dmx::iTx;
 using iRx = BIF::dmx::iRx;
@@ -90,7 +91,7 @@ inline std::size_t encode(uint8_t* pkt, const Frame& frame, const SacnConfig& cf
     pkt[122] = 0x01;
     net::putBe16(pkt + 123, propCount);
     pkt[125] = 0; ///< start code — транспорт
-    std::memcpy(pkt + 126, frame.slots, n);
+    std::memcpy(pkt + 126, frame.channels, n);
     return static_cast<std::size_t>(126u + n);
 }
 
@@ -121,9 +122,9 @@ inline bool decode(const uint8_t* pkt, std::size_t n, Frame& out, uint16_t expec
         return false;
 
     // pkt[125] = start code — не в Frame
-    std::memcpy(out.slots, pkt + 126, slots);
+    std::memcpy(out.channels, pkt + 126, slots);
     if (slots < BIF::dmx::kMaxChannels)
-        std::memset(out.slots + slots, 0, BIF::dmx::kMaxChannels - slots);
+        std::memset(out.channels + slots, 0, BIF::dmx::kMaxChannels - slots);
     return true;
 }
 
@@ -167,13 +168,31 @@ public:
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
 
-    bool send(const Frame& frame) override
+    bool bind(const Universe* uni) override
     {
-        if (!_isOpen)
+        _src = uni;
+        if (_src != nullptr) {
+            _cfg.universe = _src->id;
+            sacn_detail::clampUniverse(_cfg.universe);
+        }
+        return true;
+    }
+
+    bool unbind(const Universe* uni) override
+    {
+        if (uni == nullptr || _src != uni)
+            return false;
+        _src = nullptr;
+        return true;
+    }
+
+    bool send() override
+    {
+        if (!_isOpen || _src == nullptr)
             return false;
 
         uint8_t pkt[kSacnMax]{};
-        const std::size_t n = sacn_detail::encode(pkt, frame, _cfg, _seq);
+        const std::size_t n = sacn_detail::encode(pkt, _src->data, _cfg, _seq);
         BIF::NET::Endpoint dest;
         dest.port = kSacnPort;
         dest.ip = _cfg.multicast ? net::sacnGroup(_cfg.universe) : _cfg.destIp;
@@ -190,6 +209,7 @@ public:
 private:
     BIF::NET::IUdp& _udp;
     SacnConfig _cfg;
+    const Universe* _src = nullptr;
     Status _status = Status::OK;
     uint32_t _frameCount = 0;
     uint8_t _seq = 0;
@@ -245,18 +265,39 @@ public:
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
 
-    bool recv(Frame& frame) override
+    bool bind(Universe* uni) override
+    {
+        _dst = uni;
+        if (_dst != nullptr) {
+            const uint16_t prev = _cfg.universe;
+            _cfg.universe = _dst->id;
+            sacn_detail::clampUniverse(_cfg.universe);
+            _dst->id = _cfg.universe;
+            if (_isOpen && _cfg.multicast && prev != _cfg.universe)
+                retargetGroup(prev);
+        }
+        return true;
+    }
+
+    bool unbind(Universe* uni) override
+    {
+        if (uni == nullptr || _dst != uni)
+            return false;
+        _dst = nullptr;
+        return true;
+    }
+
+    bool recv() override
     {
         if (!_frameReady)
             return false;
-        frame = _rx;
         _frameReady = false;
         return true;
     }
 
     void poll() override
     {
-        if (!_isOpen)
+        if (!_isOpen || _dst == nullptr)
             return;
 
         uint8_t pkt[kSacnMax];
@@ -270,7 +311,8 @@ public:
                 _status = Status::DataError;
                 continue;
             }
-            _rx = parsed;
+            _dst->id = _cfg.universe;
+            _dst->data = parsed;
             _frameReady = true;
             ++_frameCount;
         }
@@ -291,7 +333,7 @@ private:
 
     BIF::NET::IUdp& _udp;
     SacnConfig _cfg;
-    Frame _rx{};
+    Universe* _dst = nullptr;
     Status _status = Status::OK;
     uint32_t _frameCount = 0;
     bool _frameReady = false;

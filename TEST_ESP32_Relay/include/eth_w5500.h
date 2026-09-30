@@ -17,6 +17,7 @@ public:
     void note_http_rx();
     void ip_text(char *buf, size_t len) const;
     bool link_up() const { return link_up_; }
+    bool has_ip() const { return got_ip_; }
 
 private:
     void pulse_rst();

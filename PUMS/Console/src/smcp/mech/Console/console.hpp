@@ -2,8 +2,8 @@
  * @file console.hpp
  * @brief IConsole + Console<N>: Select/Block/SetTarget TX, Telemetry RX.
  *
- * Наследует Node. Session* / CMech* — в registry; primary Session и слоты
- * MaxSessions — в Console / GroupConsole; CMechBank — у leaf.
+ * Наследует Node. Session* — в registry; слоты MaxSessions — в
+ * Console / GroupConsole. Банк осей, SessionBank и CMechBank — у leaf.
  *
  * Lifecycle: Node::begin(console_id) → Listen → Ready; start(server_id) — HB.
  * end() — уйти с шины. Смена id — снова begin. Status — SMCP_NODE.
@@ -24,6 +24,7 @@
 namespace smcp {
 
 class IConsole;
+class ServerSession;
 
 namespace detail {
 /** Регистрация оси в inventory пульта (вызывается из CMech ctor). */
@@ -39,27 +40,22 @@ public:
 
     virtual ~IConsole() = default;
 
-    /** Ёмкость банка CMech (MaxMechs у Console<N>). */
-    [[nodiscard]] uint8_t mechCapacity() const noexcept
+    /** Ёмкость банка сервера. Нет сегмента — 0. */
+    [[nodiscard]] uint8_t mechCapacity(uint8_t server_id) const noexcept
     {
-        return static_cast<uint8_t>(const_cast<IConsole*>(this)->storage().capacity());
+        MechReg* const reg = const_cast<IConsole*>(this)->storage(server_id);
+        return reg != nullptr ? static_cast<uint8_t>(reg->capacity()) : 0u;
     }
-    /** Ось primary-сегмента по id реестра; нет — nullptr. */
-    [[nodiscard]] CMech* mech(uint8_t id) noexcept { return storage().get(id); }
-    [[nodiscard]] const CMech* mech(uint8_t id) const noexcept
+    /** Ось банка @a server_id; нет банка или id — nullptr. */
+    [[nodiscard]] CMech* mech(uint8_t server_id, uint8_t id) noexcept
     {
-        return const_cast<IConsole*>(this)->storage().get(id);
+        MechReg* const reg = storage(server_id);
+        return reg != nullptr ? reg->get(id) : nullptr;
     }
-
-    /**
-     * Банк осей сегмента @a server_id. Нет / чужой src — nullptr.
-     * По умолчанию: `kPrimaryServer` и `_primary.peerId()` → `storage()`.
-     * Второй src без override — nullptr (leaf обязан перекрыть).
-     */
-    [[nodiscard]] virtual MechReg* segment(uint8_t server_id) noexcept;
-
-    /** Primary-сессия открыта. */
-    [[nodiscard]] bool linkUp() const noexcept;
+    [[nodiscard]] const CMech* mech(uint8_t server_id, uint8_t id) const noexcept
+    {
+        return const_cast<IConsole*>(this)->mech(server_id, id);
+    }
 
     /** Наш id на шине (ILink / Node::id()). */
     [[nodiscard]] uint8_t consoleId() const noexcept { return id(); }
@@ -71,87 +67,89 @@ public:
     /** Node::end: closeAllSessions(None) → Idle. */
     void end() noexcept;
     /**
-     * Master-сессия к серверу сегмента. Только Node::Ready; `isServerId`.
-     * Нет слота — onSessionFull. После HbLost слот Idle — снова start() решает leaf.
+     * Master-сессия к серверу. Только Node::Ready; `isServerId`.
+     * Нет слота — onSessionFull, nullptr. Уже есть — тот же указатель.
+     * Слоты пульта — ServerSession.
      */
-    void start(uint8_t server_id) noexcept;
-    /** Close сессии к @a server_id. `kPrimaryServer` — primary. */
-    void stop(uint8_t server_id) noexcept;
+    [[nodiscard]] ServerSession* start(uint8_t server_id) noexcept;
+    /** Сессия с этим peer. Нет — nullptr. */
+    [[nodiscard]] ServerSession* server(uint8_t server_id) noexcept;
 
-    /** Select: Add / Remove / Set по маске. Пустая маска и не Set — no-op. */
-    void select(msg::Action action, Selection selection,
-                uint8_t server_id = CMech::kPrimaryServer) noexcept;
-    /** Заменить выделение целиком (Action::Set). */
-    void setSelection(Selection selection,
-                      uint8_t server_id = CMech::kPrimaryServer) noexcept;
-    /** Снять выделение со всех осей. */
-    void clearSelection(uint8_t server_id = CMech::kPrimaryServer) noexcept;
-
-    /** Block: Add / Remove / Set по маске. Пустая маска и не Set — no-op. */
-    void block(msg::Action action, Selection selection,
-               uint8_t server_id = CMech::kPrimaryServer) noexcept;
-    /** Заменить блок целиком (Action::Set). */
-    void setBlocked(Selection selection,
-                    uint8_t server_id = CMech::kPrimaryServer) noexcept;
-    /** Снять блок со всех осей. */
-    void clearBlocked(uint8_t server_id = CMech::kPrimaryServer) noexcept;
-
-    /** Уставка одной оси (класс A). */
-    void setTarget(uint8_t mech_id, const MotionTarget& target,
-                   uint8_t server_id = CMech::kPrimaryServer) noexcept;
-
-    /**
-     * Запрос снимков Telemetry по маске (класс A → Ack + Telemetry D).
-     * Пустая маска — все оси сегмента (решает сервер).
-     */
-    void getTelemetry(Selection selection = {},
-                      uint8_t server_id = CMech::kPrimaryServer) noexcept;
+    /** Индекс сегмента по id сервера. Нет такого сервера — 0xFF. Номера сегментов с 0. */
+    [[nodiscard]] virtual uint8_t serverIndex(uint8_t server_id) const noexcept = 0;
+    /** Id сервера по индексу сегмента. Нет такого сегмента — 0. */
+    [[nodiscard]] virtual uint8_t serverId(uint8_t index) const noexcept = 0;
 
 protected:
     friend void detail::registerMech(IConsole& cons, CMech& mech) noexcept;
     friend class CMech;
 
-    /** @a primary — слот сессии наследника (Console::_session). */
-    explicit IConsole(ILink& link, ClockFn clock, Session& primary) noexcept;
+    explicit IConsole(ILink& link, ClockFn clock) noexcept;
 
-    /** Реестр осей; реализация — Console / leaf. */
-    [[nodiscard]] virtual MechReg& storage() noexcept = 0;
+    /**
+     * Банк осей сервера. Нет такого сегмента — nullptr.
+     * Сессию не проверяет: регистрация раньше Open.
+     * Сколько серверов — решает наследник.
+     */
+    [[nodiscard]] virtual MechReg* storage(uint8_t server_id) noexcept = 0;
 
     void onPacket(const Packet& pkt) noexcept override;
 
-    /** По умолчанию: `segment(src)` → CMech::onTelemetry. */
+    /** Open-сессия с src и storage(src) → CMech::onTelemetry. */
     virtual void onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept;
-
-    /** Primary-сессия; первый start() занимает её, если Idle. */
-    Session& _primary;
-
-private:
-    [[nodiscard]] Session* sessionTo(uint8_t server_id) noexcept;
-    [[nodiscard]] const Session* sessionTo(uint8_t server_id) const noexcept;
 };
 
-/** Console<N>: registry сессий MaxSessions + primary Session; CMech — leaf. */
+/**
+ * Сессия пульта к одному серверу: Select/Block/SetTarget/GetTelemetry.
+ * Слот реестра Node, не обёртка рядом с Session.
+ */
+class ServerSession : public Session {
+public:
+    explicit ServerSession(IConsole& console) noexcept;
+
+    /**
+     * Select: Add / Remove / Set. Пустая маска и не Set — false.
+     * Наследник гасит свой билет до send.
+     */
+    virtual bool select(msg::Action action, Selection selection) noexcept;
+    /** Заменить выделение целиком (Action::Set). */
+    bool setSelection(Selection selection) noexcept;
+    /** Снять выделение со всех осей. */
+    bool clearSelection() noexcept;
+
+    /** Block: Add / Remove / Set. Пустая маска и не Set — false. */
+    bool block(msg::Action action, Selection selection) noexcept;
+    /** Заменить блок целиком (Action::Set). */
+    bool setBlocked(Selection selection) noexcept;
+    /** Снять блок со всех осей. */
+    bool clearBlocked() noexcept;
+
+    /** Уставка одной оси (класс A). */
+    bool setTarget(uint8_t mech_id, const MotionTarget& target) noexcept;
+
+    /**
+     * Запрос снимков Telemetry (класс A → Ack + Telemetry D).
+     * Пустая маска — все оси сегмента (решает сервер).
+     */
+    bool getTelemetry(Selection selection) noexcept;
+};
+
+/** Console<N>: registry сессий MaxSessions. Банк осей — storage() у leaf. */
 template <uint8_t MaxMechs, uint8_t MaxSessions = 1u>
 class Console : public IConsole {
 public:
     static constexpr uint8_t kMechCount = MaxMechs;
     static constexpr uint8_t kSessionCount = MaxSessions;
 
-    /** Primary-сессия — _session, слот 0 реестра. */
     explicit Console(ILink& link, ClockFn clock) noexcept
-        : IConsole(link, clock, _session)
-        , _session(*this)
+        : IConsole(link, clock)
     {}
 
 protected:
-    [[nodiscard]] MechReg& storage() noexcept override { return _mechs; }
     [[nodiscard]] SessionReg& sessions() noexcept override { return _sessions; }
 
 private:
-    /* _sessions до _session: Session ctor → register → sessions(). */
     SessionStore<kSessionCount> _sessions;
-    Session _session;
-    MechStore<MaxMechs> _mechs;
 };
 
 } // namespace smcp

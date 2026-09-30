@@ -1,3 +1,4 @@
+#include "artnet_relays.h"
 #include "eth_w5500.h"
 #include "http_ui.h"
 #include "nvs_flash.h"
@@ -15,9 +16,11 @@ extern "C" void app_main(void) {
     static RelayBoard relays;
     static EthW5500 eth;
     static HttpUi http(relays, eth);
-    static UartCli cli(relays, eth, http);
+    static ArtNetRelays artnet(relays, eth);
+    static UartCli cli(relays, eth, http, artnet);
 
     relays.begin();
     eth.begin(&http);
+    artnet.begin();
     cli.begin();
 }

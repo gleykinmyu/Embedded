@@ -82,8 +82,10 @@ public:
     /** `_master` + abortAck + open. Ping — из tick (Connecting). */
     void start(uint8_t peer_id) noexcept;
     /**
-     * Idle — no-op. reason != None → onFault, затем сброс.
-     * Штатное (None): без onFault, onLink(false) если был Open.
+     * Idle — no-op. reason != None → onFault, затем сброс TX.
+     * _peer_id не чистится: это привязка слота, не признак Open.
+     * setStatus(Idle) — последним, оттуда onLink(false).
+     * Штатное (None): без onFault.
      */
     void close(Fault reason) noexcept;
 
@@ -92,20 +94,24 @@ public:
     /**
      * Unicast к peer при isOpen().
      * needs_ack → `_tx_req` + pkt_id; иначе `_tx_ctrl`.
+     * true — class A встал в очередь, pktId() — id этого кадра.
      */
-    void send(Message msg, bool needs_ack) noexcept;
+    bool send(Message msg, bool needs_ack) noexcept;
 
     template <typename T>
-    void send(const T& pdu) noexcept
+    bool send(const T& pdu) noexcept
     {
         Message m{};
         m.id = T::kId;
         if (!pdu.pack(m)) {
             _node.onPackFailed(this, T::kId);
-            return;
+            return false;
         }
-        send(m, T::kNeedsAck);
+        return send(m, T::kNeedsAck);
     }
+
+    /** pkt_id последнего class A, который встал в очередь. После send() == true. */
+    [[nodiscard]] uint8_t pktId() const noexcept { return _pkt_tx; }
 
     void sendAck(uint8_t req_pkt_id) noexcept;
     void sendNack(uint8_t req_pkt_id, uint8_t error,
@@ -131,7 +137,7 @@ private:
 
     void set_id(uint8_t id) noexcept { _id = id; }
 
-    /** Смена `_status`; no-op если тот же; ребро Open → Node::onLink. */
+    /** Смена `_status`; no-op если тот же. Ребро Open → onLink. */
     void setStatus(Status status) noexcept;
 
     // --- pump (только Node) ---
@@ -167,7 +173,8 @@ private:
     Node& _node;
     uint8_t _id = 0;
     uint8_t _peer_id = 0;
-    uint8_t _pkt_tx = 0;
+    /** Последний поставленный class A. До первого — kPktIdMax, следующий кадр = +1. */
+    uint8_t _pkt_tx = protocol::kPktIdMax;
 
     Status _status = Status::Idle;
     bool _master = false;

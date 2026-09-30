@@ -64,7 +64,8 @@ bool fillMechBlockMessage(uint8_t id, char* out, std::size_t outLen) noexcept
     }
     smcp::Selection one;
     one.add(id);
-    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, one)) {
+    const uint8_t index = console.serverIndex(console.cmechs[id].serverId());
+    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, index, one)) {
         return false;
     }
     const auto& ov = console.show.group.overlap();
@@ -310,6 +311,7 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
     case smcp::CGroup::Result::Empty:
     case smcp::CGroup::Result::Occupied:
+    case smcp::CGroup::Result::NotSent:
     default:
         onSelectNack();
         return;

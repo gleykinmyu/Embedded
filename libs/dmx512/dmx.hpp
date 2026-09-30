@@ -15,6 +15,7 @@
 namespace dmx {
 
 using Frame = BIF::dmx::Frame;
+using Universe = BIF::dmx::Universe;
 using Status = BIF::dmx::Status;
 using iTx = BIF::dmx::iTx;
 using iRx = BIF::dmx::iRx;
@@ -60,9 +61,23 @@ public:
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
 
-    bool send(const Frame& frame) override
+    bool bind(const Universe* uni) override
     {
-        if (!_isOpen || _delayUs == nullptr)
+        _src = uni;
+        return true;
+    }
+
+    bool unbind(const Universe* uni) override
+    {
+        if (uni == nullptr || _src != uni)
+            return false;
+        _src = nullptr;
+        return true;
+    }
+
+    bool send() override
+    {
+        if (!_isOpen || _delayUs == nullptr || _src == nullptr)
             return false;
 
         _serial.flush();
@@ -77,7 +92,7 @@ public:
         constexpr uint8_t kStartCode = 0u;
         if (!writeAll(&kStartCode, 1u))
             return false;
-        if (!writeAll(frame.slots, BIF::dmx::kMaxChannels))
+        if (!writeAll(_src->data.channels, BIF::dmx::kMaxChannels))
             return false;
 
         _serial.flush();
@@ -107,6 +122,7 @@ private:
     GPIO::AF _af;
     GPIO::ModeAlt _modeAlt;
     DelayUsFn _delayUs;
+    const Universe* _src = nullptr;
     uint32_t _frameCount = 0;
     bool _isOpen = false;
 };
@@ -142,20 +158,34 @@ public:
 
     [[nodiscard]] bool isOpen() const override { return _isOpen; }
 
-    bool recv(Frame& frame) override
+    bool bind(Universe* uni) override
     {
-        if (!_frameReady)
+        _dst = uni;
+        return true;
+    }
+
+    bool unbind(Universe* uni) override
+    {
+        if (uni == nullptr || _dst != uni)
+            return false;
+        _dst = nullptr;
+        return true;
+    }
+
+    bool recv() override
+    {
+        if (!_frameReady || _dst == nullptr)
             return false;
 
-        // _wire[0] = start code (отбрасываем); слоты с 1.
+        // _wire[0] = start code (отбрасываем); каналы с 1.
         std::size_t channels = (_wireLen > 0u) ? (_wireLen - 1u) : 0u;
         if (channels > BIF::dmx::kMaxChannels)
             channels = BIF::dmx::kMaxChannels;
 
         for (std::size_t i = 0u; i < channels; ++i)
-            frame.slots[i] = _wire[1u + i];
+            _dst->data.channels[i] = _wire[1u + i];
         for (std::size_t i = channels; i < BIF::dmx::kMaxChannels; ++i)
-            frame.slots[i] = 0;
+            _dst->data.channels[i] = 0;
 
         _frameReady = false;
         return true;
@@ -228,6 +258,7 @@ private:
     }
 
     BIF::IHardwareSerial& _serial;
+    Universe* _dst = nullptr;
     uint8_t _wire[kWireFrameSize]{};
     std::size_t _index = 0u;
     std::size_t _wireLen = 0u;

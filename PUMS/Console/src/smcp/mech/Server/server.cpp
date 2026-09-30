@@ -118,6 +118,9 @@ bool SessionConsole::onPacket(const Packet& pkt) noexcept
     if (Session::onPacket(pkt)) {
         return true;
     }
+    if (!isOpen()) {
+        return false;
+    }
     SMCP_IF_MSG(msg::Select) {
         handleMaskOp(MaskKind::Select, body.action, body.selection, pkt.pkt_id);
     } else SMCP_IF_MSG(msg::Block) {

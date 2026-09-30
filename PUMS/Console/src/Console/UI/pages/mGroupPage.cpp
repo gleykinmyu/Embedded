@@ -98,8 +98,8 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
 
     switch (action) {
     case Action::Record: {
-        const smcp::Selection sel = console.selectionFromMechs();
-        if (sel.empty()) {
+        const smcp::Selection sel[1] = { console.selectionFromMechs() };
+        if (sel[0].empty()) {
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
         }
@@ -188,8 +188,8 @@ void MGroupPage::onMsgBox(const nex::msg::evMsgBox& e)
     }
 
     if (e.tag == kTagOverwrite) {
-        const smcp::Selection sel = console.selectionFromMechs();
-        if (sel.empty()) {
+        const smcp::Selection sel[1] = { console.selectionFromMechs() };
+        if (sel[0].empty()) {
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
         }

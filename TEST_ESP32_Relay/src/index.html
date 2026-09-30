@@ -59,7 +59,7 @@ function paintCard(card,on){
 function ensureGrid(n){
   if(grid.children.length===n)return;
   grid.innerHTML=Array.from({length:n},(_,i)=>
-    `<div class="ch" data-ch="${i}">CH${i+1}${i===0?' · импульс / DI1':''}<b>OFF</b>
+    `<div class="ch" data-ch="${i}">CH${i+1}<b>OFF</b>
       <div class="btns">
         <button type="button" class="btn-on" data-on="1">Вкл</button>
         <button type="button" class="btn-off" data-on="0">Выкл</button>

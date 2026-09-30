@@ -2,13 +2,14 @@
 
 #include <stddef.h>
 
+class ArtNetRelays;
 class EthW5500;
 class HttpUi;
 class RelayBoard;
 
 class UartCli {
 public:
-    UartCli(RelayBoard &relays, EthW5500 &eth, HttpUi &http);
+    UartCli(RelayBoard &relays, EthW5500 &eth, HttpUi &http, ArtNetRelays &artnet);
     void begin();
 
 private:
@@ -20,6 +21,8 @@ private:
     static int cmd_alloff(void *ctx, int argc, char **argv);
     static int cmd_chase(void *ctx, int argc, char **argv);
     static int cmd_ethreset(void *ctx, int argc, char **argv);
+    static int cmd_artnet(void *ctx, int argc, char **argv);
+    static int cmd_ping(void *ctx, int argc, char **argv);
 
     static bool parse_ch(int argc, char **argv, size_t *ch);
     static int set_ch(void *ctx, int argc, char **argv, bool on);
@@ -29,4 +32,5 @@ private:
     RelayBoard &relays_;
     EthW5500 &eth_;
     HttpUi &http_;
+    ArtNetRelays &artnet_;
 };

@@ -11,7 +11,11 @@ namespace detail {
 
 void registerMech(IConsole& cons, CMech& mech) noexcept
 {
-    IConsole::MechReg* const reg = cons.segment(mech.serverId());
+    if (!msg::isServerId(mech.serverId())) {
+        cons.setStatus(Node::Status::RegisterFailed);
+        return;
+    }
+    IConsole::MechReg* const reg = cons.storage(mech.serverId());
     if (reg == nullptr) {
         cons.setStatus(Node::Status::RegisterFailed);
         return;
@@ -24,23 +28,9 @@ void registerMech(IConsole& cons, CMech& mech) noexcept
 
 } // namespace detail
 
-IConsole::IConsole(ILink& link, ClockFn clock, Session& primary) noexcept
+IConsole::IConsole(ILink& link, ClockFn clock) noexcept
     : Node(link, clock)
-    , _primary(primary)
 {}
-
-IConsole::MechReg* IConsole::segment(uint8_t server_id) noexcept
-{
-    if (server_id == CMech::kPrimaryServer || _primary.peerId() == server_id) {
-        return &storage();
-    }
-    return nullptr;
-}
-
-bool IConsole::linkUp() const noexcept
-{
-    return _primary.isOpen();
-}
 
 void IConsole::begin(uint8_t console_id) noexcept
 {
@@ -55,13 +45,15 @@ void IConsole::end() noexcept
     Node::end();
 }
 
-void IConsole::start(uint8_t server_id) noexcept
+ServerSession* IConsole::server(uint8_t server_id) noexcept
 {
-    if (!isReady()) {
-        return;
-    }
-    if (!msg::isServerId(server_id)) {
-        return;
+    return static_cast<ServerSession*>(sessionByPeer(server_id));
+}
+
+ServerSession* IConsole::start(uint8_t server_id) noexcept
+{
+    if (!isReady() || !msg::isServerId(server_id)) {
+        return nullptr;
     }
 
     Session* existing = sessionByPeer(server_id);
@@ -69,103 +61,89 @@ void IConsole::start(uint8_t server_id) noexcept
         if (existing->getStatus() == Session::Status::Idle) {
             existing->start(server_id);
         }
-        return;
+        return static_cast<ServerSession*>(existing);
     }
 
     Session* const slot = Node::idleSession();
     if (slot == nullptr) {
         onSessionFull(server_id);
-        return;
+        return nullptr;
     }
     slot->start(server_id);
+    return static_cast<ServerSession*>(slot);
 }
 
-void IConsole::stop(uint8_t server_id) noexcept
-{
-    Session* const s = sessionTo(server_id);
-    const uint8_t peer = (s != nullptr && s->peerId() != 0) ? s->peerId() : server_id;
-    if (peer == CMech::kPrimaryServer || !msg::isServerId(peer)) {
-        return;
-    }
+ServerSession::ServerSession(IConsole& console) noexcept
+    : Session(console)
+{}
 
-    if (s != nullptr) {
-        s->close(Fault::None);
-    }
-}
-
-void IConsole::select(msg::Action action, Selection selection, uint8_t server_id) noexcept
+bool ServerSession::select(msg::Action action, Selection selection) noexcept
 {
     if (selection.empty() && action != msg::Action::Set) {
-        return;
+        return false;
     }
-
-    Session* const s = sessionTo(server_id);
-    if (s == nullptr) {
-        return;
+    if (!isOpen()) {
+        return false;
     }
     msg::Select body{};
     body.action = action;
     body.selection = selection;
-    s->send(body);
+    return send(body);
 }
 
-void IConsole::setSelection(Selection selection, uint8_t server_id) noexcept
+bool ServerSession::setSelection(Selection selection) noexcept
 {
-    select(msg::Action::Set, selection, server_id);
+    return select(msg::Action::Set, selection);
 }
 
-void IConsole::clearSelection(uint8_t server_id) noexcept
+bool ServerSession::clearSelection() noexcept
 {
-    setSelection(Selection{}, server_id);
+    return setSelection(Selection{});
 }
 
-void IConsole::block(msg::Action action, Selection selection, uint8_t server_id) noexcept
+bool ServerSession::block(msg::Action action, Selection selection) noexcept
 {
     if (selection.empty() && action != msg::Action::Set) {
-        return;
+        return false;
     }
-
-    Session* const s = sessionTo(server_id);
-    if (s == nullptr) {
-        return;
+    if (!isOpen()) {
+        return false;
     }
     msg::Block body{};
     body.action = action;
     body.selection = selection;
-    s->send(body);
+    return send(body);
 }
 
-void IConsole::setBlocked(Selection selection, uint8_t server_id) noexcept
+bool ServerSession::setBlocked(Selection selection) noexcept
 {
-    block(msg::Action::Set, selection, server_id);
+    return block(msg::Action::Set, selection);
 }
 
-void IConsole::clearBlocked(uint8_t server_id) noexcept
+bool ServerSession::clearBlocked() noexcept
 {
-    setBlocked(Selection{}, server_id);
+    return setBlocked(Selection{});
 }
 
-void IConsole::setTarget(uint8_t mech_id, const MotionTarget& target, uint8_t server_id) noexcept
+bool ServerSession::setTarget(uint8_t mech_id, const MotionTarget& target) noexcept
 {
-    Session* const s = sessionTo(server_id);
-    if (s == nullptr) {
-        return;
+    if (!isOpen()) {
+        return false;
     }
     msg::SetTarget body{};
     body.mech_id = mech_id;
     body.target = target;
-    s->send(body);
+    return send(body);
 }
 
-void IConsole::getTelemetry(Selection selection, uint8_t server_id) noexcept
+bool ServerSession::getTelemetry(Selection selection) noexcept
 {
-    Session* const s = sessionTo(server_id);
-    if (s == nullptr) {
-        return;
+    if (!isOpen()) {
+        return false;
     }
     msg::GetTelemetry body{};
     body.selection = selection;
-    s->send(body);
+    return send(body);
 }
 
 void IConsole::onPacket(const Packet& pkt) noexcept
@@ -179,28 +157,19 @@ void IConsole::onPacket(const Packet& pkt) noexcept
 
 void IConsole::onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept
 {
-    MechReg* seg = segment(src_id);
-    if (seg == nullptr) {
+    const Session* const s = sessionByPeer(src_id);
+    if (s == nullptr || !s->isOpen()) {
         return;
     }
-    CMech* m = seg->get(body.mech_id);
+    MechReg* const bank = storage(src_id);
+    if (bank == nullptr) {
+        return;
+    }
+    CMech* m = bank->get(body.mech_id);
     if (m == nullptr) {
         return;
     }
     m->onTelemetry(src_id, body);
-}
-
-Session* IConsole::sessionTo(uint8_t server_id) noexcept
-{
-    if (server_id == CMech::kPrimaryServer) {
-        return &_primary;
-    }
-    return sessionByPeer(server_id);
-}
-
-const Session* IConsole::sessionTo(uint8_t server_id) const noexcept
-{
-    return const_cast<IConsole*>(this)->sessionTo(server_id);
 }
 
 } // namespace smcp

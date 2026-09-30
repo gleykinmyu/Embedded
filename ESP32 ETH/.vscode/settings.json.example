@@ -1,0 +1,13 @@
+{
+    "clangd.enable": true,
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}",
+        "--query-driver=**/xtensa-esp32*-elf-g++*,**/xtensa-esp32*-elf-gcc*,**/arm-none-eabi-g++*,**/arm-none-eabi-gcc*,**/avr-g++*,**/avr-gcc*"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.enableAutomaticKitScan": false,
+    "cmake.automaticReconfigure": false
+}

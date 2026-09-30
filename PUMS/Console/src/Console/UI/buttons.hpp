@@ -292,7 +292,7 @@ public:
         if (active == MConsole::kNoActiveGroup || id >= MConsole::kMechCount) {
             return false;
         }
-        return !con.show.group[active].mech().contains(id);
+        return !con.show.group[active].contains(0u, id);
     }
 
 private:

@@ -1,85 +1,56 @@
-# SMCP — план
+# SMCP — что переделать
 
-Сентябрь 2026. Идти сверху вниз. Экран пульта — `src/Console/UI/TODO.md`. Контракт кадра — `PROTOCOL.md`.
-
-Канал один: консоль ↔ сервер сегмента по CAN1. Транспорт — `libs/smcp`. Northbound — `src/smcp/mech`. Механизмы по SMCP не ходят. `DriveMech` — локальный inventory сервера, не узел шины.
-
-Плата: только CAN1 (`board.can`, PD0/PD1). `console_id` зашит как `1` в `Console/main.cpp`.
-
-## Не трогать
-
-- Второй линк внутри одного `IServer`. На CAN2 будет второй `Node`.
-- CiA 402 внутрь SMCP. Чужой частотник — отдельный мастер на сервере.
-- Подпись кадров. Поддельный Ack / HB / Telemetry — граница шины, не задача.
-- Класс E и dual-axis Telemetry, пока нет сообщения, которому они нужны.
-- `Group::Flag::Atomic`, `ErrorCode::Crc`, `Fault.detail` — полей нет поведения.
-- UI поездки, пока пустой `DriveMech::setTarget`.
-
-
-
-## Уже есть
-
-- Wire, `Node`, `Session`, окно Ack = 1, Listen → Ready, IdConflict.
-- North PDU вынесены из транспорта: Select, Block, GetTelemetry, SetTarget, Telemetry.
-- Потеря HB снимает Select этого peer и шлёт Telemetry.
-- Чужой Telemetry в зеркало не пишется. Второй сегмент без override `segment()` отбрасывается.
-- Лимит Select один: `MServer::acceptSelect`, потолок `DriveMech::kMaxSelected` (3) и тестовая зона 7–9.
-- У пульта один слот сессии. `MConsole::onStatus(Ready)` сам делает `start` к серверу `0x10`.
-- Nack с ненулевым `detail` (кроме MechNotFound) запрашивает GetTelemetry.
-
-
-
-## Дальше
-
-
+30 сентября 2026. Контракт кадра — `PROTOCOL.md`. Экран пульта — `src/Console/UI/TODO.md`. Здесь только дыры модели и шины.
 
 ### 1. Номер пульта
 
-`begin(console_id)` уже есть. Нет места, откуда брать id после включения, и повторного `begin` после IdConflict с новым номером. Хранение на пульте — в плане UI. Здесь: прочитать id до `CanLink` / `begin`, не оставлять константу `1`.
+`begin(console_id)` есть. Id после включения неоткуда взять, повторного `begin` после IdConflict с новым номером нет.
 
-### 2. Isolate и режим Спектакль в модели
+Сейчас константа `1`: `CanLink(board.can, 1u)` и `console.begin(kConsoleIdMin)` в `Console/main.cpp`, то же в `main_test.cpp`.
 
-`isolateGroup` глушит только Press клетки. `recall` выделяет изолированные оси. На сервере флага нет: это локальный запрет пульта.
+Прочитать id до `CanLink` / `begin`. Хранение и страница настроек — `UI/TODO.md` §2. После смены id leaf снова вызывает `start(server)`.
 
-- Проводить isolate в `trySelect` и `recall`, не только в цвете кнопки.
-- Режим Спектакль тоже не должен слать Select. Запрет в `trySelect` / `recall` / `IConsole::select`. Страницы и меню — в плане UI.
+### 2. Isolate и режим Спектакль
 
+`isolateGroup` — SETT шоуфайла, на сервере флага нет. Сейчас глушит только Press клетки. `CGroup::recall` и `CGMech::trySelect` isolate не смотрят.
 
+`MConsole::Mode::Show` гасит меню. `onCellPress` / `recall` mode не проверяют — Select уходит.
 
-### 3. Очередь Select
+- isolate — в `trySelect` и `recall`;
+- Спектакль — запрет Select в `trySelect` / `recall` / `IConsole::select`.
 
-`CGroup::recall` ставит queued сразу после `setSelection`, не глядя, ушёл ли кадр. `Session::send` при закрытой сессии молча выходит, и поздний Ack другого Select активирует группу.
+Guard страниц от HMI `page` по UART — план UI §5.
 
-- Queued — только после успешной постановки в очередь.
-- Любой Select вне recall сбрасывает queued.
-- `IConsole::select` / `block` / `setTarget` без сессии не тихий return: пульту нужно событие, что кадр не поставлен.
+### 3. Block и ширина маски
 
-`onPktIdGap` (дырка class A, только лог, сессию не рвать) — после этого, не вместо очереди.
+Клетка в режиме Block шлёт сегментный PDU `Block`. Флаг Blocked в GRUP — локальный, сервер его не знает.
 
-### 4. Block и ширина маски
+`acceptBlock` в базе — Ok любой консоли `0x01…0x0F`. `Action::Set` с пустой маской снимает Block со всего сегмента. Кто имеет право слать Block — задать в leaf, когда пультов больше одного.
 
-`acceptBlock` пускает любую консоль `0x01…0x0F`. `Action::Set` с пустой маской снимает Block со всего сегмента. Политику «кто имеет право» задать в leaf, когда на шине больше одного пульта.
+Жест клетки и группы — `UI/TODO.md` §6. Сегментный Block не делать следствием нажатия клетки.
 
-Клетка в режиме Block сейчас шлёт этот сегментный Block. Жест на экране — в плане UI. Здесь оставить сегментный Block отдельной командой, не следствием нажатия клетки.
+Маска `Selection` — 32 бита. Inventory пульта и сервера — 24. Биты 24…31 сервер ответит `MechNotFound`. Резать маску по `mechCapacity()` либо поднять inventory до 32.
 
-Маска GRUP — 32 бита, inventory пульта и сервера — 24. Биты 24…31 сервер ответит `MechNotFound`. Резать маску по `mechCapacity()` либо поднять inventory до 32.
+### 4. Привод
 
-### 5. Привод
+`DriveMech::setTarget` пустой: Ack и Telemetry уходят, ось стоит.
 
-- `DriveMech::setTarget`: Moving и позиция. Сейчас Ack и Telemetry уходят, ось стоит.
-- `acceptSetTarget`: концевики и ход → `Limits`.
-- `accel_mm_s2` на шину не кладётся и при разборе обнуляется. Либо класть в кадр, либо убрать поле из цели.
-- `resetFault()` пустой с обеих сторон, MsgId нет. Кнопка сброса на клетке ждёт это сообщение.
-- Телеметрия движения — по Δposition / rate-limit на сервере. Базовый `IServer` шлёт снимок при смене select, не при ходе.
+- Moving и позиция, либо отказ до Ack.
+- `acceptSetTarget`: концевики и ход → `Limits`. Сейчас Ok всем.
+- `accel_mm_s2` на шину не кладётся и при разборе обнуляется. Класть в кадр либо убрать из цели.
+- `resetFault()` пустой, MsgId нет. Кнопку сброса не включать раньше PDU.
+- Телеметрия хода — Δposition / rate-limit в тике привода, `pushTelemetry`. Базовый `IServer` шлёт снимок при смене select / block / SetTarget / GetTelemetry / HbLost, не при движении.
 
+Пока привод пустой — поездку на экране не делать (`UI/TODO.md`).
 
+### 5. CAN2
 
-### 6. CAN2
+Второй `Node` на сервере: CAN1 — консоли, CAN2 — платы. Свой PDU привода, не расширение транспортного `message.hpp`. `Select` / `Block` / holder на CAN2 не тащить. `DriveMech` мапит плату на `IMech`. Пульт видит «ось N на `server_id`».
 
-Второй `Node` на сервере: CAN1 — сессии консолей, CAN2 — сессии плат. Свой PDU привода, не расширение `smcp/message.hpp` и не заголовок внутри payload. `Select` / `Block` / holder на CAN2 не тащить. `DriveMech` мапит плату на логический `IMech`. Пульт по-прежнему видит «ось N на `server_id`».
+CAN2 на F407 закрыт: в `board` только CAN1. Один `Node` на два `ILink` не делать.
 
-Открыть CAN2 на F407. Сейчас в `board` только CAN1.
+### 6. Второй сегмент
 
-### 7. Второй сегмент
+Второй сервер: в `MConsole::storage` вернуть второй банк. `serverIdForGlobalMech` / `mechIdForGlobalMech` нигде не вызываются.
 
-Когда появится второй сервер: перекрыть `IConsole::segment()`, не писать чужой `mech_id` в primary-банк. `serverIdForGlobalMech` уже есть и никем не вызывается.
+Второй слот сессии — `GroupConsole<24>` сменить на `MaxSessions > 1` и расширить `SessionBank` в `MConsole`. Свободного слота под второго peer нет.

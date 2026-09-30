@@ -80,14 +80,22 @@ public:
     {
         if (!_isOpen || _role != Role::Transmit)
             return false;
-        return _tx.send(frame);
+        _txScratch.data = frame;
+        if (!_tx.bind(&_txScratch))
+            return false;
+        return _tx.send();
     }
 
     bool recv(Frame& frame)
     {
         if (!_isOpen || _role != Role::Receive)
             return false;
-        return _rx.recv(frame);
+        if (!_rx.bind(&_rxScratch))
+            return false;
+        if (!_rx.recv())
+            return false;
+        frame = _rxScratch.data;
+        return true;
     }
 
     void poll()
@@ -145,6 +153,8 @@ private:
 
     Rs485Tx _tx;
     Rs485Rx _rx;
+    Universe _txScratch{};
+    Universe _rxScratch{};
     const GPIO::Pin* _de;
     Role _role = Role::Receive;
     bool _isOpen = false;

@@ -26,18 +26,18 @@ enum class Status : uint8_t {
 
 /// 512 каналов (уровни). Без start code и без count.
 struct Frame {
-    uint8_t slots[kMaxChannels]{};
+    uint8_t channels[kMaxChannels]{};
 
     void clear() noexcept
     {
         for (std::size_t i = 0; i < kMaxChannels; ++i)
-            slots[i] = 0;
+            channels[i] = 0;
     }
 
     void fill(uint8_t v) noexcept
     {
         for (std::size_t i = 0; i < kMaxChannels; ++i)
-            slots[i] = v;
+            channels[i] = v;
     }
 
     /// Канал 1…512; иначе 0.
@@ -45,14 +45,14 @@ struct Frame {
     {
         if (ch == 0u || ch > kMaxChannels)
             return 0;
-        return slots[ch - 1u];
+        return channels[ch - 1u];
     }
 
     void set(uint16_t ch, uint8_t v) noexcept
     {
         if (ch == 0u || ch > kMaxChannels)
             return;
-        slots[ch - 1u] = v;
+        channels[ch - 1u] = v;
     }
 };
 
@@ -64,7 +64,8 @@ struct Universe {
 
 /**
  * Источник DMX (пульт / контроллер).
- * `send` не блокирует; номер universe — в конфиге конкретного порта.
+ * `bind` запоминает указатель (буфер живёт снаружи); `send()` без аргументов.
+ * Наследник хранит ссылку: один порт — один указатель, Art-Net — таблица вселенных.
  */
 class iTx {
 public:
@@ -74,7 +75,12 @@ public:
     virtual void close() = 0;
     [[nodiscard]] virtual bool isOpen() const = 0;
 
-    virtual bool send(const Frame& frame) = 0;
+    /// Привязать буфер. `uni->id` — номер потока. `nullptr` — снять все.
+    virtual bool bind(const Universe* uni) = 0;
+    /// Снять одну вселенную (тот же указатель, что в bind).
+    virtual bool unbind(const Universe* uni) = 0;
+    /// Отправить все привязанные. Не блокирует.
+    virtual bool send() = 0;
 
     [[nodiscard]] virtual Status getStatus() = 0;
     virtual void clearErrors() = 0;
@@ -84,7 +90,7 @@ public:
 
 /**
  * Приёмник DMX (прибор / monitor).
- * `poll()` — из главного цикла; `recv` забирает последний полный кадр.
+ * `bind` запоминает, куда писать кадр; `poll` копит байты; `recv()` без аргументов.
  */
 class iRx {
 public:
@@ -94,8 +100,12 @@ public:
     virtual void close() = 0;
     [[nodiscard]] virtual bool isOpen() const = 0;
 
+    /// Привязать буфер. `uni->id` — какой поток принимать. `nullptr` — снять все.
+    virtual bool bind(Universe* uni) = 0;
+    virtual bool unbind(Universe* uni) = 0;
     virtual void poll() = 0;
-    virtual bool recv(Frame& frame) = 0;
+    /// Забрать кадр в привязанный Universe. true — буфер обновлён.
+    virtual bool recv() = 0;
 
     /// 0 или 1: есть непрочитанный кадр.
     [[nodiscard]] virtual std::size_t available() const = 0;

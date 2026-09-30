@@ -46,8 +46,9 @@ void Session::setStatus(Status status) noexcept
         cstr(status),
         static_cast<unsigned>(_peer_id));
     _status = status;
-    if (was_open != (_status == Status::Open) && _peer_id != 0u) {
-        _node.onLink(this, _status == Status::Open);
+    const bool now_open = (_status == Status::Open);
+    if (was_open != now_open) {
+        _node.onLink(this, now_open);
     }
 }
 
@@ -85,7 +86,7 @@ void Session::open(uint8_t peer_id) noexcept
     abortAck();
     _hb.clear();
     clearTx();
-    _pkt_tx = 0;
+    _pkt_tx = protocol::kPktIdMax;
     setStatus(Status::Connecting);
     _peer_id = peer_id;
 }
@@ -107,10 +108,9 @@ void Session::close(Fault reason) noexcept
     abortAck();
     _hb.clear();
     _master = false;
-    _pkt_tx = 0;
-    setStatus(Status::Idle);
-    _peer_id = 0;
+    _pkt_tx = protocol::kPktIdMax;
     clearTx();
+    setStatus(Status::Idle);
 }
 
 void Session::onFault(Fault reason) noexcept
@@ -122,7 +122,7 @@ void Session::onFault(Fault reason) noexcept
 
 bool Session::transmit(Message msg, uint8_t pkt_id, bool needs_ack) noexcept
 {
-    if (!_node.isReady() || _peer_id == 0u) {
+    if (!_node.isReady() || _status == Status::Idle || _peer_id == 0u) {
         return false;
     }
 
@@ -144,15 +144,21 @@ bool Session::transmit(Message msg, uint8_t pkt_id, bool needs_ack) noexcept
     return ok;
 }
 
-void Session::send(Message msg, bool needs_ack) noexcept
+bool Session::send(Message msg, bool needs_ack) noexcept
 {
     if (!isOpen()) {
-        return;
+        return false;
     }
-    const uint8_t pkt_id = needs_ack ? _pkt_tx : uint8_t{0};
-    if (transmit(msg, pkt_id, needs_ack) && needs_ack) {
-        _pkt_tx = static_cast<uint8_t>((_pkt_tx + 1u) & protocol::kPktIdMax);
+    const uint8_t id = needs_ack
+        ? static_cast<uint8_t>((_pkt_tx + 1u) & protocol::kPktIdMax)
+        : uint8_t{0};
+    if (!transmit(msg, id, needs_ack)) {
+        return false;
     }
+    if (needs_ack) {
+        _pkt_tx = id;
+    }
+    return true;
 }
 
 void Session::sendAck(uint8_t req_pkt_id) noexcept

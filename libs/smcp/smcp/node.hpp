@@ -251,7 +251,7 @@ protected:
     virtual void onFault(Session* session, Fault reason) noexcept;
 
     /**
-     * Ребро Session::Open: @a up при входе, false при выходе (peer ещё жив).
+     * Ребро Session::Open. Peer — session->peerId(): close его не стирает.
      * begin/end/stop — close(None), только этот хук (без onFault).
      */
     virtual void onLink(Session* session, bool up) noexcept;

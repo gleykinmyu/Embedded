@@ -185,7 +185,7 @@ public:
             return;
 
         for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            if (next.slots[i] != _live.slots[i])
+            if (next.channels[i] != _live.channels[i])
                 _changed[i] = 1;
         }
         _live = next;
@@ -194,7 +194,7 @@ public:
             return;
 
         for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            const uint8_t v = _live.slots[i];
+            const uint8_t v = _live.channels[i];
             if (v == 0u)
                 continue;
             if (v < _min[i])
