@@ -62,8 +62,15 @@ public:
     [[nodiscard]] const Slot* begin() const noexcept { return _slots; }
     [[nodiscard]] const Slot* end() const noexcept { return _slots + _count; }
 
-    [[nodiscard]] Slot& operator[](uint16_t i) noexcept { return _slots[i]; }
-    [[nodiscard]] const Slot& operator[](uint16_t i) const noexcept { return _slots[i]; }
+    /** Индекс вне size → слот 0 (как Section::rec / header). Пустой view не звать. */
+    [[nodiscard]] Slot& operator[](uint16_t i) noexcept
+    {
+        return _slots[(i < _count) ? i : 0u];
+    }
+    [[nodiscard]] const Slot& operator[](uint16_t i) const noexcept
+    {
+        return _slots[(i < _count) ? i : 0u];
+    }
 
 private:
     Hdr* _hdr = nullptr;
