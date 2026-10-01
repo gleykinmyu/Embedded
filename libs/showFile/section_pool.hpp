@@ -4,6 +4,7 @@
  *
  * Header-запись обязана иметь член `pool` типа PoolRef (first/count в пуле).
  * SectionPool не ISection: в каталоге шоуфайла регистрируются две секции.
+ * Снаружи только PoolView (at / operator[]); секции heads/slots — детали реализации.
  * После load вызвать syncFreeTop() (или spansOk + sync), перед save — compact().
  */
 
@@ -119,8 +120,6 @@ public:
     static constexpr uint16_t kHeaderCount = NH;
     static constexpr uint16_t kSlotCapacity = NS;
 
-    using Heads = Section<Hdr, NH>;
-    using Slots = Section<Slot, NS>;
     using View = PoolView<Hdr, Slot>;
     using ConstView = PoolView<const Hdr, const Slot>;
 
@@ -134,11 +133,6 @@ public:
         , _slots(file, tag_slots, required)
     {}
 
-    [[nodiscard]] Heads& heads() noexcept { return _heads; }
-    [[nodiscard]] const Heads& heads() const noexcept { return _heads; }
-    [[nodiscard]] Slots& slots() noexcept { return _slots; }
-    [[nodiscard]] const Slots& slots() const noexcept { return _slots; }
-
     /** Сколько слотов занято хвостом bump (после sync/compact). */
     [[nodiscard]] uint16_t freeTop() const noexcept { return _free_top; }
     [[nodiscard]] uint16_t freeSlots() const noexcept
@@ -146,44 +140,37 @@ public:
         return static_cast<uint16_t>(NS - _free_top);
     }
 
-    /** Заголовок; индекс вне NH → слот 0. */
-    [[nodiscard]] Hdr& header(uint16_t i) noexcept { return _heads.begin()[(i < NH) ? i : 0u]; }
-    [[nodiscard]] const Hdr& header(uint16_t i) const noexcept
-    {
-        return _heads.begin()[(i < NH) ? i : 0u];
-    }
+    /** Пометить шоуфайл edited (правка через PoolView). */
+    void markEdited() noexcept { _heads.markEdited(); }
 
     /**
      * Вид на заголовок @a i и его слоты.
-     * Индекс вне NH → пустой view.
+     * Индекс вне NH → запись 0.
      * count==0 или битый span → header есть, слоты пустые.
      */
-    [[nodiscard]] PoolView<Hdr, Slot> at(uint16_t i) noexcept
+    [[nodiscard]] View at(uint16_t i) noexcept
     {
-        if (i >= NH) {
-            return {};
-        }
-        Hdr& hdr = _heads.begin()[i];
+        Hdr& hdr = _heads.begin()[(i < NH) ? i : 0u];
         const PoolRef& pr = hdr.pool;
         if (pr.count == 0u || pr.first >= NS
             || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return PoolView<Hdr, Slot>(&hdr, nullptr, 0u);
+            return View(&hdr, nullptr, 0u);
         }
-        return PoolView<Hdr, Slot>(&hdr, _slots.begin() + pr.first, pr.count);
+        return View(&hdr, _slots.begin() + pr.first, pr.count);
     }
-    [[nodiscard]] PoolView<const Hdr, const Slot> at(uint16_t i) const noexcept
+    [[nodiscard]] ConstView at(uint16_t i) const noexcept
     {
-        if (i >= NH) {
-            return {};
-        }
-        const Hdr& hdr = _heads.begin()[i];
+        const Hdr& hdr = _heads.begin()[(i < NH) ? i : 0u];
         const PoolRef& pr = hdr.pool;
         if (pr.count == 0u || pr.first >= NS
             || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return PoolView<const Hdr, const Slot>(&hdr, nullptr, 0u);
+            return ConstView(&hdr, nullptr, 0u);
         }
-        return PoolView<const Hdr, const Slot>(&hdr, _slots.begin() + pr.first, pr.count);
+        return ConstView(&hdr, _slots.begin() + pr.first, pr.count);
     }
+
+    [[nodiscard]] View operator[](uint16_t i) noexcept { return at(i); }
+    [[nodiscard]] ConstView operator[](uint16_t i) const noexcept { return at(i); }
 
     /** Пересчитать free_top_ по max(first+count). После load. */
     void syncFreeTop() noexcept
@@ -421,8 +408,8 @@ private:
         return true;
     }
 
-    Heads _heads;
-    Slots _slots;
+    Section<Hdr, NH> _heads;
+    Section<Slot, NS> _slots;
     uint16_t _free_top = 0;
 };
 
