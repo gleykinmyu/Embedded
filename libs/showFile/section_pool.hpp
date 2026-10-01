@@ -5,7 +5,7 @@
  * Header-запись обязана иметь член `pool` типа PoolRef (first/count в пуле).
  * SectionPool не ISection: в каталоге шоуфайла регистрируются две секции.
  * Снаружи только PoolView (at / operator[]); секции heads/slots — детали реализации.
- * После load вызвать syncFreeTop() (или spansOk + sync), перед save — compact().
+ * После load вызвать syncFreeTop() (или isLayoutOk + sync), перед save — compact().
  */
 
 #pragma once
@@ -146,7 +146,7 @@ public:
     /**
      * Вид на заголовок @a i и его слоты.
      * Индекс вне NH → запись 0.
-     * count==0 или битый span → header есть, слоты пустые.
+     * count==0 или битый диапазон → header есть, слоты пустые.
      */
     [[nodiscard]] View at(uint16_t i) noexcept
     {
@@ -196,7 +196,7 @@ public:
      * first/count в пределах NS, диапазоны не пересекаются.
      * Пустые (count==0) не участвуют.
      */
-    [[nodiscard]] bool spansOk() const noexcept
+    [[nodiscard]] bool isLayoutOk() const noexcept
     {
         for (uint16_t i = 0u; i < NH; ++i) {
             const PoolRef& a = _heads.begin()[i].pool;
@@ -232,7 +232,7 @@ public:
     }
 
     /**
-     * Уплотнить пул: живые span подряд с 0, обновить first, free_top = сумма count.
+     * Уплотнить пул: живые диапазоны подряд с 0, обновить first, free_top = сумма count.
      * Помечает шоуфайл edited.
      */
     void compact() noexcept
@@ -307,7 +307,7 @@ public:
     }
 
     /** count=0, first=0; слоты в пуле не двигает (дыра до compact). */
-    void clearSpan(uint16_t i) noexcept
+    void clearSlots(uint16_t i) noexcept
     {
         if (i >= NH) {
             return;
