@@ -35,36 +35,39 @@ static_assert(std::is_standard_layout_v<PoolRef>);
 static_assert(std::is_trivially_copyable_v<PoolRef>);
 
 /**
- * Эфемерный вид на непрерывные слоты пула.
- * Не хранить дольше, чем жив payload секции / до compact/resize.
+ * Эфемерный вид: header-запись + её непрерывные слоты в пуле.
+ * Не хранить дольше, чем жив payload / до compact/resize.
+ * bool — есть header (count==0 допустим: пустая запись).
  */
-template <typename Slot>
+template <typename Hdr, typename Slot>
 class PoolView {
 public:
     PoolView() noexcept = default;
-    PoolView(Slot* ptr, uint16_t count) noexcept
-        : _ptr(ptr)
+    PoolView(Hdr* header, Slot* slots, uint16_t count) noexcept
+        : _hdr(header)
+        , _slots(slots)
         , _count(count)
     {}
 
-    [[nodiscard]] explicit operator bool() const noexcept
-    {
-        return _ptr != nullptr && _count != 0u;
-    }
+    [[nodiscard]] explicit operator bool() const noexcept { return _hdr != nullptr; }
+
+    [[nodiscard]] Hdr* header() noexcept { return _hdr; }
+    [[nodiscard]] const Hdr* header() const noexcept { return _hdr; }
 
     [[nodiscard]] uint16_t size() const noexcept { return _count; }
     [[nodiscard]] bool empty() const noexcept { return _count == 0u; }
 
-    [[nodiscard]] Slot* begin() noexcept { return _ptr; }
-    [[nodiscard]] Slot* end() noexcept { return _ptr + _count; }
-    [[nodiscard]] const Slot* begin() const noexcept { return _ptr; }
-    [[nodiscard]] const Slot* end() const noexcept { return _ptr + _count; }
+    [[nodiscard]] Slot* begin() noexcept { return _slots; }
+    [[nodiscard]] Slot* end() noexcept { return _slots + _count; }
+    [[nodiscard]] const Slot* begin() const noexcept { return _slots; }
+    [[nodiscard]] const Slot* end() const noexcept { return _slots + _count; }
 
-    [[nodiscard]] Slot& operator[](uint16_t i) noexcept { return _ptr[i]; }
-    [[nodiscard]] const Slot& operator[](uint16_t i) const noexcept { return _ptr[i]; }
+    [[nodiscard]] Slot& operator[](uint16_t i) noexcept { return _slots[i]; }
+    [[nodiscard]] const Slot& operator[](uint16_t i) const noexcept { return _slots[i]; }
 
 private:
-    Slot* _ptr = nullptr;
+    Hdr* _hdr = nullptr;
+    Slot* _slots = nullptr;
     uint16_t _count = 0;
 };
 
@@ -142,36 +145,35 @@ public:
     }
 
     /**
-     * Вид на слоты заголовка @a i.
-     * Пустой count / битый span → пустой view.
+     * Вид на заголовок @a i и его слоты.
+     * Индекс вне NH → пустой view.
+     * count==0 или битый span → header есть, слоты пустые.
      */
-    [[nodiscard]] PoolView<Slot> at(uint16_t i) noexcept
+    [[nodiscard]] PoolView<Hdr, Slot> at(uint16_t i) noexcept
     {
         if (i >= NH) {
             return {};
         }
-        const PoolRef& pr = _heads.begin()[i].pool;
-        if (pr.count == 0u) {
-            return {};
+        Hdr& hdr = _heads.begin()[i];
+        const PoolRef& pr = hdr.pool;
+        if (pr.count == 0u || pr.first >= NS
+            || pr.count > static_cast<uint16_t>(NS - pr.first)) {
+            return PoolView<Hdr, Slot>(&hdr, nullptr, 0u);
         }
-        if (pr.first >= NS || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return {};
-        }
-        return PoolView<Slot>(_slots.begin() + pr.first, pr.count);
+        return PoolView<Hdr, Slot>(&hdr, _slots.begin() + pr.first, pr.count);
     }
-    [[nodiscard]] PoolView<const Slot> at(uint16_t i) const noexcept
+    [[nodiscard]] PoolView<const Hdr, const Slot> at(uint16_t i) const noexcept
     {
         if (i >= NH) {
             return {};
         }
-        const PoolRef& pr = _heads.begin()[i].pool;
-        if (pr.count == 0u) {
-            return {};
+        const Hdr& hdr = _heads.begin()[i];
+        const PoolRef& pr = hdr.pool;
+        if (pr.count == 0u || pr.first >= NS
+            || pr.count > static_cast<uint16_t>(NS - pr.first)) {
+            return PoolView<const Hdr, const Slot>(&hdr, nullptr, 0u);
         }
-        if (pr.first >= NS || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return {};
-        }
-        return PoolView<const Slot>(_slots.begin() + pr.first, pr.count);
+        return PoolView<const Hdr, const Slot>(&hdr, _slots.begin() + pr.first, pr.count);
     }
 
     /** Пересчитать free_top_ по max(first+count). После load. */
