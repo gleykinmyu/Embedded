@@ -24,7 +24,7 @@ struct PoolRef {
     uint16_t first = 0;
     uint16_t count = 0;
 
-    [[nodiscard]] constexpr bool empty() const noexcept { return count == 0u; }
+    [[nodiscard]] constexpr bool isEmpty() const noexcept { return count == 0u; }
     [[nodiscard]] constexpr uint16_t end() const noexcept
     {
         return static_cast<uint16_t>(first + count);
@@ -56,7 +56,7 @@ public:
     [[nodiscard]] const Hdr* header() const noexcept { return _hdr; }
 
     [[nodiscard]] uint16_t size() const noexcept { return _count; }
-    [[nodiscard]] bool empty() const noexcept { return _count == 0u; }
+    [[nodiscard]] bool isEmpty() const noexcept { return _count == 0u; }
 
     [[nodiscard]] Slot* begin() noexcept { return _slots; }
     [[nodiscard]] Slot* end() noexcept { return _slots + _count; }
