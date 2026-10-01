@@ -1,6 +1,6 @@
 /**
  * @file layout.hpp
- * @brief Геометрия 10" landscape 1024×600: сетка 16 клеток в ширину.
+ * @brief Геометрия 4.3" landscape 480×272: сетка 8 клеток в ширину.
  */
 #pragma once
 
@@ -10,13 +10,16 @@
 namespace ui {
 namespace layout {
 
-inline constexpr nex::Coord kScreenW = 1024;
-inline constexpr nex::Coord kScreenH = 600;
-inline constexpr nex::Coord kTopH = 48;
-inline constexpr nex::Coord kColHdrH = 28;
+inline constexpr nex::Coord kScreenW = 480;
+inline constexpr nex::Coord kScreenH = 272;
+inline constexpr nex::Coord kTopH = 0;
+inline constexpr nex::Coord kColHdrH = 22;
 inline constexpr nex::Coord kRowHdrW = 48;
-inline constexpr nex::Coord kFootH = 104;
-inline constexpr nex::Coord kPad = 8;
+inline constexpr nex::Coord kFootH = 72;
+inline constexpr nex::Coord kGraphFootH = 36;
+inline constexpr nex::Coord kPad = 4;
+inline constexpr nex::Coord kBtnH = 28;
+inline constexpr nex::Coord kGap = 4;
 
 [[nodiscard]] constexpr nex::Coord cellW() noexcept
 {
@@ -47,6 +50,11 @@ inline constexpr nex::Coord kPad = 8;
 [[nodiscard]] constexpr nex::Coord footY() noexcept
 {
     return static_cast<nex::Coord>(kScreenH - kFootH);
+}
+
+[[nodiscard]] constexpr nex::Coord graphFootY() noexcept
+{
+    return static_cast<nex::Coord>(kScreenH - kGraphFootH);
 }
 
 } // namespace layout

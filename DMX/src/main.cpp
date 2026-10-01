@@ -1,5 +1,5 @@
 /**
- * DMX-тестер: STM32F407 + Nextion 10" 1024×600 landscape.
+ * DMX-тестер: STM32F407 + Nextion 4.3" 480×272 landscape.
  * Плата как PUMS Console: log=USART1 PA9/PA10, Nextion=USART2 PA2/PA3.
  * DMX RS485: USART3 PB10/PB11, DE=PB1.
  *
@@ -139,7 +139,7 @@ int main()
             tester.sendLive();
         }
         if (app.graph.isVisible()) {
-            if ((now - lastTraceMs) >= ui::kTracePeriodMs) {
+            if ((now - lastTraceMs) >= tester.tracePeriodMs()) {
                 lastTraceMs = now;
                 tester.sampleTrace();
             }

@@ -1,8 +1,8 @@
 /**
  * @file cellMap.hpp
- * @brief Сетка монитора: 16 каналов в ряд, 8 рядов, 4 страницы (ровно 512).
+ * @brief Сетка монитора 4.3": 8 каналов в ряд, 4 ряда, 16 страниц (ровно 512).
  *
- * Канал = page * (rows*16) + row * 16 + col + 1  (1…512).
+ * Канал = page * (rows*8) + row * 8 + col + 1  (1…512).
  */
 #pragma once
 
@@ -12,22 +12,21 @@
 
 namespace ui {
 
-inline constexpr uint8_t kCols = 16u;
-inline constexpr uint8_t kRows = 8u;
+inline constexpr uint8_t kCols = 8u;
+inline constexpr uint8_t kRows = 4u;
 inline constexpr uint8_t kMaxRows = kRows;
-inline constexpr uint8_t kMaxPages = 4u;
+inline constexpr uint8_t kMaxPages = 16u;
 inline constexpr uint8_t kMaxSelect = 8u;
 inline constexpr uint16_t kTraceLen = 200u;
-inline constexpr uint16_t kTracePeriodMs = 100u;
+inline constexpr uint8_t kTraceSpanMinS = 10u;
+inline constexpr uint8_t kTraceSpanMaxS = 100u;
+inline constexpr uint8_t kTraceSpanStepS = 10u;
 static_assert(static_cast<uint16_t>(kRows) * kCols * kMaxPages == BIF::dmx::kMaxChannels,
-    "8×16×4 must cover 512 channels");
+    "4×8×16 must cover 512 channels");
 
 enum class ViewMode : uint8_t {
     Current = 0,
     Fast = 1,
-    Log = 2,
-    Min = 3,
-    Max = 4,
 };
 
 [[nodiscard]] constexpr uint16_t pageSize(uint8_t rows) noexcept

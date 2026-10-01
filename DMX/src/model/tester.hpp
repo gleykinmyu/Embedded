@@ -1,6 +1,6 @@
 /**
  * @file tester.hpp
- * @brief Кадр, лог min/max, страница сетки 16×N, режим просмотра.
+ * @brief Кадр, страница сетки 8×N, режим просмотра.
  */
 #pragma once
 
@@ -29,7 +29,7 @@ public:
     explicit Tester(dmx::Rs485Port& port) noexcept
         : _port(port)
     {
-        resetLog();
+        std::memset(_changed, 0, sizeof(_changed));
     }
 
     [[nodiscard]] dmx::Rs485Port& port() noexcept { return _port; }
@@ -53,40 +53,44 @@ public:
             _page = page;
     }
 
+    void stepPage(int8_t delta) noexcept
+    {
+        const int16_t n = static_cast<int16_t>(pageCount(_rows));
+        if (n <= 0)
+            return;
+        int16_t next = static_cast<int16_t>(static_cast<int16_t>(_page) + delta) % n;
+        if (next < 0)
+            next = static_cast<int16_t>(next + n);
+        _page = static_cast<uint8_t>(next);
+    }
+
     [[nodiscard]] ViewMode view() const noexcept { return _view; }
     void setView(ViewMode v) noexcept { _view = v; }
-
-    [[nodiscard]] bool logging() const noexcept { return _logging; }
-
-    void startLog() noexcept
-    {
-        resetLog();
-        _logging = true;
-    }
-
-    void stopLog() noexcept { _logging = false; }
-
-    void toggleLog() noexcept
-    {
-        if (_logging)
-            stopLog();
-        else
-            startLog();
-    }
 
     [[nodiscard]] uint8_t cellValue(uint8_t col, uint8_t row) const noexcept
     {
         const uint16_t ch = channelOf(_page, _rows, col, row);
-        if (ch == 0u)
-            return 0;
-        switch (_view) {
-        case ViewMode::Min:
-            return (_max[ch - 1u] == 0u) ? 0u : _min[ch - 1u];
-        case ViewMode::Max:
-            return _max[ch - 1u];
-        default:
-            return _live.get(ch);
-        }
+        return (ch == 0u) ? 0u : _live.get(ch);
+    }
+
+    [[nodiscard]] uint8_t traceSpanS() const noexcept { return _spanS; }
+    [[nodiscard]] uint32_t tracePeriodMs() const noexcept
+    {
+        const uint16_t div = (kTraceLen > 1u) ? static_cast<uint16_t>(kTraceLen - 1u) : 1u;
+        return (static_cast<uint32_t>(_spanS) * 1000u) / div;
+    }
+
+    void stepTraceSpan(int8_t delta) noexcept
+    {
+        int16_t next = static_cast<int16_t>(_spanS) + static_cast<int16_t>(delta) * kTraceSpanStepS;
+        if (next < static_cast<int16_t>(kTraceSpanMinS))
+            next = kTraceSpanMinS;
+        if (next > static_cast<int16_t>(kTraceSpanMaxS))
+            next = kTraceSpanMaxS;
+        if (next == static_cast<int16_t>(_spanS))
+            return;
+        _spanS = static_cast<uint8_t>(next);
+        clearTrace();
     }
 
     [[nodiscard]] bool cellChanged(uint8_t col, uint8_t row) const noexcept
@@ -189,19 +193,6 @@ public:
                 _changed[i] = 1;
         }
         _live = next;
-
-        if (!_logging)
-            return;
-
-        for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            const uint8_t v = _live.channels[i];
-            if (v == 0u)
-                continue;
-            if (v < _min[i])
-                _min[i] = v;
-            if (v > _max[i])
-                _max[i] = v;
-        }
     }
 
     bool sendLive() noexcept { return _port.send(_live); }
@@ -236,19 +227,8 @@ public:
     }
 
 private:
-    void resetLog() noexcept
-    {
-        for (std::size_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            _min[i] = 255;
-            _max[i] = 0;
-        }
-        std::memset(_changed, 0, sizeof(_changed));
-    }
-
     dmx::Rs485Port& _port;
     BIF::dmx::Frame _live{};
-    uint8_t _min[BIF::dmx::kMaxChannels]{};
-    uint8_t _max[BIF::dmx::kMaxChannels]{};
     uint8_t _changed[BIF::dmx::kMaxChannels]{};
     uint16_t _sel[kMaxSelect]{1};
     uint8_t _selN = 1;
@@ -258,7 +238,7 @@ private:
     uint8_t _rows = layout::rowsFit();
     uint8_t _page = 0;
     ViewMode _view = ViewMode::Current;
-    bool _logging = false;
+    uint8_t _spanS = 20;
 };
 
 } // namespace ui

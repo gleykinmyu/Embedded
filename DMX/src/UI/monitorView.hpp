@@ -11,7 +11,7 @@ namespace ui {
 class Application;
 class Tester;
 
-/** McUI главной страницы: сетка 16×N, шапка, страницы диапазона, режимы, TX. */
+/** McUI главной страницы: сетка 8×4, шапка, страницы диапазона, режимы, TX. */
 class MonitorView : public nex::ovl::Widget {
 public:
     explicit MonitorView(Application& app) noexcept;
@@ -106,6 +106,8 @@ private:
     void presentSelectedLabel() noexcept;
     void bindRadioGroups() noexcept;
     void onGridClick() noexcept;
+    void applyPage(int8_t delta) noexcept;
+    void syncPageLabel() noexcept;
 
     [[nodiscard]] uint8_t rows() const noexcept { return layout::rowsFit(); }
     [[nodiscard]] uint8_t pages() const noexcept { return pageCount(rows()); }
@@ -115,16 +117,13 @@ private:
     nex::ovl::Overlay* _overlay = nullptr;
 
     Grid _grid{};
-    nex::ovl::Button _dir;
     nex::ovl::Button _graph;
-    nex::ovl::Button _pageBtn[kMaxPages];
-    char _pageLabel[kMaxPages][12]{};
-    nex::ovl::Button _viewBtn[5];
-    RadioGroup _pages{};
+    nex::ovl::Button _pagePrev;
+    nex::ovl::Button _pageNext;
+    nex::ovl::Button _pageRange;
+    char _pageLabel[16]{};
+    nex::ovl::Button _viewBtn[2];
     RadioGroup _views{};
-    nex::ovl::Button _zero;
-    nex::ovl::Button _full;
-    nex::ovl::Button _blk;
     Label _link{};
     Label _cycle{};
     Label _chVal{};
@@ -132,7 +131,6 @@ private:
     bool _oemReady = false;
     char _oemCurrent[16]{};
     char _oemFast[16]{};
-    char _oemLog[12]{};
     char _oemGraph[12]{};
 };
 

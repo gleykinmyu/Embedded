@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * HMI-страница monitor — пустой фон 1024×600. Сетка и кнопки рисует McUI (`MonitorView`).
+ * HMI-страница monitor — пустой фон 480×272. Сетка и кнопки рисует McUI (`MonitorView`).
  */
 
 #include "UI/nexHmiConfig.hpp"

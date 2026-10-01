@@ -6,7 +6,6 @@
 #include "UI/monitorView.hpp"
 #include "UI/nexHmiConfig.hpp"
 #include "UI/pages/monitorPage.hpp"
-#include "UI/pages/netPage.hpp"
 
 namespace ui {
 
@@ -18,7 +17,6 @@ public:
     explicit Application(BIF::IHardwareSerial& link, nex::AppTiming timing) noexcept
         : AppUI(link, nex::Rect(nex::hmi::kScreenW, nex::hmi::kScreenH), timing)
         , monitor(*this)
-        , net(*this)
         , view(*this)
         , graph(*this)
         , msgBox(*this)
@@ -40,7 +38,6 @@ public:
     void applyFastBaudIfNeeded() noexcept;
 
     MonitorPage monitor;
-    NetPage net;
     MonitorView view;
     GraphView graph;
     nex::ovl::MsgBox msgBox;

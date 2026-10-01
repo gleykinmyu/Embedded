@@ -51,7 +51,7 @@ private:
         mutable uint16_t _gen = 0;
         mutable uint16_t _drawn = 0;
         mutable char _leg[kMaxSelect][8]{};
-        mutable char _valLbl[9][4]{};
+        mutable char _valLbl[5][4]{};
         mutable char _timeLbl[11][6]{};
 
         void drawAxes(const nex::AppCanvas& cs) const;
@@ -65,7 +65,10 @@ private:
     void applyOem() noexcept;
     void layoutChrome() noexcept;
     void syncChrome() noexcept;
+    void syncSpanLabel() noexcept;
+    void applySpan(int8_t delta) noexcept;
     void present(nex::ovl::Object& obj) noexcept;
+    void presentSpan() noexcept;
     void presentDirtyLabels() noexcept;
     void goMonitor() noexcept;
 
@@ -73,15 +76,15 @@ private:
     Tester* _tester = nullptr;
     nex::ovl::Overlay* _overlay = nullptr;
 
-    nex::ovl::Button _dir;
     nex::ovl::Button _back;
+    nex::ovl::Button _spanPrev;
+    nex::ovl::Button _spanNext;
+    nex::ovl::Button _spanLabel;
+    char _spanText[8]{};
     Plot _plot{};
     Label _link{};
     Label _cycle{};
     Label _chVal{};
-    nex::ovl::Button _zero;
-    nex::ovl::Button _full;
-    nex::ovl::Button _blk;
     bool _oemReady = false;
     char _oemBack[12]{};
 };

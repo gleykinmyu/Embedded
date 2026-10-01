@@ -15,7 +15,7 @@ constexpr nex::FontId kFont = 0u;
 constexpr uint8_t kDirtyCellsPerTick = 32u;
 
 static_assert(layout::kScreenW == nex::hmi::kScreenW && layout::kScreenH == nex::hmi::kScreenH,
-    "layout must match HMI 1024x600");
+    "layout must match HMI 480x272");
 
 void copyText(char* dst, std::size_t cap, const char* src) noexcept
 {
@@ -33,20 +33,16 @@ void copyText(char* dst, std::size_t cap, const char* src) noexcept
 
 MonitorView::MonitorView(Application& app) noexcept
     : _app(app)
-    , _dir{"RX", nex::Rect{88, 40}, kBtnOn}
-    , _graph{"график", nex::Rect{100, 40}, kBtnIdle}
-    , _zero{"0", nex::Rect{56, 40}, kBtnIdle}
-    , _full{"255", nex::Rect{64, 40}, kBtnIdle}
-    , _blk{"BLK", nex::Rect{64, 40}, kBtnIdle}
+    , _graph{"график", nex::Rect{72, layout::kBtnH}, kBtnIdle}
+    , _pagePrev{"<", nex::Rect{28, layout::kBtnH}, kBtnIdle}
+    , _pageNext{">", nex::Rect{28, layout::kBtnH}, kBtnIdle}
+    , _pageRange{"1-32", nex::Rect{80, layout::kBtnH}, kBtnOn}
 {
     setRegion(nex::Region(nex::Point{0, 0}, nex::Rect{layout::kScreenW, layout::kScreenH}));
 
-    static constexpr const char* kViewLabel[5] = {"текущие", "быстрый", "лог", "min", "max"};
-    for (uint8_t i = 0; i < 5u; ++i)
-        _viewBtn[i] = nex::ovl::Button{kViewLabel[i], nex::Rect{112, 40}, i == 0u ? kBtnOn : kBtnIdle};
-
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        _pageBtn[i] = nex::ovl::Button{_pageLabel[i], nex::Rect{120, 40}, kBtnIdle};
+    static constexpr const char* kViewLabel[2] = {"текущие", "быстрые"};
+    for (uint8_t i = 0; i < 2u; ++i)
+        _viewBtn[i] = nex::ovl::Button{kViewLabel[i], nex::Rect{96, layout::kBtnH}, i == 0u ? kBtnOn : kBtnIdle};
 
     _grid.host = this;
     _link.align = nex::HAlign::Left;
@@ -64,18 +60,15 @@ MonitorView::MonitorView(Application& app) noexcept
 void MonitorView::addChrome() noexcept
 {
     addChildTop(_grid);
-    addChildTop(_dir);
     addChildTop(_graph);
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        addChildTop(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
+    addChildTop(_pagePrev);
+    addChildTop(_pageRange);
+    addChildTop(_pageNext);
+    for (uint8_t i = 0; i < 2u; ++i)
         addChildTop(_viewBtn[i]);
     addChildTop(_link);
     addChildTop(_cycle);
     addChildTop(_chVal);
-    addChildTop(_zero);
-    addChildTop(_full);
-    addChildTop(_blk);
 }
 
 void MonitorView::applyOemCaptions() noexcept
@@ -83,12 +76,10 @@ void MonitorView::applyOemCaptions() noexcept
     if (_oemReady)
         return;
     enc::utf8ToOem(_oemCurrent, sizeof(_oemCurrent), "текущие");
-    enc::utf8ToOem(_oemFast, sizeof(_oemFast), "быстрый");
-    enc::utf8ToOem(_oemLog, sizeof(_oemLog), "лог");
+    enc::utf8ToOem(_oemFast, sizeof(_oemFast), "быстрые");
     enc::utf8ToOem(_oemGraph, sizeof(_oemGraph), "график");
     RadioGroup::setLabel(_viewBtn[0], _oemCurrent);
     RadioGroup::setLabel(_viewBtn[1], _oemFast);
-    RadioGroup::setLabel(_viewBtn[2], _oemLog);
     RadioGroup::setLabel(_graph, _oemGraph);
     _oemReady = true;
 }
@@ -145,68 +136,44 @@ void MonitorView::layout() noexcept
 
 void MonitorView::layoutChrome() noexcept
 {
-    constexpr nex::Coord kY = 4;
-    constexpr nex::Coord kH = 40;
-    nex::Coord x = layout::kPad;
-    auto place = [&](nex::ovl::Object& o, nex::Coord w) {
-        o.setRegion(nex::Region(nex::Point{x, kY}, nex::Rect{w, kH}));
-        x = static_cast<nex::Coord>(x + w + 8);
-    };
-
-    place(_dir, 88);
-    place(_graph, 100);
-
-    const uint8_t nPages = pages();
+    const nex::Coord kH = layout::kBtnH;
     const nex::Coord fy = layout::footY();
-    x = layout::kPad;
-    for (uint8_t i = 0; i < kMaxPages; ++i) {
-        _pageBtn[i].setVisible(i < nPages);
-        if (i < nPages) {
-            _pageBtn[i].setRegion(nex::Region(nex::Point{x, static_cast<nex::Coord>(fy + 4)}, nex::Rect{108, 40}));
-            x = static_cast<nex::Coord>(x + 116);
-        }
-    }
+    const nex::Coord y1 = static_cast<nex::Coord>(fy + 2);
+    nex::Coord x = layout::kPad;
+    _pagePrev.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{28, kH}));
+    x = static_cast<nex::Coord>(x + 28 + layout::kGap);
+    _pageRange.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{80, kH}));
+    x = static_cast<nex::Coord>(x + 80 + layout::kGap);
+    _pageNext.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{28, kH}));
 
     x = static_cast<nex::Coord>(layout::kScreenW - layout::kPad);
-    for (int i = 4; i >= 0; --i) {
-        x = static_cast<nex::Coord>(x - 100);
-        _viewBtn[static_cast<uint8_t>(i)].setRegion(
-            nex::Region(nex::Point{x, static_cast<nex::Coord>(fy + 4)}, nex::Rect{96, 40}));
-        x = static_cast<nex::Coord>(x - 8);
+    for (int i = 1; i >= 0; --i) {
+        x = static_cast<nex::Coord>(x - 96);
+        _viewBtn[static_cast<uint8_t>(i)].setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{92, kH}));
+        x = static_cast<nex::Coord>(x - layout::kGap);
     }
 
-    const nex::Coord y2 = static_cast<nex::Coord>(fy + 56);
-    _link.setRegion(nex::Region(nex::Point{layout::kPad, y2}, nex::Rect{160, 40}));
-    _cycle.setRegion(nex::Region(nex::Point{176, y2}, nex::Rect{140, 40}));
-    _chVal.setRegion(nex::Region(nex::Point{324, y2}, nex::Rect{428, 40}));
-    _zero.setRegion(nex::Region(nex::Point{760, y2}, nex::Rect{56, 40}));
-    _full.setRegion(nex::Region(nex::Point{824, y2}, nex::Rect{64, 40}));
-    _blk.setRegion(nex::Region(nex::Point{896, y2}, nex::Rect{64, 40}));
+    const nex::Coord y2 = static_cast<nex::Coord>(fy + 38);
+    _link.setRegion(nex::Region(nex::Point{layout::kPad, y2}, nex::Rect{72, kH}));
+    _cycle.setRegion(nex::Region(nex::Point{80, y2}, nex::Rect{64, kH}));
+    _chVal.setRegion(nex::Region(nex::Point{148, y2}, nex::Rect{248, kH}));
+    _graph.setRegion(nex::Region(nex::Point{400, y2}, nex::Rect{72, kH}));
 }
 
 void MonitorView::syncChrome() noexcept
 {
     const uint8_t nRows = rows();
-    const uint8_t nPages = pages();
-    uint8_t page = 0;
     ViewMode view = ViewMode::Current;
-    dmx::Role dir = dmx::Role::Receive;
     uint32_t cycle = 0;
     const char* link = "-";
     if (_tester != nullptr) {
         _tester->setRows(nRows);
-        page = _tester->page();
         view = _tester->view();
-        dir = _tester->port().role();
         cycle = _tester->port().frameCount();
         link = statusText(_tester->port().getStatus());
     }
 
-    RadioGroup::setLabel(_dir, dir == dmx::Role::Transmit ? "TX" : "RX");
-    RadioGroup::style(_dir, dir == dmx::Role::Transmit);
     _views.sync(static_cast<uint8_t>(view));
-    if (view == ViewMode::Log && (_tester == nullptr || !_tester->logging()))
-        RadioGroup::style(_viewBtn[2], false);
 
     char buf[36]{};
     _link.setText(link);
@@ -219,17 +186,7 @@ void MonitorView::syncChrome() noexcept
         buf[0] = '\0';
     _chVal.setText(buf);
 
-    for (uint8_t i = 0; i < nPages; ++i) {
-        char next[sizeof(_pageLabel[i])]{};
-        const uint16_t a = pageFirst(i, nRows);
-        const uint16_t b = pageLast(i, nRows);
-        std::snprintf(next, sizeof(next), "%u-%u", static_cast<unsigned>(a), static_cast<unsigned>(b));
-        if (std::strcmp(_pageLabel[i], next) != 0) {
-            std::memcpy(_pageLabel[i], next, sizeof(next));
-            RadioGroup::setLabel(_pageBtn[i], _pageLabel[i]);
-        }
-    }
-    _pages.sync(page);
+    syncPageLabel();
 }
 
 void MonitorView::drawBackground(const nex::AppCanvas& cs) const
@@ -271,16 +228,12 @@ void MonitorView::presentDirtyLabels() noexcept
 
 void MonitorView::presentButtons() noexcept
 {
-    present(_dir);
     present(_graph);
-    const uint8_t nPages = pages();
-    for (uint8_t i = 0; i < nPages; ++i)
-        present(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
+    present(_pagePrev);
+    present(_pageRange);
+    present(_pageNext);
+    for (uint8_t i = 0; i < 2u; ++i)
         present(_viewBtn[i]);
-    present(_zero);
-    present(_full);
-    present(_blk);
 }
 
 void MonitorView::presentRadio(const RadioGroup::Paint& p) noexcept
@@ -303,10 +256,38 @@ void MonitorView::presentSelectedLabel() noexcept
 
 void MonitorView::bindRadioGroups() noexcept
 {
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        _pages.bind(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
+    for (uint8_t i = 0; i < 2u; ++i)
         _views.bind(_viewBtn[i]);
+}
+
+void MonitorView::syncPageLabel() noexcept
+{
+    const uint8_t nRows = rows();
+    const uint8_t page = (_tester != nullptr) ? _tester->page() : 0u;
+    char next[sizeof(_pageLabel)]{};
+    const uint16_t a = pageFirst(page, nRows);
+    const uint16_t b = pageLast(page, nRows);
+    std::snprintf(next, sizeof(next), "%u-%u", static_cast<unsigned>(a), static_cast<unsigned>(b));
+    if (std::strcmp(_pageLabel, next) != 0) {
+        std::memcpy(_pageLabel, next, sizeof(next));
+        RadioGroup::setLabel(_pageRange, _pageLabel);
+    }
+    RadioGroup::style(_pageRange, true);
+}
+
+void MonitorView::applyPage(const int8_t delta) noexcept
+{
+    if (_tester == nullptr)
+        return;
+    const uint8_t before = _tester->page();
+    _tester->stepPage(delta);
+    if (_tester->page() == before)
+        return;
+    syncPageLabel();
+    present(_pagePrev);
+    present(_pageRange);
+    present(_pageNext);
+    _grid.presentDirty();
 }
 
 void MonitorView::onClick(nex::ovl::Object* const target) noexcept
@@ -322,51 +303,23 @@ void MonitorView::onClick(nex::ovl::Object* const target) noexcept
     if (_tester == nullptr)
         return;
 
-    if (target == &_dir) {
-        const auto next = (_tester->port().role() == dmx::Role::Receive)
-            ? dmx::Role::Transmit
-            : dmx::Role::Receive;
-        _tester->port().setRole(next);
-        const bool tx = next == dmx::Role::Transmit;
-        RadioGroup::setLabel(_dir, tx ? "TX" : "RX");
-        RadioGroup::style(_dir, tx);
-        present(_dir);
-        return;
-    }
-
-    if (target == &_zero || target == &_full || target == &_blk) {
-        if (target == &_zero)
-            _tester->setSelectedValues(0);
-        else if (target == &_full)
-            _tester->setSelectedValues(255);
-        else
-            _tester->blackout();
-        if (_tester->port().role() == dmx::Role::Transmit)
-            _tester->sendLive();
-        present(*static_cast<nex::ovl::Button*>(target));
-        _grid.presentDirty();
-        presentSelectedLabel();
-        return;
-    }
-
     const RadioGroup::Paint viewPaint = _views.select(target);
     if (viewPaint.hit) {
-        const uint8_t i = _views.selected();
-        if (i == static_cast<uint8_t>(ViewMode::Log))
-            _tester->toggleLog();
-        _tester->setView(static_cast<ViewMode>(i));
-        if (i == static_cast<uint8_t>(ViewMode::Log) && !_tester->logging())
-            RadioGroup::style(_viewBtn[2], false);
+        _tester->setView(static_cast<ViewMode>(_views.selected()));
         presentRadio(viewPaint);
         _grid.presentDirty();
         return;
     }
 
-    const RadioGroup::Paint pagePaint = _pages.select(target);
-    if (pagePaint.hit) {
-        _tester->setPage(_pages.selected());
-        presentRadio(pagePaint);
-        _grid.presentDirty();
+    if (target == &_pagePrev) {
+        applyPage(-1);
+        present(_pagePrev);
+        return;
+    }
+    if (target == &_pageNext) {
+        applyPage(1);
+        present(_pageNext);
+        return;
     }
 }
 
