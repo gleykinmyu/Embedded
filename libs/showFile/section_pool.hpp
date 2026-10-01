@@ -114,12 +114,12 @@ public:
 
     /**
      * Регистрирует две секции в @a file (порядок: heads, затем slots).
+     * @a required — на обе: одна без другой не имеет смысла.
      * Ёмкость Show должна вмещать +2 секции.
      */
-    SectionPool(IShow& file, uint32_t tag_heads, uint32_t tag_slots, bool required_heads = true,
-                bool required_slots = true) noexcept
-        : _heads(file, tag_heads, required_heads)
-        , _slots(file, tag_slots, required_slots)
+    SectionPool(IShow& file, uint32_t tag_heads, uint32_t tag_slots, bool required = true) noexcept
+        : _heads(file, tag_heads, required)
+        , _slots(file, tag_slots, required)
     {}
 
     [[nodiscard]] Heads& heads() noexcept { return _heads; }
