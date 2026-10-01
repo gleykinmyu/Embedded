@@ -114,6 +114,8 @@ public:
 
     using Heads = Section<Hdr, NH>;
     using Slots = Section<Slot, NS>;
+    using View = PoolView<Hdr, Slot>;
+    using ConstView = PoolView<const Hdr, const Slot>;
 
     /**
      * Регистрирует две секции в @a file (порядок: heads, затем slots).
