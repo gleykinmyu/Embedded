@@ -12,14 +12,13 @@ namespace ui {
 class Application;
 
 struct MonitorPage : nex::Page<0> {
-    HMI_PAGE_CFG(monitor);
+    HMI_PAGE_CFG(mon);
 
     explicit MonitorPage(nex::IAppUI& app) noexcept
-        : Page<0>(app, "monitor", PG::kPageId)
+        : Page<0>(app, "mon", PG::kPageId)
     {
     }
 
-    void onLoad() override;
     void onExit() override;
 
 private:

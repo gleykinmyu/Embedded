@@ -6,7 +6,7 @@
 
 class RelayOutModule {
 public:
-    RelayOutModule(BIF::IHardwareSerial& serial, uint8_t RelayQt) : _serial(serial), _RelayQt(RelayQt) {}
+    RelayOutModule(BIF::IHWByteStream& serial, uint8_t RelayQt) : _serial(serial), _RelayQt(RelayQt) {}
 
     void begin(unsigned baud);
     void RelayProcessing();
@@ -15,7 +15,7 @@ public:
     uint8_t              ID = 0;
 
 private:
-    BIF::IHardwareSerial& _serial;
+    BIF::IHWByteStream& _serial;
     uint8_t               _RelayQt;
     unsigned long         _tmr1 = 0;
 };
@@ -37,8 +37,8 @@ inline void RelayOutModule::RelayProcessing() {}
 
 class RelayInputModule {
 public:
-    explicit RelayInputModule(BIF::IHardwareSerial& serial) : _serial(serial) {}
+    explicit RelayInputModule(BIF::IHWByteStream& serial) : _serial(serial) {}
 
 private:
-    BIF::IHardwareSerial& _serial;
+    BIF::IHWByteStream& _serial;
 };

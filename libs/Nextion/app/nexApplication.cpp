@@ -285,6 +285,10 @@ void Application::processTransportFault(uint32_t now_ms) noexcept {
         break;
 
     case Gateway::Status::OK:
+        _rxFaultRetries = 0u;
+        if (streamSt == BIF::IByteStream::Status::DataError && !_session.isActive())
+            _stream.clearErrors();
+        return;
     default:
         _rxFaultRetries = 0u;
         break;

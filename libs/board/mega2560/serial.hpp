@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * BIF::ISerial для USART0..USART3 ATmega2560.
+ * USART0..USART3 ATmega2560: Uart — голый драйвер, Serial — поток с кольцами.
  * Слот Regs появляется, только если в avr/io.h есть соответствующий UCSRnA.
  * Пины фиксированы: 0 — PE1/PE0, 1 — PD3/PD2, 2 — PH1/PH0, 3 — PJ1/PJ0.
  */
@@ -123,15 +123,18 @@ inline void clearBit(volatile uint8_t& r, uint8_t mask) noexcept
 
 } // namespace detail
 
-template <uint8_t N, size_t TxSize = 128, size_t RxSize = 128>
-class Serial : public BIF::ISerial<TxSize, RxSize> {
+template <uint8_t N>
+class Uart : public BIF::IHWByteStream {
     static_assert(kIndexPresent<N>, "USART index is not present in avr/io.h");
 
     using R = Regs<N>;
     Frame _frame = Frame::_8N1();
     uint8_t _sregSave = 0;
     bool _txArmed = false;
-    static inline Serial* self_ = nullptr;
+    bool _open = false;
+    uint8_t _rxByte = 0;
+    BIF::IByteStream::Status _rxStatus = BIF::IByteStream::Status::OK;
+    static inline Uart* self_ = nullptr;
 
 public:
     void InitPins() const
@@ -151,32 +154,22 @@ public:
         }
     }
 
-    ~Serial() override
-    {
-        if (this->_isOpen)
-            close();
-        if (self_ == this) {
-            irq[N] = nullptr;
-            self_ = nullptr;
-        }
-    }
+    ~Uart() override { close(); }
 
-    bool open(uint32_t baudrate) override
+    bool open(uint32_t baud) override
     {
-        if (baudrate == 0u || !configure(baudrate, _frame))
+        if (baud == 0u || !configure(baud, _frame))
             return false;
         self_ = this;
         _txArmed = false;
-        irq[N] = &Serial::route;
-        detail::setBit(R::UCSRB, 1 << RXCIE0);
-        this->clearErrors();
-        this->_isOpen = true;
+        irq[N] = &Uart::route;
+        _open = true;
         return true;
     }
 
     bool setFrameFormat(const Frame& fmt) noexcept
     {
-        if (this->_isOpen)
+        if (_open)
             return false;
         _frame = fmt;
         return true;
@@ -184,15 +177,46 @@ public:
 
     void close() override
     {
-        detail::clearBit(R::UCSRB, 1 << RXCIE0);
-        detail::clearBit(R::UCSRB, 1 << UDRIE0);
+        if (!_open && self_ != this)
+            return;
+        irqRxDisable();
+        irqTxDisable();
         irq[N] = nullptr;
         if (self_ == this)
             self_ = nullptr;
         CriticalSection cs;
         R::UCSRB = 0;
         _txArmed = false;
-        this->_isOpen = false;
+        _open = false;
+    }
+
+    bool isOpen() const override { return _open; }
+
+    uint8_t readByte() const override { return _rxByte; }
+
+    BIF::IByteStream::Status getStatus() const override { return _rxStatus; }
+
+    bool writeByte(uint8_t data) override
+    {
+        if ((R::UCSRA & static_cast<uint8_t>(1u << UDRE0)) == 0)
+            return false;
+        _txArmed = true;
+        R::UDR = data;
+        return true;
+    }
+
+    void irqRxEnable() override { detail::setBit(R::UCSRB, 1 << RXCIE0); }
+    void irqRxDisable() override { detail::clearBit(R::UCSRB, 1 << RXCIE0); }
+    void irqTxEnable() override { detail::setBit(R::UCSRB, 1 << UDRIE0); }
+    void irqTxDisable() override { detail::clearBit(R::UCSRB, 1 << UDRIE0); }
+
+    bool isTxBusy() const override
+    {
+        if ((R::UCSRA & static_cast<uint8_t>(1u << UDRE0)) == 0)
+            return true;
+        if (!_txArmed)
+            return false;
+        return (R::UCSRA & static_cast<uint8_t>(1u << TXC0)) == 0;
     }
 
 private:
@@ -204,10 +228,22 @@ private:
 
     void uart_irq() noexcept
     {
-        while ((R::UCSRA & (1 << RXC0)) != 0 && (R::UCSRB & (1 << RXCIE0)) != 0)
-            this->IRQ_RX_Handler();
+        while ((R::UCSRA & (1 << RXC0)) != 0 && (R::UCSRB & (1 << RXCIE0)) != 0) {
+            const uint8_t a = R::UCSRA;
+            _rxByte = R::UDR;
+            const uint8_t fe = static_cast<uint8_t>(1u << FE0);
+            const uint8_t upe = static_cast<uint8_t>(1u << UPE0);
+            const uint8_t dor = static_cast<uint8_t>(1u << DOR0);
+            if ((a & dor) != 0)
+                _rxStatus = BIF::IByteStream::Status::OverFlowRX;
+            else if ((a & (fe | upe)) != 0)
+                _rxStatus = BIF::IByteStream::Status::DataError;
+            else
+                _rxStatus = BIF::IByteStream::Status::OK;
+            _rx.invoke();
+        }
         if ((R::UCSRA & (1 << UDRE0)) != 0 && (R::UCSRB & (1 << UDRIE0)) != 0)
-            this->IRQ_TX_Handler();
+            _tx.invoke();
     }
 
     [[nodiscard]] bool configure(uint32_t baud_hz, const Frame& fmt) noexcept
@@ -243,41 +279,35 @@ private:
     }
 
 protected:
-    void IRQ_TX_Enable() override { detail::setBit(R::UCSRB, 1 << UDRIE0); }
-    void IRQ_TX_Disable() override { detail::clearBit(R::UCSRB, 1 << UDRIE0); }
-
-    bool isHardwareTxBusy() const override
-    {
-        if ((R::UCSRA & static_cast<uint8_t>(1u << UDRE0)) == 0)
-            return true;
-        if (!_txArmed)
-            return false;
-        return (R::UCSRA & static_cast<uint8_t>(1u << TXC0)) == 0;
-    }
-
-    uint8_t readHardware() override { return R::UDR; }
-
-    void writeHardware(uint8_t data) override
-    {
-        _txArmed = true;
-        R::UDR = data;
-    }
-
-    bool checkErrors() override
-    {
-        const uint8_t a = R::UCSRA;
-        const uint8_t fe = static_cast<uint8_t>(1u << FE0);
-        const uint8_t upe = static_cast<uint8_t>(1u << UPE0);
-        const uint8_t dor = static_cast<uint8_t>(1u << DOR0);
-        if ((a & (fe | upe)) != 0)
-            this->_dataError = true;
-        if ((a & dor) != 0)
-            this->_hwOverrunRx = true;
-        return (a & (fe | upe)) != 0;
-    }
-
     void lock() override { _sregSave = CriticalSection::saveAndDisable(); }
     void unlock() override { CriticalSection::restore(_sregSave); }
+};
+
+/// Поток с кольцами поверх Uart. Колбэки — в теле конструктора, когда `_uart` уже жив.
+template <uint8_t N, size_t TxSize = 128, size_t RxSize = 128>
+class Serial : public BIF::ISerial<TxSize, RxSize> {
+    Uart<N> _uart;
+
+public:
+    Serial()
+        : BIF::ISerial<TxSize, RxSize>(_uart)
+    {
+        this->bindHw();
+    }
+
+    ~Serial() override
+    {
+        if (this->isOpen())
+            this->close();
+        this->unbindHw();
+    }
+
+    void InitPins() const { _uart.InitPins(); }
+
+    bool setFrameFormat(const Frame& fmt) noexcept { return _uart.setFrameFormat(fmt); }
+
+    [[nodiscard]] Uart<N>& uart() noexcept { return _uart; }
+    [[nodiscard]] const Uart<N>& uart() const noexcept { return _uart; }
 };
 
 } // namespace Usart

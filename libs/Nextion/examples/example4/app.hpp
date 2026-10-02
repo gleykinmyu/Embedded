@@ -46,7 +46,7 @@ public:
     bool tests_done = false;
     uint32_t tests_pass_mask = 0u;
 
-    explicit ErrorTestApp(BIF::IHardwareSerial& stream, Application::ClockMsFn clockMs) noexcept
+    explicit ErrorTestApp(BIF::IByteStream& stream, Application::ClockMsFn clockMs) noexcept
         : AppUI(stream, {kScreenWidth, kScreenHeight}, AppTiming{clockMs})
         , test_page(*this)
         , _link(stream)
@@ -353,7 +353,7 @@ private:
     unsigned queue_enqueued_ = 0u;
     bool queue_fill_ok_ = false;
     uint32_t timeout_saved_ms_ = AppTiming::kDefaultTimeoutMs;
-    BIF::IHardwareSerial& _link;
+    BIF::IByteStream& _link;
 
     /** `baud` на панели + переключение MCU UART (сначала дождаться TX команды). */
     void applyLinkBaud(uint32_t baud) noexcept

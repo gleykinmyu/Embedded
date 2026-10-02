@@ -2,6 +2,7 @@
 
 #include "UI/application.hpp"
 #include "UI/enc.hpp"
+#include "board.hpp"
 #include "model/tester.hpp"
 
 #include <cstdio>
@@ -12,24 +13,17 @@ namespace ui {
 namespace {
 
 constexpr nex::FontId kFont = 0u;
-constexpr nex::Coord kAxisW = 56;
-constexpr nex::Coord kTimeH = 22;
-constexpr nex::Coord kSpanY = 2;
-constexpr nex::Coord kSpanH = 32;
-constexpr nex::Coord kSpanPrevW = 36;
-constexpr nex::Coord kSpanLabelW = 72;
-constexpr nex::Coord kSpanNextW = 36;
-constexpr nex::Coord kSpanNextX = static_cast<nex::Coord>(layout::kScreenW - layout::kPad - kSpanNextW);
-constexpr nex::Coord kSpanLabelX = static_cast<nex::Coord>(kSpanNextX - layout::kGap - kSpanLabelW);
-constexpr nex::Coord kSpanPrevX = static_cast<nex::Coord>(kSpanLabelX - layout::kGap - kSpanPrevW);
-constexpr uint8_t kLegCols = 4u;
-constexpr nex::Coord kLegRowH = 24;
-constexpr nex::Coord kLegItemW = 72;
+constexpr nex::Coord kAxisW = 40;
+constexpr nex::Coord kTimeH = 16;
+constexpr nex::Coord kSpanH = layout::kBtnH;
+constexpr uint8_t kLegCols = 8u;
+constexpr nex::Coord kLegRowH = 22;
 constexpr nex::Coord kLegX0 = 4;
-constexpr nex::Coord kLegH = static_cast<nex::Coord>(2 * kLegRowH);
-constexpr nex::Coord kPlotTop = static_cast<nex::Coord>(
-    kSpanY + ((kSpanH > kLegH) ? kSpanH : kLegH));
-constexpr nex::Coord kPlotGap = 8;
+constexpr nex::Coord kLegH = kLegRowH;
+constexpr nex::Coord kLegAvailW = static_cast<nex::Coord>(layout::kScreenW - kLegX0 - layout::kPad);
+constexpr nex::Coord kLegItemW = static_cast<nex::Coord>(kLegAvailW / static_cast<nex::Coord>(kLegCols));
+constexpr nex::Coord kPlotTop = kLegH;
+constexpr nex::Coord kPlotGap = 3;
 constexpr uint8_t kGridX = 10u;
 constexpr uint8_t kGridY = 4u;
 constexpr uint8_t kTimeLabelEvery = 2u;
@@ -44,7 +38,7 @@ constexpr uint8_t kTimeLabelEvery = 2u;
 [[nodiscard]] nex::Region plotRect(const nex::Region& g) noexcept
 {
     const nex::Coord top = static_cast<nex::Coord>(kPlotTop + kPlotGap);
-    const nex::Coord availW = static_cast<nex::Coord>(g.size.w - kAxisW - 8);
+    const nex::Coord availW = static_cast<nex::Coord>(g.size.w - kAxisW - 4);
     const nex::Coord availH = static_cast<nex::Coord>(g.size.h - top - kTimeH - kPlotGap);
     const int32_t sx = (availW > 1) ? (static_cast<int32_t>(availW) - 1) / kGridX : 1;
     const int32_t sy = (availH > 1) ? (static_cast<int32_t>(availH) - 1) / kGridY : 1;
@@ -63,10 +57,19 @@ constexpr uint8_t kTimeLabelEvery = 2u;
         static_cast<int32_t>(plot.ul.x) + static_cast<int32_t>(clamped) * (plot.size.w - 1) / use);
 }
 
-[[nodiscard]] nex::Coord yAtValue(const nex::Region& plot, const uint8_t v) noexcept
+[[nodiscard]] nex::Coord yAtValue(
+    const nex::Region& plot, const uint8_t v, const uint8_t lo, const uint8_t hi) noexcept
 {
+    uint8_t top = hi;
+    if (top <= lo)
+        top = static_cast<uint8_t>(lo + 1u);
+    int32_t clipped = v;
+    if (clipped < lo)
+        clipped = lo;
+    if (clipped > top)
+        clipped = top;
     return static_cast<nex::Coord>(static_cast<int32_t>(plot.ul.y + plot.size.h - 1)
-        - static_cast<int32_t>(v) * (plot.size.h - 1) / 255);
+        - (clipped - lo) * (plot.size.h - 1) / (top - lo));
 }
 
 void copyText(char* dst, std::size_t cap, const char* src) noexcept
@@ -85,28 +88,31 @@ void copyText(char* dst, std::size_t cap, const char* src) noexcept
 
 GraphView::GraphView(Application& app) noexcept
     : _app(app)
-    , _back{"сетка", nex::Rect{72, layout::kBtnH}, kBtnIdle}
-    , _spanPrev{"<", nex::Rect{kSpanPrevW, kSpanH}, kBtnIdle}
-    , _spanNext{">", nex::Rect{kSpanNextW, kSpanH}, kBtnIdle}
-    , _spanLabel{"20s", nex::Rect{kSpanLabelW, kSpanH}, kBtnOn}
+    , _back{"сетка", nex::Rect{layout::kActionW, layout::kBtnH}, kBtnIdle}
+    , _spanPrev{"<", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
+    , _spanNext{">", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
+    , _yBandPrev{"<", nex::Rect{layout::kNavW, kSpanH}, kBtnDisabled}
+    , _yBandNext{">", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
+    , _scale{"DMX", nex::Rect{layout::kScaleW, layout::kBtnH}, kBtnIdle}
 {
     setRegion(nex::Region(nex::Point{0, 0}, nex::Rect{layout::kScreenW, layout::kScreenH}));
     _plot.host = this;
     _link.align = nex::HAlign::Left;
-    _cycle.align = nex::HAlign::Left;
-    _chVal.align = nex::HAlign::Left;
+    _spanLabel.align = nex::HAlign::Center;
+    _yBandLabel.align = nex::HAlign::Center;
     _link.fg = kOk;
-    _cycle.fg = kText;
-    _chVal.fg = kTx;
 
     addChildTop(_plot);
     addChildTop(_spanPrev);
     addChildTop(_spanLabel);
     addChildTop(_spanNext);
+    addChildTop(_yBandPrev);
+    addChildTop(_yBandLabel);
+    addChildTop(_yBandNext);
+    addChildTop(_scale);
     addChildTop(_back);
+    addChildTop(_pip);
     addChildTop(_link);
-    addChildTop(_cycle);
-    addChildTop(_chVal);
     layout();
 }
 
@@ -129,8 +135,7 @@ void GraphView::showOn(nex::ovl::Overlay& ovl) noexcept
     syncChrome();
     show(ovl);
     _link.dirty = true;
-    _cycle.dirty = true;
-    _chVal.dirty = true;
+    _pip.dirty = true;
     presentDirtyLabels();
 }
 
@@ -163,48 +168,143 @@ void GraphView::layout() noexcept
 void GraphView::layoutChrome() noexcept
 {
     const nex::Coord kH = layout::kBtnH;
-    const nex::Coord y2 = static_cast<nex::Coord>(layout::graphFootY() + 4);
-    _link.setRegion(nex::Region(nex::Point{layout::kPad, y2}, nex::Rect{72, kH}));
-    _cycle.setRegion(nex::Region(nex::Point{80, y2}, nex::Rect{64, kH}));
-    _chVal.setRegion(nex::Region(nex::Point{148, y2}, nex::Rect{248, kH}));
-    _back.setRegion(nex::Region(nex::Point{400, y2}, nex::Rect{72, kH}));
+    const nex::Coord y2 = layout::statusRowY();
+    const nex::Coord pipX = layout::kPad;
+    const nex::Coord linkX = static_cast<nex::Coord>(pipX + layout::kPipW + layout::kGap);
+    _pip.setRegion(nex::Region(nex::Point{pipX, y2}, nex::Rect{layout::kPipW, kH}));
+    const nex::Coord spanX = layout::graphSpanPrevX();
+    const nex::Coord linkW = static_cast<nex::Coord>(spanX - linkX);
+    _link.setRegion(nex::Region(nex::Point{linkX, y2}, nex::Rect{linkW, kH}));
+    _scale.setRegion(nex::Region(nex::Point{layout::graphScaleX(), y2}, nex::Rect{layout::kScaleW, kH}));
+    _back.setRegion(nex::Region(nex::Point{layout::actionX(), y2}, nex::Rect{layout::kActionW, kH}));
 
-    _spanPrev.setRegion(nex::Region(nex::Point{kSpanPrevX, kSpanY}, nex::Rect{kSpanPrevW, kSpanH}));
-    _spanLabel.setRegion(nex::Region(nex::Point{kSpanLabelX, kSpanY}, nex::Rect{kSpanLabelW, kSpanH}));
-    _spanNext.setRegion(nex::Region(nex::Point{kSpanNextX, kSpanY}, nex::Rect{kSpanNextW, kSpanH}));
+    const auto placeArrows = [y2, kH](nex::ovl::Button& prev, Label& mid, nex::ovl::Button& next,
+        const nex::Coord x, const nex::Coord labelW) noexcept {
+        prev.setRegion(nex::Region(nex::Point{x, y2}, nex::Rect{layout::kNavW, kH}));
+        const nex::Coord lx = static_cast<nex::Coord>(x + layout::kNavW + layout::kArrowGap);
+        mid.setRegion(nex::Region(nex::Point{lx, y2}, nex::Rect{labelW, kH}));
+        next.setRegion(nex::Region(
+            nex::Point{static_cast<nex::Coord>(lx + labelW + layout::kArrowGap), y2},
+            nex::Rect{layout::kNavW, kH}));
+    };
+    placeArrows(_spanPrev, _spanLabel, _spanNext, layout::graphSpanPrevX(), layout::kSpanLabelW);
+    placeArrows(_yBandPrev, _yBandLabel, _yBandNext, layout::graphYBandPrevX(), layout::kYBandW);
 }
 
 void GraphView::syncChrome() noexcept
 {
-    uint32_t cycle = 0;
-    const char* link = "-";
+    LinkSnap snap{};
     if (_tester != nullptr) {
-        cycle = _tester->port().frameCount();
-        link = statusText(_tester->port().getStatus());
+        _tester->pollLink(boardClockMs());
+        snap = _tester->linkSnap();
     }
 
     char buf[36]{};
-    _link.setText(link);
-    _link.setFg((std::strcmp(link, "OK") == 0 || std::strcmp(link, "-") == 0) ? kOk : kErr);
-    std::snprintf(buf, sizeof(buf), "#%lu", static_cast<unsigned long>(cycle));
-    _cycle.setText(buf);
-    if (_tester != nullptr)
-        _tester->formatSelection(buf, sizeof(buf));
-    else
-        buf[0] = '\0';
-    _chVal.setText(buf);
+    enc::utf8ToOem(buf, sizeof(buf), linkCaptionUtf8(snap.state));
+    _link.setText(buf);
+    _link.setFg(snap.state == LinkUi::Live ? kOk : kErr);
+    _pip.setFill(snap.state == LinkUi::Error ? kErr : (snap.pipOn ? kMain : kBorder));
     syncSpanLabel();
+    syncYBandLabel();
+    syncScaleLabel();
+}
+
+void GraphView::syncYBandLabel() noexcept
+{
+    const YBand band = (_tester != nullptr) ? _tester->yBand() : YBand::Full;
+    char next[sizeof(_yBandText)]{};
+    if (_tester != nullptr)
+        _tester->formatYBand(next, sizeof(next));
+    else
+        copyText(next, sizeof(next), "0-255");
+    if (band != _bandShown || std::strcmp(_yBandText, next) != 0) {
+        _bandShown = band;
+        std::memcpy(_yBandText, next, sizeof(next));
+        _yBandLabel.setText(_yBandText);
+    }
+
+    const bool canLo = static_cast<uint8_t>(band) > 0u;
+    const bool canHi = static_cast<uint8_t>(band) + 1u < kYBandN;
+    if (canLo != _yBandPrevOn) {
+        _yBandPrevOn = canLo;
+        styleSpan(_yBandPrev, canLo);
+        present(_yBandPrev);
+    }
+    if (canHi != _yBandNextOn) {
+        _yBandNextOn = canHi;
+        styleSpan(_yBandNext, canHi);
+        present(_yBandNext);
+    }
+}
+
+void GraphView::syncScaleLabel() noexcept
+{
+    const ValueScale scale = (_tester != nullptr) ? _tester->scale() : ValueScale::Dmx;
+    if (scale == _scaleShown && _oemReady)
+        return;
+    _scaleShown = scale;
+    const nex::Region keep = _scale.region();
+    _scale.setLabel(scale == ValueScale::Percent ? "%" : "DMX");
+    _scale.setStyle(scale == ValueScale::Percent ? kBtnSelect : kBtnIdle);
+    _scale.setRegion(keep);
+    present(_scale);
+}
+
+void GraphView::applyYBand(const int8_t delta) noexcept
+{
+    if (_tester == nullptr)
+        return;
+    const YBand before = _tester->yBand();
+    _tester->stepYBand(delta);
+    if (_tester->yBand() == before)
+        return;
+    syncYBandLabel();
+    _plot.redrawAll();
+    presentSpan();
+}
+
+void GraphView::applyScale() noexcept
+{
+    if (_tester == nullptr)
+        return;
+    _tester->toggleScale();
+    syncScaleLabel();
+    syncYBandLabel();
+    syncChrome();
+    presentDirtyLabels();
+    _plot.redrawAll();
+    presentSpan();
+}
+
+void GraphView::styleSpan(nex::ovl::Button& btn, const bool on) noexcept
+{
+    const nex::Region keep = btn.region();
+    btn.setStyle(on ? kBtnIdle : kBtnDisabled);
+    btn.setRegion(keep);
 }
 
 void GraphView::syncSpanLabel() noexcept
 {
-    const unsigned span = (_tester != nullptr) ? _tester->traceSpanS() : 20u;
+    const uint8_t span = (_tester != nullptr) ? _tester->traceSpanS() : 20u;
     char next[sizeof(_spanText)]{};
-    std::snprintf(next, sizeof(next), "%us", span);
-    if (std::strcmp(_spanText, next) == 0)
-        return;
-    std::memcpy(_spanText, next, sizeof(next));
-    RadioGroup::setLabel(_spanLabel, _spanText);
+    std::snprintf(next, sizeof(next), "%us", static_cast<unsigned>(span));
+    if (std::strcmp(_spanText, next) != 0) {
+        std::memcpy(_spanText, next, sizeof(next));
+        _spanLabel.setText(_spanText);
+    }
+
+    const bool canLo = span > kTraceSpanMinS;
+    const bool canHi = span < kTraceSpanMaxS;
+    if (canLo != _spanPrevOn) {
+        _spanPrevOn = canLo;
+        styleSpan(_spanPrev, canLo);
+        present(_spanPrev);
+    }
+    if (canHi != _spanNextOn) {
+        _spanNextOn = canHi;
+        styleSpan(_spanNext, canHi);
+        present(_spanNext);
+    }
 }
 
 void GraphView::applySpan(const int8_t delta) noexcept
@@ -216,7 +316,7 @@ void GraphView::applySpan(const int8_t delta) noexcept
     if (_tester->traceSpanS() == before)
         return;
     syncSpanLabel();
-    _plot.presentNew();
+    _plot.redrawAll();
     presentSpan();
 }
 
@@ -226,6 +326,8 @@ void GraphView::drawBackground(const nex::AppCanvas& cs) const
     cs.rect_fill(nex::Region(nex::Point{0, 0}, nex::Rect{layout::kScreenW, layout::kTopH}), kChrome);
     cs.rect_fill(nex::Region(nex::Point{0, layout::graphFootY()}, nex::Rect{layout::kScreenW, layout::kGraphFootH}),
         kChrome);
+    cs.rect_fill(nex::Region(nex::Point{0, layout::graphFootY()}, nex::Rect{layout::kScreenW, layout::kGraphRuleH}),
+        kBorder);
 }
 
 void GraphView::drawBackgroundRegion(const nex::AppCanvas& cs, const nex::Region clip) const
@@ -235,48 +337,96 @@ void GraphView::drawBackgroundRegion(const nex::AppCanvas& cs, const nex::Region
     cs.rect_fill(clip, bg);
 }
 
-void GraphView::present(nex::ovl::Object& obj) noexcept
+bool GraphView::serviceTouch() noexcept
+{
+    if (_overlay == nullptr)
+        return false;
+    _overlay->app.update();
+    return isVisible() && !_overlay->isModal();
+}
+
+bool GraphView::present(nex::ovl::Object& obj) noexcept
 {
     if (_overlay == nullptr || !isVisible() || _overlay->isModal())
-        return;
+        return false;
     redrawObject(obj, _overlay->app.cs);
+    return serviceTouch();
 }
 
 void GraphView::presentSpan() noexcept
 {
-    present(_spanPrev);
-    present(_spanLabel);
-    present(_spanNext);
+    if (!present(_yBandPrev) || !present(_yBandLabel) || !present(_yBandNext))
+        return;
+    if (!present(_spanPrev) || !present(_spanLabel))
+        return;
+    (void)present(_spanNext);
 }
 
 void GraphView::presentDirtyLabels() noexcept
 {
     if (_link.dirty) {
-        present(_link);
+        if (!present(_link))
+            return;
         _link.dirty = false;
     }
-    if (_cycle.dirty) {
-        present(_cycle);
-        _cycle.dirty = false;
+    if (_pip.dirty) {
+        if (!present(_pip))
+            return;
+        _pip.dirty = false;
     }
-    if (_chVal.dirty) {
-        present(_chVal);
-        _chVal.dirty = false;
+    if (_spanLabel.dirty) {
+        if (!present(_spanLabel))
+            return;
+        _spanLabel.dirty = false;
+    }
+    if (_yBandLabel.dirty) {
+        if (!present(_yBandLabel))
+            return;
+        _yBandLabel.dirty = false;
     }
 }
 
 void GraphView::onClick(nex::ovl::Object* const target) noexcept
 {
+    if (target == &_link || target == &_pip) {
+        if (_tester != nullptr)
+            _tester->port().clearErrors();
+        syncChrome();
+        presentDirtyLabels();
+        return;
+    }
     if (target == &_back) {
         goMonitor();
         return;
     }
+    if (target == &_yBandPrev) {
+        if (!_yBandPrevOn)
+            return;
+        applyYBand(-1);
+        present(_yBandPrev);
+        return;
+    }
+    if (target == &_yBandNext) {
+        if (!_yBandNextOn)
+            return;
+        applyYBand(1);
+        present(_yBandNext);
+        return;
+    }
+    if (target == &_scale) {
+        applyScale();
+        return;
+    }
     if (target == &_spanPrev) {
+        if (!_spanPrevOn)
+            return;
         applySpan(-1);
         present(_spanPrev);
         return;
     }
     if (target == &_spanNext) {
+        if (!_spanNextOn)
+            return;
         applySpan(1);
         present(_spanNext);
         return;
@@ -314,6 +464,42 @@ void GraphView::Label::draw(const nex::AppCanvas& cs) const
     cs.text_in_region(screenRegion(), 4u, text, kFont, fg, align, nex::VAlign::Center, bg, nex::BG::Color);
 }
 
+bool GraphView::Label::onTouchXY(const nex::msg::evTouchXY& e) noexcept
+{
+    (void)e;
+    return true;
+}
+
+void GraphView::Pip::setFill(const nex::Color color) noexcept
+{
+    if (fill.raw == color.raw)
+        return;
+    fill = color;
+    dirty = true;
+}
+
+void GraphView::Pip::draw(const nex::AppCanvas& cs) const
+{
+    if (!isVisible())
+        return;
+    const nex::Region r = screenRegion();
+    const nex::Coord d = (r.size.w < r.size.h) ? r.size.w : r.size.h;
+    if (d < 6)
+        return;
+    const uint16_t rad = 5u;
+    const nex::Point c{
+        static_cast<nex::Coord>(r.ul.x + r.size.w / 2),
+        static_cast<nex::Coord>(r.ul.y + r.size.h / 2),
+    };
+    cs.circle_filled(c, rad, fill);
+}
+
+bool GraphView::Pip::onTouchXY(const nex::msg::evTouchXY& e) noexcept
+{
+    (void)e;
+    return true;
+}
+
 nex::Region GraphView::Plot::plotArea() const noexcept
 {
     return plotRect(screenRegion());
@@ -323,7 +509,9 @@ nex::Point GraphView::Plot::samplePoint(const uint8_t series, const uint16_t i) 
 {
     const nex::Region plot = plotArea();
     const uint8_t v = (host != nullptr && host->_tester != nullptr) ? host->_tester->traceAt(series, i) : 0u;
-    return nex::Point{xAtSample(plot, i), yAtValue(plot, v)};
+    const uint8_t lo = (host != nullptr && host->_tester != nullptr) ? host->_tester->yLo() : 0u;
+    const uint8_t hi = (host != nullptr && host->_tester != nullptr) ? host->_tester->yHi() : 255u;
+    return nex::Point{xAtSample(plot, i), yAtValue(plot, v, lo, hi)};
 }
 
 void GraphView::Plot::drawAxes(const nex::AppCanvas& cs) const
@@ -347,11 +535,20 @@ void GraphView::Plot::drawGrid(const nex::AppCanvas& cs) const
     const nex::Coord y0 = plot.ul.y;
     const nex::Coord y1 = static_cast<nex::Coord>(plot.ul.y + plot.size.h - 1);
 
+    const uint8_t lo = (host != nullptr && host->_tester != nullptr) ? host->_tester->yLo() : 0u;
+    const uint8_t hi = (host != nullptr && host->_tester != nullptr) ? host->_tester->yHi() : 255u;
     for (uint8_t i = 0; i <= kGridY; ++i) {
-        const uint8_t v = (i >= kGridY) ? 255u : static_cast<uint8_t>(i * 64u);
+        const uint8_t raw = (i >= kGridY)
+            ? hi
+            : static_cast<uint8_t>(lo + static_cast<uint16_t>(hi - lo) * i / kGridY);
         const nex::Coord y = gridAt(y0, plot.size.h, static_cast<uint8_t>(kGridY - i), kGridY);
         cs.line(nex::Point{x0, y}, nex::Point{x1, y}, kTraceGrid);
-        std::snprintf(_valLbl[i], sizeof(_valLbl[i]), "%u", static_cast<unsigned>(v));
+        if (host != nullptr && !host->serviceTouch())
+            return;
+        if (host != nullptr && host->_tester != nullptr)
+            host->_tester->formatValue(raw, _valLbl[i], sizeof(_valLbl[i]));
+        else
+            std::snprintf(_valLbl[i], sizeof(_valLbl[i]), "%u", static_cast<unsigned>(raw));
         nex::VAlign valign = nex::VAlign::Center;
         nex::Coord ly = static_cast<nex::Coord>(y - 12);
         nex::Coord lh = 24;
@@ -373,6 +570,8 @@ void GraphView::Plot::drawGrid(const nex::AppCanvas& cs) const
     for (uint8_t i = 0; i <= kGridX; ++i) {
         const nex::Coord x = gridAt(x0, plot.size.w, i, kGridX);
         cs.line(nex::Point{x, y0}, nex::Point{x, y1}, kTraceGrid);
+        if (host != nullptr && !host->serviceTouch())
+            return;
         const uint16_t s = static_cast<uint16_t>(static_cast<uint32_t>(i) * spanS / kGridX);
         if ((i % kTimeLabelEvery) != 0u && i != kGridX)
             continue;
@@ -396,11 +595,12 @@ void GraphView::Plot::drawLegend(const nex::AppCanvas& cs) const
         const uint8_t col = static_cast<uint8_t>(i % kLegCols);
         const uint8_t row = static_cast<uint8_t>(i / kLegCols);
         const nex::Coord x = static_cast<nex::Coord>(kLegX0 + static_cast<int32_t>(col) * kLegItemW);
-        const nex::Coord y = static_cast<nex::Coord>(kSpanY + static_cast<int32_t>(row) * kLegRowH);
+        const nex::Coord y = static_cast<nex::Coord>(static_cast<int32_t>(row) * kLegRowH);
         std::snprintf(_leg[i], sizeof(_leg[i]), "%u", static_cast<unsigned>(host->_tester->selectedAt(i)));
-        cs.rect_fill(nex::Region(nex::Point{x, static_cast<nex::Coord>(y + 5)}, nex::Rect{14, 14}), kTrace[i]);
+        cs.rect_fill(nex::Region(nex::Point{x, static_cast<nex::Coord>(y + 7)}, nex::Rect{8, 8}), kTrace[i]);
+        const nex::Coord tw = static_cast<nex::Coord>(kLegItemW - 11);
         cs.text_in_region(
-            nex::Region(nex::Point{static_cast<nex::Coord>(x + 18), y}, nex::Rect{52, kLegRowH}),
+            nex::Region(nex::Point{static_cast<nex::Coord>(x + 11), y}, nex::Rect{tw, kLegRowH}),
             _leg[i], kFont, kTrace[i], nex::HAlign::Left, nex::VAlign::Center, kBg, nex::BG::Color);
     }
 }
@@ -415,6 +615,8 @@ void GraphView::Plot::drawSeries(const nex::AppCanvas& cs, const uint16_t from, 
             if (i == 0u)
                 continue;
             cs.line(samplePoint(s, static_cast<uint16_t>(i - 1u)), samplePoint(s, i), kTrace[s]);
+            if (host != nullptr && !host->serviceTouch())
+                return;
         }
     }
 }
@@ -426,7 +628,14 @@ void GraphView::Plot::draw(const nex::AppCanvas& cs) const
     drawAxes(cs);
     drawLegend(cs);
     _gen = (host != nullptr && host->_tester != nullptr) ? host->_tester->traceGen() : 0u;
-    _drawn = (host != nullptr && host->_tester != nullptr) ? host->_tester->traceLen() : 0u;
+    _drawn = 0;
+}
+
+void GraphView::Plot::redrawAll() noexcept
+{
+    _gen = 0;
+    _drawn = 0;
+    presentNew();
 }
 
 void GraphView::Plot::presentNew() noexcept
@@ -440,6 +649,10 @@ void GraphView::Plot::presentNew() noexcept
     if (gen != _gen || n < _drawn) {
         draw(cs);
         host->presentSpan();
+        if (n > 0u) {
+            drawSeries(cs, 0, n);
+            _drawn = n;
+        }
         return;
     }
     if (n > _drawn) {

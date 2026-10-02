@@ -1,6 +1,8 @@
 # libs/* вне PlatformIO-проекта — compile_commands.json не находится при обходе вверх.
 #
-# Перегенерация: cd PUMS/Console && pio run -t compiledb
-# (альтернатива: libs/Nextion/examples/stm)
+# Какая база: по библиотеке. Перегенерация:
+#   dmx:  DMX/tools/update-compile-commands.ps1
+#   остальные: cd PUMS/Console && pio run -t compiledb
+
 CompileFlags:
-  CompilationDatabase: ../PUMS/Console
+  CompilationDatabase: ../DMX

@@ -150,5 +150,12 @@ public:
 template<typename T, typename PageMeta, typename PageMeta::Id... Ids>
 constexpr uint8_t InplacePageArray<T, PageMeta, Ids...>::kIds[sizeof...(Ids)];
 
+/** Ресурс шрифта панели (N.zi): id, высота глифа в пикселях, имя из заголовка ZI. */
+struct Font {
+    FontId id{};
+    uint16_t heightPx{};
+    const char* name = "";
+};
+
 } // namespace hmi
 } // namespace nex

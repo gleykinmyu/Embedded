@@ -1,0 +1,11 @@
+{
+  "name": "dmx",
+  "version": "0.1.0",
+  "description": "DMX frame/universe and RS485 wire transceiver (IRQ, external slot buffer)",
+  "dependencies": {
+    "Interfaces": "*"
+  },
+  "build": {
+    "libArchive": false
+  }
+}

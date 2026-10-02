@@ -331,6 +331,8 @@ bool Gateway::receive(Message& out) {
         }
         if (_rxFramer.appendByte(b)) {
             clearError();
+            if (_stream.getStatus() == BIF::IByteStream::Status::DataError)
+                _stream.clearErrors();
             TranslateMessage(_rxFramer.frame, out);
             misc::printRxLine(_rxFramer.frame, out);
             return true;

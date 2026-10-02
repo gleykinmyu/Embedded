@@ -7,7 +7,7 @@
 
 class TouchConsole : private BaseConsole {
 public:
-    TouchConsole(BIF::IHardwareSerial& serial, MillisFn millisFn, DelayFn delayFn, WinchSD* SD,
+    TouchConsole(BIF::IHWByteStream& serial, MillisFn millisFn, DelayFn delayFn, WinchSD* SD,
                  const uint8_t BtnQt, const uint8_t BtnSelectedMaxQt)
         : BaseConsole(serial, millisFn, delayFn),
           SceneMngr(&ShowFile, WButtons, this),

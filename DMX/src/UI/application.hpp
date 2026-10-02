@@ -12,14 +12,14 @@ namespace ui {
 class Application : public nex::AppUI<nex::hmi::kPageCount> {
 public:
     static constexpr nex::Baudrate kLinkBaudBoot = nex::Baudrate::b250000;
-    static constexpr nex::Baudrate kLinkBaudFast = nex::Baudrate::b921600;
+    static constexpr nex::Baudrate kLinkBaudFast = nex::Baudrate::b250000;
 
-    explicit Application(BIF::IHardwareSerial& link, nex::AppTiming timing) noexcept
+    explicit Application(BIF::IByteStream& link, nex::AppTiming timing) noexcept
         : AppUI(link, nex::Rect(nex::hmi::kScreenW, nex::hmi::kScreenH), timing)
         , monitor(*this)
         , view(*this)
         , graph(*this)
-        , msgBox(*this)
+        , msgBox(*this, kAppMsgBoxColors)
         , _link(link)
     {
     }
@@ -32,9 +32,9 @@ public:
     void refreshUi() noexcept;
     void alert(const char* utf8) noexcept;
     void onPageChange(const nex::msg::evPage& e) noexcept override;
+    void onSystemEvent(const nex::msg::evSystem& e) override;
+    void onStatus(const nex::msg::Status& status, nex::Route route = {}) noexcept override;
     void onAfterMsgBox(const nex::msg::evMsgBox& e) noexcept override;
-
-    /** После `evPage`: `baud` на панели, затем USART на `kLinkBaudFast`. */
     void applyFastBaudIfNeeded() noexcept;
 
     MonitorPage monitor;
@@ -43,9 +43,18 @@ public:
     nex::ovl::MsgBox msgBox;
 
 private:
-    BIF::IHardwareSerial& _link;
-    bool _wantFastBaud = false;
-    bool _fastBaud = false;
+    bool waitEvPage(uint32_t ms) noexcept;
+    bool waitPanelStatus(uint32_t ms) noexcept;
+    void showAfterLink() noexcept;
+
+    BIF::IByteStream& _link;
+    nex::msg::Status _panelStatus{};
+    bool _gotPage = false;
+    bool _gotReady = false;
+    bool _restSent = false;
+    bool _pageAsked = false;
+    bool _gotPanelStatus = false;
+    bool _linkSettled = false;
     bool _fullRedraw = false;
 };
 

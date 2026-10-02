@@ -32,20 +32,31 @@ public:
 private:
     struct Label : nex::ovl::Object {
         char text[36]{};
-        nex::Color fg{kCellFg};
-        nex::Color bg{kBg};
+        nex::Color fg{kText};
+        nex::Color bg{kChrome};
         nex::HAlign align{nex::HAlign::Left};
         bool dirty = true;
 
         void setText(const char* src) noexcept;
         void setFg(nex::Color color) noexcept;
         void draw(const nex::AppCanvas& cs) const override;
+        bool onTouchXY(const nex::msg::evTouchXY& e) noexcept override;
+    };
+
+    struct Pip : nex::ovl::Object {
+        nex::Color fill{kBorder};
+        bool dirty = true;
+
+        void setFill(nex::Color color) noexcept;
+        void draw(const nex::AppCanvas& cs) const override;
+        bool onTouchXY(const nex::msg::evTouchXY& e) noexcept override;
     };
 
     struct Plot : nex::ovl::Object {
         GraphView* host = nullptr;
         void draw(const nex::AppCanvas& cs) const override;
         void presentNew() noexcept;
+        void redrawAll() noexcept;
 
     private:
         mutable uint16_t _gen = 0;
@@ -66,8 +77,14 @@ private:
     void layoutChrome() noexcept;
     void syncChrome() noexcept;
     void syncSpanLabel() noexcept;
+    void syncYBandLabel() noexcept;
+    void syncScaleLabel() noexcept;
+    void styleSpan(nex::ovl::Button& btn, bool on) noexcept;
     void applySpan(int8_t delta) noexcept;
-    void present(nex::ovl::Object& obj) noexcept;
+    void applyYBand(int8_t delta) noexcept;
+    void applyScale() noexcept;
+    bool present(nex::ovl::Object& obj) noexcept;
+    [[nodiscard]] bool serviceTouch() noexcept;
     void presentSpan() noexcept;
     void presentDirtyLabels() noexcept;
     void goMonitor() noexcept;
@@ -79,12 +96,22 @@ private:
     nex::ovl::Button _back;
     nex::ovl::Button _spanPrev;
     nex::ovl::Button _spanNext;
-    nex::ovl::Button _spanLabel;
+    nex::ovl::Button _yBandPrev;
+    nex::ovl::Button _yBandNext;
+    nex::ovl::Button _scale;
+    Label _spanLabel{};
+    Label _yBandLabel{};
     char _spanText[8]{};
+    char _yBandText[12]{};
     Plot _plot{};
     Label _link{};
-    Label _cycle{};
-    Label _chVal{};
+    Pip _pip{};
+    bool _spanPrevOn = true;
+    bool _spanNextOn = true;
+    bool _yBandPrevOn = false;
+    bool _yBandNextOn = true;
+    ValueScale _scaleShown = ValueScale::Dmx;
+    YBand _bandShown = YBand::Full;
     bool _oemReady = false;
     char _oemBack[12]{};
 };

@@ -270,10 +270,33 @@ def _render_page_struct(page: PageInfo) -> str:
     return "\n".join(lines)
 
 
-def _render_summary(hmi: HMI, pages: Sequence[PageInfo], service_pages: Sequence[Tuple[int, str]]) -> str:
+def _screen_size(hmi: HMI) -> Optional[Tuple[int, int]]:
+    """Panel pixels from the page object (`w`/`h`). The model string can disagree."""
+    for page in hmi.pages:
+        if _page_objname(page) in _SERVICE_PAGE_NAMES:
+            continue
+        for comp in page.components:
+            att = comp.rawData.get("att", {})
+            if int(att.get("type", -1)) != PAGE_COMPONENT_TYPE:
+                continue
+            if "w" not in att or "h" not in att:
+                continue
+            return int(att["w"]), int(att["h"])
+    return None
+
+
+def _render_summary(
+    hmi: HMI,
+    pages: Sequence[PageInfo],
+    service_pages: Sequence[Tuple[int, str]],
+    screen: Tuple[int, int],
+) -> str:
+    screen_w, screen_h = screen
     lines = [
         f"inline constexpr const char* kHmiSource = {_cpp_string_literal(hmi.modelName)};",
         f"inline constexpr const char* kHmiModel = {_cpp_string_literal(hmi.modelDesc)};",
+        f"inline constexpr uint16_t kScreenW = {screen_w}u;",
+        f"inline constexpr uint16_t kScreenH = {screen_h}u;",
         f"inline constexpr uint8_t kPageCount = {len(pages)}u;",
     ]
     for page_id, objname in service_pages:
@@ -301,9 +324,10 @@ def render_blocks(
     hmi: HMI,
     pages: Sequence[PageInfo],
     service_pages: Sequence[Tuple[int, str]],
+    screen: Tuple[int, int],
 ) -> Dict[str, str]:
     return {
-        "summary": _render_summary(hmi, pages, service_pages),
+        "summary": _render_summary(hmi, pages, service_pages, screen),
         "pages": _render_pages_block(pages),
     }
 
@@ -457,7 +481,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     pages = extract_pages(hmi)
     service_pages = extract_service_pages(hmi)
-    blocks = render_blocks(hmi, pages, service_pages)
+    screen = _screen_size(hmi)
+    if screen is None:
+        print("error: HMI page has no width/height", file=sys.stderr)
+        return 1
+    blocks = render_blocks(hmi, pages, service_pages, screen)
     text: str
     warnings: List[str] = []
 
