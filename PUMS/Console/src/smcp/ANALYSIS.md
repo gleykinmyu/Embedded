@@ -45,8 +45,9 @@
 ## Пресеты (решения)
 
 - **D1.** Слот пресета в пуле: `{ seg_id, Selection, MotionTarget }`. Несколько seg → несколько слотов на один header.
-- **D2.** Recall: Select (holder), затем SetTarget по битам. Без Select → Busy / Target не слать. **Как задумано / как есть.**
+- **D2.** Recall пресета: сначала **все Select**, дождаться **Ack по всем**; только потом слать **SetTarget**. Без Select / Nack на Select → Target не слать (Busy / отчёт).
 - **D3.** Overlap оси в слотах одного пресета — **проверка при record и при load** (reject / isValid false). Отдельной «починки» нет.
+- **D4.** Partial = **C2** (best-effort / Atomic-откат на фазе Select). Уставки — только после полного успеха Select-фазы (D2).
 
 ### 1. Номер пульта
 
