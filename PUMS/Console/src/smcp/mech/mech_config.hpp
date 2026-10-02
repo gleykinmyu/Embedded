@@ -6,6 +6,7 @@
  * Единицы позиции/скорости задаёт kind: Linear → mm, mm/s; Rotary → deg, deg/s
  * (или 0.01° — договориться на leaf). scale: units = counts * num / den;
  * Flag::Invert меняет знак.
+ * Нагрузка: raw * load_scale_num / load_scale_den → load_unit (kg/N/…).
  */
 
 #pragma once
@@ -28,6 +29,14 @@ enum class AxisKind : uint8_t {
 enum class BrakePolicy : uint8_t {
     Hold = 0,  /**< Держать позицию / штатный тормоз. */
     Coast = 1, /**< Отпустить после останова (если железо умеет). */
+};
+
+/** Единица нагрузки после scale (load_min/max/window в этих единицах). */
+enum class LoadUnit : uint8_t {
+    Raw = 0,      /**< Без перевода (ADC / условные ед.). */
+    Gram = 1,     /**< г. */
+    Kilogram = 2, /**< кг. */
+    Newton = 3,   /**< Н. */
 };
 
 enum class MechFlag : uint8_t {
@@ -66,12 +75,16 @@ struct MechConfig {
     uint16_t accel = 0;  /**< Дефолт разгона (ед./s²). */
     uint16_t decel = 0;  /**< Дефолт торможения (ед./s²). */
 
-    int32_t load_min = 0;     /**< Нижнее окно нагрузки (если LoadSense). */
-    int32_t load_max = 0;     /**< Верхнее окно. */
-    uint32_t load_window = 0; /**< Допуск / чувствительность (ед. датчика). */
+    LoadUnit load_unit = LoadUnit::Kilogram;
+    uint8_t reserved_load[3]{};
+    /** raw_sensor * load_scale_num / load_scale_den → load_unit; den ≠ 0. */
+    int32_t load_scale_num = 1;
+    int32_t load_scale_den = 1;
+    int32_t load_min = 0;     /**< Нижнее окно (в load_unit), если LoadSense. */
+    int32_t load_max = 0;     /**< Верхнее окно (в load_unit). */
+    uint32_t load_window = 0; /**< Допуск / чувствительность (в load_unit). */
 
     char name[16]{};
-    uint8_t reserved_1[4]{};
 
     [[nodiscard]] constexpr bool isLinear() const noexcept
     {
@@ -122,7 +135,7 @@ struct MechConfig {
     }
 };
 
-static_assert(sizeof(MechConfig) == 72u, "MechConfig wire size");
+static_assert(sizeof(MechConfig) == 80u, "MechConfig wire size");
 static_assert(alignof(MechConfig) == alignof(int32_t));
 static_assert(std::is_standard_layout_v<MechConfig>);
 
