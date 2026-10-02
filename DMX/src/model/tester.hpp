@@ -109,11 +109,10 @@ public:
     [[nodiscard]] YBand yBand() const noexcept { return _yBand; }
     void stepYBand(int8_t delta) noexcept
     {
-        int16_t next = static_cast<int16_t>(_yBand) + delta;
+        const int16_t n = static_cast<int16_t>(kYBandN);
+        int16_t next = (static_cast<int16_t>(_yBand) + delta) % n;
         if (next < 0)
-            next = 0;
-        if (next >= static_cast<int16_t>(kYBandN))
-            next = static_cast<int16_t>(kYBandN - 1);
+            next = static_cast<int16_t>(next + n);
         _yBand = static_cast<YBand>(next);
     }
     [[nodiscard]] uint8_t yLo() const noexcept { return yBandLo(_yBand); }
@@ -158,14 +157,18 @@ public:
 
     void stepTraceSpan(int8_t delta) noexcept
     {
-        int16_t next = static_cast<int16_t>(_spanS) + static_cast<int16_t>(delta) * kTraceSpanStepS;
-        if (next < static_cast<int16_t>(kTraceSpanMinS))
-            next = kTraceSpanMinS;
-        if (next > static_cast<int16_t>(kTraceSpanMaxS))
-            next = kTraceSpanMaxS;
-        if (next == static_cast<int16_t>(_spanS))
+        const int16_t step = kTraceSpanStepS;
+        const int16_t lo = kTraceSpanMinS;
+        const int16_t hi = kTraceSpanMaxS;
+        const int16_t n = static_cast<int16_t>(((hi - lo) / step) + 1);
+        int16_t i = static_cast<int16_t>((static_cast<int16_t>(_spanS) - lo) / step);
+        i = (i + delta) % n;
+        if (i < 0)
+            i = static_cast<int16_t>(i + n);
+        const uint8_t next = static_cast<uint8_t>(lo + i * step);
+        if (next == _spanS)
             return;
-        _spanS = static_cast<uint8_t>(next);
+        _spanS = next;
         clearTrace();
     }
 

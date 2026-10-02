@@ -28,24 +28,25 @@ public:
     bool set_start(uint16_t addr);
     void set_threshold(uint8_t thr);
 
-    [[nodiscard]] uint16_t universe() const { return cfg_.universe; }
+    [[nodiscard]] uint16_t universe() const { return uni_.id; }
     [[nodiscard]] uint16_t start() const { return start_; }
     [[nodiscard]] uint8_t threshold() const { return threshold_; }
-    [[nodiscard]] uint32_t frames() const { return rx_.frameCount(); }
-    [[nodiscard]] bool is_open() const { return rx_.isOpen(); }
+    [[nodiscard]] uint32_t frames() const { return node_.frameCount(); }
+    [[nodiscard]] bool is_open() const { return node_.isOpen(); }
     void print();
 
 private:
     void loop();
-    void apply(const BIF::dmx::Frame &frame);
+    void apply(const dmx::Frame &frame);
+    void load();
+    void save();
     static void task(void *arg);
 
     RelayBoard &relays_;
     EthW5500 &eth_;
     LwipUdp udp_;
-    dmx::ArtNet::Config cfg_{};
-    dmx::ArtNetRx rx_;
-    BIF::dmx::Universe uni_{};
+    dmx::artnet::Node<> node_;
+    dmx::Universe uni_{};
     uint16_t start_{ARTNET_START_ADDR};
     uint8_t threshold_{ARTNET_THRESHOLD};
     uint8_t last_level_[RELAY_COUNT]{};

@@ -123,6 +123,58 @@ int UartCli::cmd_ethreset(void *ctx, int argc, char **argv) {
     return 0;
 }
 
+namespace {
+
+bool parse_ip4(const char *s, uint32_t *out) {
+    ip_addr_t a{};
+    if (s == nullptr || out == nullptr || !ipaddr_aton(s, &a) || !IP_IS_V4(&a)) {
+        return false;
+    }
+    *out = ip4_addr_get_u32(ip_2_ip4(&a));
+    return true;
+}
+
+} // namespace
+
+int UartCli::cmd_ip(void *ctx, int argc, char **argv) {
+    auto *cli = static_cast<UartCli *>(ctx);
+    if (argc < 2) {
+        cli->eth_.print();
+        return 0;
+    }
+
+    uint32_t addr = 0;
+    if (argc == 2) {
+        if (!parse_ip4(argv[1], &addr) || !cli->eth_.set_ip(addr)) {
+            printf("ip <a.b.c.d> | ip mask <a.b.c.d> | ip gw <a.b.c.d>\n");
+            return 1;
+        }
+        cli->eth_.print();
+        return 0;
+    }
+
+    if (argc != 3 || !parse_ip4(argv[2], &addr)) {
+        printf("ip <a.b.c.d> | ip mask <a.b.c.d> | ip gw <a.b.c.d>\n");
+        return 1;
+    }
+    if (strcmp(argv[1], "mask") == 0) {
+        if (!cli->eth_.set_mask(addr)) {
+            printf("bad mask\n");
+            return 1;
+        }
+    } else if (strcmp(argv[1], "gw") == 0) {
+        if (!cli->eth_.set_gw(addr)) {
+            printf("bad gw\n");
+            return 1;
+        }
+    } else {
+        printf("ip <a.b.c.d> | ip mask <a.b.c.d> | ip gw <a.b.c.d>\n");
+        return 1;
+    }
+    cli->eth_.print();
+    return 0;
+}
+
 int UartCli::cmd_artnet(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<UartCli *>(ctx);
     if (argc < 2) {
@@ -299,6 +351,7 @@ void UartCli::begin() {
     reg("alloff", "All off", nullptr, cmd_alloff);
     reg("chase", "chase start|stop", "start|stop", cmd_chase);
     reg("ethreset", "Hardware reset W5500", nullptr, cmd_ethreset);
+    reg("ip", "Static IP / mask / gw", "[addr|mask|gw] [a.b.c.d]", cmd_ip);
     reg("artnet", "Art-Net status / uni / addr / thr", "[uni|addr|thr] [n]", cmd_artnet);
     reg("ping", "ICMP ping", "<ip> [count]", cmd_ping);
     ESP_ERROR_CHECK(esp_console_start_repl(repl));

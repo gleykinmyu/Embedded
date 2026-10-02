@@ -91,7 +91,7 @@ GraphView::GraphView(Application& app) noexcept
     , _back{"сетка", nex::Rect{layout::kActionW, layout::kBtnH}, kBtnIdle}
     , _spanPrev{"<", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
     , _spanNext{">", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
-    , _yBandPrev{"<", nex::Rect{layout::kNavW, kSpanH}, kBtnDisabled}
+    , _yBandPrev{"<", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
     , _yBandNext{">", nex::Rect{layout::kNavW, kSpanH}, kBtnIdle}
     , _scale{"DMX", nex::Rect{layout::kScaleW, layout::kBtnH}, kBtnIdle}
 {
@@ -222,19 +222,6 @@ void GraphView::syncYBandLabel() noexcept
         std::memcpy(_yBandText, next, sizeof(next));
         _yBandLabel.setText(_yBandText);
     }
-
-    const bool canLo = static_cast<uint8_t>(band) > 0u;
-    const bool canHi = static_cast<uint8_t>(band) + 1u < kYBandN;
-    if (canLo != _yBandPrevOn) {
-        _yBandPrevOn = canLo;
-        styleSpan(_yBandPrev, canLo);
-        present(_yBandPrev);
-    }
-    if (canHi != _yBandNextOn) {
-        _yBandNextOn = canHi;
-        styleSpan(_yBandNext, canHi);
-        present(_yBandNext);
-    }
 }
 
 void GraphView::syncScaleLabel() noexcept
@@ -276,13 +263,6 @@ void GraphView::applyScale() noexcept
     presentSpan();
 }
 
-void GraphView::styleSpan(nex::ovl::Button& btn, const bool on) noexcept
-{
-    const nex::Region keep = btn.region();
-    btn.setStyle(on ? kBtnIdle : kBtnDisabled);
-    btn.setRegion(keep);
-}
-
 void GraphView::syncSpanLabel() noexcept
 {
     const uint8_t span = (_tester != nullptr) ? _tester->traceSpanS() : 20u;
@@ -291,19 +271,6 @@ void GraphView::syncSpanLabel() noexcept
     if (std::strcmp(_spanText, next) != 0) {
         std::memcpy(_spanText, next, sizeof(next));
         _spanLabel.setText(_spanText);
-    }
-
-    const bool canLo = span > kTraceSpanMinS;
-    const bool canHi = span < kTraceSpanMaxS;
-    if (canLo != _spanPrevOn) {
-        _spanPrevOn = canLo;
-        styleSpan(_spanPrev, canLo);
-        present(_spanPrev);
-    }
-    if (canHi != _spanNextOn) {
-        _spanNextOn = canHi;
-        styleSpan(_spanNext, canHi);
-        present(_spanNext);
     }
 }
 
@@ -400,15 +367,11 @@ void GraphView::onClick(nex::ovl::Object* const target) noexcept
         return;
     }
     if (target == &_yBandPrev) {
-        if (!_yBandPrevOn)
-            return;
         applyYBand(-1);
         present(_yBandPrev);
         return;
     }
     if (target == &_yBandNext) {
-        if (!_yBandNextOn)
-            return;
         applyYBand(1);
         present(_yBandNext);
         return;
@@ -418,15 +381,11 @@ void GraphView::onClick(nex::ovl::Object* const target) noexcept
         return;
     }
     if (target == &_spanPrev) {
-        if (!_spanPrevOn)
-            return;
         applySpan(-1);
         present(_spanPrev);
         return;
     }
     if (target == &_spanNext) {
-        if (!_spanNextOn)
-            return;
         applySpan(1);
         present(_spanNext);
         return;

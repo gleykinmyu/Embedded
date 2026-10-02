@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace dmx::wire {
 
@@ -114,14 +115,14 @@ private:
         TxDrain, ///< слоты ушли в DR, ждём сдвиговый регистр
     };
 
-    static void rxThunk(void* ctx) noexcept
+    static void rxThunk(void* ctx, uint8_t byte, BIF::IByteStream::Status status) noexcept
     {
-        static_cast<Transceiver*>(ctx)->onRx();
+        static_cast<Transceiver*>(ctx)->onRx(byte, status);
     }
 
-    static void txThunk(void* ctx) noexcept
+    static std::optional<uint8_t> txThunk(void* ctx) noexcept
     {
-        static_cast<Transceiver*>(ctx)->onTx();
+        return static_cast<Transceiver*>(ctx)->onTx();
     }
 
     void arm() noexcept
@@ -152,13 +153,11 @@ private:
         _pos = 0u;
     }
 
-    void onRx() noexcept
+    void onRx(uint8_t byte, BIF::IByteStream::Status st) noexcept
     {
         if (_dir != Direction::Receive || _frame == nullptr)
             return;
 
-        const BIF::IByteStream::Status st = _uart.getStatus();
-        const uint8_t byte = _uart.readByte();
         if (st == BIF::IByteStream::Status::OverFlowRX) {
             _status = Status::OverFlowRX;
             idle();
@@ -191,32 +190,24 @@ private:
         ++_frameCount;
     }
 
-    void onTx() noexcept
+    [[nodiscard]] std::optional<uint8_t> onTx() noexcept
     {
-        if (_phase != Phase::TxData || _frame == nullptr) {
-            _uart.irqTxDisable();
-            return;
-        }
+        if (_phase != Phase::TxData || _frame == nullptr)
+            return std::nullopt;
         if (_pos == 0u) {
-            if (!_uart.writeByte(0u))
-                return;
             _pos = 1u;
-            return;
+            return uint8_t{0};
         }
         const std::size_t slot = _pos - 1u;
         if (slot >= kMaxChannels) {
-            _uart.irqTxDisable();
             _phase = Phase::TxDrain;
-            return;
+            return std::nullopt;
         }
-        if (!_uart.writeByte(_frame->channels[slot]))
-            return;
+        const uint8_t byte = _frame->channels[slot];
         ++_pos;
-        if (_pos > kMaxChannels) {
-            _uart.irqTxDisable();
-            _phase = Phase::TxDrain;
+        if (_pos > kMaxChannels)
             ++_frameCount;
-        }
+        return byte;
     }
 
     BIF::IBreakByteStream& _uart;

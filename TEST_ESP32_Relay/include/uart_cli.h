@@ -21,6 +21,7 @@ private:
     static int cmd_alloff(void *ctx, int argc, char **argv);
     static int cmd_chase(void *ctx, int argc, char **argv);
     static int cmd_ethreset(void *ctx, int argc, char **argv);
+    static int cmd_ip(void *ctx, int argc, char **argv);
     static int cmd_artnet(void *ctx, int argc, char **argv);
     static int cmd_ping(void *ctx, int argc, char **argv);
 

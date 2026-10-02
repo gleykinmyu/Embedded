@@ -32,7 +32,6 @@ public:
     void refreshUi() noexcept;
     void alert(const char* utf8) noexcept;
     void onPageChange(const nex::msg::evPage& e) noexcept override;
-    void onSystemEvent(const nex::msg::evSystem& e) override;
     void onStatus(const nex::msg::Status& status, nex::Route route = {}) noexcept override;
     void onAfterMsgBox(const nex::msg::evMsgBox& e) noexcept override;
     void applyFastBaudIfNeeded() noexcept;
@@ -43,17 +42,8 @@ public:
     nex::ovl::MsgBox msgBox;
 
 private:
-    bool waitEvPage(uint32_t ms) noexcept;
-    bool waitPanelStatus(uint32_t ms) noexcept;
-    void showAfterLink() noexcept;
-
     BIF::IByteStream& _link;
-    nex::msg::Status _panelStatus{};
-    bool _gotPage = false;
-    bool _gotReady = false;
     bool _restSent = false;
-    bool _pageAsked = false;
-    bool _gotPanelStatus = false;
     bool _linkSettled = false;
     bool _fullRedraw = false;
 };

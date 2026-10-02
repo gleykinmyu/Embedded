@@ -79,7 +79,6 @@ private:
     void syncSpanLabel() noexcept;
     void syncYBandLabel() noexcept;
     void syncScaleLabel() noexcept;
-    void styleSpan(nex::ovl::Button& btn, bool on) noexcept;
     void applySpan(int8_t delta) noexcept;
     void applyYBand(int8_t delta) noexcept;
     void applyScale() noexcept;
@@ -106,10 +105,6 @@ private:
     Plot _plot{};
     Label _link{};
     Pip _pip{};
-    bool _spanPrevOn = true;
-    bool _spanNextOn = true;
-    bool _yBandPrevOn = false;
-    bool _yBandNextOn = true;
     ValueScale _scaleShown = ValueScale::Dmx;
     YBand _bandShown = YBand::Full;
     bool _oemReady = false;

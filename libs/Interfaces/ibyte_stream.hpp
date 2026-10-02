@@ -1,6 +1,8 @@
 #pragma once
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+
+#include <optional>
 
 #include "ilockable.hpp"
 
@@ -77,10 +79,13 @@ inline const char* cstr(IByteStream::Status s) noexcept {
     }
 }
 
-using IrqCallback = void (*)(void* ctx) noexcept;
+/// Байт уже снят с DR. status — этого байта: OverFlowRX (overrun) важнее DataError (FE, шум, parity).
+using RxCallback = void (*)(void* ctx, uint8_t byte, IByteStream::Status status) noexcept;
 
-/// Аппаратный UART. Колец нет: байт и getStatus() — текущее rx-событие.
-/// Колбэки живут здесь; наследник в прерывании вызывает invoke*.
+/// Следующий байт в пустой DR. nullopt — обработчик гасит TX-прерывание (TXE уровнёвый).
+using TxCallback = std::optional<uint8_t> (*)(void* ctx) noexcept;
+
+/// Аппаратный UART. Колец нет. DR читает и пишет только обработчик прерывания.
 class IHWByteStream : public ILockable
 {
 public:
@@ -93,34 +98,24 @@ public:
     virtual bool isOpen() const = 0;
 
     /// ctx — this клиента. nullptr снимает колбэк.
-    void setRxCallback(IrqCallback fn, void* ctx) noexcept { _rx.bind(fn, ctx); }
-    void setTxCallback(IrqCallback fn, void* ctx) noexcept { _tx.bind(fn, ctx); }
-
-    /// Читает DR текущего rx-события (снимает RXNE / FE). Вызывать из rx-колбэка.
-    virtual uint8_t readByte() const = 0;
-
-    /// Статус этого байта, не липкий.
-    /// OverFlowRX — overrun; иначе DataError — FE, шум или parity; иначе OK.
-    /// Оба сразу — OverFlowRX.
-    virtual IByteStream::Status getStatus() const = 0;
-
-    /// Один байт в DR. false — регистр ещё занят. TX-прерывание само не включает.
-    virtual bool writeByte(uint8_t data) = 0;
+    void setRxCallback(RxCallback fn, void* ctx) noexcept { _rx.bind(fn, ctx); }
+    void setTxCallback(TxCallback fn, void* ctx) noexcept { _tx.bind(fn, ctx); }
 
     virtual void irqRxEnable() = 0;  ///< RXNE / RXC
     virtual void irqRxDisable() = 0;
-    virtual void irqTxEnable() = 0;  ///< TXE / UDRE
-    virtual void irqTxDisable() = 0;
+    virtual void irqTxEnable() = 0;  ///< TXE / UDRE. Поток включает, когда есть что передать.
+    virtual void irqTxDisable() = 0; ///< Обрыв передачи снаружи (purge). Конец буфера гасит сам обработчик.
 
-    /// true, пока сдвиговый регистр ещё передаёт.
+    /// true, пока сдвиговый регистр ещё передаёт (TC / TXC).
     virtual bool isTxBusy() const = 0;
 
 protected:
-    struct Callback {
-        IrqCallback volatile fn = nullptr;
+    template <typename Fn>
+    struct Slot {
+        Fn volatile fn = nullptr;
         void* volatile ctx = nullptr;
 
-        void bind(IrqCallback f, void* c) noexcept
+        void bind(Fn f, void* c) noexcept
         {
             if (f == nullptr) {
                 fn = nullptr;
@@ -130,19 +125,33 @@ protected:
             ctx = c;
             fn = f;
         }
+    };
 
-        /// Драйвер вызывает после чтения SR, затем DR (_rx) или когда DR передачи пуст (_tx).
-        void invoke() const noexcept
+    struct RxSlot : Slot<RxCallback> {
+        /// DR уже прочитан. Нет колбэка — байт отбрасывается.
+        void invoke(uint8_t byte, IByteStream::Status status) const noexcept
         {
-            const IrqCallback f = fn;
-            void* const c = ctx;
+            const RxCallback f = this->fn;
+            void* const c = this->ctx;
             if (f != nullptr)
-                f(c);
+                f(c, byte, status);
         }
     };
 
-    Callback _rx{};
-    Callback _tx{};
+    struct TxSlot : Slot<TxCallback> {
+        /// Нет колбэка — nullopt, обработчик гасит TX-прерывание.
+        [[nodiscard]] std::optional<uint8_t> pull() const noexcept
+        {
+            const TxCallback f = this->fn;
+            void* const c = this->ctx;
+            if (f == nullptr)
+                return std::nullopt;
+            return f(c);
+        }
+    };
+
+    RxSlot _rx{};
+    TxSlot _tx{};
 };
 
 /// UART, который сам держит Break: TX в 0 на breakUs, затем снова периферия

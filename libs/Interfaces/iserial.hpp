@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
+
 #include "ibyte_stream.hpp"
 #include "ilockable.hpp"
 #include "ringbuffer.hpp"
@@ -10,7 +12,8 @@ namespace BIF {
 
 // =================================================================
 // IByteStream поверх IHWByteStream.
-// TX: запись в кольцо включает irqTx; tx-колбэк выгружает байт и при пустом кольце его гасит.
+// TX: запись в кольцо включает irqTx; tx-колбэк отдаёт следующий байт.
+// nullopt — обработчик гасит TX-прерывание.
 // flush() ждёт пустое кольцо (нужен tx-колбэк) и затем isTxBusy() == false.
 // =================================================================
 
@@ -130,35 +133,32 @@ protected:
     }
 
 private:
-    static void rxThunk(void* ctx) noexcept
+    static void rxThunk(void* ctx, uint8_t byte, IByteStream::Status status) noexcept
     {
-        static_cast<ISerial*>(ctx)->onRx();
+        static_cast<ISerial*>(ctx)->onRx(byte, status);
     }
 
-    static void txThunk(void* ctx) noexcept
+    static std::optional<uint8_t> txThunk(void* ctx) noexcept
     {
-        static_cast<ISerial*>(ctx)->onTx();
+        return static_cast<ISerial*>(ctx)->onTx();
     }
 
-    void onRx() noexcept
+    void onRx(uint8_t byte, IByteStream::Status status) noexcept
     {
-        const IByteStream::Status st = _hw.getStatus();
-        const uint8_t byte = _hw.readByte();
-        if (st == IByteStream::Status::DataError)
+        if (status == IByteStream::Status::DataError)
             _dataError = true;
-        if (st == IByteStream::Status::OverFlowRX)
+        if (status == IByteStream::Status::OverFlowRX)
             _hwOverrunRx = true;
         if (!_rxBuf.push(byte))
             _hwOverrunRx = true;
     }
 
-    void onTx() noexcept
+    [[nodiscard]] std::optional<uint8_t> onTx() noexcept
     {
         uint8_t byte = 0;
-        if (_txBuf.pop(byte))
-            _hw.writeByte(byte);
-        else
-            _hw.irqTxDisable();
+        if (!_txBuf.pop(byte))
+            return std::nullopt;
+        return byte;
     }
 
     IHWByteStream& _hw;

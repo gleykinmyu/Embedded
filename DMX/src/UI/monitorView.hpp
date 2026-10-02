@@ -23,7 +23,7 @@ public:
     void hideFrom(nex::ovl::Overlay& ovl) noexcept;
 
     void refresh() noexcept;
-    void noteFullRedraw() noexcept { _repaintChrome = true; }
+    void noteFullRedraw() noexcept;
 
     [[nodiscard]] bool raiseOnPress() const noexcept override { return false; }
 
@@ -147,6 +147,7 @@ private:
     Pip _pip{};
     Label _chVal{};
     bool _repaintChrome = false;
+    bool _forceCells = false;
     bool _clearLit = false;
     ViewMode _viewShown = ViewMode::Current;
     ValueScale _scaleShown = ValueScale::Dmx;

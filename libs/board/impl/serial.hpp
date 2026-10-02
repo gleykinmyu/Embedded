@@ -22,7 +22,6 @@ class Uart : public BIF::IBreakByteStream
     GPIO::ModeAlt _txMode = GPIO::ModeAlt::PP;
     GPIO::Pull _txPull = GPIO::Pull::Up;
     uint32_t _primaskSave = 0;
-    BIF::IByteStream::Status _rxStatus = BIF::IByteStream::Status::OK;
     bool _open = false;
 
 public:
@@ -84,21 +83,6 @@ public:
 
     bool isOpen() const override { return _open; }
 
-    uint8_t readByte() const override
-    {
-        return static_cast<uint8_t>(_uart.dr.read() & 0xFFU);
-    }
-
-    BIF::IByteStream::Status getStatus() const override { return _rxStatus; }
-
-    bool writeByte(uint8_t data) override
-    {
-        if (!_uart.sr.any(UART::SR::TXE))
-            return false;
-        _uart.dr.write(static_cast<uint32_t>(data));
-        return true;
-    }
-
     void irqRxEnable() override { _uart.cr1.set(UART::CR1::RXNEIE); }
     void irqRxDisable() override { _uart.cr1.clear(UART::CR1::RXNEIE); }
     void irqTxEnable() override { _uart.cr1.set(UART::CR1::TXEIE); }
@@ -142,16 +126,21 @@ private:
         using namespace UART;
         while (_uart.sr.any(SR::RXNE) && _uart.cr1.any(CR1::RXNEIE)) {
             const REG::BitMask<SR> sr = _uart.sr.get();
+            BIF::IByteStream::Status st = BIF::IByteStream::Status::OK;
             if (sr.any(SR::ORE))
-                _rxStatus = BIF::IByteStream::Status::OverFlowRX;
+                st = BIF::IByteStream::Status::OverFlowRX;
             else if (sr.any(SR::FE | SR::NE))
-                _rxStatus = BIF::IByteStream::Status::DataError;
-            else
-                _rxStatus = BIF::IByteStream::Status::OK;
-            _rx.invoke();
+                st = BIF::IByteStream::Status::DataError;
+            const uint8_t byte = static_cast<uint8_t>(_uart.dr.read() & 0xFFU);
+            _rx.invoke(byte, st);
         }
-        if (_uart.sr.any(SR::TXE) && _uart.cr1.any(CR1::TXEIE))
-            _tx.invoke();
+        if (_uart.sr.any(SR::TXE) && _uart.cr1.any(CR1::TXEIE)) {
+            const std::optional<uint8_t> next = _tx.pull();
+            if (next.has_value())
+                _uart.dr.write(static_cast<uint32_t>(*next));
+            else
+                irqTxDisable();
+        }
     }
 };
 

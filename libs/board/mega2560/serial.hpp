@@ -132,8 +132,6 @@ class Uart : public BIF::IHWByteStream {
     uint8_t _sregSave = 0;
     bool _txArmed = false;
     bool _open = false;
-    uint8_t _rxByte = 0;
-    BIF::IByteStream::Status _rxStatus = BIF::IByteStream::Status::OK;
     static inline Uart* self_ = nullptr;
 
 public:
@@ -192,19 +190,6 @@ public:
 
     bool isOpen() const override { return _open; }
 
-    uint8_t readByte() const override { return _rxByte; }
-
-    BIF::IByteStream::Status getStatus() const override { return _rxStatus; }
-
-    bool writeByte(uint8_t data) override
-    {
-        if ((R::UCSRA & static_cast<uint8_t>(1u << UDRE0)) == 0)
-            return false;
-        _txArmed = true;
-        R::UDR = data;
-        return true;
-    }
-
     void irqRxEnable() override { detail::setBit(R::UCSRB, 1 << RXCIE0); }
     void irqRxDisable() override { detail::clearBit(R::UCSRB, 1 << RXCIE0); }
     void irqTxEnable() override { detail::setBit(R::UCSRB, 1 << UDRIE0); }
@@ -230,20 +215,26 @@ private:
     {
         while ((R::UCSRA & (1 << RXC0)) != 0 && (R::UCSRB & (1 << RXCIE0)) != 0) {
             const uint8_t a = R::UCSRA;
-            _rxByte = R::UDR;
+            const uint8_t byte = R::UDR;
             const uint8_t fe = static_cast<uint8_t>(1u << FE0);
             const uint8_t upe = static_cast<uint8_t>(1u << UPE0);
             const uint8_t dor = static_cast<uint8_t>(1u << DOR0);
+            BIF::IByteStream::Status st = BIF::IByteStream::Status::OK;
             if ((a & dor) != 0)
-                _rxStatus = BIF::IByteStream::Status::OverFlowRX;
+                st = BIF::IByteStream::Status::OverFlowRX;
             else if ((a & (fe | upe)) != 0)
-                _rxStatus = BIF::IByteStream::Status::DataError;
-            else
-                _rxStatus = BIF::IByteStream::Status::OK;
-            _rx.invoke();
+                st = BIF::IByteStream::Status::DataError;
+            _rx.invoke(byte, st);
         }
-        if ((R::UCSRA & (1 << UDRE0)) != 0 && (R::UCSRB & (1 << UDRIE0)) != 0)
-            _tx.invoke();
+        if ((R::UCSRA & (1 << UDRE0)) != 0 && (R::UCSRB & (1 << UDRIE0)) != 0) {
+            const std::optional<uint8_t> next = _tx.pull();
+            if (next.has_value()) {
+                _txArmed = true;
+                R::UDR = *next;
+            } else {
+                irqTxDisable();
+            }
+        }
     }
 
     [[nodiscard]] bool configure(uint32_t baud_hz, const Frame& fmt) noexcept

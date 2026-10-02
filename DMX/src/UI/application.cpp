@@ -39,6 +39,8 @@ void Application::hideGraph() noexcept
 
 void Application::refreshUi() noexcept
 {
+    if (!_linkSettled)
+        return;
     if (_fullRedraw) {
         _fullRedraw = false;
         overlay.redrawShownWidgets();
@@ -67,87 +69,29 @@ void Application::alert(const char* const utf8) noexcept
 
 void Application::onPageChange(const nex::msg::evPage& e) noexcept
 {
-    _gotPage = true;
     NEX_DBG("Nextion 0x66 evPage page=%u\n", static_cast<unsigned>(e.page));
     AppUI::onPageChange(e);
+    if (!view.isVisible() && !graph.isVisible())
+        showMonitor();
+    overlay.redrawShownWidgets();
+    if (view.isVisible())
+        view.noteFullRedraw();
     touch.sendXY(true);
-}
-
-void Application::onSystemEvent(const nex::msg::evSystem& e)
-{
-    NEX_DBG("Nextion evSystem code=0x%02X\n", static_cast<unsigned>(e.code));
-    if (e.code == nex::msg::evSystem::Code::NextionReady
-        || e.code == nex::msg::evSystem::Code::StartupPreamble)
-        _gotReady = true;
+    _linkSettled = true;
 }
 
 void Application::onStatus(const nex::msg::Status& status, const nex::Route route) noexcept
 {
     AppUI::onStatus(status, route);
-    if (status.isAppError())
-        return;
-    _panelStatus = status;
-    _gotPanelStatus = true;
-}
-
-bool Application::waitEvPage(const uint32_t ms) noexcept
-{
-    const uint32_t t0 = boardClockMs();
-    while ((boardClockMs() - t0) < ms) {
-        board.watchdog.kick();
-        update();
-        if (_gotPage)
-            return true;
-    }
-    return _gotPage;
-}
-
-bool Application::waitPanelStatus(const uint32_t ms) noexcept
-{
-    const uint32_t t0 = boardClockMs();
-    while ((boardClockMs() - t0) < ms) {
-        board.watchdog.kick();
-        update();
-        if (_gotPanelStatus)
-            return true;
-    }
-    return _gotPanelStatus;
-}
-
-void Application::showAfterLink() noexcept
-{
-    switchPage(monitor);
-    showMonitor();
-    if (!pumpUntilIdle())
-        NEX_DBG("Nextion first paint stall\n");
-    touch.sendXY(true);
-    _linkSettled = true;
 }
 
 void Application::applyFastBaudIfNeeded() noexcept
 {
-    if (_linkSettled)
+    if (_restSent)
         return;
-
-    if (!_restSent) {
-        (void)pumpUntilIdle();
-        _restSent = true;
-        NEX_DBG("Nextion rest sent — wait 0x88\n");
-        return;
-    }
-
-    if (!_gotPage) {
-        if (!_pageAsked) {
-            _pageAsked = true;
-            requestCurrentPage();
-            (void)pumpUntilIdle();
-        }
-        if (!waitEvPage(200u))
-            return;
-    }
-
-    NEX_DBG("Nextion link %u OD — draw\n", static_cast<unsigned>(kLinkBaudBoot));
-    showAfterLink();
+    (void)pumpUntilIdle();
+    _restSent = true;
+    NEX_DBG("Nextion rest sent — wait 0x66 evPage\n");
 }
 
 } // namespace ui

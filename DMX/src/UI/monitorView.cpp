@@ -122,6 +122,13 @@ void MonitorView::hideFrom(nex::ovl::Overlay& ovl) noexcept
         _overlay = nullptr;
 }
 
+void MonitorView::noteFullRedraw() noexcept
+{
+    _repaintChrome = true;
+    _forceCells = true;
+    _hdrPage = 0xFFu;
+}
+
 void MonitorView::refresh() noexcept
 {
     if (_overlay == nullptr || !isVisible())
@@ -275,7 +282,7 @@ void MonitorView::syncHeaders() noexcept
         if (chn == 0u)
             buf[0] = '\0';
         else
-            std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(chn));
+            std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>((chn - 1u) / 10u));
         _rowH[row].setText(buf);
         if (pageChanged || _rowH[row].dirty) {
             if (!present(_rowH[row]))
@@ -362,14 +369,17 @@ void MonitorView::presentDirtyLabels() noexcept
 void MonitorView::presentDirtyCells() noexcept
 {
     const uint8_t nRows = rows();
+    const bool force = _forceCells;
     for (uint8_t row = 0; row < nRows; ++row) {
         for (uint8_t col = 0; col < kCols; ++col) {
-            if (!_cells[row][col].sync())
+            const bool dirty = _cells[row][col].sync();
+            if (!force && !dirty)
                 continue;
             if (!enqueueDraw(_cells[row][col]))
                 return;
         }
     }
+    _forceCells = false;
 }
 
 void MonitorView::presentButtons() noexcept
