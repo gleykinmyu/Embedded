@@ -13,6 +13,7 @@
 - **A3.** Пока две копии Show (live + incoming). Overflow ёмкости → MsgBox «Загрузить частично?» (факты: секция, headers/slots found vs max); Yes = truncate, No = секцию не трогать. Потолки `{tag, max_count}` — таблица в прошивке (числа позже).
 - **A4.** SD = полный файл. W25 = LKG/boot-зеркало: **два последних 4K-сектора A/B** (ping-pong, seq + magic/CRC). После успешного save на SD — обновить LKG. Чтение сектора ~4 ms @ 8 MHz; ресурс ≥100k P/E/сектор.
 - **A5.** Обратная совместимость / миграция старого GRUP — **не делаем**, пока нет прода и полевых файлов. Пишем только новый формат; `Header.version` не разветвляем.
+- **A6.** `markEdited` / dirty — **на секцию (или пул)**, не один флаг на весь Show. UI `*` и save смотрят маску dirty; save = чекбоксы ∩ dirty (или явный override чекбоксами). Load clear dirty у принятых секций.
 
 ### TODO — переформатировать `sf::Fio` / W25 mirror
 
@@ -23,7 +24,7 @@
 3. Overflow-диалог A3; без тихого truncate.
 4. `W25qShowFile`: A/B два сектора, commit после program; `restore()` читает активный слот.
 5. Зеркало W25 после успешного SD-save (не вместо SD).
-6. Позже: посекционный staging / раздельный `edited` (см. A6) — внутри FIO, не два ShowLive/PatchLive.
+6. Per-section / per-pool `edited` (A6); UI `*` и save по маске dirty.
 
 ### 1. Номер пульта
 
