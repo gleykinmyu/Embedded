@@ -31,6 +31,7 @@
 - **B1.** На пульте **нет** `mech[id]` через `storage(server_id)` / ObjRegistry. Есть `CMechBank` — слоты, которые **заполняются по SERV** (субсекции механизмов). Слот = оперативка (live) + ссылка на config в SERV. `storage(server_id)` у консоли убираем; lookup — банк слотов + правила SERV. (На сервере свой `storage()` для приводов — отдельно.)
 - **B2.** Gaps `mech_id` **разрешены**, id не уплотняем. Нет в SERV → пустая клетка; бит на отсутствующий id → MechNotFound / вырезать при record.
 - **B3.** Цепь/трос: **одна консоль**; в прошивке **сервера** — два `Node` на один CAN (два logical `server_id` / seg). Пульт видит два peer-сессии. Jack→seg — на сервере при сборке inventory.
+- **B4.** **CanDemux** — спец-драйвер: один `ICAN` → два `Node`; RX demux по `dst`; TX в общий CAN. Не один Node на два ILink.
 
 ### 1. Номер пульта
 
