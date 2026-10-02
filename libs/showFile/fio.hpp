@@ -5,6 +5,9 @@
  * IFile не внутри IShow: шоу — RAM, IFile — ручка тома. Live пишется в оба слота.
  * Один и тот же IFile на main и bak — резерва нет (сравнение по адресу).
  * Пустой path у load — читать резерв. Резерв пишется только в save.
+ *
+ * TODO(reformat): секции/чекбоксы, accept A2, overflow MsgBox A3, W25 A/B LKG —
+ * см. PUMS/Console/src/smcp/ANALYSIS.md «Файл / FIO».
  */
 
 #pragma once
