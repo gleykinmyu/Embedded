@@ -1,5 +1,5 @@
 /**
- * DMX-тестер: STM32F407 + Nextion 10" 1024×600 landscape.
+ * DMX-тестер: STM32F407 + Nextion 4.3" 480×272 landscape.
  * Плата как PUMS Console: log=USART1 PA9/PA10, Nextion=USART2 PA2/PA3.
  * DMX RS485: USART3 PB10/PB11, DE=PB1.
  *
@@ -20,17 +20,17 @@
 #include "model/tester.hpp"
 #include "phl/rtc.hpp"
 #include "phl/uart.hpp"
-#include "rs485.hpp"
+#include "wire.hpp"
 
 namespace {
 
 constexpr uint32_t kWatchdogTimeoutMs = 6000u;
-constexpr uint32_t kDmxTxPeriodMs = 25u;
-constexpr uint32_t kDmxRxPeriodMs = 100u;
+constexpr uint32_t kMonitorRefreshMs = 200u;
+constexpr uint32_t kGraphRefreshMs = 100u;
 
 char g_stdoutBuf[256];
 
-dmx::Rs485Port dmxPort(board.dmx, board.dmxTx, GPIO::AF::AF7, delayUs, &board.dmxDe);
+dmx::wire::Transceiver dmxPort(board.dmx);
 ui::Tester tester(dmxPort);
 
 nex::AppTiming timing{boardClockMs, 500u};
@@ -49,11 +49,11 @@ int main()
     board.flashSpi.InitPins(GPIO::PortB::pin<3>, GPIO::PortB::pin<4>, GPIO::PortB::pin<5>);
 
     board.serial1.open(250000);
-    board.serial2.open(ui::Application::kLinkBaudBoot);
-    board.flashSpi.open(8'000'000);
-
     setSerial1LogEnabled(true);
     std::setvbuf(stdout, g_stdoutBuf, _IOLBF, sizeof(g_stdoutBuf));
+    board.serial2.open(ui::Application::kLinkBaudBoot);
+
+    board.flashSpi.open(8'000'000);
     board.setLedAlive(true);
 
     NEX_DBG("DMX tester boot: log=serial1 Nextion=serial2 %u->%u flashSpi=SPI3 8MHz\n",
@@ -107,7 +107,6 @@ int main()
     } else if (!dmxPort.open()) {
         NEX_DBG("DMX port open failed\n");
     } else {
-        dmxPort.setRole(dmx::Role::Receive);
         NEX_DBG("DMX RS485 RX: USART3 PB10 TX / PB11 RX DE=PB1 250000 8N2\n");
     }
 
@@ -115,37 +114,19 @@ int main()
     app.view.bind(&tester);
     app.graph.bind(&tester);
     app.boot();
-    NEX_DBG("Application::boot() done, entering main loop\n");
-
-    uint32_t lastTxMs = boardClockMs();
-    uint32_t lastRxMs = lastTxMs;
-    uint32_t lastTraceMs = lastTxMs;
 
     for (;;) {
         board.tick();
-        tester.poll();
         app.update();
         app.applyFastBaudIfNeeded();
-
+        if (app.graph.isVisible())
+            tester.sampleTrace(boardClockMs());
+        static uint32_t uiMs = 0;
         const uint32_t now = boardClockMs();
-        if (dmxPort.isOpen() && dmxPort.role() == dmx::Role::Receive
-            && (now - lastRxMs) >= kDmxRxPeriodMs) {
-            lastRxMs = now;
-            tester.tick();
+        const uint32_t period = app.graph.isVisible() ? kGraphRefreshMs : kMonitorRefreshMs;
+        if ((now - uiMs) >= period) {
+            uiMs = now;
+            app.refreshUi();
         }
-        if (dmxPort.isOpen() && dmxPort.role() == dmx::Role::Transmit
-            && (now - lastTxMs) >= kDmxTxPeriodMs) {
-            lastTxMs = now;
-            tester.sendLive();
-        }
-        if (app.graph.isVisible()) {
-            if ((now - lastTraceMs) >= ui::kTracePeriodMs) {
-                lastTraceMs = now;
-                tester.sampleTrace();
-            }
-        } else {
-            lastTraceMs = now;
-        }
-        app.refreshUi();
     }
 }

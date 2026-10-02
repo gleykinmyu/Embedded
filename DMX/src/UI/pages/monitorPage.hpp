@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * HMI-страница monitor — пустой фон 1024×600. Сетка и кнопки рисует McUI (`MonitorView`).
+ * HMI-страница monitor — пустой фон 480×272. Сетка и кнопки рисует McUI (`MonitorView`).
  */
 
 #include "UI/nexHmiConfig.hpp"
@@ -12,14 +12,13 @@ namespace ui {
 class Application;
 
 struct MonitorPage : nex::Page<0> {
-    HMI_PAGE_CFG(monitor);
+    HMI_PAGE_CFG(mon);
 
     explicit MonitorPage(nex::IAppUI& app) noexcept
-        : Page<0>(app, "monitor", PG::kPageId)
+        : Page<0>(app, "mon", PG::kPageId)
     {
     }
 
-    void onLoad() override;
     void onExit() override;
 
 private:

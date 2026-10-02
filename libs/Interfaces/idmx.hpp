@@ -90,7 +90,8 @@ public:
 
 /**
  * Приёмник DMX (прибор / monitor).
- * `bind` запоминает, куда писать кадр; `poll` копит байты; `recv()` без аргументов.
+ * `bind` запоминает, куда писать кадр; `recv()` без аргументов.
+ * `poll` копит байты у транспорта без своего прерывания (UDP). RS485 его не вызывает.
  */
 class iRx {
 public:
@@ -103,7 +104,7 @@ public:
     /// Привязать буфер. `uni->id` — какой поток принимать. `nullptr` — снять все.
     virtual bool bind(Universe* uni) = 0;
     virtual bool unbind(Universe* uni) = 0;
-    virtual void poll() = 0;
+    virtual void poll() {}
     /// Забрать кадр в привязанный Universe. true — буфер обновлён.
     virtual bool recv() = 0;
 

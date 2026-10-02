@@ -2,6 +2,7 @@
 
 #include "UI/application.hpp"
 #include "UI/enc.hpp"
+#include "board.hpp"
 #include "model/tester.hpp"
 
 #include <cstdio>
@@ -12,10 +13,9 @@ namespace ui {
 namespace {
 
 constexpr nex::FontId kFont = 0u;
-constexpr uint8_t kDirtyCellsPerTick = 32u;
 
 static_assert(layout::kScreenW == nex::hmi::kScreenW && layout::kScreenH == nex::hmi::kScreenH,
-    "layout must match HMI 1024x600");
+    "layout must match HMI 480x272");
 
 void copyText(char* dst, std::size_t cap, const char* src) noexcept
 {
@@ -33,63 +33,67 @@ void copyText(char* dst, std::size_t cap, const char* src) noexcept
 
 MonitorView::MonitorView(Application& app) noexcept
     : _app(app)
-    , _dir{"RX", nex::Rect{88, 40}, kBtnOn}
-    , _graph{"график", nex::Rect{100, 40}, kBtnIdle}
-    , _zero{"0", nex::Rect{56, 40}, kBtnIdle}
-    , _full{"255", nex::Rect{64, 40}, kBtnIdle}
-    , _blk{"BLK", nex::Rect{64, 40}, kBtnIdle}
+    , _graph{"график", nex::Rect{layout::kActionW, layout::kBtnH}, kBtnIdle}
+    , _clear{"Сброс", nex::Rect{layout::kClearW, layout::kBtnH}, kBtnDisabled}
+    , _pagePrev{"<", nex::Rect{layout::kNavW, layout::kBtnH}, kBtnIdle}
+    , _pageNext{">", nex::Rect{layout::kNavW, layout::kBtnH}, kBtnIdle}
+    , _view{"быстрые", nex::Rect{layout::kViewW, layout::kBtnH}, kBtnIdle}
+    , _scale{"DMX", nex::Rect{layout::kScaleW, layout::kBtnH}, kBtnIdle}
 {
     setRegion(nex::Region(nex::Point{0, 0}, nex::Rect{layout::kScreenW, layout::kScreenH}));
 
-    static constexpr const char* kViewLabel[5] = {"текущие", "быстрый", "лог", "min", "max"};
-    for (uint8_t i = 0; i < 5u; ++i)
-        _viewBtn[i] = nex::ovl::Button{kViewLabel[i], nex::Rect{112, 40}, i == 0u ? kBtnOn : kBtnIdle};
-
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        _pageBtn[i] = nex::ovl::Button{_pageLabel[i], nex::Rect{120, 40}, kBtnIdle};
-
-    _grid.host = this;
     _link.align = nex::HAlign::Left;
-    _cycle.align = nex::HAlign::Left;
     _chVal.align = nex::HAlign::Left;
+    _pageRange.align = nex::HAlign::Center;
     _link.fg = kOk;
-    _cycle.fg = kText;
     _chVal.fg = kTx;
 
-    bindRadioGroups();
+    for (uint8_t row = 0; row < kMaxRows; ++row) {
+        for (uint8_t col = 0; col < kCols; ++col) {
+            _cells[row][col].host = this;
+            _cells[row][col].col = col;
+            _cells[row][col].row = row;
+        }
+    }
+
     addChrome();
     layout();
 }
 
 void MonitorView::addChrome() noexcept
 {
-    addChildTop(_grid);
-    addChildTop(_dir);
+    for (uint8_t col = 0; col < kCols; ++col)
+        addChildTop(_colH[col]);
+    for (uint8_t row = 0; row < kMaxRows; ++row)
+        addChildTop(_rowH[row]);
+    for (uint8_t row = 0; row < kMaxRows; ++row) {
+        for (uint8_t col = 0; col < kCols; ++col)
+            addChildTop(_cells[row][col]);
+    }
+    addChildTop(_pageBox);
+    addChildTop(_selBox);
     addChildTop(_graph);
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        addChildTop(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
-        addChildTop(_viewBtn[i]);
+    addChildTop(_clear);
+    addChildTop(_pagePrev);
+    addChildTop(_pageRange);
+    addChildTop(_pageNext);
+    addChildTop(_view);
+    addChildTop(_scale);
+    addChildTop(_pip);
     addChildTop(_link);
-    addChildTop(_cycle);
     addChildTop(_chVal);
-    addChildTop(_zero);
-    addChildTop(_full);
-    addChildTop(_blk);
 }
 
 void MonitorView::applyOemCaptions() noexcept
 {
     if (_oemReady)
         return;
-    enc::utf8ToOem(_oemCurrent, sizeof(_oemCurrent), "текущие");
-    enc::utf8ToOem(_oemFast, sizeof(_oemFast), "быстрый");
-    enc::utf8ToOem(_oemLog, sizeof(_oemLog), "лог");
+    enc::utf8ToOem(_oemFast, sizeof(_oemFast), "быстрые");
     enc::utf8ToOem(_oemGraph, sizeof(_oemGraph), "график");
-    RadioGroup::setLabel(_viewBtn[0], _oemCurrent);
-    RadioGroup::setLabel(_viewBtn[1], _oemFast);
-    RadioGroup::setLabel(_viewBtn[2], _oemLog);
+    enc::utf8ToOem(_oemClear, sizeof(_oemClear), "Сброс");
+    RadioGroup::setLabel(_view, _oemFast);
     RadioGroup::setLabel(_graph, _oemGraph);
+    RadioGroup::setLabel(_clear, _oemClear);
     _oemReady = true;
 }
 
@@ -101,10 +105,14 @@ void MonitorView::showOn(nex::ovl::Overlay& ovl) noexcept
         _tester->setRows(rows());
     layout();
     syncChrome();
+    syncHeaders();
+    for (uint8_t row = 0; row < rows(); ++row) {
+        for (uint8_t col = 0; col < kCols; ++col)
+            (void)_cells[row][col].sync();
+    }
     show(ovl);
-    _repaintChrome = true;
-    _grid.presentDirty();
-    presentDirtyLabels();
+    (void)ovl.app.pumpUntilIdle();
+    _repaintChrome = false;
 }
 
 void MonitorView::hideFrom(nex::ovl::Overlay& ovl) noexcept
@@ -112,6 +120,13 @@ void MonitorView::hideFrom(nex::ovl::Overlay& ovl) noexcept
     hide(ovl);
     if (_overlay == &ovl)
         _overlay = nullptr;
+}
+
+void MonitorView::noteFullRedraw() noexcept
+{
+    _repaintChrome = true;
+    _forceCells = true;
+    _hdrPage = 0xFFu;
 }
 
 void MonitorView::refresh() noexcept
@@ -122,279 +137,506 @@ void MonitorView::refresh() noexcept
     if (_repaintChrome) {
         presentButtons();
         _link.dirty = true;
-        _cycle.dirty = true;
+        _pip.dirty = true;
         _chVal.dirty = true;
         _repaintChrome = false;
     }
-    _grid.presentDirty();
+    presentDirtyCells();
     presentDirtyLabels();
 }
 
 void MonitorView::layout() noexcept
 {
-    const uint8_t nRows = rows();
-    const nex::Coord ch = layout::cellH();
-
-    _grid.setRegion(nex::Region(
-        nex::Point{0, layout::kTopH},
-        nex::Rect{layout::kScreenW, static_cast<nex::Coord>(layout::kColHdrH + ch * nRows)}));
-
+    layoutGrid();
     Widget::layout();
     layoutChrome();
 }
 
-void MonitorView::layoutChrome() noexcept
+void MonitorView::layoutGrid() noexcept
 {
-    constexpr nex::Coord kY = 4;
-    constexpr nex::Coord kH = 40;
-    nex::Coord x = layout::kPad;
-    auto place = [&](nex::ovl::Object& o, nex::Coord w) {
-        o.setRegion(nex::Region(nex::Point{x, kY}, nex::Rect{w, kH}));
-        x = static_cast<nex::Coord>(x + w + 8);
-    };
+    const nex::Coord cw = layout::cellW();
+    const nex::Coord ch = layout::cellH();
+    const uint8_t nRows = rows();
 
-    place(_dir, 88);
-    place(_graph, 100);
+    const nex::Coord gx = layout::gridOriginX();
+    const nex::Coord gy = layout::gridOriginY();
 
-    const uint8_t nPages = pages();
-    const nex::Coord fy = layout::footY();
-    x = layout::kPad;
-    for (uint8_t i = 0; i < kMaxPages; ++i) {
-        _pageBtn[i].setVisible(i < nPages);
-        if (i < nPages) {
-            _pageBtn[i].setRegion(nex::Region(nex::Point{x, static_cast<nex::Coord>(fy + 4)}, nex::Rect{108, 40}));
-            x = static_cast<nex::Coord>(x + 116);
+    for (uint8_t col = 0; col < kCols; ++col) {
+        _colH[col].setRegion(nex::Region(
+            nex::Point{static_cast<nex::Coord>(gx + col * cw), layout::kTopH},
+            nex::Rect{cw, layout::kColHdrH}));
+    }
+    for (uint8_t row = 0; row < kMaxRows; ++row) {
+        _rowH[row].setRegion(nex::Region(
+            nex::Point{0, static_cast<nex::Coord>(gy + row * ch)},
+            nex::Rect{layout::kRowHdrW, ch}));
+        _rowH[row].setVisible(row < nRows);
+        for (uint8_t col = 0; col < kCols; ++col) {
+            const nex::Region tile{
+                nex::Point{
+                    static_cast<nex::Coord>(gx + col * cw),
+                    static_cast<nex::Coord>(gy + row * ch)},
+                nex::Rect{cw, ch}};
+            _cells[row][col].setRegion(nex::Canvas::innerRegion(tile, layout::kCellInset));
+            _cells[row][col].setVisible(row < nRows);
         }
     }
+}
 
-    x = static_cast<nex::Coord>(layout::kScreenW - layout::kPad);
-    for (int i = 4; i >= 0; --i) {
-        x = static_cast<nex::Coord>(x - 100);
-        _viewBtn[static_cast<uint8_t>(i)].setRegion(
-            nex::Region(nex::Point{x, static_cast<nex::Coord>(fy + 4)}, nex::Rect{96, 40}));
-        x = static_cast<nex::Coord>(x - 8);
-    }
+void MonitorView::layoutChrome() noexcept
+{
+    const nex::Coord kH = layout::kBtnH;
+    const nex::Coord joinY = static_cast<nex::Coord>(layout::gridY() + layout::gridFillH());
+    const nex::Coord boxH = static_cast<nex::Coord>(layout::kSelPad + kH + layout::kSelPad + 2);
+    const nex::Coord y1 = static_cast<nex::Coord>(joinY + layout::kSelPad);
+    const nex::Coord pageBoxW = layout::pageBoxW();
 
-    const nex::Coord y2 = static_cast<nex::Coord>(fy + 56);
-    _link.setRegion(nex::Region(nex::Point{layout::kPad, y2}, nex::Rect{160, 40}));
-    _cycle.setRegion(nex::Region(nex::Point{176, y2}, nex::Rect{140, 40}));
-    _chVal.setRegion(nex::Region(nex::Point{324, y2}, nex::Rect{428, 40}));
-    _zero.setRegion(nex::Region(nex::Point{760, y2}, nex::Rect{56, 40}));
-    _full.setRegion(nex::Region(nex::Point{824, y2}, nex::Rect{64, 40}));
-    _blk.setRegion(nex::Region(nex::Point{896, y2}, nex::Rect{64, 40}));
+    _pageBox.sides = static_cast<uint8_t>(SelFrame::Top | SelFrame::Left | SelFrame::Bottom);
+    _pageBox.setVisible(true);
+    _pageBox.setRegion(nex::Region(
+        nex::Point{0, static_cast<nex::Coord>(joinY - 2)},
+        nex::Rect{pageBoxW, static_cast<nex::Coord>(boxH + 2)}));
+
+    nex::Coord x = static_cast<nex::Coord>(2 + layout::kSelPad);
+    _pagePrev.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{layout::kNavW, kH}));
+    x = static_cast<nex::Coord>(x + layout::kNavW + layout::kGap);
+    _pageRange.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{layout::kPageRangeW, kH}));
+    x = static_cast<nex::Coord>(x + layout::kPageRangeW + layout::kGap);
+    _pageNext.setRegion(nex::Region(nex::Point{x, y1}, nex::Rect{layout::kNavW, kH}));
+
+    const nex::Coord boxX = pageBoxW;
+    const nex::Coord boxW = static_cast<nex::Coord>(layout::gridRight() - boxX);
+    _selBox.sides = static_cast<uint8_t>(SelFrame::Left | SelFrame::Right | SelFrame::Bottom);
+    _selBox.setVisible(true);
+    _selBox.setRegion(nex::Region(nex::Point{boxX, joinY}, nex::Rect{boxW, boxH}));
+
+    const nex::Coord innerX = static_cast<nex::Coord>(boxX + 2 + layout::kSelPad);
+    _clear.setRegion(nex::Region(nex::Point{innerX, y1}, nex::Rect{layout::kClearW, kH}));
+    const nex::Coord listX = static_cast<nex::Coord>(innerX + layout::kClearW + layout::kGap);
+    const nex::Coord listW = static_cast<nex::Coord>(layout::gridRight() - 2 - layout::kSelPad - listX);
+    _chVal.setRegion(nex::Region(nex::Point{listX, y1}, nex::Rect{listW, kH}));
+
+    const nex::Coord y2 = layout::statusRowY();
+    nex::Coord x2 = layout::kPad;
+    _pip.setRegion(nex::Region(nex::Point{x2, y2}, nex::Rect{layout::kPipW, kH}));
+    x2 = static_cast<nex::Coord>(x2 + layout::kPipW + layout::kGap);
+    _link.setRegion(nex::Region(nex::Point{x2, y2}, nex::Rect{layout::kLinkW, kH}));
+    _scale.setRegion(nex::Region(nex::Point{layout::scaleX(), y2}, nex::Rect{layout::kScaleW, kH}));
+    _view.setRegion(nex::Region(nex::Point{layout::viewX(), y2}, nex::Rect{layout::kViewW, kH}));
+    _graph.setRegion(nex::Region(nex::Point{layout::actionX(), y2}, nex::Rect{layout::kActionW, kH}));
 }
 
 void MonitorView::syncChrome() noexcept
 {
     const uint8_t nRows = rows();
-    const uint8_t nPages = pages();
-    uint8_t page = 0;
-    ViewMode view = ViewMode::Current;
-    dmx::Role dir = dmx::Role::Receive;
-    uint32_t cycle = 0;
-    const char* link = "-";
+    LinkSnap snap{};
     if (_tester != nullptr) {
         _tester->setRows(nRows);
-        page = _tester->page();
-        view = _tester->view();
-        dir = _tester->port().role();
-        cycle = _tester->port().frameCount();
-        link = statusText(_tester->port().getStatus());
+        _tester->pollLink(boardClockMs());
+        snap = _tester->linkSnap();
     }
 
-    RadioGroup::setLabel(_dir, dir == dmx::Role::Transmit ? "TX" : "RX");
-    RadioGroup::style(_dir, dir == dmx::Role::Transmit);
-    _views.sync(static_cast<uint8_t>(view));
-    if (view == ViewMode::Log && (_tester == nullptr || !_tester->logging()))
-        RadioGroup::style(_viewBtn[2], false);
-
     char buf[36]{};
-    _link.setText(link);
-    _link.setFg((std::strcmp(link, "OK") == 0 || std::strcmp(link, "-") == 0) ? kOk : kErr);
-    std::snprintf(buf, sizeof(buf), "#%lu", static_cast<unsigned long>(cycle));
-    _cycle.setText(buf);
+    enc::utf8ToOem(buf, sizeof(buf), linkCaptionUtf8(snap.state));
+    _link.setText(buf);
+    _link.setFg(snap.state == LinkUi::Live ? kOk : kErr);
+    _pip.setFill(snap.state == LinkUi::Error ? kErr : (snap.pipOn ? kMain : kBorder));
     if (_tester != nullptr)
         _tester->formatSelection(buf, sizeof(buf));
     else
         buf[0] = '\0';
     _chVal.setText(buf);
 
-    for (uint8_t i = 0; i < nPages; ++i) {
-        char next[sizeof(_pageLabel[i])]{};
-        const uint16_t a = pageFirst(i, nRows);
-        const uint16_t b = pageLast(i, nRows);
-        std::snprintf(next, sizeof(next), "%u-%u", static_cast<unsigned>(a), static_cast<unsigned>(b));
-        if (std::strcmp(_pageLabel[i], next) != 0) {
-            std::memcpy(_pageLabel[i], next, sizeof(next));
-            RadioGroup::setLabel(_pageBtn[i], _pageLabel[i]);
+    const bool lit = _tester != nullptr && _tester->selectedCount() > 0u;
+    if (lit != _clearLit) {
+        _clearLit = lit;
+        styleClear(lit);
+        present(_clear);
+    }
+
+    syncViewLabel();
+    syncScaleLabel();
+    syncPageLabel();
+    syncHeaders();
+}
+
+void MonitorView::syncHeaders() noexcept
+{
+    const uint8_t nRows = rows();
+    const uint8_t page = (_tester != nullptr) ? _tester->page() : 0u;
+    const bool pageChanged = (page != _hdrPage);
+    _hdrPage = page;
+
+    char buf[5]{};
+    for (uint8_t col = 0; col < kCols; ++col) {
+        std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(col + 1u));
+        _colH[col].setText(buf);
+        if (_colH[col].dirty) {
+            if (!present(_colH[col]))
+                return;
+            _colH[col].dirty = false;
         }
     }
-    _pages.sync(page);
+    for (uint8_t row = 0; row < nRows; ++row) {
+        const uint16_t chn = channelOf(page, nRows, 0u, row);
+        if (chn == 0u)
+            buf[0] = '\0';
+        else
+            std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>((chn - 1u) / 10u));
+        _rowH[row].setText(buf);
+        if (pageChanged || _rowH[row].dirty) {
+            if (!present(_rowH[row]))
+                return;
+            _rowH[row].dirty = false;
+        }
+    }
 }
 
 void MonitorView::drawBackground(const nex::AppCanvas& cs) const
 {
     cs.rect_fill(screenRegion(), kBg);
     cs.rect_fill(nex::Region(nex::Point{0, 0}, nex::Rect{layout::kScreenW, layout::kTopH}), kChrome);
+    cs.rect_fill(nex::Region(
+        nex::Point{0, layout::kTopH},
+        nex::Rect{layout::kRowHdrW, layout::gridOriginY()}), kChrome);
     cs.rect_fill(nex::Region(nex::Point{0, layout::footY()}, nex::Rect{layout::kScreenW, layout::kFootH}), kChrome);
+    cs.rect_fill(nex::Region(
+        nex::Point{layout::kRowHdrW, layout::gridY()},
+        nex::Rect{layout::gridFillW(), layout::gridFillH()}),
+        kCellGrid);
+    cs.rect_fill(nex::Region(
+        nex::Point{0, static_cast<nex::Coord>(layout::gridY() + layout::gridFillH() - 2)},
+        nex::Rect{layout::kRowHdrW, 2}),
+        kCellGrid);
 }
 
 void MonitorView::drawBackgroundRegion(const nex::AppCanvas& cs, const nex::Region clip) const
 {
     const nex::Color bg =
-        (clip.ul.y < layout::kTopH || clip.ul.y >= layout::footY()) ? kChrome : kBg;
+        (clip.ul.y < layout::kTopH + layout::kColHdrH || clip.ul.x < layout::kRowHdrW
+            || clip.ul.y >= layout::footY())
+        ? kChrome
+        : kCellBg;
     cs.rect_fill(clip, bg);
 }
 
-void MonitorView::present(nex::ovl::Object& obj) noexcept
+bool MonitorView::isGridCell(const nex::ovl::Object& obj) const noexcept
+{
+    const auto* const first = &_cells[0][0];
+    const auto* const last = &_cells[kMaxRows - 1u][kCols - 1u];
+    return &obj >= first && &obj <= last;
+}
+
+bool MonitorView::enqueueDraw(nex::ovl::Object& obj) noexcept
 {
     if (_overlay == nullptr || !isVisible() || _overlay->isModal())
-        return;
-    redrawObject(obj, _overlay->app.cs);
+        return false;
+    const nex::AppCanvas& cs = _overlay->app.cs;
+    // Клетка сама заливает фон в xstr — без чёрного fill под selected/fast.
+    if (!isGridCell(obj))
+        drawBackgroundRegion(cs, obj.screenRegion());
+    obj.draw(cs);
+    return true;
+}
+
+bool MonitorView::present(nex::ovl::Object& obj) noexcept
+{
+    if (!enqueueDraw(obj))
+        return false;
+    _overlay->app.update();
+    return isVisible() && !_overlay->isModal();
 }
 
 void MonitorView::presentDirtyLabels() noexcept
 {
     if (_link.dirty) {
-        present(_link);
+        if (!enqueueDraw(_link))
+            return;
         _link.dirty = false;
     }
-    if (_cycle.dirty) {
-        present(_cycle);
-        _cycle.dirty = false;
+    if (_pip.dirty) {
+        if (!enqueueDraw(_pip))
+            return;
+        _pip.dirty = false;
     }
     if (_chVal.dirty) {
-        present(_chVal);
+        if (!enqueueDraw(_chVal))
+            return;
         _chVal.dirty = false;
     }
 }
 
+void MonitorView::presentDirtyCells() noexcept
+{
+    const uint8_t nRows = rows();
+    const bool force = _forceCells;
+    for (uint8_t row = 0; row < nRows; ++row) {
+        for (uint8_t col = 0; col < kCols; ++col) {
+            const bool dirty = _cells[row][col].sync();
+            if (!force && !dirty)
+                continue;
+            if (!enqueueDraw(_cells[row][col]))
+                return;
+        }
+    }
+    _forceCells = false;
+}
+
 void MonitorView::presentButtons() noexcept
 {
-    present(_dir);
-    present(_graph);
-    const uint8_t nPages = pages();
-    for (uint8_t i = 0; i < nPages; ++i)
-        present(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
-        present(_viewBtn[i]);
-    present(_zero);
-    present(_full);
-    present(_blk);
+    if (!present(_pageBox) || !present(_selBox) || !present(_graph) || !present(_clear))
+        return;
+    if (!present(_pagePrev) || !present(_pageRange) || !present(_pageNext))
+        return;
+    (void)present(_scale);
+    (void)present(_view);
 }
 
-void MonitorView::presentRadio(const RadioGroup::Paint& p) noexcept
+void MonitorView::styleClear(const bool lit) noexcept
 {
-    if (p.a != nullptr)
-        present(*p.a);
-    if (p.b != nullptr && p.b != p.a)
-        present(*p.b);
+    const nex::Region keep = _clear.region();
+    _clear.setStyle(lit ? kBtnSelect : kBtnDisabled);
+    _clear.setRegion(keep);
 }
 
-void MonitorView::presentSelectedLabel() noexcept
+void MonitorView::syncViewLabel() noexcept
+{
+    const ViewMode view = (_tester != nullptr) ? _tester->view() : ViewMode::Current;
+    if (_oemReady && view == _viewShown)
+        return;
+    _viewShown = view;
+    const nex::Region keep = _view.region();
+    _view.setStyle(view == ViewMode::Fast ? kBtnFast : kBtnIdle);
+    _view.setRegion(keep);
+    present(_view);
+}
+
+void MonitorView::syncScaleLabel() noexcept
+{
+    const ValueScale scale = (_tester != nullptr) ? _tester->scale() : ValueScale::Dmx;
+    if (_oemReady && scale == _scaleShown)
+        return;
+    _scaleShown = scale;
+    const nex::Region keep = _scale.region();
+    _scale.setLabel(scale == ValueScale::Percent ? "%" : "DMX");
+    _scale.setStyle(scale == ValueScale::Percent ? kBtnSelect : kBtnIdle);
+    _scale.setRegion(keep);
+    present(_scale);
+}
+
+void MonitorView::applyScale() noexcept
 {
     if (_tester == nullptr)
         return;
-    char buf[36]{};
-    _tester->formatSelection(buf, sizeof(buf));
-    _chVal.setText(buf);
+    _tester->toggleScale();
+    syncScaleLabel();
+    syncChrome();
     presentDirtyLabels();
+    const uint8_t nRows = rows();
+    for (uint8_t row = 0; row < nRows; ++row) {
+        for (uint8_t col = 0; col < kCols; ++col) {
+            if (_cells[row][col].sync() && !present(_cells[row][col]))
+                return;
+        }
+    }
 }
 
-void MonitorView::bindRadioGroups() noexcept
+void MonitorView::syncPageLabel() noexcept
 {
-    for (uint8_t i = 0; i < kMaxPages; ++i)
-        _pages.bind(_pageBtn[i]);
-    for (uint8_t i = 0; i < 5u; ++i)
-        _views.bind(_viewBtn[i]);
+    const uint8_t nRows = rows();
+    const uint8_t page = (_tester != nullptr) ? _tester->page() : 0u;
+    char next[sizeof(_pageLabel)]{};
+    const uint16_t a = pageFirst(page, nRows);
+    const uint16_t b = pageLast(page, nRows);
+    std::snprintf(next, sizeof(next), "%u-%u", static_cast<unsigned>(a), static_cast<unsigned>(b));
+    if (std::strcmp(_pageLabel, next) != 0) {
+        std::memcpy(_pageLabel, next, sizeof(next));
+        _pageRange.setText(_pageLabel);
+    }
+    if (_pageRange.dirty) {
+        present(_pageRange);
+        _pageRange.dirty = false;
+    }
+}
+
+void MonitorView::applyPage(const int8_t delta) noexcept
+{
+    if (_tester == nullptr)
+        return;
+    const uint8_t before = _tester->page();
+    _tester->stepPage(delta);
+    if (_tester->page() == before)
+        return;
+    syncPageLabel();
+    present(_pagePrev);
+    present(_pageRange);
+    present(_pageNext);
+    _hdrPage = 0xFFu;
+    syncHeaders();
+    const uint8_t nRows = rows();
+    for (uint8_t row = 0; row < nRows; ++row) {
+        for (uint8_t col = 0; col < kCols; ++col) {
+            if (_cells[row][col].sync() && !present(_cells[row][col]))
+                return;
+        }
+    }
 }
 
 void MonitorView::onClick(nex::ovl::Object* const target) noexcept
 {
-    if (target == &_grid) {
-        onGridClick();
-        return;
+    for (uint8_t row = 0; row < rows(); ++row) {
+        for (uint8_t col = 0; col < kCols; ++col) {
+            if (target == &_cells[row][col]) {
+                onCellClick(_cells[row][col]);
+                return;
+            }
+        }
     }
     if (target == &_graph) {
         _app.showGraph();
         return;
     }
+    if (target == &_link || target == &_pip) {
+        if (_tester != nullptr)
+            _tester->port().clearErrors();
+        syncChrome();
+        presentDirtyLabels();
+        return;
+    }
     if (_tester == nullptr)
         return;
 
-    if (target == &_dir) {
-        const auto next = (_tester->port().role() == dmx::Role::Receive)
-            ? dmx::Role::Transmit
-            : dmx::Role::Receive;
-        _tester->port().setRole(next);
-        const bool tx = next == dmx::Role::Transmit;
-        RadioGroup::setLabel(_dir, tx ? "TX" : "RX");
-        RadioGroup::style(_dir, tx);
-        present(_dir);
+    if (target == &_clear) {
+        if (_tester->selectedCount() == 0u)
+            return;
+        _tester->clearSelection();
+        syncChrome();
+        presentDirtyCells();
+        presentDirtyLabels();
         return;
     }
 
-    if (target == &_zero || target == &_full || target == &_blk) {
-        if (target == &_zero)
-            _tester->setSelectedValues(0);
-        else if (target == &_full)
-            _tester->setSelectedValues(255);
-        else
-            _tester->blackout();
-        if (_tester->port().role() == dmx::Role::Transmit)
-            _tester->sendLive();
-        present(*static_cast<nex::ovl::Button*>(target));
-        _grid.presentDirty();
-        presentSelectedLabel();
+    if (target == &_scale) {
+        applyScale();
         return;
     }
 
-    const RadioGroup::Paint viewPaint = _views.select(target);
-    if (viewPaint.hit) {
-        const uint8_t i = _views.selected();
-        if (i == static_cast<uint8_t>(ViewMode::Log))
-            _tester->toggleLog();
-        _tester->setView(static_cast<ViewMode>(i));
-        if (i == static_cast<uint8_t>(ViewMode::Log) && !_tester->logging())
-            RadioGroup::style(_viewBtn[2], false);
-        presentRadio(viewPaint);
-        _grid.presentDirty();
+    if (target == &_view) {
+        const ViewMode next = (_tester->view() == ViewMode::Current) ? ViewMode::Fast : ViewMode::Current;
+        _tester->setView(next);
+        syncViewLabel();
+        presentDirtyCells();
         return;
     }
 
-    const RadioGroup::Paint pagePaint = _pages.select(target);
-    if (pagePaint.hit) {
-        _tester->setPage(_pages.selected());
-        presentRadio(pagePaint);
-        _grid.presentDirty();
+    if (target == &_pagePrev) {
+        applyPage(-1);
+        present(_pagePrev);
+        return;
+    }
+    if (target == &_pageNext) {
+        applyPage(1);
+        present(_pageNext);
+        return;
     }
 }
 
-void MonitorView::onTouch(const nex::msg::evTouchXY& e) noexcept
+void MonitorView::onCellClick(Cell& cell) noexcept
 {
-    if (e.state == nex::TouchState::Press) {
-        if (!_grid.screenRegion().contains(e.pos))
-            _grid.haveHit = false;
+    if (_tester == nullptr || cell.snap.empty())
         return;
-    }
-    if (e.state == nex::TouchState::Release && _grid.haveHit) {
-        onGridClick();
-        _grid.haveHit = false;
-    }
-}
-
-void MonitorView::onGridClick() noexcept
-{
-    if (!_grid.haveHit || _tester == nullptr)
-        return;
-    const uint16_t ch = channelOf(_tester->page(), rows(), _grid.hitCol, _grid.hitRow);
+    const uint16_t ch = channelOf(_tester->page(), rows(), cell.col, cell.row);
     if (ch == 0u)
         return;
     if (_tester->toggleSelect(ch) == Tester::SelectResult::Full)
         _app.alert("Не больше 8 каналов");
+    (void)cell.sync();
+    present(cell);
     syncChrome();
-    _grid.presentDirty();
     presentDirtyLabels();
+}
+
+MonitorView::CellSnap MonitorView::snapOf(const uint8_t col, const uint8_t row) const noexcept
+{
+    if (_tester == nullptr)
+        return CellSnap::vacant();
+
+    const uint8_t nRows = rows();
+    const uint16_t chan = channelOf(_tester->page(), nRows, col, row);
+    if (chan == 0u)
+        return CellSnap::vacant();
+
+    return CellSnap::make(_tester->cellValue(col, row), _tester->isSelected(chan), false);
+}
+
+bool MonitorView::Cell::sync() noexcept
+{
+    if (host == nullptr)
+        return false;
+    CellSnap next = host->snapOf(col, row);
+    if (!next.empty() && !snap.empty() && host->_tester != nullptr
+        && host->_tester->view() == ViewMode::Fast && next.value != snap.value) {
+        next = CellSnap::make(next.value, next.selected(), true);
+    }
+    char nextTxt[4]{};
+    if (!next.empty()) {
+        if (host->_tester != nullptr)
+            host->_tester->formatValue(next.value, nextTxt, sizeof(nextTxt));
+        else
+            std::snprintf(nextTxt, sizeof(nextTxt), "%u", static_cast<unsigned>(next.value));
+    }
+    if (next == snap && std::strcmp(txt, nextTxt) == 0)
+        return false;
+    snap = next;
+    std::memcpy(txt, nextTxt, sizeof(txt));
+    return true;
+}
+
+void MonitorView::Cell::draw(const nex::AppCanvas& cs) const
+{
+    if (!isVisible())
+        return;
+
+    const nex::Region r = screenRegion();
+    if (snap.empty()) {
+        cs.rect_fill(r, kBg);
+        return;
+    }
+
+    nex::Color bg = kCellBg;
+    nex::Color fg = kCellFg;
+    if (snap.fast()) {
+        bg = kChangedBg;
+        fg = kChangedFg;
+    } else if (snap.selected()) {
+        bg = kSelect;
+        fg = kChangedFg;
+    }
+    cs.text_in_region(r, txt, kFont, fg, nex::HAlign::Center, nex::VAlign::Center, bg, nex::BG::Color);
+}
+
+bool MonitorView::Cell::onTouchXY(const nex::msg::evTouchXY& e) noexcept
+{
+    (void)e;
+    return !snap.empty();
+}
+
+void MonitorView::Head::setText(const char* const src) noexcept
+{
+    char next[sizeof(text)]{};
+    copyText(next, sizeof(next), src);
+    if (std::strcmp(text, next) == 0)
+        return;
+    std::memcpy(text, next, sizeof(text));
+    dirty = true;
+}
+
+void MonitorView::Head::draw(const nex::AppCanvas& cs) const
+{
+    if (!isVisible())
+        return;
+    cs.text_in_region(screenRegion(), text, kFont, kText, nex::HAlign::Center, nex::VAlign::Center, kChrome,
+        nex::BG::Color);
 }
 
 void MonitorView::Label::setText(const char* const src) noexcept
@@ -422,200 +664,62 @@ void MonitorView::Label::draw(const nex::AppCanvas& cs) const
     cs.text_in_region(screenRegion(), 4u, text, kFont, fg, align, nex::VAlign::Center, bg, nex::BG::Color);
 }
 
-MonitorView::CellSnap MonitorView::Grid::snapOf(const uint8_t col, const uint8_t row) const noexcept
+bool MonitorView::Label::onTouchXY(const nex::msg::evTouchXY& e) noexcept
 {
-    if (host == nullptr)
-        return CellSnap::vacant();
-
-    Tester* const t = host->_tester;
-    const uint8_t nRows = host->rows();
-    const uint8_t page = (t != nullptr) ? t->page() : 0u;
-    const uint16_t chan = channelOf(page, nRows, col, row);
-    if (chan == 0u)
-        return CellSnap::vacant();
-
-    uint8_t v = 0;
-    bool fast = false;
-    bool sel = false;
-    if (t != nullptr) {
-        v = t->cellValue(col, row);
-        fast = (t->view() == ViewMode::Fast) && t->cellChanged(col, row);
-        sel = t->isSelected(chan);
-    }
-    return CellSnap::make(v, sel, fast);
+    (void)e;
+    return true;
 }
 
-void MonitorView::Grid::resetCache(const uint8_t page, const uint8_t nRows, const ViewMode view) const noexcept
+void MonitorView::Pip::setFill(const nex::Color color) noexcept
 {
-    for (uint8_t row = 0; row < kMaxRows; ++row) {
-        for (uint8_t col = 0; col < kCols; ++col)
-            _cache[row][col] = CellSnap::vacant();
-    }
-    _cachePage = page;
-    _cacheRows = nRows;
-    _cacheView = view;
-}
-
-void MonitorView::Grid::drawHeaders(const nex::AppCanvas& cs) const
-{
-    const nex::Coord cw = layout::cellW();
-    const nex::Region g = screenRegion();
-    cs.text_in_region(nex::Region(g.ul, nex::Rect{layout::kRowHdrW, layout::kColHdrH}), "", kFont, kText,
-        nex::HAlign::Center, nex::VAlign::Center, kChrome, nex::BG::Color);
-    for (uint8_t col = 0; col < kCols; ++col) {
-        std::snprintf(_hdr[col], sizeof(_hdr[col]), "%u", static_cast<unsigned>(col + 1u));
-        const nex::Region hr(
-            nex::Point{static_cast<nex::Coord>(g.ul.x + layout::kRowHdrW + col * cw), g.ul.y},
-            nex::Rect{cw, layout::kColHdrH});
-        cs.text_in_region(hr, _hdr[col], kFont, kText, nex::HAlign::Center, nex::VAlign::Center, kChrome,
-            nex::BG::Color);
-    }
-    drawRowHeaders(cs);
-    _headersOk = true;
-}
-
-void MonitorView::Grid::drawRowHeaders(const nex::AppCanvas& cs) const
-{
-    const nex::Coord ch = layout::cellH();
-    const nex::Region g = screenRegion();
-    const uint8_t nRows = host != nullptr ? host->rows() : 0u;
-    const uint8_t page = (host != nullptr && host->_tester != nullptr) ? host->_tester->page() : 0u;
-    for (uint8_t row = 0; row < nRows; ++row) {
-        const uint16_t chn = channelOf(page, nRows, 0u, row);
-        const nex::Coord y = static_cast<nex::Coord>(g.ul.y + layout::kColHdrH + row * ch);
-        if (chn == 0u) {
-            _rowHdr[row][0] = '\0';
-            cs.rect_fill(nex::Region(nex::Point{g.ul.x, y}, nex::Rect{g.size.w, ch}), kBg);
-            continue;
-        }
-        std::snprintf(_rowHdr[row], sizeof(_rowHdr[row]), "%u", static_cast<unsigned>(chn));
-        const nex::Region hr(nex::Point{g.ul.x, y}, nex::Rect{layout::kRowHdrW, ch});
-        cs.text_in_region(hr, _rowHdr[row], kFont, kText, nex::HAlign::Center, nex::VAlign::Center, kChrome,
-            nex::BG::Color);
-    }
-}
-
-void MonitorView::Grid::drawCell(const nex::AppCanvas& cs, const uint8_t col, const uint8_t row,
-    const CellSnap& snap) const
-{
-    if (snap.empty())
+    if (fill.raw == color.raw)
         return;
-
-    nex::Color bg = kCellBg;
-    nex::Color fg = kCellFg;
-    if (snap.fast()) {
-        bg = kChangedBg;
-        fg = kChangedFg;
-    } else if (snap.selected()) {
-        bg = kSelect;
-        fg = kChangedFg;
-    }
-    std::snprintf(_txt[row][col], sizeof(_txt[row][col]), "%u", static_cast<unsigned>(snap.value));
-    const nex::Region inner = nex::Canvas::innerRegion(cellRegion(col, row), 1u);
-    cs.text_in_region(inner, _txt[row][col], kFont, fg, nex::HAlign::Center, nex::VAlign::Center, bg,
-        nex::BG::Color);
+    fill = color;
+    dirty = true;
 }
 
-void MonitorView::Grid::draw(const nex::AppCanvas& cs) const
+void MonitorView::Pip::draw(const nex::AppCanvas& cs) const
 {
-    if (host == nullptr || !isVisible())
+    if (!isVisible())
         return;
-
-    const uint8_t nRows = host->rows();
-    Tester* const t = host->_tester;
-    const uint8_t page = (t != nullptr) ? t->page() : 0u;
-    const ViewMode view = (t != nullptr) ? t->view() : ViewMode::Current;
-    resetCache(page, nRows, view);
-    const nex::Region g = screenRegion();
-    cs.rect_fill(nex::Region(
-        nex::Point{g.ul.x, static_cast<nex::Coord>(g.ul.y + layout::kColHdrH)},
-        nex::Rect{g.size.w, static_cast<nex::Coord>(g.size.h - layout::kColHdrH)}), kCellGrid);
-    drawHeaders(cs);
-
-    for (uint8_t row = 0; row < nRows; ++row) {
-        for (uint8_t col = 0; col < kCols; ++col) {
-            const CellSnap snap = snapOf(col, row);
-            drawCell(cs, col, row, snap);
-            _cache[row][col] = snap;
-        }
-    }
-}
-
-void MonitorView::Grid::presentDirty() noexcept
-{
-    if (host == nullptr || host->_overlay == nullptr || !isVisible() || host->_overlay->isModal())
+    const nex::Region r = screenRegion();
+    const nex::Coord d = (r.size.w < r.size.h) ? r.size.w : r.size.h;
+    if (d < 6)
         return;
+    const uint16_t rad = 5u;
+    const nex::Point c{
+        static_cast<nex::Coord>(r.ul.x + r.size.w / 2),
+        static_cast<nex::Coord>(r.ul.y + r.size.h / 2),
+    };
+    cs.circle_filled(c, rad, fill);
+}
 
-    const nex::AppCanvas& cs = host->_overlay->app.cs;
-    const uint8_t nRows = host->rows();
-    Tester* const t = host->_tester;
-    const uint8_t page = (t != nullptr) ? t->page() : 0u;
-    const ViewMode view = (t != nullptr) ? t->view() : ViewMode::Current;
+bool MonitorView::Pip::onTouchXY(const nex::msg::evTouchXY& e) noexcept
+{
+    (void)e;
+    return true;
+}
 
-    if (!_headersOk)
-        drawHeaders(cs);
-
-    if (page != _cachePage || nRows != _cacheRows || view != _cacheView) {
-        resetCache(page, nRows, view);
-        drawRowHeaders(cs);
-        _headersOk = true;
-        for (uint8_t row = 0; row < nRows; ++row) {
-            for (uint8_t col = 0; col < kCols; ++col) {
-                const CellSnap snap = snapOf(col, row);
-                if (!snap.empty())
-                    drawCell(cs, col, row, snap);
-                _cache[row][col] = snap;
-            }
-        }
-        (void)host->_overlay->app.pumpUntilIdle();
+void MonitorView::SelFrame::draw(const nex::AppCanvas& cs) const
+{
+    if (!isVisible())
         return;
+    const nex::Region r = screenRegion();
+    cs.rect_fill(r, kChrome);
+    if ((sides & Left) != 0u)
+        cs.rect_fill(nex::Region(r.ul, nex::Rect{2, r.size.h}), kBorder);
+    if ((sides & Right) != 0u) {
+        cs.rect_fill(nex::Region(
+            nex::Point{static_cast<nex::Coord>(r.ul.x + r.size.w - 2), r.ul.y},
+            nex::Rect{2, r.size.h}), kBorder);
     }
-
-    uint8_t drawn = 0;
-    for (uint8_t row = 0; row < nRows && drawn < kDirtyCellsPerTick; ++row) {
-        for (uint8_t col = 0; col < kCols && drawn < kDirtyCellsPerTick; ++col) {
-            const CellSnap snap = snapOf(col, row);
-            if (snap == _cache[row][col])
-                continue;
-            drawCell(cs, col, row, snap);
-            _cache[row][col] = snap;
-            ++drawn;
-        }
+    if ((sides & Bottom) != 0u) {
+        cs.rect_fill(nex::Region(
+            nex::Point{r.ul.x, static_cast<nex::Coord>(r.ul.y + r.size.h - 2)},
+            nex::Rect{r.size.w, 2}), kBorder);
     }
-}
-
-nex::Region MonitorView::Grid::cellRegion(const uint8_t col, const uint8_t row) const noexcept
-{
-    const nex::Region g = screenRegion();
-    const nex::Coord cw = layout::cellW();
-    const nex::Coord ch = layout::cellH();
-    return nex::Region(
-        nex::Point{
-            static_cast<nex::Coord>(g.ul.x + layout::kRowHdrW + static_cast<nex::Coord>(col) * cw),
-            static_cast<nex::Coord>(g.ul.y + layout::kColHdrH + static_cast<nex::Coord>(row) * ch)},
-        nex::Rect{cw, ch});
-}
-
-bool MonitorView::Grid::onTouchXY(const nex::msg::evTouchXY& e) noexcept
-{
-    if (host == nullptr || e.state != nex::TouchState::Press)
-        return false;
-
-    haveHit = false;
-    const uint8_t nRows = host->rows();
-    for (uint8_t row = 0; row < nRows; ++row) {
-        for (uint8_t col = 0; col < kCols; ++col) {
-            if (cellRegion(col, row).contains(e.pos)) {
-                hitCol = col;
-                hitRow = row;
-                haveHit = true;
-                break;
-            }
-        }
-        if (haveHit)
-            break;
-    }
-    return false;
+    if ((sides & Top) != 0u)
+        cs.rect_fill(nex::Region(r.ul, nex::Rect{r.size.w, 2}), kBorder);
 }
 
 } // namespace ui

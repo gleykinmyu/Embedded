@@ -1,6 +1,10 @@
 #pragma once
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+
+#include <optional>
+
+#include "ilockable.hpp"
 
 namespace BIF { // Base Interface
 
@@ -10,7 +14,8 @@ namespace BIF { // Base Interface
 /// - `write`/`read` не обязаны быть блокирующими; частичная запись/чтение допустима.
 /// - `write()==0` при `isOpen()` — backpressure (нет места в TX-буфере), не `getStatus()`.
 /// - `getStatus()` — только ошибки **приёма**; смысл имеет при `isOpen()==true`.
-/// - Закрытый порт (`!isOpen()`) — `write`/`read` возвращают 0; lifecycle вне enum Status.
+/// - `open` / `close` — жизненный цикл порта. Закрытый порт (`!isOpen()`) — `write`/`read` возвращают 0.
+/// - Ошибки приёма живут в `Status`, не в `open`/`close`.
 /// - Link-down / HeartBeat — уровень приложения (Nextion NIS не предоставляет ping).
 
 class IByteStream 
@@ -49,6 +54,12 @@ public:
         DataError,
     };
 
+    /// Включить поток. `baud == 0` — false. Для UART это битрейт, для SPI — тактовая.
+    virtual bool open(uint32_t baud) = 0;
+
+    /// Выключить поток. Повторный вызов допустим.
+    virtual void close() = 0;
+
     /// Порт открыт и готов к обмену (явный open/close драйвера).
     virtual bool isOpen() = 0;
 
@@ -67,5 +78,89 @@ inline const char* cstr(IByteStream::Status s) noexcept {
     default: return "?";
     }
 }
+
+/// Байт уже снят с DR. status — этого байта: OverFlowRX (overrun) важнее DataError (FE, шум, parity).
+using RxCallback = void (*)(void* ctx, uint8_t byte, IByteStream::Status status) noexcept;
+
+/// Следующий байт в пустой DR. nullopt — обработчик гасит TX-прерывание (TXE уровнёвый).
+using TxCallback = std::optional<uint8_t> (*)(void* ctx) noexcept;
+
+/// Аппаратный UART. Колец нет. DR читает и пишет только обработчик прерывания.
+class IHWByteStream : public ILockable
+{
+public:
+    virtual ~IHWByteStream() = default;
+
+    /// USART и вектор. baud == 0 — false. Биты RX/TX прерываний не включает.
+    virtual bool open(uint32_t baud) = 0;
+    /// Снять оба бита прерываний и выключить USART. Колбэки сохраняются.
+    virtual void close() = 0;
+    virtual bool isOpen() const = 0;
+
+    /// ctx — this клиента. nullptr снимает колбэк.
+    void setRxCallback(RxCallback fn, void* ctx) noexcept { _rx.bind(fn, ctx); }
+    void setTxCallback(TxCallback fn, void* ctx) noexcept { _tx.bind(fn, ctx); }
+
+    virtual void irqRxEnable() = 0;  ///< RXNE / RXC
+    virtual void irqRxDisable() = 0;
+    virtual void irqTxEnable() = 0;  ///< TXE / UDRE. Поток включает, когда есть что передать.
+    virtual void irqTxDisable() = 0; ///< Обрыв передачи снаружи (purge). Конец буфера гасит сам обработчик.
+
+    /// true, пока сдвиговый регистр ещё передаёт (TC / TXC).
+    virtual bool isTxBusy() const = 0;
+
+protected:
+    template <typename Fn>
+    struct Slot {
+        Fn volatile fn = nullptr;
+        void* volatile ctx = nullptr;
+
+        void bind(Fn f, void* c) noexcept
+        {
+            if (f == nullptr) {
+                fn = nullptr;
+                ctx = nullptr;
+                return;
+            }
+            ctx = c;
+            fn = f;
+        }
+    };
+
+    struct RxSlot : Slot<RxCallback> {
+        /// DR уже прочитан. Нет колбэка — байт отбрасывается.
+        void invoke(uint8_t byte, IByteStream::Status status) const noexcept
+        {
+            const RxCallback f = this->fn;
+            void* const c = this->ctx;
+            if (f != nullptr)
+                f(c, byte, status);
+        }
+    };
+
+    struct TxSlot : Slot<TxCallback> {
+        /// Нет колбэка — nullopt, обработчик гасит TX-прерывание.
+        [[nodiscard]] std::optional<uint8_t> pull() const noexcept
+        {
+            const TxCallback f = this->fn;
+            void* const c = this->ctx;
+            if (f == nullptr)
+                return std::nullopt;
+            return f(c);
+        }
+    };
+
+    RxSlot _rx{};
+    TxSlot _tx{};
+};
+
+/// UART, который сам держит Break: TX в 0 на breakUs, затем снова периферия
+/// и пауза mabUs при idle. Наследник знает свою TX-ногу.
+/// Вызов из потока, не из прерывания этого UART.
+class IBreakByteStream : public IHWByteStream
+{
+public:
+    virtual void sendBreak(uint32_t breakUs, uint32_t mabUs = 0) = 0;
+};
 
 } // namespace BIF

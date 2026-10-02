@@ -9,7 +9,7 @@ C++17-библиотека для Nextion по UART: очередь команд
 
 class MyApp : public nex::Application {
 public:
-    MyApp(BIF::IHardwareSerial& uart, ClockMsFn ms)
+    MyApp(BIF::IHWByteStream& uart, ClockMsFn ms)
         : Application(uart, {800, 480}, ms)
     {}
 };

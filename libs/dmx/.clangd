@@ -1,0 +1,3 @@
+# Эта библиотека собирается из DMX. Clangd: ../../DMX/compile_commands.json
+CompileFlags:
+  CompilationDatabase: ../../DMX

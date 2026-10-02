@@ -20,8 +20,8 @@ public:
     PHL::Serial<PHL::ID::SERIAL1, 128, 64> serial1;
     PHL::Serial<PHL::ID::SERIAL2, 5000, 128> serial2;
 
-    /** DMX512 / RS485: USART3 PB10 TX / PB11 RX, DE=PB1. Кадр 8N2, буфер ≥ одного кадра. */
-    PHL::Serial<PHL::ID::SERIAL3, 16, 1024> dmx;
+    /** DMX512 / RS485: USART3 PB10 TX / PB11 RX, DE=PB1. Кадр 8N2, без байтового кольца. */
+    PHL::Uart<PHL::ID::SERIAL3> dmx;
     GPIO::Pin dmxDe{GPIO::PortB::pin<1>};
     GPIO::Pin dmxTx{GPIO::PortB::pin<10>};
 
@@ -42,7 +42,7 @@ public:
     /** Пины PD0/PD1 и open(bitrate). */
     bool initCan(uint32_t bitrate = kCanBitrate) noexcept;
 
-    /** USART3 8N2, пины PB10/PB11, DE=PB1 в RX. open() делает Rs485Port. */
+    /** USART3 8N2, пины PB10/PB11, DE=PB1 в RX. open() делает Transceiver. */
     bool initDmxPins() noexcept;
 
 private:
@@ -55,7 +55,7 @@ extern CBoard board;
 /** HAL tick (мс) для `nex::Application` (`ClockMsFn`). */
 uint32_t boardClockMs() noexcept;
 
-/** Busy-wait по DWT CYCCNT (Break/MAB DMX). */
+/** Busy-wait по DWT CYCCNT. */
 void delayUs(uint32_t us) noexcept;
 
 /** Включить/выключить вывод `printf` на serial1 (не блокирует UART при off). */

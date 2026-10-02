@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "esp_eth.h"
 #include "esp_event.h"
@@ -16,13 +17,20 @@ public:
     void request_recover(const char *why);
     void note_http_rx();
     void ip_text(char *buf, size_t len) const;
+    bool set_ip(uint32_t addr);
+    bool set_mask(uint32_t mask);
+    bool set_gw(uint32_t gw);
+    void print() const;
     bool link_up() const { return link_up_; }
     bool has_ip() const { return got_ip_; }
 
 private:
     void pulse_rst();
-    void apply_static_ip();
+    bool apply_static_ip();
+    bool apply_now();
     void send_garp();
+    void load();
+    void save();
     void recover(const char *why);
     void datapath_tick();
     void recover_loop();
@@ -39,6 +47,10 @@ private:
     esp_eth_mac_t *mac_{};
     esp_eth_phy_t *phy_{};
     char ip_[16]{"0.0.0.0"};
+    uint32_t cfg_ip_{};
+    uint32_t cfg_mask_{};
+    uint32_t cfg_gw_{};
+    uint32_t cfg_dns_{};
 
     bool link_up_{};
     volatile bool got_ip_{};

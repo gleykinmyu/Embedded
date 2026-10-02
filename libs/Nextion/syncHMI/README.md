@@ -7,8 +7,9 @@
 | Файл | Назначение |
 |------|------------|
 | `hmi2config.py` | Генератор `nexHmiConfig.hpp` из `.HMI` |
+| `hmi2font.py` | Дописывает таблицу шрифтов в конец `nexHmiConfig.hpp` (структура `Font` — в `nexHmiSync.hpp`) |
 | `nexHmiSync.hpp` | X-макросы, lookup `name()`, макросы для полей виджетов (`HMI_COMP_*`) |
-| `Nextion2Text.py` | Парсер бинарного `.HMI` (Max Zuidberg, MPL-2.0); используется `hmi2config.py` |
+| `Nextion2Text.py` | Парсер бинарного `.HMI` (Max Zuidberg, MPL-2.0); используется `hmi2config.py` и `hmi2font.py` |
 
 Сгенерированный артефакт проекта обычно лежит в **`src/nexHmiConfig.hpp`** (не в этой папке).
 
@@ -48,7 +49,7 @@ python lib/Nextion/syncHMI/hmi2config.py --update `
 
 ## PlatformIO script
 
-`pio_hmi_gen.py` подключается из `Nextion/library.json` (`build.extraScript`, путь относительно корня Nextion) и вызывает `hmi2config.py --update`.
+`pio_hmi_gen.py` подключается из `Nextion/library.json` (`build.extraScript`, путь относительно корня Nextion) и по флагам вызывает `hmi2config.py --update` и `hmi2font.py`.
 
 В проекте достаточно опций (по умолчанию генерация выключена):
 
@@ -56,10 +57,14 @@ python lib/Nextion/syncHMI/hmi2config.py --update `
 custom_hmi_gen  = onchange   ; off | onchange | always  (или 0 | 1 | 2)
 custom_hmi_file = src/MyPanel.HMI
 ; custom_hmi_out = src/UI/nexHmiConfig.hpp
+
+custom_font_gen = onchange   ; шрифты в custom_hmi_out, тот же custom_hmi_file
 ```
 
-| `custom_hmi_gen` | Поведение |
-|------------------|-----------|
+`custom_hmi_gen` вызывает `hmi2config.py`. `custom_font_gen` вызывает `hmi2font.py` и дописывает шрифты в `custom_hmi_out`. Флаги независимы: можно обновлять только шрифты.
+
+| `custom_hmi_gen` / `custom_font_gen` | Поведение |
+|--------------------------------------|-----------|
 | `off` / `0` | пропуск |
 | `onchange` / `1` | если `.HMI` новее выхода (или файла нет) |
 | `always` / `2` | каждый `pio run` |
@@ -75,11 +80,19 @@ custom_hmi_file = src/MyPanel.HMI
 | `--update` | Патч существующего файла по маркерам `GENERATED-HMI-BEGIN/END` |
 | `--stdout` | Вывод в stdout без записи файла |
 
+Шрифты отдельно:
+
+```powershell
+python ../../syncHMI/hmi2font.py -i project.HMI -o src/UI/nexHmiConfig.hpp
+```
+
+Скрипт заменяет только блок `GENERATED-HMI-BEGIN:fonts` в конце `namespace nex::hmi`. Высота глифа — байт `0x07` заголовка ZI. Тип элемента — `nex::hmi::Font` из `nexHmiSync.hpp`.
+
 ## Что генерируется
 
 `nexHmiConfig.hpp` содержит:
 
-1. **`summary`** — модель панели, число страниц.
+1. **`summary`** — модель панели, `kScreenW`/`kScreenH` (поля `w`/`h` объекта страницы), число страниц.
 2. **`pages`** — для каждой страницы:
    - `#define HMI_PAGE_<objname>(X)` — единый список компонентов;
    - `struct Page_<objname>` с `kPageId`, `enum Id : uint8_t`, `kNames[]`.

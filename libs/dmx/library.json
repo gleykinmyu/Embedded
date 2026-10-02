@@ -1,0 +1,11 @@
+{
+  "name": "dmx",
+  "version": "0.1.0",
+  "description": "DMX frame/universe, RS485 wire, Art-Net OpDmx (IUdp, bind Universe)",
+  "dependencies": {
+    "Interfaces": "*"
+  },
+  "build": {
+    "libArchive": false
+  }
+}

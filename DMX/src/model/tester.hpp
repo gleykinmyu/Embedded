@@ -1,39 +1,71 @@
 /**
  * @file tester.hpp
- * @brief Кадр, лог min/max, страница сетки 16×N, режим просмотра.
+ * @brief Кадр, страница сетки 10×4, режим просмотра.
  */
 #pragma once
 
 #include "UI/cellMap.hpp"
 #include "UI/layout.hpp"
-#include "idmx.hpp"
-#include "rs485.hpp"
+#include "wire.hpp"
 
 #include <cstdio>
-#include <cstring>
 
 namespace ui {
 
-inline const char* statusText(BIF::dmx::Status s) noexcept
+enum class LinkUi : uint8_t { Idle, Live, Error };
+
+struct LinkSnap {
+    LinkUi state = LinkUi::Idle;
+    bool pipOn = false;
+};
+
+inline constexpr uint32_t kLinkHoldMs = 1000u;
+inline constexpr uint32_t kLinkPipMs = 500u;
+
+[[nodiscard]] inline const char* linkCaptionUtf8(const LinkUi s) noexcept
 {
     switch (s) {
-    case BIF::dmx::Status::OK: return "OK";
-    case BIF::dmx::Status::OverFlowRX: return "OverFlowRX";
-    case BIF::dmx::Status::DataError: return "DataError";
-    default: return "?";
+    case LinkUi::Live:
+        return "DMX";
+    case LinkUi::Error:
+        return "Ошибка";
+    default:
+        return "Нет сигнала";
     }
 }
 
 class Tester {
 public:
-    explicit Tester(dmx::Rs485Port& port) noexcept
+    explicit Tester(dmx::wire::Transceiver& port) noexcept
         : _port(port)
     {
-        resetLog();
+        _port.bind(&_live);
     }
 
-    [[nodiscard]] dmx::Rs485Port& port() noexcept { return _port; }
-    [[nodiscard]] const BIF::dmx::Frame& live() const noexcept { return _live; }
+    [[nodiscard]] dmx::wire::Transceiver& port() noexcept { return _port; }
+    [[nodiscard]] const dmx::Frame& live() const noexcept { return _live; }
+    void pollLink(uint32_t nowMs) noexcept
+    {
+        _linkNowMs = nowMs;
+        const uint32_t n = _port.frameCount();
+        if (n != _framesSeen) {
+            _framesSeen = n;
+            _lastFrameMs = nowMs;
+            if (n != 0u)
+                _hadFrame = true;
+        }
+    }
+
+    [[nodiscard]] LinkSnap linkSnap() const noexcept
+    {
+        const dmx::Status st = _port.getStatus();
+        if (st == dmx::Status::OverFlowRX || st == dmx::Status::DataError)
+            return LinkSnap{LinkUi::Error, false};
+        const bool live = _hadFrame && ((_linkNowMs - _lastFrameMs) < kLinkHoldMs);
+        if (!live)
+            return LinkSnap{LinkUi::Idle, false};
+        return LinkSnap{LinkUi::Live, ((_linkNowMs / kLinkPipMs) & 1u) != 0u};
+    }
 
     void setRows(uint8_t rows) noexcept
     {
@@ -53,54 +85,91 @@ public:
             _page = page;
     }
 
+    void stepPage(int8_t delta) noexcept
+    {
+        const int16_t n = static_cast<int16_t>(pageCount(_rows));
+        if (n <= 0)
+            return;
+        int16_t next = static_cast<int16_t>(static_cast<int16_t>(_page) + delta) % n;
+        if (next < 0)
+            next = static_cast<int16_t>(next + n);
+        _page = static_cast<uint8_t>(next);
+    }
+
     [[nodiscard]] ViewMode view() const noexcept { return _view; }
     void setView(ViewMode v) noexcept { _view = v; }
 
-    [[nodiscard]] bool logging() const noexcept { return _logging; }
-
-    void startLog() noexcept
+    [[nodiscard]] ValueScale scale() const noexcept { return _scale; }
+    void setScale(ValueScale s) noexcept { _scale = s; }
+    void toggleScale() noexcept
     {
-        resetLog();
-        _logging = true;
+        _scale = (_scale == ValueScale::Dmx) ? ValueScale::Percent : ValueScale::Dmx;
     }
 
-    void stopLog() noexcept { _logging = false; }
-
-    void toggleLog() noexcept
+    [[nodiscard]] YBand yBand() const noexcept { return _yBand; }
+    void stepYBand(int8_t delta) noexcept
     {
-        if (_logging)
-            stopLog();
+        const int16_t n = static_cast<int16_t>(kYBandN);
+        int16_t next = (static_cast<int16_t>(_yBand) + delta) % n;
+        if (next < 0)
+            next = static_cast<int16_t>(next + n);
+        _yBand = static_cast<YBand>(next);
+    }
+    [[nodiscard]] uint8_t yLo() const noexcept { return yBandLo(_yBand); }
+    [[nodiscard]] uint8_t yHi() const noexcept { return yBandHi(_yBand); }
+
+    [[nodiscard]] uint8_t displayValue(uint8_t raw) const noexcept
+    {
+        return (_scale == ValueScale::Percent) ? toPercent(raw) : raw;
+    }
+
+    void formatValue(uint8_t raw, char* dst, std::size_t cap) const noexcept
+    {
+        if (dst == nullptr || cap == 0u)
+            return;
+        std::snprintf(dst, cap, "%u", static_cast<unsigned>(displayValue(raw)));
+    }
+
+    void formatYBand(char* dst, std::size_t cap) const noexcept
+    {
+        if (dst == nullptr || cap == 0u)
+            return;
+        const unsigned lo = displayValue(yLo());
+        const unsigned hi = displayValue(yHi());
+        if (_scale == ValueScale::Percent)
+            std::snprintf(dst, cap, "%u-%u%%", lo, hi);
         else
-            startLog();
+            std::snprintf(dst, cap, "%u-%u", lo, hi);
     }
 
     [[nodiscard]] uint8_t cellValue(uint8_t col, uint8_t row) const noexcept
     {
         const uint16_t ch = channelOf(_page, _rows, col, row);
-        if (ch == 0u)
-            return 0;
-        switch (_view) {
-        case ViewMode::Min:
-            return (_max[ch - 1u] == 0u) ? 0u : _min[ch - 1u];
-        case ViewMode::Max:
-            return _max[ch - 1u];
-        default:
-            return _live.get(ch);
-        }
+        return (ch == 0u) ? 0u : _live.get(ch);
     }
 
-    [[nodiscard]] bool cellChanged(uint8_t col, uint8_t row) const noexcept
+    [[nodiscard]] uint8_t traceSpanS() const noexcept { return _spanS; }
+    [[nodiscard]] uint32_t tracePeriodMs() const noexcept
     {
-        const uint16_t ch = channelOf(_page, _rows, col, row);
-        return ch != 0u && _changed[ch - 1u] != 0u;
+        const uint16_t div = (kTraceLen > 1u) ? static_cast<uint16_t>(kTraceLen - 1u) : 1u;
+        return (static_cast<uint32_t>(_spanS) * 1000u) / div;
     }
 
-    void setChannel(uint16_t ch, uint8_t v) noexcept { _live.set(ch, v); }
-
-    void setSelectedValues(uint8_t v) noexcept
+    void stepTraceSpan(int8_t delta) noexcept
     {
-        for (uint8_t i = 0; i < _selN; ++i)
-            _live.set(_sel[i], v);
+        const int16_t step = kTraceSpanStepS;
+        const int16_t lo = kTraceSpanMinS;
+        const int16_t hi = kTraceSpanMaxS;
+        const int16_t n = static_cast<int16_t>(((hi - lo) / step) + 1);
+        int16_t i = static_cast<int16_t>((static_cast<int16_t>(_spanS) - lo) / step);
+        i = (i + delta) % n;
+        if (i < 0)
+            i = static_cast<int16_t>(i + n);
+        const uint8_t next = static_cast<uint8_t>(lo + i * step);
+        if (next == _spanS)
+            return;
+        _spanS = next;
+        clearTrace();
     }
 
     [[nodiscard]] uint16_t selected() const noexcept { return (_selN == 0u) ? 0u : _sel[_selN - 1u]; }
@@ -122,7 +191,7 @@ public:
 
     SelectResult toggleSelect(uint16_t ch) noexcept
     {
-        if (ch < 1u || ch > BIF::dmx::kMaxChannels)
+        if (ch < 1u || ch > dmx::kMaxChannels)
             return SelectResult::Invalid;
         for (uint8_t i = 0; i < _selN; ++i) {
             if (_sel[i] != ch)
@@ -140,6 +209,14 @@ public:
         return SelectResult::Added;
     }
 
+    void clearSelection() noexcept
+    {
+        if (_selN == 0u)
+            return;
+        _selN = 0;
+        clearTrace();
+    }
+
     void formatSelection(char* dst, std::size_t cap) const noexcept
     {
         if (dst == nullptr || cap == 0u)
@@ -150,16 +227,31 @@ public:
             return;
         }
         if (_selN == 1u) {
-            std::snprintf(dst, cap, "ch %u = %u", static_cast<unsigned>(_sel[0]),
-                static_cast<unsigned>(_live.get(_sel[0])));
+            if (_scale == ValueScale::Percent) {
+                std::snprintf(dst, cap, "ch %u = %u%%", static_cast<unsigned>(_sel[0]),
+                    static_cast<unsigned>(displayValue(_live.get(_sel[0]))));
+            } else {
+                std::snprintf(dst, cap, "ch %u = %u", static_cast<unsigned>(_sel[0]),
+                    static_cast<unsigned>(_live.get(_sel[0])));
+            }
             return;
         }
-        int n = std::snprintf(dst, cap, "%u:", static_cast<unsigned>(_selN));
-        if (n < 0 || static_cast<std::size_t>(n) >= cap)
+        uint16_t lo = _sel[0];
+        uint16_t hi = _sel[0];
+        for (uint8_t i = 1u; i < _selN; ++i) {
+            if (_sel[i] < lo)
+                lo = _sel[i];
+            if (_sel[i] > hi)
+                hi = _sel[i];
+        }
+        if (static_cast<uint16_t>(hi - lo + 1u) == _selN) {
+            std::snprintf(dst, cap, "ch %u-%u", static_cast<unsigned>(lo), static_cast<unsigned>(hi));
             return;
+        }
+        int n = 0;
         for (uint8_t i = 0; i < _selN; ++i) {
             const int add = std::snprintf(dst + n, cap - static_cast<std::size_t>(n), "%s%u",
-                (i == 0u) ? " " : ",", static_cast<unsigned>(_sel[i]));
+                (i == 0u) ? "" : ",", static_cast<unsigned>(_sel[i]));
             if (add < 0)
                 return;
             n += add;
@@ -168,55 +260,35 @@ public:
         }
     }
 
-    void blackout() noexcept { _live.fill(0); }
-    void full() noexcept { _live.fill(255); }
-
-    void poll() noexcept { _port.poll(); }
-
-    void tick() noexcept
-    {
-        std::memset(_changed, 0, sizeof(_changed));
-
-        if (_port.role() != dmx::Role::Receive)
-            return;
-
-        BIF::dmx::Frame next{};
-        if (!_port.recv(next))
-            return;
-
-        for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            if (next.channels[i] != _live.channels[i])
-                _changed[i] = 1;
-        }
-        _live = next;
-
-        if (!_logging)
-            return;
-
-        for (uint16_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            const uint8_t v = _live.channels[i];
-            if (v == 0u)
-                continue;
-            if (v < _min[i])
-                _min[i] = v;
-            if (v > _max[i])
-                _max[i] = v;
-        }
-    }
-
-    bool sendLive() noexcept { return _port.send(_live); }
-
-    void sampleTrace() noexcept
+    /// Точка раз в tracePeriodMs(). 200 точек закрывают выбранные секунды.
+    void sampleTrace(uint32_t nowMs) noexcept
     {
         if (_selN == 0u)
             return;
-        if (_traceN >= kTraceLen) {
-            _traceN = 0;
-            ++_traceGen;
+        const uint32_t period = tracePeriodMs();
+        if (period == 0u)
+            return;
+        if (_traceN == 0u) {
+            storeSample();
+            _traceMs = nowMs;
+            return;
         }
-        for (uint8_t i = 0; i < kMaxSelect; ++i)
-            _trace[i][_traceN] = (i < _selN) ? _live.get(_sel[i]) : 0;
-        ++_traceN;
+        const uint32_t elapsed = nowMs - _traceMs;
+        if (elapsed < period)
+            return;
+        const uint32_t steps = elapsed / period;
+        if (steps >= kTraceLen) {
+            _traceMs = nowMs;
+            return;
+        }
+        for (uint32_t i = 0; i < steps; ++i) {
+            if (_traceN >= kTraceLen) {
+                _traceN = 0;
+                ++_traceGen;
+            }
+            storeSample();
+            _traceMs += period;
+        }
     }
 
     [[nodiscard]] uint8_t traceCount() const noexcept { return _selN; }
@@ -236,20 +308,16 @@ public:
     }
 
 private:
-    void resetLog() noexcept
+    void storeSample() noexcept
     {
-        for (std::size_t i = 0; i < BIF::dmx::kMaxChannels; ++i) {
-            _min[i] = 255;
-            _max[i] = 0;
-        }
-        std::memset(_changed, 0, sizeof(_changed));
+        for (uint8_t i = 0; i < kMaxSelect; ++i)
+            _trace[i][_traceN] = (i < _selN) ? _live.get(_sel[i]) : 0;
+        ++_traceN;
     }
 
-    dmx::Rs485Port& _port;
-    BIF::dmx::Frame _live{};
-    uint8_t _min[BIF::dmx::kMaxChannels]{};
-    uint8_t _max[BIF::dmx::kMaxChannels]{};
-    uint8_t _changed[BIF::dmx::kMaxChannels]{};
+    dmx::wire::Transceiver& _port;
+    dmx::Frame _live{};
+    uint32_t _traceMs = 0;
     uint16_t _sel[kMaxSelect]{1};
     uint8_t _selN = 1;
     uint8_t _trace[kMaxSelect][kTraceLen]{};
@@ -258,7 +326,13 @@ private:
     uint8_t _rows = layout::rowsFit();
     uint8_t _page = 0;
     ViewMode _view = ViewMode::Current;
-    bool _logging = false;
+    ValueScale _scale = ValueScale::Dmx;
+    YBand _yBand = YBand::Full;
+    uint8_t _spanS = 20;
+    uint32_t _framesSeen = 0;
+    uint32_t _lastFrameMs = 0;
+    uint32_t _linkNowMs = 0;
+    bool _hadFrame = false;
 };
 
 } // namespace ui

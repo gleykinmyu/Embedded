@@ -1,69 +1,52 @@
 #pragma once
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+
+#include <optional>
+
 #include "ibyte_stream.hpp"
-#include "ringbuffer.hpp"
 #include "ilockable.hpp"
+#include "ringbuffer.hpp"
 
 namespace BIF {
 
 // =================================================================
-// АППАРАТНЫЙ UART (IHardwareSerial)
-// IByteStream — публичный контракт; ниже — то, что реализует драйвер платы.
+// IByteStream поверх IHWByteStream.
+// TX: запись в кольцо включает irqTx; tx-колбэк отдаёт следующий байт.
+// nullopt — обработчик гасит TX-прерывание.
+// flush() ждёт пустое кольцо (нужен tx-колбэк) и затем isTxBusy() == false.
 // =================================================================
 
-class IHardwareSerial : public BIF::IByteStream, public BIF::ILockable
-{
-public:
-    //Открытие и закрытие порта.
-    virtual bool open(uint32_t baudrate) = 0;
-    virtual void close() = 0;
-
-    //Обработчики прерываний для передачи и приема байтов.
-    virtual void IRQ_TX_Handler() = 0;
-    virtual void IRQ_RX_Handler() = 0;
-
-protected:
-    /// Включить прерывание «есть место в TX» / TXE (драйвер); вызывается из write() при появлении данных в кольце.
-    virtual void IRQ_TX_Enable() = 0;
-    /// Выключить TX IRQ, когда TX-кольцо пусто (обычно из IRQ_TX_Handler).
-    virtual void IRQ_TX_Disable() = 0;
-
-    /// true, пока периферия ещё ведёт передачу (сдвиговый регистр / !TC — см. RM для USART).
-    virtual bool isHardwareTxBusy() const = 0;
-
-    /// Снять байт с приёмника по правилам RM (часто после чтения статуса в checkErrors).
-    virtual uint8_t readHardware() = 0;
-    virtual void writeHardware(uint8_t data) = 0;
-
-    /// Прочитать флаги ошибок RX (ISR/SR); выставить `_dataError` / `_hwOverrunRx` при необходимости.
-    /// Возвращает true, если байт после readHardware() не следует класть в кольцо.
-    virtual bool checkErrors() = 0;
-};
-
-
-// =================================================================
-// Базовая реализация (ISerial)
-// Инвариант TX: при успешной записи в кольцо write() вызывает IRQ_TX_Enable();
-// IRQ_TX_Handler выгружает байты в периферию и при пустом кольце вызывает IRQ_TX_Disable().
-// flush() ждёт пустого _txBuf (нужен работающий TX IRQ) и затем ждет окончания передачи (isHardwareTxBusy()).
-// =================================================================
 template <size_t TxSize, size_t RxSize>
-class ISerial : public IHardwareSerial
+class ISerial : public IByteStream
 {
-private:
-    MISC::RingBuffer<uint8_t, TxSize> _txBuf;
-    MISC::RingBuffer<uint8_t, RxSize> _rxBuf;
-
-protected:
-    volatile bool _isOpen = false;
-    volatile bool _dataError = false;
-    volatile bool _hwOverrunRx = false;
-
 public:
+    explicit ISerial(IHWByteStream& hw) noexcept
+        : _hw(hw)
+    {
+    }
+
+    bool open(uint32_t baud) override
+    {
+        if (!_hw.open(baud))
+            return false;
+        _hw.irqRxEnable();
+        _isOpen = true;
+        return true;
+    }
+
+    void close() override
+    {
+        if (!_isOpen)
+            return;
+        _hw.irqRxDisable();
+        _hw.irqTxDisable();
+        _hw.close();
+        _isOpen = false;
+    }
+
     bool isOpen() override { return _isOpen; }
 
-    /// Краткий снимок без LockGuard (флаги и счётчики переполнения RX-кольца).
     IByteStream::Status getStatus() override
     {
         if (!_isOpen)
@@ -75,56 +58,55 @@ public:
         return IByteStream::Status::OK;
     }
 
-    /// Кладёт байты в TX-кольцо; при n > 0 включает TX IRQ — драйвер должен опустошать кольцо в IRQ_TX_Handler.
+    /// Кладёт байты в TX-кольцо; при n > 0 включает TX-прерывание.
     size_t write(const uint8_t* data, size_t size) override
     {
         if (!_isOpen || !data || size == 0)
             return 0;
 
-        LockGuard guard(*this);
+        LockGuard guard(_hw);
         size_t n = 0;
-        while (n < size && _txBuf.push(data[n])) {
+        while (n < size && _txBuf.push(data[n]))
             ++n;
-        }
         if (n > 0)
-            IRQ_TX_Enable();
+            _hw.irqTxEnable();
         return n;
     }
 
-    size_t read(uint8_t* buffer, size_t maxSize) override {
-        if (!buffer) return 0;
-        LockGuard guard(*this);
+    size_t read(uint8_t* buffer, size_t maxSize) override
+    {
+        if (!buffer)
+            return 0;
+        LockGuard guard(_hw);
         size_t count = 0;
-        while (count < maxSize && _rxBuf.pop(buffer[count])) {
-            count++;
-        }
+        while (count < maxSize && _rxBuf.pop(buffer[count]))
+            ++count;
         return count;
     }
 
     size_t available() const override { return _rxBuf.size(); }
     size_t availableForWrite() const override { return _txBuf.space(); }
 
-    /// Сбрасывает приёмный буфер; счётчик переполнений rx не трогаем (см. getStatus / clearErrors).
-    void purge() override {
-        LockGuard guard(*this);
+    void purge() override
+    {
+        LockGuard guard(_hw);
         _rxBuf.clearData();
     }
 
-    void purgeOutput() override {
-        LockGuard guard(*this);
+    void purgeOutput() override
+    {
+        LockGuard guard(_hw);
         _txBuf.clearData();
-        IRQ_TX_Disable();
+        _hw.irqTxDisable();
     }
 
-    /// Ожидание пустого _txBuf (требуется, чтобы TX IRQ реально обрабатывался) и завершения передачи (isHardwareTxBusy).
-    /// При !_isOpen — немедленный выход (кольцо при отключённом IRQ могло бы не опустошиться).
     void flush() override
     {
         if (!_isOpen)
             return;
         while (_txBuf.size() > 0) {
         }
-        while (isHardwareTxBusy()) {
+        while (_hw.isTxBusy()) {
         }
     }
 
@@ -136,24 +118,55 @@ public:
         _txBuf.clearOverflows();
     }
 
-    void IRQ_RX_Handler() override
+protected:
+    /// После того как `hw` уже сконструирован (тело конструктора наследника).
+    void bindHw() noexcept
     {
-        const bool discardByte = checkErrors();
-        const uint8_t byte = readHardware();
-        if (!discardByte && !_rxBuf.push(byte)) {
-            _hwOverrunRx = true;
-        }
+        _hw.setRxCallback(&ISerial::rxThunk, this);
+        _hw.setTxCallback(&ISerial::txThunk, this);
     }
 
-    /// Выгрузка TX-кольца в периферию; при пустом кольце отключает TX IRQ.
-    void IRQ_TX_Handler() override
+    void unbindHw() noexcept
     {
-        uint8_t byte;
-        if (_txBuf.pop(byte))
-            writeHardware(byte);
-        else
-            IRQ_TX_Disable();
+        _hw.setRxCallback(nullptr, nullptr);
+        _hw.setTxCallback(nullptr, nullptr);
     }
+
+private:
+    static void rxThunk(void* ctx, uint8_t byte, IByteStream::Status status) noexcept
+    {
+        static_cast<ISerial*>(ctx)->onRx(byte, status);
+    }
+
+    static std::optional<uint8_t> txThunk(void* ctx) noexcept
+    {
+        return static_cast<ISerial*>(ctx)->onTx();
+    }
+
+    void onRx(uint8_t byte, IByteStream::Status status) noexcept
+    {
+        if (status == IByteStream::Status::DataError)
+            _dataError = true;
+        if (status == IByteStream::Status::OverFlowRX)
+            _hwOverrunRx = true;
+        if (!_rxBuf.push(byte))
+            _hwOverrunRx = true;
+    }
+
+    [[nodiscard]] std::optional<uint8_t> onTx() noexcept
+    {
+        uint8_t byte = 0;
+        if (!_txBuf.pop(byte))
+            return std::nullopt;
+        return byte;
+    }
+
+    IHWByteStream& _hw;
+    MISC::RingBuffer<uint8_t, TxSize> _txBuf;
+    MISC::RingBuffer<uint8_t, RxSize> _rxBuf;
+    volatile bool _isOpen = false;
+    volatile bool _dataError = false;
+    volatile bool _hwOverrunRx = false;
 };
 
 } // namespace BIF

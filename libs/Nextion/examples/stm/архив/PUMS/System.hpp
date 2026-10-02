@@ -15,7 +15,7 @@ static const char SysTemplateFileName[] = {(char)0xFB, (char)0xE1, (char)0xE2, (
 
 class BaseConsole : public EasyNex {
 public:
-    explicit BaseConsole(BIF::IHardwareSerial& Console, MillisFn millisFn, DelayFn delayFn)
+    explicit BaseConsole(BIF::IHWByteStream& Console, MillisFn millisFn, DelayFn delayFn)
         : EasyNex(Console, millisFn, delayFn)
     {
     }

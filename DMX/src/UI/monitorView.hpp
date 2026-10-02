@@ -11,7 +11,7 @@ namespace ui {
 class Application;
 class Tester;
 
-/** McUI главной страницы: сетка 16×N, шапка, страницы диапазона, режимы, TX. */
+/** McUI главной страницы: сетка 10×4, шапка, страницы диапазона, режимы, TX. */
 class MonitorView : public nex::ovl::Widget {
 public:
     explicit MonitorView(Application& app) noexcept;
@@ -23,7 +23,7 @@ public:
     void hideFrom(nex::ovl::Overlay& ovl) noexcept;
 
     void refresh() noexcept;
-    void noteFullRedraw() noexcept { _repaintChrome = true; }
+    void noteFullRedraw() noexcept;
 
     [[nodiscard]] bool raiseOnPress() const noexcept override { return false; }
 
@@ -31,7 +31,6 @@ public:
     void drawBackground(const nex::AppCanvas& cs) const override;
     void drawBackgroundRegion(const nex::AppCanvas& cs, nex::Region clip) const override;
     void onClick(nex::ovl::Object* target) noexcept override;
-    void onTouch(const nex::msg::evTouchXY& e) noexcept override;
 
 private:
     struct CellSnap {
@@ -54,58 +53,75 @@ private:
         }
     };
 
-    struct Grid : nex::ovl::Object {
+    struct Cell : nex::ovl::Object {
         MonitorView* host = nullptr;
-        uint8_t hitCol = 0;
-        uint8_t hitRow = 0;
-        bool haveHit = false;
+        uint8_t col = 0;
+        uint8_t row = 0;
+        CellSnap snap = CellSnap::vacant();
+        char txt[4]{};
 
+        [[nodiscard]] bool sync() noexcept;
         void draw(const nex::AppCanvas& cs) const override;
-        void presentDirty() noexcept;
         bool onTouchXY(const nex::msg::evTouchXY& e) noexcept override;
-        [[nodiscard]] nex::Region cellRegion(uint8_t col, uint8_t row) const noexcept;
+    };
 
-    private:
-        mutable CellSnap _cache[kMaxRows][kCols]{};
-        mutable char _txt[kMaxRows][kCols][4]{};
-        mutable char _hdr[kCols][4]{};
-        mutable uint8_t _cachePage = 0xFFu;
-        mutable uint8_t _cacheRows = 0;
-        mutable ViewMode _cacheView = ViewMode::Current;
-        mutable bool _headersOk = false;
+    struct Head : nex::ovl::Object {
+        char text[5]{};
+        bool dirty = true;
 
-        mutable char _rowHdr[kMaxRows][5]{};
-
-        void drawHeaders(const nex::AppCanvas& cs) const;
-        void drawRowHeaders(const nex::AppCanvas& cs) const;
-        void drawCell(const nex::AppCanvas& cs, uint8_t col, uint8_t row, const CellSnap& snap) const;
-        [[nodiscard]] CellSnap snapOf(uint8_t col, uint8_t row) const noexcept;
-        void resetCache(uint8_t page, uint8_t nRows, ViewMode view) const noexcept;
+        void setText(const char* src) noexcept;
+        void draw(const nex::AppCanvas& cs) const override;
     };
 
     struct Label : nex::ovl::Object {
         char text[36]{};
-        nex::Color fg{kCellFg};
-        nex::Color bg{kBg};
+        nex::Color fg{kText};
+        nex::Color bg{kChrome};
         nex::HAlign align{nex::HAlign::Left};
         bool dirty = true;
 
         void setText(const char* src) noexcept;
         void setFg(nex::Color color) noexcept;
         void draw(const nex::AppCanvas& cs) const override;
+        bool onTouchXY(const nex::msg::evTouchXY& e) noexcept override;
+    };
+
+    struct Pip : nex::ovl::Object {
+        nex::Color fill{kBorder};
+        bool dirty = true;
+
+        void setFill(nex::Color color) noexcept;
+        void draw(const nex::AppCanvas& cs) const override;
+        bool onTouchXY(const nex::msg::evTouchXY& e) noexcept override;
+    };
+
+    struct SelFrame : nex::ovl::Object {
+        enum Side : uint8_t { Left = 1u, Right = 2u, Bottom = 4u, Top = 8u };
+        uint8_t sides = static_cast<uint8_t>(Left | Right | Bottom);
+
+        void draw(const nex::AppCanvas& cs) const override;
     };
 
     void applyOemCaptions() noexcept;
     void addChrome() noexcept;
     void layoutChrome() noexcept;
+    void layoutGrid() noexcept;
     void syncChrome() noexcept;
-    void present(nex::ovl::Object& obj) noexcept;
+    void syncHeaders() noexcept;
+    bool present(nex::ovl::Object& obj) noexcept;
+    bool enqueueDraw(nex::ovl::Object& obj) noexcept;
+    [[nodiscard]] bool isGridCell(const nex::ovl::Object& obj) const noexcept;
     void presentDirtyLabels() noexcept;
+    void presentDirtyCells() noexcept;
     void presentButtons() noexcept;
-    void presentRadio(const RadioGroup::Paint& p) noexcept;
-    void presentSelectedLabel() noexcept;
-    void bindRadioGroups() noexcept;
-    void onGridClick() noexcept;
+    void styleClear(bool lit) noexcept;
+    void syncViewLabel() noexcept;
+    void syncScaleLabel() noexcept;
+    void applyScale() noexcept;
+    void onCellClick(Cell& cell) noexcept;
+    void applyPage(int8_t delta) noexcept;
+    void syncPageLabel() noexcept;
+    [[nodiscard]] CellSnap snapOf(uint8_t col, uint8_t row) const noexcept;
 
     [[nodiscard]] uint8_t rows() const noexcept { return layout::rowsFit(); }
     [[nodiscard]] uint8_t pages() const noexcept { return pageCount(rows()); }
@@ -114,26 +130,32 @@ private:
     Tester* _tester = nullptr;
     nex::ovl::Overlay* _overlay = nullptr;
 
-    Grid _grid{};
-    nex::ovl::Button _dir;
+    Cell _cells[kMaxRows][kCols]{};
+    Head _colH[kCols]{};
+    Head _rowH[kMaxRows]{};
     nex::ovl::Button _graph;
-    nex::ovl::Button _pageBtn[kMaxPages];
-    char _pageLabel[kMaxPages][12]{};
-    nex::ovl::Button _viewBtn[5];
-    RadioGroup _pages{};
-    RadioGroup _views{};
-    nex::ovl::Button _zero;
-    nex::ovl::Button _full;
-    nex::ovl::Button _blk;
+    nex::ovl::Button _clear;
+    nex::ovl::Button _pagePrev;
+    nex::ovl::Button _pageNext;
+    Label _pageRange{};
+    char _pageLabel[16]{};
+    nex::ovl::Button _view;
+    nex::ovl::Button _scale;
+    SelFrame _pageBox{};
+    SelFrame _selBox{};
     Label _link{};
-    Label _cycle{};
+    Pip _pip{};
     Label _chVal{};
     bool _repaintChrome = false;
+    bool _forceCells = false;
+    bool _clearLit = false;
+    ViewMode _viewShown = ViewMode::Current;
+    ValueScale _scaleShown = ValueScale::Dmx;
+    uint8_t _hdrPage = 0xFFu;
     bool _oemReady = false;
-    char _oemCurrent[16]{};
     char _oemFast[16]{};
-    char _oemLog[12]{};
     char _oemGraph[12]{};
+    char _oemClear[12]{};
 };
 
 } // namespace ui

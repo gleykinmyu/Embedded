@@ -8,13 +8,16 @@ namespace ui {
 
 void Application::boot() noexcept
 {
-    switchPage(monitor);
-    showMonitor();
+    _link.purge();
+    _link.clearErrors();
+    restartScreen();
 }
 
 void Application::showMonitor() noexcept
 {
     hideGraph();
+    if (view.isVisible())
+        return;
     view.showOn(overlay);
 }
 
@@ -36,6 +39,8 @@ void Application::hideGraph() noexcept
 
 void Application::refreshUi() noexcept
 {
+    if (!_linkSettled)
+        return;
     if (_fullRedraw) {
         _fullRedraw = false;
         overlay.redrawShownWidgets();
@@ -64,43 +69,29 @@ void Application::alert(const char* const utf8) noexcept
 
 void Application::onPageChange(const nex::msg::evPage& e) noexcept
 {
+    NEX_DBG("Nextion 0x66 evPage page=%u\n", static_cast<unsigned>(e.page));
     AppUI::onPageChange(e);
-    if (!_fastBaud) {
-        _wantFastBaud = true;
-        return;
-    }
-    if (e.page == nex::hmi::Page_monitor::kPageId)
-        overlay.redrawShownWidgets();
+    if (!view.isVisible() && !graph.isVisible())
+        showMonitor();
+    overlay.redrawShownWidgets();
+    if (view.isVisible())
+        view.noteFullRedraw();
+    touch.sendXY(true);
+    _linkSettled = true;
+}
+
+void Application::onStatus(const nex::msg::Status& status, const nex::Route route) noexcept
+{
+    AppUI::onStatus(status, route);
 }
 
 void Application::applyFastBaudIfNeeded() noexcept
 {
-    if (!_wantFastBaud || _fastBaud)
+    if (_restSent)
         return;
-    _wantFastBaud = false;
-
-    NEX_DBG("Nextion evPage — raise baud %u -> %u\n",
-        static_cast<unsigned>(kLinkBaudBoot), static_cast<unsigned>(kLinkBaudFast));
-    setBaudrate(kLinkBaudFast);
-    if (!pumpUntilIdle())
-        NEX_DBG("Nextion baud command TX timeout\n");
-    _link.flush();
-
-    const uint32_t t0 = boardClockMs();
-    while ((boardClockMs() - t0) < 5u)
-        board.watchdog.kick();
-
-    _link.close();
-    if (!_link.open(kLinkBaudFast)) {
-        NEX_DBG("USART2 open(%u) failed — stay closed\n", static_cast<unsigned>(kLinkBaudFast));
-        return;
-    }
-    _link.purge();
-    _link.clearErrors();
-    _fastBaud = true;
-    NEX_DBG("Nextion link %u\n", static_cast<unsigned>(kLinkBaudFast));
-    if (currentPage() == nex::hmi::Page_monitor::kPageId)
-        overlay.redrawShownWidgets();
+    (void)pumpUntilIdle();
+    _restSent = true;
+    NEX_DBG("Nextion rest sent — wait 0x66 evPage\n");
 }
 
 } // namespace ui

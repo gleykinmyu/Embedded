@@ -15,10 +15,27 @@
 #include "lwip/etharp.h"
 #include "lwip/netif.h"
 #include "lwip/tcpip.h"
+#include "nvs.h"
 
 static const char *TAG = "eth";
 
 #define ETH_TO_IP4(octets) ESP_IP4TOADDR(octets)
+
+namespace {
+
+constexpr char kNvsNs[] = "eth";
+constexpr char kKeyIp[] = "ip";
+constexpr char kKeyMask[] = "mask";
+constexpr char kKeyGw[] = "gw";
+constexpr char kKeyDns[] = "dns";
+
+void fmt_ip4(char *buf, size_t len, uint32_t addr) {
+    esp_ip4_addr_t a{};
+    a.addr = addr;
+    snprintf(buf, len, IPSTR, IP2STR(&a));
+}
+
+} // namespace
 
 void EthW5500::pulse_rst() {
     gpio_set_level(static_cast<gpio_num_t>(PIN_ETH_RST), 0);
@@ -27,18 +44,119 @@ void EthW5500::pulse_rst() {
     vTaskDelay(pdMS_TO_TICKS(10));
 }
 
-void EthW5500::apply_static_ip() {
-    ESP_ERROR_CHECK(esp_netif_dhcpc_stop(netif_));
+bool EthW5500::apply_static_ip() {
+    if (netif_ == nullptr) {
+        return false;
+    }
+    (void)esp_netif_dhcpc_stop(netif_);
     esp_netif_ip_info_t ip_info = {};
-    ip_info.ip.addr = ETH_TO_IP4(ETH_IP4_ADDR);
-    ip_info.gw.addr = ETH_TO_IP4(ETH_GW4_ADDR);
-    ip_info.netmask.addr = ETH_TO_IP4(ETH_MASK_ADDR);
-    ESP_ERROR_CHECK(esp_netif_set_ip_info(netif_, &ip_info));
+    ip_info.ip.addr = cfg_ip_;
+    ip_info.gw.addr = cfg_gw_;
+    ip_info.netmask.addr = cfg_mask_;
+    if (esp_netif_set_ip_info(netif_, &ip_info) != ESP_OK) {
+        return false;
+    }
 
     esp_netif_dns_info_t dns = {};
     dns.ip.type = ESP_IPADDR_TYPE_V4;
-    dns.ip.u_addr.ip4.addr = ETH_TO_IP4(ETH_DNS4_ADDR);
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(netif_, ESP_NETIF_DNS_MAIN, &dns));
+    dns.ip.u_addr.ip4.addr = cfg_dns_;
+    (void)esp_netif_set_dns_info(netif_, ESP_NETIF_DNS_MAIN, &dns);
+    fmt_ip4(ip_, sizeof(ip_), cfg_ip_);
+    return true;
+}
+
+bool EthW5500::apply_now() {
+    if (http_) {
+        http_->stop();
+    }
+    if (!apply_static_ip()) {
+        return false;
+    }
+    if (link_up_) {
+        got_ip_ = true;
+    }
+    send_garp();
+    if (http_ && link_up_) {
+        http_->start();
+    }
+    return true;
+}
+
+void EthW5500::load() {
+    nvs_handle_t h{};
+    if (nvs_open(kNvsNs, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    uint32_t v = 0;
+    if (nvs_get_u32(h, kKeyIp, &v) == ESP_OK && v != 0 && v != 0xFFFFFFFFu) {
+        cfg_ip_ = v;
+    }
+    if (nvs_get_u32(h, kKeyMask, &v) == ESP_OK && v != 0) {
+        cfg_mask_ = v;
+    }
+    if (nvs_get_u32(h, kKeyGw, &v) == ESP_OK) {
+        cfg_gw_ = v;
+    }
+    if (nvs_get_u32(h, kKeyDns, &v) == ESP_OK) {
+        cfg_dns_ = v;
+    }
+    nvs_close(h);
+}
+
+void EthW5500::save() {
+    nvs_handle_t h{};
+    if (nvs_open(kNvsNs, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    (void)nvs_set_u32(h, kKeyIp, cfg_ip_);
+    (void)nvs_set_u32(h, kKeyMask, cfg_mask_);
+    (void)nvs_set_u32(h, kKeyGw, cfg_gw_);
+    (void)nvs_set_u32(h, kKeyDns, cfg_dns_);
+    (void)nvs_commit(h);
+    nvs_close(h);
+}
+
+bool EthW5500::set_ip(uint32_t addr) {
+    if (addr == 0 || addr == 0xFFFFFFFFu) {
+        return false;
+    }
+    cfg_ip_ = addr;
+    if (!apply_now()) {
+        return false;
+    }
+    save();
+    return true;
+}
+
+bool EthW5500::set_mask(uint32_t mask) {
+    if (mask == 0) {
+        return false;
+    }
+    cfg_mask_ = mask;
+    if (!apply_now()) {
+        return false;
+    }
+    save();
+    return true;
+}
+
+bool EthW5500::set_gw(uint32_t gw) {
+    cfg_gw_ = gw;
+    if (!apply_now()) {
+        return false;
+    }
+    save();
+    return true;
+}
+
+void EthW5500::print() const {
+    char ip[16] = {};
+    char mask[16] = {};
+    char gw[16] = {};
+    fmt_ip4(ip, sizeof(ip), cfg_ip_);
+    fmt_ip4(mask, sizeof(mask), cfg_mask_);
+    fmt_ip4(gw, sizeof(gw), cfg_gw_);
+    printf("ip=%s mask=%s gw=%s live=%s\n", ip, mask, gw, ip_);
 }
 
 void EthW5500::send_garp() {
@@ -190,6 +308,12 @@ void EthW5500::got_ip_event(void *arg, esp_event_base_t, int32_t, void *data) {
 
 void EthW5500::begin(HttpUi *http) {
     http_ = http;
+    cfg_ip_ = ETH_TO_IP4(ETH_IP4_ADDR);
+    cfg_mask_ = ETH_TO_IP4(ETH_MASK_ADDR);
+    cfg_gw_ = ETH_TO_IP4(ETH_GW4_ADDR);
+    cfg_dns_ = ETH_TO_IP4(ETH_DNS4_ADDR);
+    load();
+
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
@@ -199,7 +323,10 @@ void EthW5500::begin(HttpUi *http) {
     netif_cfg.stack = ESP_NETIF_NETSTACK_DEFAULT_ETH;
     netif_ = esp_netif_new(&netif_cfg);
     ESP_ERROR_CHECK(esp_netif_set_hostname(netif_, "esp32-relay"));
-    apply_static_ip();
+    if (!apply_static_ip()) {
+        ESP_LOGE(TAG, "static IP failed");
+        return;
+    }
 
     spi_bus_config_t buscfg = {};
     buscfg.mosi_io_num = PIN_ETH_MOSI;
