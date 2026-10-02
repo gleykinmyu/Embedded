@@ -45,6 +45,7 @@
 ## Пресеты (решения)
 
 - **D1.** Слот пресета в пуле: `{ seg_id, Selection, MotionTarget }`. Несколько seg → несколько слотов на один header.
+- **D2.** Recall: Select (holder), затем SetTarget по битам. Без Select → Busy / Target не слать. **Как задумано / как есть.**
 
 ### 1. Номер пульта
 
