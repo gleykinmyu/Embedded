@@ -49,6 +49,10 @@
 - **D3.** Overlap оси в слотах одного пресета — **проверка при record и при load** (reject / isValid false). Отдельной «починки» нет.
 - **D4.** Partial = **C2** (best-effort / Atomic-откат на фазе Select). Уставки — только после полного успеха Select-фазы (D2).
 
+## Протокол / multi-console (решения)
+
+- **E1.** `acceptSelect` / SelectLimit — **оставить**. Политика Block при >1 пульта — позже.
+
 ### 1. Номер пульта
 
 `begin(console_id)` есть. Id после включения неоткуда взять, повторного `begin` после IdConflict с новым номером нет.
