@@ -49,7 +49,6 @@ struct MechConfig {
     AxisKind kind = AxisKind::Linear;
     REG::BitMask<MechFlag> flag{};
     BrakePolicy brake = BrakePolicy::Hold;
-    /* далее int32 с offset 4 — без padding. */
 
     /** counts * scale_num / scale_den → единицы kind; den == 0 запрещён. */
     int32_t scale_num = 1;
