@@ -42,7 +42,7 @@ enum class LoadUnit : uint8_t {
 enum class MechFlag : uint8_t {
     Invert = 1u << 0,       /**< Знак encoder / «вверх» инвертирован. */
     Continuous = 1u << 1,   /**< Rotary без soft/hard max (оборот). */
-    FixedSpeed = 1u << 2,   /**< Только on/off; скорость = vfixed. */
+    FixedSpeed = 1u << 2,   /**< Только on/off; скорость = vmax. */
     Mute = 1u << 3,         /**< В inventory, вне спектакля / не в UI. */
     SoftLimits = 1u << 4,   /**< Учитывать soft_min/max. */
     HardLimits = 1u << 5,   /**< Учитывать hard_min/max (концевики/паспорт). */
@@ -70,10 +70,10 @@ struct MechConfig {
     int32_t hard_min = 0;
     int32_t hard_max = 0;
 
-    uint16_t vmax = 0;   /**< Макс. скорость (ед./s). */
-    uint16_t vfixed = 0; /**< Скорость при FixedSpeed. */
-    uint16_t accel = 0;  /**< Дефолт разгона (ед./s²). */
-    uint16_t decel = 0;  /**< Дефолт торможения (ед./s²). */
+    uint16_t vmax = 0;  /**< Макс. / единственная (FixedSpeed) скорость (ед./s). */
+    uint16_t accel = 0; /**< Дефолт разгона (ед./s²). */
+    uint16_t decel = 0; /**< Дефолт торможения (ед./s²). */
+    uint16_t reserved_vel = 0;
 
     LoadUnit load_unit = LoadUnit::Kilogram;
     uint8_t reserved_load[3]{};
