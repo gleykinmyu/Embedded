@@ -9,6 +9,7 @@
 #include "board_pins.h"
 #include "esp_console.h"
 #include "eth_w5500.h"
+#include "http_ota.h"
 #include "http_ui.h"
 #include "lwip/inet.h"
 #include "lwip/ip_addr.h"
@@ -52,6 +53,7 @@ int UartCli::cmd_status(void *ctx, int argc, char **argv) {
     cli->eth_.ip_text(ip, sizeof(ip));
     printf("eth=%s ip=%s http=%s\n", cli->eth_.link_up() ? "up" : "down", ip,
            cli->http_.listening() ? "listen" : "down");
+    HttpOta::print_status();
     cli->relays_.print();
     cli->artnet_.print();
     return 0;

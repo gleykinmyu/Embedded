@@ -1,5 +1,6 @@
 #include "artnet_relays.h"
 #include "eth_w5500.h"
+#include "http_ota.h"
 #include "http_ui.h"
 #include "nvs_flash.h"
 #include "relay_board.h"
@@ -12,6 +13,7 @@ extern "C" void app_main(void) {
         nvs = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs);
+    HttpOta::confirm_running();
 
     static RelayBoard relays;
     static EthW5500 eth;

@@ -7,6 +7,7 @@
 #include "board_pins.h"
 #include "eth_w5500.h"
 #include "esp_log.h"
+#include "http_ota.h"
 #include "relay_board.h"
 
 static const char *TAG = "http";
@@ -20,10 +21,14 @@ HttpUi &HttpUi::self(httpd_req_t *req) {
     return *static_cast<HttpUi *>(req->user_ctx);
 }
 
-void HttpUi::add(const char *uri, esp_err_t (*handler)(httpd_req_t *)) {
+void HttpUi::note_rx() {
+    eth_.note_http_rx();
+}
+
+void HttpUi::add(const char *uri, httpd_method_t method, esp_err_t (*handler)(httpd_req_t *)) {
     httpd_uri_t u = {};
     u.uri = uri;
-    u.method = HTTP_GET;
+    u.method = method;
     u.handler = handler;
     u.user_ctx = this;
     httpd_register_uri_handler(srv_, &u);
@@ -137,6 +142,16 @@ esp_err_t HttpUi::chase_stop_get(httpd_req_t *req) {
     return ui.on_chase_stop(req);
 }
 
+esp_err_t HttpUi::ota_get(httpd_req_t *req) {
+    self(req).note_rx();
+    return HttpOta::get_status(req);
+}
+
+esp_err_t HttpUi::ota_post(httpd_req_t *req) {
+    self(req).note_rx();
+    return HttpOta::post_update(req);
+}
+
 void HttpUi::stop() {
     if (!srv_) {
         return;
@@ -151,15 +166,19 @@ void HttpUi::start() {
     }
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 8;
+    cfg.max_uri_handlers = 10;
+    cfg.stack_size = 8192;
+    cfg.recv_wait_timeout = 30;
     if (httpd_start(&srv_, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd start failed");
         return;
     }
-    add("/", root_get);
-    add("/api/relays", relays_get);
-    add("/api/relay", relay_get);
-    add("/api/chase/start", chase_start_get);
-    add("/api/chase/stop", chase_stop_get);
+    add("/", HTTP_GET, root_get);
+    add("/api/relays", HTTP_GET, relays_get);
+    add("/api/relay", HTTP_GET, relay_get);
+    add("/api/chase/start", HTTP_GET, chase_start_get);
+    add("/api/chase/stop", HTTP_GET, chase_stop_get);
+    add("/api/ota", HTTP_GET, ota_get);
+    add("/update", HTTP_POST, ota_post);
     ESP_LOGI(TAG, "HTTP listen :80");
 }

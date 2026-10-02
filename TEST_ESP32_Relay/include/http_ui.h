@@ -11,9 +11,10 @@ public:
     void start();
     void stop();
     bool listening() const { return srv_ != nullptr; }
+    void note_rx();
 
 private:
-    void add(const char *uri, esp_err_t (*handler)(httpd_req_t *));
+    void add(const char *uri, httpd_method_t method, esp_err_t (*handler)(httpd_req_t *));
     esp_err_t send_json(httpd_req_t *req);
     esp_err_t on_root(httpd_req_t *req);
     esp_err_t on_relays(httpd_req_t *req);
@@ -27,6 +28,8 @@ private:
     static esp_err_t relay_get(httpd_req_t *req);
     static esp_err_t chase_start_get(httpd_req_t *req);
     static esp_err_t chase_stop_get(httpd_req_t *req);
+    static esp_err_t ota_get(httpd_req_t *req);
+    static esp_err_t ota_post(httpd_req_t *req);
 
     RelayBoard &relays_;
     EthW5500 &eth_;
