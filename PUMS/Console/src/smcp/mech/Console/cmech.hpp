@@ -18,14 +18,17 @@ class IConsole;
 /** IMech на пульте: Select/Block/SetTarget — TX; holder/status — только Telemetry. */
 class CMech : public IMech {
 public:
-    /** Один сегмент: сервер `msg::kServerIdMin`. */
+    /** Один сегмент: сервер `msg::kServerIdMin`, local_id = mech_id. */
     CMech(IConsole& console, uint8_t id) noexcept;
-    /** Регистрация в storage(server_id). Нет банка — RegisterFailed. */
+    /** local_id = mech_id. Регистрация в storage(server_id) по mech_id. */
     CMech(IConsole& console, uint8_t server_id, uint8_t id) noexcept;
+    /** Регистрация в storage(server_id) по @a mech_id. @a local_id — бит группы. */
+    CMech(IConsole& console, uint8_t server_id, uint8_t mech_id, uint8_t local_id) noexcept;
 
     [[nodiscard]] IConsole& console() noexcept { return *_console; }
     [[nodiscard]] const IConsole& console() const noexcept { return *_console; }
     [[nodiscard]] uint8_t serverId() const noexcept { return _server_id; }
+    [[nodiscard]] uint8_t localId() const noexcept { return _local_id; }
 
     /** Select/Deselect этой оси (kHolderNone → Remove). TX всегда. */
     void select(uint8_t console_id) noexcept override;
@@ -42,6 +45,7 @@ public:
 private:
     IConsole* _console;
     uint8_t _server_id = 0;
+    uint8_t _local_id = 0;
 };
 
 /** Банк CMech[N]: ctor регистрирует каждый в owner. */

@@ -24,41 +24,23 @@ class IGroupBank;
 class IGroupConsole;
 
 /**
- * Вид на слот GRUP: заголовок и массив масок.
- * Длина массива — head->count. Индекс вне count — отказ.
- * Копия — указатели; запись остаётся в секции.
+ * Вид на слот GRUP. Копия — указатель; запись остаётся в секции.
  */
 class CGroup {
 public:
     CGroup() = default;
 
-    CGroup(GroupHeader* head, Selection* sel,
-           IGroupBank* bank = nullptr, IGroupConsole* console = nullptr) noexcept;
+    CGroup(Group& rec, IGroupBank& bank, IGroupConsole& console) noexcept;
 
-    template <uint8_t Segments>
-    CGroup(Group<Segments>& rec, IGroupBank& bank, IGroupConsole& console) noexcept
-        : CGroup(&rec.head, rec.sel, &bank, &console)
-    {}
-
-    [[nodiscard]] explicit operator bool() const noexcept;
-
-    [[nodiscard]] GroupHeader* header() noexcept;
-    [[nodiscard]] const GroupHeader* header() const noexcept;
-
-    [[nodiscard]] Selection* at(uint8_t index) noexcept;
-    [[nodiscard]] const Selection* at(uint8_t index) const noexcept;
-
-    [[nodiscard]] bool isEmpty() const noexcept;
-    [[nodiscard]] bool contains(uint8_t index, uint8_t mech_id) const noexcept;
-    [[nodiscard]] Selection merged() const noexcept;
-
-    /** Записать маску. Индекс вне count — false. */
-    bool setAt(uint8_t index, Selection selection) noexcept;
+    [[nodiscard]] explicit operator bool() const noexcept { return _rec != nullptr; }
 
     [[nodiscard]] uint8_t id() const noexcept;
-    [[nodiscard]] REG::BitMask<GroupHeader::Flag> flags() const noexcept;
+    [[nodiscard]] const Selection& mech() const noexcept;
+    [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept;
     [[nodiscard]] const char* name() const noexcept;
 
+    [[nodiscard]] bool isEmpty() const noexcept;
+    [[nodiscard]] bool contains(uint8_t mech_id) const noexcept;
     [[nodiscard]] bool isBlocked() const noexcept;
     /** Ставит Blocked. При @a on: overlap (инфо); если это queued/active — сброс группы. */
     void setBlocked(bool on = true) noexcept;
@@ -79,16 +61,11 @@ public:
     [[nodiscard]] Result recall() noexcept;
 
     /**
-     * Записать маски сегментов 0…Segments-1 из массива.
+     * Записать выделение в слот.
      * Occupied снимается @a confirmed; OverlapsBlocked — нет.
      */
-    template <uint8_t Segments>
-    [[nodiscard]] Result record(const Selection (&selection)[Segments], const char* name = nullptr,
-                                bool confirmed = false) noexcept
-    {
-        static_assert(Segments >= 1u && Segments <= kMaxGroupSegments, "record segments");
-        return recordSegments(selection, Segments, name, confirmed);
-    }
+    [[nodiscard]] Result record(Selection selection, const char* name = nullptr,
+                                bool confirmed = false) noexcept;
     /** Переименовать непустую группу. */
     [[nodiscard]] bool rename(const char* name) noexcept;
     /**
@@ -98,11 +75,7 @@ public:
     [[nodiscard]] bool clear(bool confirmed = false) noexcept;
 
 private:
-    [[nodiscard]] Result recordSegments(const Selection* selection, uint8_t count, const char* name,
-                                        bool confirmed) noexcept;
-
-    GroupHeader* _head = nullptr;
-    Selection* _sel = nullptr;
+    Group* _rec = nullptr;
     IGroupBank* _bank = nullptr;
     IGroupConsole* _console = nullptr;
 };
@@ -116,16 +89,16 @@ public:
     /** Слот GRUP в полёте; нет — kNoQueuedGroup. */
     [[nodiscard]] uint8_t queuedGroup() const noexcept
     {
-        return _queued ? _queued.header()->id : kNoQueuedGroup;
+        return _queued ? _queued.id() : kNoQueuedGroup;
     }
     /** Слот после Ack Select; нет — kNoActiveGroup. */
     [[nodiscard]] uint8_t activeGroup() const noexcept
     {
-        return _active ? _active.header()->id : kNoActiveGroup;
+        return _active ? _active.id() : kNoActiveGroup;
     }
     /** Только active. Queued на кнопку не кладётся. */
     [[nodiscard]] uint8_t shownGroup() const noexcept { return activeGroup(); }
-    /** Сброс queued/active и Select Remove маски группы на сессию её сегмента. */
+    /** Сброс queued/active и Select Remove маски группы. */
     void clearActiveGroup() noexcept;
 
 protected:
@@ -135,15 +108,10 @@ protected:
 
     /** Ack Select после CGroup::recall(); @a id — слот GRUP. */
     virtual void onGroupAck(uint8_t group_id) noexcept { (void)group_id; }
-    /** Сессия / свой узел (session == nullptr): сброс queued+active. */
     void onFault(Session* session, Fault reason) noexcept override;
-    /** Сессия down: сброс queued+active (в т.ч. close(None)). */
     void onLink(Session* session, bool up) noexcept override;
-    /** Idle / Listen / IdConflict / RegisterFailed — сброс queued+active. */
     void onStatus(Status status) noexcept override;
-    /** Queued recall: Select Ack → active + onGroupAck. UI дописывает поверх. */
     void onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept override;
-    /** Сброс queued recall на Select Nack; UI дописывает разбор reply. */
     void onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept override;
 
     void clearQueuedGroup() noexcept
@@ -158,7 +126,6 @@ private:
     /** @a group — вид на запись секции. pkt — кадр, который только что встал в очередь. */
     void setQueuedGroup(CGroup group, ServerSession& session) noexcept;
 
-    /** Вид на запись GRUP. Указатели живут, пока жив слот секции. */
     CGroup _queued{};
     CGroup _active{};
     uint8_t _queuedPkt = 0u;

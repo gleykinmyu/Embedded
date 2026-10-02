@@ -25,8 +25,8 @@ public:
     static constexpr uint32_t kSectorAddr = PHL::W25Q::kSize - PHL::W25Q::kSectorSize;
 
     static_assert(sizeof(sf::Header) + 2u * sizeof(sf::SectionDesc)
-                          + 8u /* SETT: MConsole::kSettingsWireSize */
-                          + smcp::kGroupMaxCount * sizeof(smcp::Group<1>)
+                          + 8u /* SETT: Settings */
+                          + smcp::kGroupMaxCount * sizeof(smcp::Group)
                       <= kSectorSize,
                   "SMCP show must fit in one W25Q sector");
 

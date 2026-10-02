@@ -1,11 +1,11 @@
 /**
  * @file section_pool.hpp
- * @brief SectionPool: пара секций header[NH] + slot[NS] (bump + compact).
+ * @brief IPool / PoolView<Hdr,Slot> + SectionPool<Hdr,Slot,NH,NS>.
  *
- * Header-запись обязана иметь член `pool` типа PoolRef (first/count в пуле).
- * SectionPool не ISection: в каталоге шоуфайла регистрируются две секции.
- * Снаружи только PoolView (at / operator[]); секции heads/slots — детали реализации.
- * После load вызвать syncFreeTop() (или isLayoutOk + sync), перед save — compact().
+ * Вид не знает NH/NS: секции на диске одного формата, ёмкость — у пула в RAM.
+ * Слот — PoolView::at (указатель, иначе nullptr). Длина — resize / clearSlots.
+ * После load — syncFreeTop(); перед save — compact().
+ * IPool::protected — friend PoolView.
  */
 
 #pragma once
@@ -35,50 +35,6 @@ static_assert(sizeof(PoolRef) == 4u);
 static_assert(std::is_standard_layout_v<PoolRef>);
 static_assert(std::is_trivially_copyable_v<PoolRef>);
 
-/**
- * Эфемерный вид: header-запись + её непрерывные слоты в пуле.
- * Не хранить дольше, чем жив payload / до compact/resize.
- * bool — есть header (count==0 допустим: пустая запись).
- */
-template <typename Hdr, typename Slot>
-class PoolView {
-public:
-    PoolView() noexcept = default;
-    PoolView(Hdr* header, Slot* slots, uint16_t count) noexcept
-        : _hdr(header)
-        , _slots(slots)
-        , _count(count)
-    {}
-
-    [[nodiscard]] explicit operator bool() const noexcept { return _hdr != nullptr; }
-
-    [[nodiscard]] Hdr* header() noexcept { return _hdr; }
-    [[nodiscard]] const Hdr* header() const noexcept { return _hdr; }
-
-    [[nodiscard]] uint16_t size() const noexcept { return _count; }
-    [[nodiscard]] bool isEmpty() const noexcept { return _count == 0u; }
-
-    [[nodiscard]] Slot* begin() noexcept { return _slots; }
-    [[nodiscard]] Slot* end() noexcept { return _slots + _count; }
-    [[nodiscard]] const Slot* begin() const noexcept { return _slots; }
-    [[nodiscard]] const Slot* end() const noexcept { return _slots + _count; }
-
-    /** Индекс вне size → слот 0 (как Section::rec / header). Пустой view не звать. */
-    [[nodiscard]] Slot& operator[](uint16_t i) noexcept
-    {
-        return _slots[(i < _count) ? i : 0u];
-    }
-    [[nodiscard]] const Slot& operator[](uint16_t i) const noexcept
-    {
-        return _slots[(i < _count) ? i : 0u];
-    }
-
-private:
-    Hdr* _hdr = nullptr;
-    Slot* _slots = nullptr;
-    uint16_t _count = 0;
-};
-
 namespace detail {
 
 template <typename Hdr, typename = void>
@@ -95,6 +51,208 @@ struct pool_member_is_pool_ref
 
 } // namespace detail
 
+template <typename Hdr, typename Slot>
+class IPool;
+template <typename Hdr, typename Slot>
+class PoolView;
+
+namespace detail {
+
+template <typename Hdr, typename Slot>
+[[nodiscard]] PoolView<Hdr, Slot> view(IPool<Hdr, Slot>& pool, uint16_t i) noexcept;
+
+template <typename Hdr, typename Slot>
+[[nodiscard]] IPool<Hdr, Slot>* pool(const PoolView<Hdr, Slot>& view) noexcept;
+
+} // namespace detail
+
+/**
+ * Пул без ёмкости в типе. Хранилище — SectionPool<…, NH, NS>.
+ */
+template <typename Hdr, typename Slot>
+class IPool {
+public:
+    virtual ~IPool() = default;
+
+    IPool(const IPool&) = delete;
+    IPool& operator=(const IPool&) = delete;
+
+    const uint16_t headerCount;
+    const uint16_t slotCapacity;
+
+    virtual void compact() noexcept = 0;
+    virtual void markEdited() noexcept = 0;
+
+protected:
+    IPool(uint16_t header_count, uint16_t slot_capacity) noexcept
+        : headerCount(header_count)
+        , slotCapacity(slot_capacity)
+    {}
+
+    [[nodiscard]] virtual Hdr* headerAt(uint16_t i) noexcept = 0;
+    [[nodiscard]] virtual Slot* slotBase() noexcept = 0;
+    [[nodiscard]] virtual bool resizeOnce(uint16_t i, uint16_t n) noexcept = 0;
+    virtual void resetSlots(uint16_t i) noexcept = 0;
+
+    friend class PoolView<Hdr, Slot>;
+};
+
+/**
+ * Вид на заголовок и его слоты. Тип не зависит от NH/NS.
+ * at / size / header перед доступом перечитывают first/count (после compact чужого
+ * диапазона вид остаётся живым). resize / clearSlots перепривязывают этот вид.
+ */
+template <typename Hdr, typename Slot>
+class PoolView {
+    using Pool = IPool<Hdr, Slot>;
+    friend PoolView detail::view<Hdr, Slot>(Pool&, uint16_t) noexcept;
+    friend Pool* detail::pool<Hdr, Slot>(const PoolView&) noexcept;
+
+public:
+    PoolView() noexcept = default;
+
+    [[nodiscard]] explicit operator bool() const noexcept { return _pool != nullptr; }
+
+    [[nodiscard]] Hdr* header() noexcept
+    {
+        rebind();
+        return _hdr;
+    }
+    [[nodiscard]] const Hdr* header() const noexcept
+    {
+        rebind();
+        return _hdr;
+    }
+
+    [[nodiscard]] uint16_t size() const noexcept
+    {
+        rebind();
+        return _count;
+    }
+    [[nodiscard]] bool isEmpty() const noexcept { return size() == 0u; }
+
+    [[nodiscard]] Slot* begin() noexcept
+    {
+        rebind();
+        return _slots;
+    }
+    [[nodiscard]] Slot* end() noexcept
+    {
+        rebind();
+        return _slots + _count;
+    }
+    [[nodiscard]] const Slot* begin() const noexcept
+    {
+        rebind();
+        return _slots;
+    }
+    [[nodiscard]] const Slot* end() const noexcept
+    {
+        rebind();
+        return _slots + _count;
+    }
+
+    /** Индекс вне size / пустой вид — nullptr. */
+    [[nodiscard]] Slot* at(uint16_t i) noexcept
+    {
+        rebind();
+        return (i < _count) ? (_slots + i) : nullptr;
+    }
+    [[nodiscard]] const Slot* at(uint16_t i) const noexcept
+    {
+        rebind();
+        return (i < _count) ? (_slots + i) : nullptr;
+    }
+
+    /**
+     * Выставить число слотов. Уменьшение — на месте; рост — bump / перенос;
+     * при нехватке — compact и ещё раз. Этот view после успеха актуален.
+     * @return false если нет пула / места.
+     */
+    [[nodiscard]] bool resize(uint16_t n) noexcept
+    {
+        if (_pool == nullptr) {
+            return false;
+        }
+        if (n > _pool->slotCapacity) {
+            return false;
+        }
+        if (!_pool->resizeOnce(_i, n)) {
+            _pool->compact();
+            if (!_pool->resizeOnce(_i, n)) {
+                return false;
+            }
+        }
+        _pool->markEdited();
+        rebind();
+        return true;
+    }
+
+    /** count=0, first=0; слоты в пуле не двигает (дыра до compact). */
+    void clearSlots() noexcept
+    {
+        if (_pool == nullptr) {
+            return;
+        }
+        _pool->resetSlots(_i);
+        rebind();
+    }
+
+protected:
+    [[nodiscard]] Pool* pool() const noexcept { return _pool; }
+
+    void rebind() const noexcept
+    {
+        if (_pool == nullptr) {
+            _hdr = nullptr;
+            _slots = nullptr;
+            _count = 0u;
+            return;
+        }
+        _hdr = _pool->headerAt(_i);
+        const uint16_t ns = _pool->slotCapacity;
+        const PoolRef& pr = _hdr->pool;
+        if (pr.count == 0u || pr.first >= ns
+            || pr.count > static_cast<uint16_t>(ns - pr.first)) {
+            _slots = nullptr;
+            _count = 0u;
+            return;
+        }
+        _slots = _pool->slotBase() + pr.first;
+        _count = pr.count;
+    }
+
+private:
+    PoolView(Pool& pool, uint16_t i) noexcept
+        : _pool(&pool)
+        , _i((i < pool.headerCount) ? i : 0u)
+    {
+        rebind();
+    }
+
+    Pool* _pool = nullptr;
+    uint16_t _i = 0;
+    mutable Hdr* _hdr = nullptr;
+    mutable Slot* _slots = nullptr;
+    mutable uint16_t _count = 0;
+};
+
+namespace detail {
+
+template <typename Hdr, typename Slot>
+PoolView<Hdr, Slot> view(IPool<Hdr, Slot>& pool, uint16_t i) noexcept
+{
+    return PoolView<Hdr, Slot>(pool, i);
+}
+
+template <typename Hdr, typename Slot>
+IPool<Hdr, Slot>* pool(const PoolView<Hdr, Slot>& view) noexcept
+{
+    return view.pool();
+}
+
+} // namespace detail
+
 /**
  * Пара секций: заголовки + пул слотов фиксированного размера.
  * Аллокация — bump в хвост (free_top_); дыры лечит compact().
@@ -105,7 +263,7 @@ struct pool_member_is_pool_ref
  * @tparam NS ёмкость пула в слотах
  */
 template <typename Hdr, typename Slot, uint16_t NH, uint16_t NS>
-class SectionPool {
+class SectionPool : public IPool<Hdr, Slot> {
     static_assert(NH > 0u, "SectionPool: NH > 0");
     static_assert(NS > 0u, "SectionPool: NS > 0");
     static_assert(!std::is_pointer_v<Hdr> && !std::is_pointer_v<Slot>,
@@ -121,7 +279,6 @@ public:
     static constexpr uint16_t kSlotCapacity = NS;
 
     using View = PoolView<Hdr, Slot>;
-    using ConstView = PoolView<const Hdr, const Slot>;
 
     /**
      * Регистрирует две секции в @a file (порядок: heads, затем slots).
@@ -129,7 +286,8 @@ public:
      * Ёмкость Show должна вмещать +2 секции.
      */
     SectionPool(IShow& file, uint32_t tag_heads, uint32_t tag_slots, bool required = true) noexcept
-        : _heads(file, tag_heads, required)
+        : IPool<Hdr, Slot>(NH, NS)
+        , _heads(file, tag_heads, required)
         , _slots(file, tag_slots, required)
     {}
 
@@ -141,39 +299,18 @@ public:
     }
 
     /** Пометить шоуфайл edited (правка через PoolView). */
-    void markEdited() noexcept { _heads.markEdited(); }
+    void markEdited() noexcept override { _heads.markEdited(); }
 
     /**
      * Вид на заголовок @a i и его слоты.
      * Индекс вне NH → запись 0.
      * count==0 или битый диапазон → header есть, слоты пустые.
      */
-    [[nodiscard]] View at(uint16_t i) noexcept
-    {
-        Hdr& hdr = _heads.begin()[(i < NH) ? i : 0u];
-        const PoolRef& pr = hdr.pool;
-        if (pr.count == 0u || pr.first >= NS
-            || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return View(&hdr, nullptr, 0u);
-        }
-        return View(&hdr, _slots.begin() + pr.first, pr.count);
-    }
-    [[nodiscard]] ConstView at(uint16_t i) const noexcept
-    {
-        const Hdr& hdr = _heads.begin()[(i < NH) ? i : 0u];
-        const PoolRef& pr = hdr.pool;
-        if (pr.count == 0u || pr.first >= NS
-            || pr.count > static_cast<uint16_t>(NS - pr.first)) {
-            return ConstView(&hdr, nullptr, 0u);
-        }
-        return ConstView(&hdr, _slots.begin() + pr.first, pr.count);
-    }
-
+    [[nodiscard]] View at(uint16_t i) noexcept { return detail::view(*this, i); }
     [[nodiscard]] View operator[](uint16_t i) noexcept { return at(i); }
-    [[nodiscard]] ConstView operator[](uint16_t i) const noexcept { return at(i); }
 
     /** Пересчитать free_top_ по max(first+count). После load. */
-    void syncFreeTop() noexcept
+    void syncFreeTop() const noexcept
     {
         uint16_t top = 0u;
         for (uint16_t i = 0u; i < NH; ++i) {
@@ -233,9 +370,9 @@ public:
 
     /**
      * Уплотнить пул: живые диапазоны подряд с 0, обновить first, free_top = сумма count.
-     * Помечает шоуфайл edited.
+     * Помечает шоуфайл edited. Чужой PoolView на следующем at/size/header перечитается.
      */
-    void compact() noexcept
+    void compact() noexcept override
     {
         uint16_t order[NH]{};
         uint16_t live = 0u;
@@ -282,59 +419,16 @@ public:
         _heads.markEdited();
     }
 
-    /**
-     * Выставить число слотов заголовка @a i.
-     * Уменьшение — на месте; рост — bump в хвост или перенос; при нехватке — compact и ещё раз.
-     * Старые PoolView после вызова недействительны — взять at(i) снова.
-     * @return false если i вне диапазона или места в пуле нет.
-     */
-    [[nodiscard]] bool resize(uint16_t i, uint16_t n) noexcept
+protected:
+    [[nodiscard]] Hdr* headerAt(uint16_t i) noexcept override
     {
-        if (i >= NH) {
-            return false;
-        }
-        if (n > NS) {
-            return false;
-        }
-        if (!resizeOnce(i, n)) {
-            compact();
-            if (!resizeOnce(i, n)) {
-                return false;
-            }
-        }
-        _heads.markEdited();
-        return true;
+        return &_heads.begin()[(i < NH) ? i : 0u];
     }
+    [[nodiscard]] Slot* slotBase() noexcept override { return _slots.begin(); }
 
-    /** count=0, first=0; слоты в пуле не двигает (дыра до compact). */
-    void clearSlots(uint16_t i) noexcept
+    [[nodiscard]] bool resizeOnce(uint16_t i, uint16_t n) noexcept override
     {
-        if (i >= NH) {
-            return;
-        }
-        PoolRef& pr = _heads.begin()[i].pool;
-        if (pr.count == 0u) {
-            pr.first = 0u;
-            return;
-        }
-        Slot* const base = _slots.begin();
-        if (pr.first < NS) {
-            const uint16_t n = (pr.count <= static_cast<uint16_t>(NS - pr.first))
-                ? pr.count
-                : static_cast<uint16_t>(NS - pr.first);
-            for (uint16_t k = 0u; k < n; ++k) {
-                base[pr.first + k] = Slot{};
-            }
-        }
-        pr.first = 0u;
-        pr.count = 0u;
-        _heads.markEdited();
-    }
-
-private:
-    [[nodiscard]] bool resizeOnce(uint16_t i, uint16_t n) noexcept
-    {
-        PoolRef& pr = _heads.begin()[i].pool;
+        PoolRef& pr = _heads.begin()[(i < NH) ? i : 0u].pool;
         if (n == pr.count) {
             return true;
         }
@@ -409,9 +503,31 @@ private:
         return true;
     }
 
+    void resetSlots(uint16_t i) noexcept override
+    {
+        PoolRef& pr = _heads.begin()[(i < NH) ? i : 0u].pool;
+        if (pr.count == 0u) {
+            pr.first = 0u;
+            return;
+        }
+        Slot* const base = _slots.begin();
+        if (pr.first < NS) {
+            const uint16_t n = (pr.count <= static_cast<uint16_t>(NS - pr.first))
+                ? pr.count
+                : static_cast<uint16_t>(NS - pr.first);
+            for (uint16_t k = 0u; k < n; ++k) {
+                base[pr.first + k] = Slot{};
+            }
+        }
+        pr.first = 0u;
+        pr.count = 0u;
+        _heads.markEdited();
+    }
+
+private:
     Section<Hdr, NH> _heads;
     Section<Slot, NS> _slots;
-    uint16_t _free_top = 0;
+    mutable uint16_t _free_top = 0;
 };
 
 } // namespace sf

@@ -8,11 +8,16 @@
 namespace smcp {
 
 CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept
-    : CGMech(console, groups, msg::kServerIdMin, id)
+    : CGMech(console, groups, msg::kServerIdMin, id, id)
 {}
 
 CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept
-    : CMech(console, server_id, id)
+    : CGMech(console, groups, server_id, id, id)
+{}
+
+CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t mech_id,
+               uint8_t local_id) noexcept
+    : CMech(console, server_id, mech_id, local_id)
     , _groups(groups)
 {}
 
@@ -23,9 +28,8 @@ CGroup::Result CGMech::trySelect(uint8_t console_id) noexcept
             return CGroup::Result::Blocked;
         }
         Selection one;
-        one.add(_id);
-        const uint8_t index = console().serverIndex(serverId());
-        if (_groups.fillBlockedOverlap(IGroupBank::kNoExcept, index, one)) {
+        one.add(id());
+        if (_groups.fillBlockedOverlap(IGroupBank::kNoExcept, one)) {
             return CGroup::Result::OverlapsBlocked;
         }
         if (isSelected()) {
@@ -34,10 +38,9 @@ CGroup::Result CGMech::trySelect(uint8_t console_id) noexcept
     }
 
     Selection one;
-    one.add(_id);
-    const msg::Action action = (console_id == kHolderNone)
-        ? msg::Action::Remove
-        : msg::Action::Add;
+    one.add(id());
+    const msg::Action action =
+        (console_id == kHolderNone) ? msg::Action::Remove : msg::Action::Add;
     ServerSession* const s = console().server(serverId());
     if (s == nullptr || !s->select(action, one)) {
         return CGroup::Result::NotSent;

@@ -9,7 +9,7 @@ namespace server {
 
 namespace {
 
-smcp::IGroupBank::OverlapSlot overlapSlots[smcp::kGroupMaxCount]{};
+smcp::IGroupBank::OverlapSlot overlapSlots[MConsole::kGroupCount]{};
 
 [[nodiscard]] uint8_t scenePageCount() noexcept
 {
@@ -64,15 +64,14 @@ bool fillMechBlockMessage(uint8_t id, char* out, std::size_t outLen) noexcept
     }
     smcp::Selection one;
     one.add(id);
-    const uint8_t index = console.serverIndex(console.cmechs[id].serverId());
-    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, index, one)) {
+    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, one)) {
         return false;
     }
     const auto& ov = console.show.group.overlap();
     if (ov.slot == nullptr || ov.count == 0u) {
         return false;
     }
-    uint8_t groupIds[smcp::kGroupMaxCount]{};
+    uint8_t groupIds[MConsole::kGroupCount]{};
     for (uint8_t i = 0; i < ov.count; ++i) {
         groupIds[i] = ov.slot[i].group;
     }
@@ -87,7 +86,7 @@ bool fillMechBlockMessage(uint8_t id, char* out, std::size_t outLen) noexcept
 WorkPage::WorkPage(nex::IAppUI& app) noexcept
     : Page<54>(app, HMI_COMP_OBJNAME(work), PG::kPageId)
 {
-    console.show.group.setOverlapArray(overlapSlots, smcp::kGroupMaxCount);
+    console.show.group.setOverlapArray(overlapSlots, MConsole::kGroupCount);
 }
 
 void WorkPage::onLoad()

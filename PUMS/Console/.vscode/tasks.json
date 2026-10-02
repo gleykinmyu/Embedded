@@ -1,0 +1,40 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clangd: compiledb",
+            "detail": "pio run -t compiledb -e console -e server -e test",
+            "type": "shell",
+            "windows": {
+                "command": "${env:USERPROFILE}\\.platformio\\penv\\Scripts\\pio.exe"
+            },
+            "osx": {
+                "command": "${env:HOME}/.platformio/penv/bin/pio"
+            },
+            "linux": {
+                "command": "${env:HOME}/.platformio/penv/bin/pio"
+            },
+            "args": [
+                "run",
+                "-t",
+                "compiledb",
+                "-e",
+                "console",
+                "-e",
+                "server",
+                "-e",
+                "test"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": false
+            }
+        }
+    ]
+}

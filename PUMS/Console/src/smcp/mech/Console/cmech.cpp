@@ -9,13 +9,18 @@
 namespace smcp {
 
 CMech::CMech(IConsole& console, uint8_t id) noexcept
-    : CMech(console, msg::kServerIdMin, id)
+    : CMech(console, msg::kServerIdMin, id, id)
 {}
 
 CMech::CMech(IConsole& console, uint8_t server_id, uint8_t id) noexcept
-    : IMech(id)
+    : CMech(console, server_id, id, id)
+{}
+
+CMech::CMech(IConsole& console, uint8_t server_id, uint8_t mech_id, uint8_t local_id) noexcept
+    : IMech(mech_id)
     , _console(&console)
     , _server_id(server_id)
+    , _local_id(local_id)
 {
     detail::registerMech(console, *this);
 }

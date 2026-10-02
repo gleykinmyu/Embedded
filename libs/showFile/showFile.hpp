@@ -25,7 +25,7 @@ class ISection;
 using BIF::IFile;
 
 inline constexpr uint32_t kMagic = 0x534D4350u; /**< "SMCP". */
-inline constexpr uint16_t kVersion = 0x0115u;
+inline constexpr uint16_t kVersion = 0x0116u;
 inline constexpr std::size_t kCrcChunkSize = 64u;
 
 /** Полный путь шоу: basename + запас под префикс тома (`0:/…`). */

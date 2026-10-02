@@ -10,6 +10,8 @@ namespace hmi {
 // GENERATED-HMI-BEGIN:summary
 inline constexpr const char* kHmiSource = "NX4827P043_011";
 inline constexpr const char* kHmiModel = "Nextion 4.3\" Intelligent 480x270";
+inline constexpr uint16_t kScreenW = 480u;
+inline constexpr uint16_t kScreenH = 272u;
 inline constexpr uint8_t kPageCount = 1u;
 inline constexpr bool kHaskeybdAPage = false;
 inline constexpr bool kHaskeybdBPage = false;

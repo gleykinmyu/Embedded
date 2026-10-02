@@ -28,7 +28,7 @@ class Show : public sf::Show<2> {
 public:
     static constexpr uint32_t kSettingsSectionTag = 0x54544553u;
 
-    smcp::CGroupBank<smcp::kGroupMaxCount, 1> group;
+    smcp::CGroupBank<smcp::kGroupMaxCount> group;
     sf::Section<Settings, 1> sett;
 
     explicit Show(smcp::IGroupConsole& console) noexcept
@@ -121,6 +121,12 @@ public:
     [[nodiscard]] uint8_t serverId(uint8_t index) const noexcept override
     {
         return index == 0u ? smcp::msg::kServerIdMin : 0u;
+    }
+
+    [[nodiscard]] uint8_t localMechCount() const noexcept override { return kMechCount; }
+    [[nodiscard]] smcp::CMech* localMech(uint8_t local_id) noexcept override
+    {
+        return local_id < kMechCount ? &cmechs[local_id] : nullptr;
     }
 
 protected:

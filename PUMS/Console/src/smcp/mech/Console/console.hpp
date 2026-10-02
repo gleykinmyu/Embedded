@@ -57,6 +57,18 @@ public:
         return const_cast<IConsole*>(this)->mech(server_id, id);
     }
 
+    /** Ось в локальном inventory (бит группы). Нет — nullptr. Leaf: банк cmechs. */
+    [[nodiscard]] virtual uint8_t localMechCount() const noexcept { return 0u; }
+    [[nodiscard]] virtual CMech* localMech(uint8_t local_id) noexcept
+    {
+        (void)local_id;
+        return nullptr;
+    }
+    [[nodiscard]] virtual const CMech* localMech(uint8_t local_id) const noexcept
+    {
+        return const_cast<IConsole*>(this)->localMech(local_id);
+    }
+
     /** Наш id на шине (ILink / Node::id()). */
     [[nodiscard]] uint8_t consoleId() const noexcept { return id(); }
 

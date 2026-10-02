@@ -6,6 +6,8 @@
 _hwref
 sdkconfig
 sdkconfig.old
+sdkconfig.esp32_eth01
+board_select.cmake
 managed_components
 dependencies.lock
 .cache
