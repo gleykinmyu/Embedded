@@ -52,6 +52,7 @@
 ## Протокол / multi-console (решения)
 
 - **E1.** `acceptSelect` / SelectLimit — **оставить**. Политика Block при >1 пульта — позже.
+- **E2.** `console_id` — **сохранять** (W25 / backup RTC), читать до `begin`; смена → `begin` + `start`. Не в шоуфайле.
 
 ### 1. Номер пульта
 
