@@ -42,6 +42,10 @@
 - **C3.** Blocked GRUP vs Block шины — **как сейчас**: recall/trySelect смотрят оба; клетка → PDU `Block`; группа → только флаг GRUP.
 - **C5.** Isolate / Спектакль — **UI**: в этих режимах лишний Select просто не вызывается. Guard в `trySelect`/`recall`/`IConsole::select` не обязателен.
 
+## Пресеты (решения)
+
+- **D1.** Слот пресета в пуле: `{ seg_id, Selection, MotionTarget }`. Несколько seg → несколько слотов на один header.
+
 ### 1. Номер пульта
 
 `begin(console_id)` есть. Id после включения неоткуда взять, повторного `begin` после IdConflict с новым номером нет.
