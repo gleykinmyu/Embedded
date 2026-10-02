@@ -39,6 +39,7 @@
 
 - **C1.** `smcp::test` / local selection (`group_pool.hpp`) — **старый код**, не база leaf. Цель: wire-слоты `(seg_id, Selection)` в пуле; local→server через CMech не тащить.
 - **C2 / C4.** Partial multi-seg: **best-effort OK** (частичный Select и частичная уставка пресета) + отчёт Nack. **Atomic** → откат успешного при любом Nack.
+- **C3.** Blocked GRUP vs Block шины — **как сейчас**: recall/trySelect смотрят оба; клетка → PDU `Block`; группа → только флаг GRUP.
 
 ### 1. Номер пульта
 
