@@ -144,10 +144,47 @@ flowchart LR
 
 ---
 
-## Вне плана (явно не трогаем)
+## Вне плана (явно не трогаем / позже)
 
-- Continuous UI/семантика сверх Absolute/Relative + min/max края  
+- Continuous UI сверх Absolute/Relative + min/max края  
 - Юзеры пульта (после прода)  
 - Live collaborative sync шоу (C)  
 - FlightObject  
 - Шифрование CAN  
+- Политика Block при многих пультах  
+- Реальный привод лебёдок (DriveMech setTarget) — отдельный трек сервера  
+- Миграция старых SMCP на диске (A5: нет) — старые файлы просто не откроются  
+
+---
+
+## Относительно текущего кода — честно
+
+План — **не** «починить все баги репо», а **дойти до SYSTEM.md**.
+
+### Уже есть (частично) — фазы допиливают, не с нуля
+
+| Сейчас | Надо |
+|--------|------|
+| Fio live+incoming, bak=W25 один сектор | A/B, маска секций, dirty/секция, политика SD |
+| GRUP = `Group[]` одна Selection | `(seg_id, Selection)` пул |
+| `storage(server_id)` + CMechBank ctor register | слоты из SERV, без storage на консоли |
+| MaxSessions = 1 | ≥ MaxSeg |
+| MotionTarget `*_mm`, 8 B | единицы kind + Absolute/Relative |
+| Нет SERV / multi-byte / ResetFault / CanDemux / PIN | фазы 1, 5, 7, 8 |
+| MechConfig | в отдельном PR — **влить в фазу 5** (SERV) |
+
+### Могло выпасть из фаз 1–9 — добавить при согласовании
+
+| # | Что | Куда |
+|---|-----|------|
+| + | Обновить `PROTOCOL.md` (роли MsgId) | вместе с фазой 1 и 7 |
+| + | Влить/подтянуть MechConfig | фаза 5 |
+| + | Удалить/изолировать `smcp::test` local group_pool от leaf | фаза 6 |
+| + | Ширина маски 32 vs inventory 24 (ANALYSIS §3 старый) | фаза 5/6 или отдельный мини-пункт |
+| + | Формат blob SERV на проводе (порядок MechConfig[]) | фаза 7 |
+| + | Сервер: хранение паспортов + hash PIN | фаза 7–8 |
+
+### Старый ANALYSIS §1–6 (модель/шина)
+
+Часть перекрыта планом (console_id→5.4, isolate→UI, 2-й seg→5.3+8, CAN2→вне плана/сервер).  
+Пустой DriveMech — **не** в этом плане (E3).
