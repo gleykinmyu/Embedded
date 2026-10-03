@@ -1,6 +1,10 @@
 /**
  * @file w25q_show_file.hpp
- * @brief IFile на последнем 4K-секторе W25Q (зеркало шоу = SMCP, имя в Header::name).
+ * @brief IFile — LKG/зеркало шоу (SMCP) на W25Q; для sf::Fio это обычный bak.
+ *
+ * TODO(A/B): два последних 4K-сектора, ping-pong (seq+magic/CRC).
+ * sync/program → неактивный слот, затем commit; open/read → активный.
+ * Fio про A/B не знает. Сейчас — один сектор (последний 4K).
  */
 
 #pragma once

@@ -28,9 +28,10 @@
 1. Load/save по маске секций (чекбоксы), не «весь файл целиком».
 2. Accept с предупреждениями A2 + disarm слотов; revalidate после save патча.
 3. Overflow-диалог A3; без тихого truncate.
-4. `W25qShowFile`: A/B два сектора, commit после program; `restore()` читает активный слот.
-5. Зеркало W25 после успешного SD-save (не вместо SD).
-6. Per-section / per-pool `edited` (A6); UI `*` и save по маске dirty.
+4. `W25qShowFile` (не Fio): A/B два сектора, commit после program; open читает активный.
+5. Fio: bak = этот IFile; после успешного SD-save — sync bak; bad SD load — не писать bak, restore с bak.
+6. Нет SD: Save → только bak + флаг «только W25Q»; SD появилась → предложить save на карту.
+7. Per-section / per-pool `edited` (A6); UI `*` и save по маске dirty.
 
 ## Адресация / сегменты (решения)
 

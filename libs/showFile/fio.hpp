@@ -6,8 +6,10 @@
  * Один и тот же IFile на main и bak — резерва нет (сравнение по адресу).
  * Пустой path у load — читать резерв. Резерв пишется только в save.
  *
- * TODO(reformat): секции/чекбоксы, accept A2, overflow MsgBox A3, W25 A/B LKG —
+ * TODO(reformat): секции/чекбоксы, accept A2, overflow MsgBox A3, dirty/секция,
+ * политика bak=W25 (без SD → только mirror; bad SD → restore с bak) —
  * см. PUMS/Console/src/smcp/ANALYSIS.md «Файл / FIO».
+ * A/B слотов W25 — не здесь: в W25qShowFile / драйвере; для Fio bak = обычный IFile.
  */
 
 #pragma once
