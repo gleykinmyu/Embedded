@@ -1,190 +1,177 @@
-# План реализации консоль ↔ сервер
+# План реализации консоль ↔ сервер (финальный)
 
-Опора: `SYSTEM.md`, `ANALYSIS.md`, `PROTOCOL.md`.  
-**Сначала согласовать фазы → потом код по одной фазе (PR на фазу или логический коммит).**
+Опора: [`SYSTEM.md`](SYSTEM.md), [`ANALYSIS.md`](ANALYSIS.md), [`PROTOCOL.md`](PROTOCOL.md).
 
-Принцип: от изолированного и маленького к связанному и большому. Каждая фаза должна собираться и не ломать уже принятое поведение без явного флага/`#if`.
+**Файл плана:** `PUMS/Console/src/smcp/IMPLEMENTATION.md`
 
----
-
-## Фаза 0 — уже сделано (дизайн)
-
-- [x] Решения A–H, storage-split, multi-byte, PIN, Absolute/Relative  
-- [x] `SYSTEM.md` для ревью  
+Принцип: от простого к сложному; одна фаза → собирается → можно PR.  
+Цель кода: универсальный multi-seg движок пульта (группы + пресеты); продукт (PUMS UI) и будущий слой **cue** — снаружи.
 
 ---
 
-## Фаза 1 — мелкий wire / типы (без UI, без FIO)
+## Модель (не ломаем)
 
-Цель: заложить поля и MsgId, сервер/пульт могут stub’ить.
+```text
+Show (SERV / GRUP / PRST / SETT)
+SegmentBank → Segment → Axis (CMech-like: config* + live)
+Group / Preset = SectionPool, wire-слоты
+MConsole = composition root (банки, Fio, сессии, хуки)
+UI = жесты / paint / uiMessages (без пользовательских строк в модели)
+Cue = позже, над PRST
+```
 
-| # | Задача | Где | Критерий готово |
-|---|--------|-----|-----------------|
-| 1.1 | `MotionTarget`: signed + **Absolute \| Relative** | `mech.hpp` / pack SetTarget | sizeof/pack согласованы; старые тесты поправить |
-| 1.2 | `ResetFault` MsgId `0x22` + pack/unpack | `mech/message.hpp`, Session stub | PDU в таблице PROTOCOL; TX/RX stub Ok/Nack |
-| 1.3 | Заготовки MsgId `0x30–0x39` + `ServiceUnlock` (enum + пустые handlers) | message + PROTOCOL | компиляция; demux no-op / Nack NotReady |
-
-**Не делаем в фазе 1:** реальный bulk, PIN, движение привода.
-
----
-
-## Фаза 2 — W25 A/B (изолированно от Fio логики)
-
-| # | Задача | Критерий |
-|---|--------|----------|
-| 2.1 | `W25qShowFile`: два сектора, seq+magic/CRC, ping-pong | open читает активный; sync пишет неактивный → commit |
-| 2.2 | Сохранить интерфейс `IFile` | Fio по-прежнему видит один bak |
-| 2.3 | Smoke: erase/program/power-fail mental test / unit на host если есть mock flash | активный слот переживает «обрыв» на inactive |
+Фасад «все жесты на MConsole» **не делаем**. Примитивы на Axis/Group/Preset; PUMS UI сам собирает toggle.
 
 ---
 
-## Фаза 3 — dirty секций + Fio политика носителей
+## Фаза 0 — дизайн (готово)
 
-| # | Задача | Критерий |
-|---|--------|----------|
-| 3.1 | `markEdited` / dirty **на секцию (пул)** | A6; Show-уровень `*` = any dirty |
-| 3.2 | Fio: bak = W25; bad SD load → не писать bak, `restore()` с bak | как SYSTEM §5 |
-| 3.3 | Нет SD: Save → только bak + флаг «только W25Q» | UI later или dbg-флаг |
-| 3.4 | После SD-save → sync bak | один путь Save |
-
-**Пока без** чекбоксов секций в UI — API маски секций можно ввести внутренне.
+- [x] Решения A–H, storage-split, multi-byte, PIN, Absolute/Relative, ShowBlob B  
+- [x] `SYSTEM.md`, `ANALYSIS.md`
 
 ---
 
-## Фаза 4 — load/save по маске секций (Fio)
+## Фаза 1 — wire / типы
 
-| # | Задача | Критерий |
-|---|--------|----------|
-| 4.1 | Маска/чекбоксы секций в open/save | A1 |
-| 4.2 | Нет SERV в live → отказ грузить только GRUP/PRST/SETT | storage §3 |
-| 4.3 | Overflow → статус/callback для MsgBox (A3), без тихого truncate | |
-| 4.4 | A2: mismatch seg → warning list + disarm API | UI MsgBox later |
-
----
-
-## Фаза 5 — SERV + слоты пульта + сессии
-
-| # | Задача | Критерий |
-|---|--------|----------|
-| 5.1 | Секция SERV (SegHdr name, MechConfig pool) в Show | static layout / SectionPool |
-| 5.2 | CMechBank: слоты **из SERV**, убрать `storage(server_id)` на консоли | B1/B2 |
-| 5.3 | `MaxSessions ≥ MaxSeg`; `start` на каждый server_id | H2 |
-| 5.4 | console_id из NVM до `begin` | E2 (минимум: RTC/W25 ключ) |
+| # | Задача |
+|---|--------|
+| 1.1 | `MotionTarget`: signed, единицы kind, **Absolute \| Relative**; убрать `_mm` из имён |
+| 1.2 | `ResetFault` `0x22` + pack/unpack + stub TX/RX |
+| 1.3 | Enum stubs `0x30–0x39` + `ServiceUnlock`; demux no-op / Nack |
+| 1.4 | `PROTOCOL.md` — роли новых MsgId |
 
 ---
 
-## Фаза 6 — группы / пресеты wire
+## Фаза 2 — W25 A/B
 
-| # | Задача | Критерий |
-|---|--------|----------|
-| 6.1 | GRUP: слоты `(seg_id, Selection)`; убрать опору на local-test bank | C1 |
-| 6.2 | SETT: номер «группы текущего шоу» + фильтр API | B5 |
-| 6.3 | PRST: `{ seg_id, Selection, MotionTarget }` + overlap check | D1/D3 |
-| 6.4 | Recall: все Select→Ack, затем SetTarget; Atomic rollback | D2/C2 |
+| # | Задача |
+|---|--------|
+| 2.1 | `W25qShowFile`: 2 сектора, seq+magic/CRC, ping-pong |
+| 2.2 | Снаружи тот же `IFile` (Fio не знает A/B) |
+| 2.3 | Проверка: обрыв на inactive не убивает active |
+
+---
+
+## Фаза 3 — dirty + политика Fio/носители
+
+| # | Задача |
+|---|--------|
+| 3.1 | Dirty на секцию/пул; `*` = any dirty |
+| 3.2 | bak = W25; bad SD → не писать bak, restore с bak |
+| 3.3 | Нет SD → Save только bak + флаг «только W25Q» |
+| 3.4 | После SD-save → sync bak |
+
+---
+
+## Фаза 4 — маска секций Fio
+
+| # | Задача |
+|---|--------|
+| 4.1 | Load/save по маске секций (API; UI чекбоксы в фазе 9) |
+| 4.2 | Нет SERV в live → отказ грузить только шоу-секции |
+| 4.3 | Overflow → статус/callback (без тихого truncate) |
+| 4.4 | A2: mismatch seg → warning + disarm API |
+
+---
+
+## Фаза 5 — SERV, слоты, сессии
+
+| # | Задача |
+|---|--------|
+| 5.1 | Влить MechConfig |
+| 5.2 | Секция SERV (SegHdr name + MechConfig) |
+| 5.3 | Segment / Axis: слоты из SERV; убрать `storage(server_id)` на консоли |
+| 5.4 | Gaps mech_id; маска 32 vs capacity inventory |
+| 5.5 | `MaxSessions ≥ MaxSeg`; `start` на каждый server_id |
+| 5.6 | console_id из NVM до `begin` |
+
+---
+
+## Фаза 6 — группы и пресеты
+
+| # | Задача |
+|---|--------|
+| 6.1 | GRUP: `(seg_id, Selection)`; local-test `group_pool` не в leaf |
+| 6.2 | SETT: номер группы «текущего шоу» + API фильтра клеток |
+| 6.3 | PRST: `{ seg_id, Selection, MotionTarget }` + overlap на record/load |
+| 6.4 | Recall: все Select→Ack → SetTarget; Atomic → rollback |
 
 ---
 
 ## Фаза 7 — multi-byte config + PIN
 
-| # | Задача | Критерий |
-|---|--------|----------|
-| 7.1 | GetConfigHash / ConfigHash / ConfigHashChanged | sequence SYSTEM §4 |
-| 7.2 | GetConfig + chunk pull + CRC → live SERV | |
-| 7.3 | ServiceUnlock + PutConfig* (сервер хранит hash PIN) | |
-| 7.4 | При apply SERV: проверка смены `kind` → disarm | §5 |
-| 7.5 | `type=ShowBlob` зарезервировать (sync пульт↔пульт — UI later) | вариант B |
+| # | Задача |
+|---|--------|
+| 7.1 | GetConfigHash / ConfigHash / ConfigHashChanged |
+| 7.2 | Формат blob SERV на проводе + GetConfig/chunk pull + CRC |
+| 7.3 | ServiceUnlock + PutConfig*; PIN hash на сервере |
+| 7.4 | Apply SERV: смена kind → warn/disarm |
+| 7.5 | Зарезервировать `type=ShowBlob` (UI sync — later) |
 
 ---
 
-## Фаза 8 — сервер CanDemux + привязка привода
+## Фаза 8 — сервер CanDemux
 
-| # | Задача | Критерий |
-|---|--------|----------|
-| 8.1 | CanDemux: 1 ICAN → 2 Node | B3/B4 |
-| 8.2 | Два logical server_id / seg на шкафу | jack→seg на сервере |
-| 8.3 | Drive остаётся за сервером; northbound только SetTarget/Telemetry | E3/E5 |
+| # | Задача |
+|---|--------|
+| 8.1 | CanDemux: 1 ICAN → 2 Node |
+| 8.2 | Два logical server_id/seg; jack→seg |
+| 8.3 | Паспорта + hash на сервере; привод только внутри сервера |
 
 ---
 
-## Фаза 9 — UI / продукт (после модели)
+## Фаза 9 — UI продукта (PUMS)
 
 | # | Задача |
 |---|--------|
 | 9.1 | Чекбоксы секций load/save |
-| 9.2 | MsgBox overflow / config mismatch / offer SD |
+| 9.2 | MsgBox: overflow, config mismatch, offer SD |
 | 9.3 | Фильтр «только группа шоу» |
-| 9.4 | Страницы/контекст seg (PUMS) |
-| 9.5 | E-Stop → ResetFault на release |
+| 9.4 | Контекст/страницы seg |
+| 9.5 | E-Stop release → ResetFault |
 
 ---
 
-## Порядок зависимости (кратко)
+## Зависимости
 
 ```mermaid
 flowchart LR
-  F1[1 Wire/MsgId] --> F2[2 W25 A/B]
-  F1 --> F3[3 Dirty+Fio bak]
+  F1[1 Wire] --> F2[2 W25 A/B]
+  F1 --> F3[3 Dirty+Fio]
   F2 --> F3
   F3 --> F4[4 Маска секций]
-  F4 --> F5[5 SERV+слоты+sessions]
+  F4 --> F5[5 SERV+Axis+sessions]
   F5 --> F6[6 GRUP/PRST]
-  F5 --> F7[7 Config bulk+PIN]
+  F5 --> F7[7 Bulk+PIN]
+  F5 --> F8[8 CanDemux]
   F6 --> F9[9 UI]
   F7 --> F9
-  F5 --> F8[8 CanDemux]
 ```
 
----
-
-## Предлагаемый старт
-
-**Согласовать фазу 1** (MotionTarget Absolute/Relative + ResetFault + enum multi-byte stubs) — маленький diff, сразу полезен для PROTOCOL.
-
-После merge фазы 1 → фаза 2 (W25 A/B).
+**Старт:** фаза 1.
 
 ---
 
-## Вне плана (явно не трогаем / позже)
+## Вне плана
 
-- Continuous UI сверх Absolute/Relative + min/max края  
-- Юзеры пульта (после прода)  
-- Live collaborative sync шоу (C)  
-- FlightObject  
-- Шифрование CAN  
-- Политика Block при многих пультах  
-- Реальный привод лебёдок (DriveMech setTarget) — отдельный трек сервера  
-- Миграция старых SMCP на диске (A5: нет) — старые файлы просто не откроются  
+| Что | Когда |
+|-----|--------|
+| Cue поверх PRST | большие консоли |
+| Юзеры пульта (Operator/Editor/Admin) | после прода |
+| Live collaborative sync шоу | над ShowBlob |
+| Реальный DriveMech / линк к платам | трек сервера |
+| FlightObject, шифрование CAN, Block multi-console policy | позже |
+| Миграция старых SMCP | не делаем |
 
 ---
 
-## Относительно текущего кода — честно
+## Сейчас в коде → станет
 
-План — **не** «починить все баги репо», а **дойти до SYSTEM.md**.
-
-### Уже есть (частично) — фазы допиливают, не с нуля
-
-| Сейчас | Надо |
-|--------|------|
-| Fio live+incoming, bak=W25 один сектор | A/B, маска секций, dirty/секция, политика SD |
-| GRUP = `Group[]` одна Selection | `(seg_id, Selection)` пул |
-| `storage(server_id)` + CMechBank ctor register | слоты из SERV, без storage на консоли |
+| Сейчас | После плана |
+|--------|-------------|
+| W25 один сектор | A/B в `W25qShowFile` |
+| GRUP одна Selection | `(seg, Selection)` |
+| `storage(server_id)` | Axis из SERV |
 | MaxSessions = 1 | ≥ MaxSeg |
-| MotionTarget `*_mm`, 8 B | единицы kind + Absolute/Relative |
-| Нет SERV / multi-byte / ResetFault / CanDemux / PIN | фазы 1, 5, 7, 8 |
-| MechConfig | в отдельном PR — **влить в фазу 5** (SERV) |
-
-### Могло выпасть из фаз 1–9 — добавить при согласовании
-
-| # | Что | Куда |
-|---|-----|------|
-| + | Обновить `PROTOCOL.md` (роли MsgId) | вместе с фазой 1 и 7 |
-| + | Влить/подтянуть MechConfig | фаза 5 |
-| + | Удалить/изолировать `smcp::test` local group_pool от leaf | фаза 6 |
-| + | Ширина маски 32 vs inventory 24 (ANALYSIS §3 старый) | фаза 5/6 или отдельный мини-пункт |
-| + | Формат blob SERV на проводе (порядок MechConfig[]) | фаза 7 |
-| + | Сервер: хранение паспортов + hash PIN | фаза 7–8 |
-
-### Старый ANALYSIS §1–6 (модель/шина)
-
-Часть перекрыта планом (console_id→5.4, isolate→UI, 2-й seg→5.3+8, CAN2→вне плана/сервер).  
-Пустой DriveMech — **не** в этом плане (E3).
+| MotionTarget `*_mm` | kind units + Abs/Rel |
+| Нет SERV / bulk / PIN / CanDemux | фазы 5–8 |
