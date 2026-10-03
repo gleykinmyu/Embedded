@@ -126,7 +126,7 @@
 
 ## MechConfig / типы (решения)
 
-- **G1.** В **MotionTarget — условные единицы** `kind` (без `_mm` в имени). Кто задаёт `kind`/калибровку — см. огромный TODO ниже.
+- **G1.** В **MotionTarget — условные единицы** `kind` (signed int, без `_mm` в имени) + **тип хода Absolute | Relative**. Continuous — см. storage §10.
 - **G3.** FlightObject — **супер позже**, большие консоли; не kind оси, не MVP.
 - **G4.** Load scale — уже в MechConfig (`LoadUnit` + `load_scale_*`).
 
