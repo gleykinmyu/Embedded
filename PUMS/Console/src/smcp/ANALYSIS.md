@@ -69,7 +69,42 @@
 - **F1.** Контекст seg — **UI** (в PUMS несколько страниц). Сейчас не фиксируем раскладку; модель даёт seg/слоты.
 - **F2.** Нет связи / нет оси → клетка Disabled, высота «—». **Как сейчас.**
 - **F3.** Имя сегмента — `name[]` в SegHdr (SERV) для UI.
-- **F3b / inventory sync.** **Без VID/UID.** При линке: запрос **хэша** внутренних настроек сервера ↔ хэш сохранённого profile на пульте. Mismatch → «взять с сервера» (и т.п.). Дальше: механизм **многобайтовых структур через Node** и передача паспортов/настроек этим каналом. `server_id` остаётся только адресом сессии.
+- **F3b / inventory sync.** **Без VID/UID.** Последовательность — ниже «Multi-byte / config». `server_id` — только адрес сессии.
+
+### Multi-byte / config (MsgId + механизм)
+
+Последовательности § connect / broadcast / WriteConfig — приняты. Ниже wire.
+
+**Доп. northbound MsgId (черновик `CMsgId`, класс PROTOCOL A–E):**
+
+| MsgId | Имя | Класс | Body (≤8 B) | Назначение |
+|-------|-----|-------|-------------|------------|
+| 0x22 | `ResetFault` | A | mask/selection или mech | после release E-Stop (E4) |
+| 0x30 | `GetConfigHash` | A | `type:u8` | запрос хэша |
+| 0x31 | `ConfigHash` | E | `type:u8` + `hash:u32` LE | ответ / текущий хэш |
+| 0x32 | `ConfigHashChanged` | D | `type:u8` + `hash:u32` | broadcast с сервера |
+| 0x33 | `GetConfig` | A | `type:u8` | начать выгрузку blob |
+| 0x34 | `ConfigInfo` | E | `type:u8` + `total:u16` + `crc16:u16` | размер + CRC всего blob |
+| 0x35 | `GetConfigChunk` | A | `type:u8` + `offset:u16` + `max:u8` | pull куска |
+| 0x36 | `ConfigChunk` | E | `offset:u16` + `data[6]` | кусок (до 6 B) |
+| 0x37 | `PutConfig` | A | как ConfigInfo | сервис: начать запись на сервер |
+| 0x38 | `PutConfigChunk` | A | `offset:u16` + `data[6]` | сервис: кусок → Ack/Nack |
+| 0x39 | `PutConfigCommit` | A | `type:u8` + `crc16:u16` | сервис: применить; сервер → broadcast 0x32 |
+
+`type`: пока `ServProfile = 1` (blob паспортов/SERV). Позже ShowBlob для пульт↔пульт.
+
+**Механизм (pull с сервера — надёжнее на CAN):**
+
+1. `GetConfigHash` → Ack → `ConfigHash`. Сверка с local.  
+2. Mismatch → `GetConfig` → Ack → `ConfigInfo(total, crc16)`.  
+3. Цикл: `GetConfigChunk(offset, max≤6)` → Ack → `ConfigChunk` → копировать в буфер; `offset += len`.  
+4. `offset >= total` → проверить crc16 → принять в live SERV / сохранить хэш.  
+5. Обрыв HbLost / Nack → abort, буфер отбросить; LKG/profile не портить.
+
+**WriteConfig (сервис):** `PutConfig` → цикл `PutConfigChunk` (каждый class A + Ack) → `PutConfigCommit` → сервер новый хэш + `ConfigHashChanged`.
+
+**Не multi-byte:** Select/Block/SetTarget/Telemetry/HB — как сейчас.  
+**Fio** в этом не участвует; blob → RAM SERV, потом обычный Save секции.
 
 ## MechConfig / типы (решения)
 
