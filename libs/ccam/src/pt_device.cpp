@@ -455,8 +455,14 @@ Status PtDeviceBase::deletePreset(uint8_t preset)
 {
     return sendPresetCmd(catalog::PtCmd::DeletePreset, preset);
 }
-Status PtDeviceBase::setPresetMode(uint8_t mode) { return sendDec1Cmd("RT", mode); }
-Status PtDeviceBase::setPresetSpeedTable(uint8_t table) { return sendDec1Cmd("PST", table); }
+Status PtDeviceBase::setPresetMode(uint8_t mode)
+{
+    return sendDec1Cmd(catalog::PtCmd::PresetMode, mode);
+}
+Status PtDeviceBase::setPresetSpeedTable(uint8_t table)
+{
+    return sendDec1Cmd(catalog::PtCmd::PresetSpeedTable, table);
+}
 
 Status PtDeviceBase::absolutePosition(uint16_t pan, uint16_t tilt)
 {

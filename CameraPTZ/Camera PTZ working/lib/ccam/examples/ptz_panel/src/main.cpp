@@ -1,6 +1,6 @@
 ﻿/**
  * @file main.cpp
- * @brief Демо: пульт с джойстиком + сенсорная панель → PTZ по RS485.
+ * @brief Демо: пульт с джойстиком + сенсорная панель → PTZ по IByteStream.
  *
  * Сейчас — заглушки IJoystick / ITouchPanel и симуляция ввода.
  * Позже замените DemoJoystick / DemoTouchPanel на драйверы вашей панели.
@@ -11,27 +11,61 @@
 #include "app/touch_panel.hpp"
 #include "ccam.hpp"
 #include "devices/devices.hpp"
+#include "ibyte_stream.hpp"
 
 #include <cstdint>
 
 namespace {
 
-/* --- RS485: замените на UART + DE/RE (STM32 HAL) --- */
-class StubRs485Hal : public ccam::IRs485Hal {
+uint32_t demoNowMs()
+{
+    static uint32_t ms = 0;
+    return ms;
+}
+
+void demoDelayMs(uint32_t ms)
+{
+    (void)demoNowMs();
+    static uint32_t demo_ms = 0;
+    demo_ms += ms;
+    (void)demo_ms;
+}
+
+/* --- UART/RS-422: замените на реальный BIF::IByteStream --- */
+class StubByteStream : public BIF::IByteStream {
 public:
-    int send(const uint8_t* data, size_t len) override
+    size_t write(const uint8_t* data, size_t size) override
     {
         (void)data;
-        return static_cast<int>(len);
+        return open_ ? size : 0;
     }
 
-    int receive(uint8_t* data, size_t len, uint32_t timeout_ms) override
+    size_t read(uint8_t* buffer, size_t maxSize) override
     {
-        (void)data;
-        (void)len;
-        (void)timeout_ms;
+        (void)buffer;
+        (void)maxSize;
         return 0;
     }
+
+    size_t available() const override { return 0; }
+    size_t availableForWrite() const override { return open_ ? 256 : 0; }
+    void purge() override {}
+    void purgeOutput() override {}
+    void flush() override {}
+
+    bool open(uint32_t baud) override
+    {
+        open_ = (baud != 0);
+        return open_;
+    }
+
+    void close() override { open_ = false; }
+    bool isOpen() override { return open_; }
+    Status getStatus() override { return Status::OK; }
+    void clearErrors() override {}
+
+private:
+    bool open_ = false;
 };
 
 /**
@@ -47,11 +81,9 @@ public:
         ++tick_;
         const int16_t t = static_cast<int16_t>(tick_ % 360);
 
-        /* Синусоидальное «ведение» камеры */
         joy.pan = static_cast<int16_t>((t < 180) ? (t * 5) : ((360 - t) * 5));
         joy.tilt = static_cast<int16_t>(((t + 90) % 180 - 90) * 4);
 
-        /* Zoom in/out каждые ~2 с (при tick каждые 20 ms) */
         if ((tick_ / 100) % 2 == 0) {
             joy.zoom = 600;
         } else {
@@ -70,7 +102,6 @@ private:
 
 /**
  * Демо-панель: по таймеру шлёт команды (пресет, AWC, стоп).
- * Замените poll() на парсинг событий touch LCD (LVGL, emWin, …).
  */
 class DemoTouchPanel : public app::ITouchPanel {
 public:
@@ -79,7 +110,6 @@ public:
         app::PanelSettings s = settings_;
         ++tick_;
 
-        /* Каждые ~5 с — новое действие с «экрана» */
         if (tick_ % 250 == 0) {
             switch ((tick_ / 250) % 5) {
             case 0:
@@ -114,19 +144,14 @@ private:
     uint32_t tick_ = 0;
 };
 
-void demoDelayMs(uint32_t ms)
-{
-    static uint32_t demo_ms = 0;
-    demo_ms += ms;
-    (void)demo_ms;
-}
-
 } // namespace
 
 int main()
 {
-    StubRs485Hal hal;
-    ccam::Rs485Transport transport(hal);
+    StubByteStream uart;
+    uart.open(ccam::kBaudRate);
+
+    ccam::Rs485Transport transport(uart, &demoNowMs);
 
     /*
      * Выберите пару «камера + поворотное устройство» под вашу установку:
@@ -160,7 +185,6 @@ int main()
     char model[48] = {};
     (void)camera.queryModel(model, sizeof(model));
 
-    /* Пример прямого вызова методов устройства */
     (void)camera.setAwcMode(ccam::devices::He130AwcMode::Atw);
     (void)pt.goHome();
 
@@ -175,7 +199,6 @@ int main()
         if (operator_panel.hasPosition()) {
             const ccam::PtPosition& pos = operator_panel.lastPosition();
             (void)pos;
-            /* TODO: вывести pan/tilt/zoom на LCD панели */
         }
 
         demoDelayMs(kTickMs);

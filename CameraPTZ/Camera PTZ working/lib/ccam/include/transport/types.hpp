@@ -2,7 +2,7 @@
  * @file types.hpp
  * @brief Общие типы и константы Panasonic Convertible Protocol v3.05.
  *
- * Линия: 9600 8N1, half-duplex (RS422/RS485).
+ * Линия: 9600 8N1 по UART (RS-422 full-duplex или RS-485 half-duplex).
  */
 
 #pragma once
