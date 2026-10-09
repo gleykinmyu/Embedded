@@ -1,0 +1,15 @@
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/.pio/build/waveshare_s3_touch_7",
+    "--query-driver=**/xtensa-esp*-elf-*,**/riscv32-esp-elf-*"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "files.watcherExclude": {
+    "**/.pio/**": true,
+    "**/managed_components/**": true
+  },
+  "search.exclude": {
+    "**/.pio": true,
+    "**/managed_components": true
+  }
+}

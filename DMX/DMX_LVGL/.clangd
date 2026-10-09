@@ -1,0 +1,10 @@
+# Use this project's compile_commands.json (not parent DMX/.clangd).
+# Regenerate: tools/update-compile-commands.ps1 or PIO task compiledb.
+CompileFlags:
+  CompilationDatabase: .
+  Remove:
+    - -mlongcalls
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -mdisable-hardware-atomics
+    - -fno-jump-tables

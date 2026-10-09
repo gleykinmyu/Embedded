@@ -1,0 +1,14 @@
+dependencies:
+  idf:
+    version: ">=5.1.0"
+
+  lvgl/lvgl:
+    version: "^9"
+    public: true
+
+  # Local copy: PlatformIO breaks PUBLIC -include flags from the registry package
+  espressif/esp_lvgl_adapter:
+    override_path: "../components/esp_lvgl_adapter"
+
+  espressif/esp_lcd_touch_gt911:
+    version: "^1"

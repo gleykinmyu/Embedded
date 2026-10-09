@@ -1,0 +1,29 @@
+<screen permanent="true">
+	<styles>
+		<style name="style_main" bg_color="0x1a1a2e" />
+	</styles>
+
+	<view>
+		<style name="style_main" />
+
+		<lv_label
+			text="DMX LVGL9"
+			align="top_mid"
+			y="40"
+			style_text_color="0xeaeaea"
+		/>
+
+		<lv_label
+			bind_text="tap_count"
+			bind_text-fmt="Count: %d"
+			align="center"
+			y="-20"
+			style_text_color="0xa0a0b0"
+		/>
+
+		<lv_button align="center" y="60" width="200" height="60">
+			<subject_increment_event trigger="clicked" subject="tap_count" step="1" />
+			<lv_label text="Tap me" />
+		</lv_button>
+	</view>
+</screen>

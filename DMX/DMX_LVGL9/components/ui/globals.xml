@@ -1,0 +1,27 @@
+<globals>
+	<api>
+		<!-- Add <enumdefs> here -->
+	</api>
+
+	<consts>
+		<color name="bg_dark" value="0x1a1a2e" />
+		<color name="text_primary" value="0xeaeaea" />
+		<color name="text_muted" value="0xa0a0b0" />
+	</consts>
+
+	<subjects>
+		<int name="tap_count" value="0" />
+	</subjects>
+
+	<images>
+		<!-- Add <file> or <data> tags here -->
+	</images>
+
+	<fonts>
+		<!-- Add <bin>/<tiny_ttf> fonts here when needed. -->
+	</fonts>
+
+	<styles>
+		<style name="style_screen" bg_color="0x1a1a2e" />
+	</styles>
+</globals>

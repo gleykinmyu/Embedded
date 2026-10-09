@@ -1,0 +1,36 @@
+# Local clangd config for PlatformIO ESP-IDF (ESP32-S3).
+# Database is produced by `pio run` under .pio/build/<env>/.
+
+CompileFlags:
+  CompilationDatabase: .pio/build/waveshare_s3_touch_7
+  # Flags clangd/clang often reject from the xtensa gcc driver line:
+  Remove:
+    - -fno-tree-switch-conversion
+    - -fstrict-volatile-bitfields
+    - -fno-shrink-wrap
+    - -fzero-call-used-regs=*
+    - -fno-atomic-*
+    - -mlongcalls
+    - -mdisable-hardware-atomics
+    - -fno-builtin-*
+  Add:
+    - -Wno-unknown-warning-option
+    - -Wno-unknown-attributes
+
+Index:
+  Background: Build
+
+Diagnostics:
+  UnusedIncludes: None
+
+---
+# Skip indexing heavy / generated trees
+If:
+  PathMatch: .*/(managed_components|\.pio|build)/.*
+Index:
+  Background: Skip
+---
+If:
+  PathMatch: .*/components/esp_lvgl_adapter/(LICENSE|CHANGELOG\.md|README.*|MIGRATION_GUIDE\.md)$
+Index:
+  Background: Skip

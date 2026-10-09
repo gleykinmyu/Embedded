@@ -1,0 +1,128 @@
+external_components:
+  - source: github://willumpie82/esphome@dev
+    components: [mipi_dsi]
+  - source: github://kvj/esphome@jd9365_gsl3680
+    components: [gsl3680]
+
+esphome:
+  name: esp32-p4-tab10
+  friendly_name: 10.1inch-tab
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  variant: ESP32P4
+  flash_size: 16MB
+  cpu_frequency: 400MHz
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: yes
+
+logger:
+  level: DEBUG
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+esp32_hosted:
+  variant: ESP32C6
+  reset_pin: GPIO54
+  cmd_pin: GPIO19
+  clk_pin: GPIO18
+  d0_pin: GPIO14
+  d1_pin: GPIO15
+  d2_pin: GPIO16
+  d3_pin: GPIO17
+  active_high: true
+
+output:
+  - id: backlight_output
+    platform: ledc
+    pin: GPIO23
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: LCD Backlight
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+    gamma_correct: 1.0
+
+esp_ldo:
+  - channel: 3
+    id: dsi_phy_enable
+    voltage: 2.5V
+    adjustable: True
+
+display:
+  - platform: mipi_dsi
+    model: JC8012P4A1
+    reset_pin: GPIO27
+    update_interval: 17ms
+    id: my_display
+    rotation: 180
+    auto_clear_enabled: false
+    color_order: RGB
+    dimensions:
+      width: 800
+      height: 1280
+
+i2c:
+  - id: i2c_bus_a
+    sda: GPIO7
+    scl: GPIO8
+    scan: true
+    frequency: 400kHz
+    sda_pullup_enabled: False
+    scl_pullup_enabled: False
+
+touchscreen:
+  - platform: gsl3680
+    id: my_touchscreen
+    reset_pin: GPIO22
+    interrupt_pin: GPIO21
+    transform:
+      swap_xy: false
+      mirror_x: false
+      mirror_y: true
+    on_touch:
+      then:
+        - lvgl.label.update:
+            id: txtlbl
+            text:
+              format: "Touch at %d/%d"
+              args: [touch.x, touch.y]
+    on_release:
+      then:
+        - if:
+            condition: lvgl.is_paused
+            then:
+              - light.turn_on: display_backlight
+              - lvgl.resume:
+              - lvgl.widget.redraw:
+
+lvgl:
+  buffer_size: 100%
+  byte_order: little_endian
+  displays:
+    - my_display
+  touchscreens:
+    - my_touchscreen
+  on_idle:
+    timeout: 300s
+    then:
+      - logger.log: "LVGL is idle"
+      - lvgl.pause:
+      - light.turn_off:
+          id: display_backlight
+          transition_length: 2s
+  widgets:
+    - label:
+        id: txtlbl
+        text_color: black
+        text: "ESPHOME"
+        align: CENTER
+        text_font: montserrat_48
