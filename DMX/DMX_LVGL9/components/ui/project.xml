@@ -1,7 +1,0 @@
-<project name="ui">
-	<targets>
-		<target name="waveshare_s3_touch_7">
-			<display width="800" height="480" />
-		</target>
-	</targets>
-</project>

@@ -1,14 +1,16 @@
-/*
- * LVGL 9 UI on Waveshare ESP32-S3-Touch-LCD-7 (ESP-IDF / PlatformIO).
- * Display/touch port from Waveshare 09_lvgl_v9_demo.
- * UI is built with LVGL Editor XML in components/ui.
+/**
+ * @file main.c
+ * @brief Точка входа ESP-IDF: LCD/touch → LVGL adapter → ui_init → backlight.
+ *
+ * Подсветку включаем ПОСЛЕ первого кадра UI — иначе виден белый framebuffer.
  */
 
 #include <assert.h>
 
 #include "esp_log.h"
 #include "esp_lv_adapter.h"
-#include "lvgl.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "ui.h"
 #include "waveshare_rgb_lcd_port.h"
 
@@ -27,7 +29,6 @@ void app_main(void)
         rotation,
         &panel_handle,
         &touch_handle));
-    ESP_ERROR_CHECK(waveshare_rgb_lcd_backlight_on());
 
     esp_lv_adapter_config_t adapter_config = ESP_LV_ADAPTER_DEFAULT_CONFIG();
     adapter_config.task_stack_size = 12 * 1024;
@@ -53,10 +54,13 @@ void app_main(void)
 
     ESP_ERROR_CHECK(esp_lv_adapter_start());
 
-    ESP_LOGI(TAG, "Loading LVGL Editor UI");
+    ESP_LOGI(TAG, "Loading UI");
     if (esp_lv_adapter_lock(-1) == ESP_OK) {
-        ui_init("");
-        lv_screen_load(main_screen);
+        ui_init();
         esp_lv_adapter_unlock();
     }
+
+    /* Дать LVGL отрисовать монитор, затем включить подсветку. */
+    vTaskDelay(pdMS_TO_TICKS(30));
+    ESP_ERROR_CHECK(waveshare_rgb_lcd_backlight_on());
 }

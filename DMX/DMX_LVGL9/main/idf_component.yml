@@ -6,9 +6,9 @@ dependencies:
     version: "^9"
     public: true
 
-  # Local copy: PlatformIO breaks PUBLIC -include flags from the registry package
-  espressif/esp_lvgl_adapter:
-    override_path: "../components/esp_lvgl_adapter"
+  # Official Component Registry (no local override).
+  # PlatformIO -include workaround lives in root CMakeLists.txt.
+  espressif/esp_lvgl_adapter: "^0.5.3"
 
   espressif/esp_lcd_touch_gt911:
     version: "^1"

@@ -29,8 +29,3 @@ If:
   PathMatch: .*/(managed_components|\.pio|build)/.*
 Index:
   Background: Skip
----
-If:
-  PathMatch: .*/components/esp_lvgl_adapter/(LICENSE|CHANGELOG\.md|README.*|MIGRATION_GUIDE\.md)$
-Index:
-  Background: Skip

@@ -5,7 +5,8 @@ idf_component_register(
     INCLUDE_DIRS
         "."
     REQUIRES
-        ui)
+        ui
+        esp_lvgl_adapter)
 
 idf_build_get_property(build_components BUILD_COMPONENTS)
 if("lvgl" IN_LIST build_components)
