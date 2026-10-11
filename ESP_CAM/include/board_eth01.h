@@ -10,15 +10,15 @@ static constexpr int PIN_ETH_MDIO = 18;
 static constexpr int ETH_PHY_ADDR = 1;
 
 // UART0 (RX0/TX0) — отладка / прошивка / REPL, 115200.
-// На разъёме программирования ETH01: TXD0=GPIO1, RXD0=GPIO3.
+// На разъёме программирования ETH01: TXD0=GPIO1, RXD0=GPIO3.гыи
 static constexpr int PIN_DEBUG_TX = 1; // TX0
 static constexpr int PIN_DEBUG_RX = 3; // RX0
 
 // UART2 на пинах TXD/RXD модуля (не путать с TXD0/RXD0!).
 // WT32-ETH01 / ESP32-ETH01: TXD=GPIO17, RXD=GPIO5. Опционально 485_EN=GPIO33.
-static constexpr int PIN_RS422_TX = 17; // TXD  → драйвер RS-422 TX
-static constexpr int PIN_RS422_RX = 5;  // RXD  ← приёмник RS-422 RX
-static constexpr int PIN_RS422_DE = 33; // 485_EN (если DE/RE; для full-duplex RS-422 не обязателен)
+static constexpr int PIN_RS422_TX = 17; // TXD -> RS-422 driver TX
+static constexpr int PIN_RS422_RX = 5;  // RXD <- RS-422 receiver RX
+static constexpr int PIN_RS422_DE = 33; // 485_EN (DE/RE; optional for full-duplex RS-422)
 static constexpr int RS422_UART_NUM = 2;
 static constexpr int RS422_BAUD = 9600;
 
@@ -38,13 +38,13 @@ static constexpr int RS422_BAUD = 9600;
  *   6  | RX+            | HOT2                  | зелёный
  *  7–8 | —              | —                     | кор. пара
  *
- * TX*/RX* — со стороны головки (Pan/Tilt).
- * HOT1/COLD1 = пара 1 = TX головки; HOT2/COLD2 = пара 2 = RX головки.
+ * TX/RX names are from the pan/tilt head side.
+ * HOT1/COLD1 = pair 1 = head TX; HOT2/COLD2 = pair 2 = head RX.
  *
- * Waveshare Port C (как контроллер) → RJ45 головки:
- *   TA → 6 (RX+)   TB → 3 (RX-)
- *   RA ← 5 (TX+)   RB ← 4 (TX-)
- *   GND — 1
+ * Waveshare Port C (as controller) to RJ45 head:
+ *   TA -> pin 6 (RX+)   TB -> pin 3 (RX-)
+ *   RA <- pin 5 (TX+)   RB <- pin 4 (TX-)
+ *   GND -- pin 1
  */
 
 #define ETH01_IP4_ADDR  2, 0, 0, 12

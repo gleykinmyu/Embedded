@@ -28,6 +28,10 @@ public:
     ccam::Status savePreset(uint8_t n);
     ccam::Status queryPosition(ccam::PtPosition &pos);
     ccam::Status sendRaw(const char *cmd, const char *payload = nullptr);
+    /** Отправка + ожидание ответа (до CR / timeout). */
+    ccam::Status transactRaw(const char *cmd, const char *payload, uint8_t *response,
+                             size_t response_cap, size_t *response_len,
+                             uint32_t timeout_ms = ccam::kDefaultRxTimeoutMs);
 
     uint8_t defaultRate() const { return rate_; }
     void setDefaultRate(uint8_t rate_1_to_49);

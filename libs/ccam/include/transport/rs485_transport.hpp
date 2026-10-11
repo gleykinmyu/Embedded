@@ -24,11 +24,11 @@ class Rs485Transport {
 public:
     Rs485Transport(BIF::IByteStream& stream, NowMsFn now_ms);
 
-    /** Только передача (большинство P/T-команд без ответа). */
+    /** Только передача (без ожидания ACK/ответа). */
     Status send(const uint8_t* data, size_t len);
 
     /**
-     * Передача (если tx != nullptr) и ожидание ответа.
+     * Передача и ожидание ответа до CR/ETX или timeout.
      * @param rx_len  Фактическая длина принятых данных (может быть nullptr).
      */
     Status transact(

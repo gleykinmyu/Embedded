@@ -78,8 +78,20 @@ Status Rs485Transport::transact(
             break;
         }
         const size_t n = stream_.read(rx + got, rx_cap - got);
-        if (n > 0) {
-            got += n;
+        if (n == 0) {
+            continue;
+        }
+        const size_t from = got;
+        got += n;
+        // P/T кадр заканчивается CR; camera — ETX. Обрываем по любому.
+        for (size_t i = from; i < got; ++i) {
+            if (rx[i] == kPtCr || rx[i] == kEtx) {
+                got = i + 1;
+                if (rx_len != nullptr) {
+                    *rx_len = got;
+                }
+                return Status::Ok;
+            }
         }
     }
 

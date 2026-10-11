@@ -55,12 +55,18 @@ const char *Ph350Ctrl::statusText(ccam::Status st) {
 
 ccam::Status Ph350Ctrl::power(bool on) {
     Lock lock(mu_);
-    return pt_.power(on ? ccam::PtPowerMode::OnWithCameraTx : ccam::PtPowerMode::Off);
+    // #O1 = On (проверено с терминала). #O2 = OnWithCameraTx — на PH350E без камеры/линка не то.
+    return pt_.power(on ? ccam::PtPowerMode::On : ccam::PtPowerMode::Off);
 }
 
 ccam::Status Ph350Ctrl::stop() {
     Lock lock(mu_);
-    return pt_.stopAll();
+    // На PH350 достаточно pan/tilt; #Z/#F/#RO/#I из stopAll головке не нужны.
+    ccam::Status st = pt_.panStop();
+    if (st != ccam::Status::Ok) {
+        return st;
+    }
+    return pt_.tiltStop();
 }
 
 ccam::Status Ph350Ctrl::home() {
@@ -108,7 +114,19 @@ ccam::Status Ph350Ctrl::queryPosition(ccam::PtPosition &pos) {
     return pt_.queryPosition(pos);
 }
 
+static const char *strip_hash(const char *cmd) {
+    return (cmd != nullptr && cmd[0] == '#') ? (cmd + 1) : cmd;
+}
+
 ccam::Status Ph350Ctrl::sendRaw(const char *cmd, const char *payload) {
     Lock lock(mu_);
-    return pt_.sendCommand(cmd, payload);
+    return pt_.sendCommand(strip_hash(cmd), payload);
+}
+
+ccam::Status Ph350Ctrl::transactRaw(const char *cmd, const char *payload, uint8_t *response,
+                                    size_t response_cap, size_t *response_len,
+                                    uint32_t timeout_ms) {
+    Lock lock(mu_);
+    return pt_.transactCommand(strip_hash(cmd), payload, response, response_cap, response_len,
+                               timeout_ms);
 }

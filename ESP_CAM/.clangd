@@ -1,6 +1,10 @@
 # compile_commands.json в корне проекта: pio run -t compiledb
 CompileFlags:
   CompilationDatabase: .
+  Add:
+    - -IC:/GitHub/Embedded/libs/ccam/include
+    - -IC:/GitHub/Embedded/libs/Interfaces
+    - -IC:/GitHub/Embedded/ESP_CAM/include
   Remove:
     - -mlongcalls
     - -mdisable-hardware-atomics

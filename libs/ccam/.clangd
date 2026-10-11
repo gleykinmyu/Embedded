@@ -1,0 +1,4 @@
+# Локальная база этого каталога: tools/gen-compile-commands.ps1
+# Исходники проекта, который только подключает ccam, берут свою базу.
+CompileFlags:
+  CompilationDatabase: .

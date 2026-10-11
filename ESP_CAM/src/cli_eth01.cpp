@@ -352,11 +352,28 @@ int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
 int CliEth01::cmd_raw(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
     if (argc < 2) {
-        printf("raw <CMD> [payload]   example: raw P 01\n");
+        printf("raw <CMD> [payload]   example: raw O 1\n");
         return 1;
     }
     const char *payload = (argc >= 3) ? argv[2] : nullptr;
-    print_st(cli->pt_.sendRaw(argv[1], payload));
+    uint8_t rx[ccam::kPtFrameMax] = {};
+    size_t n = 0;
+    const ccam::Status st =
+        cli->pt_.transactRaw(argv[1], payload, rx, sizeof(rx), &n, ccam::kDefaultRxTimeoutMs);
+    if (st != ccam::Status::Ok) {
+        print_st(st);
+        return 1;
+    }
+    // ASCII-строка (непечатаемое → '.'), CR/LF не печатаем
+    printf("rx: ");
+    for (size_t i = 0; i < n; ++i) {
+        const uint8_t b = rx[i];
+        if (b == '\r' || b == '\n') {
+            continue;
+        }
+        putchar((b >= 32 && b <= 126) ? static_cast<char>(b) : '.');
+    }
+    printf("\n");
     return 0;
 }
 
@@ -391,6 +408,6 @@ void CliEth01::begin() {
     reg("speed", "Default move rate 1..49", "[1..49]", cmd_speed);
     reg("preset", "Recall/save preset", "recall|save <1..99>", cmd_preset);
     reg("pos", "Query pan/tilt position", nullptr, cmd_pos);
-    reg("raw", "Raw PT command without #/CR", "<CMD> [payload]", cmd_raw);
+    reg("raw", "Raw PT cmd (#/CR), print ASCII reply", "<CMD> [payload]", cmd_raw);
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
