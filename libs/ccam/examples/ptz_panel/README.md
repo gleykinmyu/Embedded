@@ -6,7 +6,7 @@
 
 | Файл | Роль |
 |------|------|
-| `src/main.cpp` | точка входа, заглушки HAL / joystick / panel |
+| `src/main.cpp` | точка входа, заглушки IByteStream / joystick / panel |
 | `src/app/ptz_operator.*` | связка UI → ccam |
 | `src/app/joystick.hpp` | интерфейс джойстика |
 | `src/app/touch_panel.hpp` | интерфейс панели |

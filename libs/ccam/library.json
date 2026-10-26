@@ -1,12 +1,14 @@
 {
   "name": "ccam",
-  "version": "1.0.0",
-  "description": "Panasonic Convertible Camera / Pan-Tilt RS485 protocol (v3.05)",
-  "keywords": ["panasonic", "ptz", "rs485", "convertible"],
+  "version": "1.1.0",
+  "description": "Panasonic Convertible Camera / Pan-Tilt protocol (v3.05) over BIF::IByteStream",
+  "keywords": ["panasonic", "ptz", "rs422", "rs485", "convertible", "ibyte_stream"],
   "license": "Unlicense",
   "frameworks": "*",
   "platforms": "*",
   "headers": "ccam.hpp",
+  "dependencies": {
+  },
   "build": {
     "includeDir": "include",
     "srcDir": "src",

@@ -1,0 +1,289 @@
+# Waveshare ESP32-S3-ETH-8DI-8RO / ESP32-S3-POE-ETH-8DI-8RO
+# CH1 — импульсное реле (катушка EXIO1, состояние по DI1)
+# CH2..CH8 — обычные реле на TCA9554
+
+substitutions:
+  device_name: test
+  pulse_ms: 500ms
+  eth_recover_wait: 2s
+  eth_recover_off: 500ms
+
+esphome:
+  name: ${device_name}
+  friendly_name: TEST
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: arduino
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+
+api:
+  encryption:
+    key: "APmtpT0rmRToEtTIz0qG/V3hU3KcYdapM/E9oljLtc8="
+  # 0s: не перезагружать плату, если Home Assistant ещё не подключён.
+  # Восстановление сети — только по Ethernet (on_disconnect → eth_recover).
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+
+ethernet:
+  id: eth
+  type: W5500
+  clk_pin: GPIO15
+  mosi_pin: GPIO13
+  miso_pin: GPIO14
+  cs_pin: GPIO16
+  interrupt_pin: GPIO12
+  reset_pin: GPIO39
+  clock_speed: 26.67MHz
+  manual_ip:
+    static_ip: 192.168.6.202
+    gateway: 192.168.5.1
+    subnet: 255.255.248.0
+    dns1: 192.168.5.1
+  on_connect:
+    then:
+      - logger.log: "Ethernet connected"
+      - script.stop: eth_recover
+  on_disconnect:
+    then:
+      - logger.log: "Ethernet disconnected, scheduling recover"
+      - script.execute: eth_recover
+
+i2c:
+  - id: i2cbus
+    sda: GPIO42
+    scl: GPIO41
+    frequency: 100kHz
+    scan: true
+    timeout: 50ms
+
+pca9554:
+  - id: TCA9554_hub
+    address: 0x20
+
+script:
+  # Аппаратный цикл W5500: disable/enable дергает reset_pin (GPIO39).
+  - id: eth_recover
+    mode: restart
+    then:
+      - delay: ${eth_recover_wait}
+      - if:
+          condition:
+            ethernet.connected:
+          then:
+            - logger.log: "Ethernet recovered without reset"
+          else:
+            - logger.log: "Cycling Ethernet (W5500 HW reset)"
+            - ethernet.disable:
+            - delay: ${eth_recover_off}
+            - ethernet.enable:
+
+  # Импульс на катушку CH1. mode: single = не накладывать импульсы.
+  - id: pulse_ch1
+    mode: single
+    then:
+      - switch.turn_on: relay1_coil
+      - delay: ${pulse_ms}
+      - switch.turn_off: relay1_coil
+      - delay: 20ms
+
+binary_sensor:
+  - platform: gpio
+    name: DI1
+    id: di1
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO4
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI2
+    id: di2
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO5
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI3
+    id: di3
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO6
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI4
+    id: di4
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO7
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI5
+    id: di5
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO8
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI6
+    id: di6
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO9
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI7
+    id: di7
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO10
+      inverted: true
+      mode: INPUT_PULLUP
+
+  - platform: gpio
+    name: DI8
+    id: di8
+    filters:
+      - delayed_on_off: 10ms
+    pin:
+      number: GPIO11
+      inverted: true
+      mode: INPUT_PULLUP
+
+switch:
+  # Катушка импульсного реле — не сущность HA, только внутренний GPIO.
+  - platform: gpio
+    id: relay1_coil
+    internal: true
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 0
+      inverted: false
+      mode:
+        output: true
+
+  # CH1: состояние берётся с DI1, вкл/выкл — импульс 500 мс, если DI1 ещё не в нужном состоянии.
+  - platform: template
+    name: Relay 1
+    id: relay1
+    icon: mdi:flash
+    lambda: |-
+      return id(di1).state;
+    turn_on_action:
+      - if:
+          condition:
+            binary_sensor.is_off: di1
+          then:
+            - script.execute: pulse_ch1
+    turn_off_action:
+      - if:
+          condition:
+            binary_sensor.is_on: di1
+          then:
+            - script.execute: pulse_ch1
+
+  - platform: gpio
+    name: Relay 2
+    id: relay2
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 1
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 3
+    id: relay3
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 2
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 4
+    id: relay4
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 3
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 5
+    id: relay5
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 4
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 6
+    id: relay6
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 5
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 7
+    id: relay7
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 6
+      inverted: false
+      mode:
+        output: true
+
+  - platform: gpio
+    name: Relay 8
+    id: relay8
+    restore_mode: ALWAYS_OFF
+    pin:
+      pca9554: TCA9554_hub
+      number: 7
+      inverted: false
+      mode:
+        output: true

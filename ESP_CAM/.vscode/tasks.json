@@ -1,0 +1,34 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clangd: update compile_commands",
+            "type": "shell",
+            "windows": {
+                "command": "powershell",
+                "args": [
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    "${workspaceFolder}/tools/update-compile-commands.ps1"
+                ]
+            },
+            "linux": {
+                "command": "${workspaceFolder}/tools/update-compile-commands.sh"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/tools/update-compile-commands.sh"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        }
+    ]
+}
