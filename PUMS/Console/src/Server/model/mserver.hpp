@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Server/model/drive_mech.hpp"
-#include "smcp/mech/group.hpp"
+#include "smcp/show/group.hpp"
 #include "smcp/mech/Server/server.hpp"
 #include "smcp/ilink.hpp"
 #include "smcp/session.hpp"

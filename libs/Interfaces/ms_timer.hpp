@@ -76,6 +76,14 @@ public:
         _timer.start(now_ms, timeout_ms);
     }
 
+    /** Продлить T без ++attempts (например multi-byte тело, пока ждём Ack). */
+    void extend(uint32_t now_ms, uint32_t timeout_ms) noexcept
+    {
+        if (_waiting) {
+            _timer.start(now_ms, timeout_ms);
+        }
+    }
+
     [[nodiscard]] bool timedOut(uint32_t now_ms) const noexcept
     {
         return _timer.timedOut(now_ms);

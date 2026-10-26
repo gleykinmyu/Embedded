@@ -1,27 +1,24 @@
 /**
  * @file session.hpp
- * @brief Сессия к одному peer: Heartbeat, session pkt_id, TX (PROTOCOL.md).
+ * @brief Сессия к одному peer: фасад FSM (PROTOCOL.md).
  *
- * Unicast TX — внутри `_tx_req` / `_tx_ctrl`, снаружи send/isTxFull.
- * Pump (tick/peekTx/onTxResult) — только Node (`friend`).
- * onPacket — Node + наследник (сервер: SessionConsole).
- * Класс A: окно 1 — голова `_tx_req` + `_ack`.
+ * LinkHb | ReplyWnd | TaggedOps | MultiByte | _tx_ctrl.
+ * MultiByte TX: сам peek→Session::send; Session::onTxResult → commit.
  */
 
 #pragma once
 
 #include <cstdint>
 
-#include "ms_timer.hpp"
 #include "obj_bank.hpp"
 #include "obj_registry.hpp"
 #include "smcp/node.hpp"
+#include "smcp/session/link_hb.hpp"
+#include "smcp/session/multi_byte.hpp"
+#include "smcp/session/reply_wnd.hpp"
+#include "smcp/session/tagged_ops.hpp"
 
 namespace smcp {
-
-#ifndef SMCP_SESSION_TX_CAPACITY
-#define SMCP_SESSION_TX_CAPACITY 16u
-#endif
 
 #ifndef SMCP_SESSION_CTRL_TX_CAPACITY
 #define SMCP_SESSION_CTRL_TX_CAPACITY 8u
@@ -29,165 +26,185 @@ namespace smcp {
 
 class Session {
 public:
-    /**
-     * Линк. _master (start) — keep-alive ping.
-     * Idle / Connecting / Awaiting / Open; isOpen = только Open.
-     * close(reason != None) → onFault + Idle. None — Idle без onFault.
-     */
-    enum class Status : uint8_t {
-        Idle = 0,
-        Connecting, /**< нет линка: master шлёт первый ping */
-        Awaiting,   /**< ping ушёл, ждём первый pong (ещё не up) */
-        Open,       /**< линк подтверждён RX HB */
-    };
-
+    using Status = LinkHb::Status;
     using Fault = Node::Fault;
 
-    [[nodiscard]] static const char* cstr(Status status) noexcept;
+    [[nodiscard]] static const char* cstr(Status status) noexcept
+    {
+        return LinkHb::cstr(status);
+    }
     [[nodiscard]] static const char* cstr(Fault reason) noexcept { return Node::cstr(reason); }
-
-    // --- ctor / id ---
+    [[nodiscard]] static const char* cstr(MultiByte::Error status) noexcept
+    {
+        return MultiByte::cstr(status);
+    }
 
     virtual ~Session() = default;
-
-    /** Регистрация в Node::sessions() (первый свободный слот). */
     explicit Session(Node& node) noexcept;
 
-    /** Слот в Node::sessions(), не peer на шине. */
+    Node& node;
+
     [[nodiscard]] uint8_t id() const noexcept { return _id; }
-
-    // --- состояние (app) ---
-
-    [[nodiscard]] Status getStatus() const noexcept { return _status; }
+    [[nodiscard]] Status getStatus() const noexcept { return _link.status(); }
     [[nodiscard]] uint8_t peerId() const noexcept { return _peer_id; }
-    /**
-     * Линк к peer (Open). Свой IdConflict: Node шлёт Fault и close
-     * (isOpen → false) до sticky Status.
-     */
-    [[nodiscard]] bool isOpen() const noexcept { return _status == Status::Open; }
+    [[nodiscard]] bool isOpen() const noexcept { return _link.isOpen(); }
     [[nodiscard]] bool isMaster() const noexcept { return _master; }
-    [[nodiscard]] bool isTxFull() const noexcept
-    {
-        return _tx_req.isFull() || _tx_ctrl.isFull();
-    }
-    [[nodiscard]] bool isAckPending() const noexcept { return _ack.isWaiting(); }
 
-    // --- жизненный цикл (app) ---
-
-    /**
-     * Сброс TX/таймеров + peer → Connecting.
-     * Master: из start. Slave: из onHeartbeat при !isOpen.
-     */
     void open(uint8_t peer_id) noexcept;
-    /** `_master` + abortAck + open. Ping — из tick (Connecting). */
     void start(uint8_t peer_id) noexcept;
-    /**
-     * Idle — no-op. reason != None → onFault, затем сброс TX.
-     * _peer_id не чистится: это привязка слота, не признак Open.
-     * setStatus(Idle) — последним, оттуда onLink(false).
-     * Штатное (None): без onFault.
-     */
     void close(Fault reason) noexcept;
 
-    // --- исходящие PDU (app) ---
-
     /**
-     * Unicast к peer при isOpen().
-     * needs_ack → `_tx_req` + pkt_id; иначе `_tx_ctrl`.
-     * true — class A встал в очередь, pktId() — id этого кадра.
+     * Short RPC → ReplyWnd (ожидание Ack|Nack).
+     * @return true — в очереди.
      */
-    bool send(Message msg, bool needs_ack) noexcept;
-
     template <typename T>
-    bool send(const T& pdu) noexcept
+    bool request(const T& pdu) noexcept
     {
-        Message m{};
-        m.id = T::kId;
-        if (!pdu.pack(m)) {
-            _node.onPackFailed(this, T::kId);
+        if (!isOpen()) {
             return false;
         }
-        return send(m, T::kNeedsAck);
+        Message m{};
+        if (!pdu.pack(m)) {
+            node.onPackFailed(this, T::kId);
+            return false;
+        }
+        return enqueueReq(m, allocTxn());
     }
 
-    /** pkt_id последнего class A, который встал в очередь. После send() == true. */
-    [[nodiscard]] uint8_t pktId() const noexcept { return _pkt_tx; }
+    template <typename T>
+    bool request(const T& pdu, uint8_t txn_id) noexcept
+    {
+        if (!isOpen() || txn_id == 0u) {
+            return false;
+        }
+        Message m{};
+        if (!pdu.pack(m)) {
+            node.onPackFailed(this, T::kId);
+            return false;
+        }
+        return enqueueReq(m, txn_id);
+    }
 
-    void sendAck(uint8_t req_pkt_id) noexcept;
-    void sendNack(uint8_t req_pkt_id, uint8_t error,
+    /**
+     * Unicast в `_tx_ctrl` (без окна Ack).
+     * HB / Ack / Nack / тело Get-Set / notify.
+     */
+    bool send(Message msg, uint8_t txn_id = 0) noexcept;
+
+    /** Pack @a pdu в @a out, затем send(out, txn). onPackFailed при сбое pack. */
+    template <typename T>
+    bool send(const T& pdu, Message& out, uint8_t txn_id = 0) noexcept
+    {
+        if (!pdu.pack(out)) {
+            node.onPackFailed(this, T::kId);
+            return false;
+        }
+        return send(out, txn_id);
+    }
+
+    template <typename T>
+    bool send(const T& pdu, uint8_t txn_id = 0) noexcept
+    {
+        Message m{};
+        return send(pdu, m, txn_id);
+    }
+
+    /** Ответ на Get: тело с echo txn (TaggedOps). */
+    [[nodiscard]] bool send(uint8_t tag, const IBuf& buf, uint8_t txn_id) noexcept
+    {
+        return _tagged.sendBody(tag, buf, txn_id);
+    }
+
+    [[nodiscard]] uint8_t txnId() const noexcept { return _txn_tx; }
+
+    void sendAck(uint8_t txn_id) noexcept;
+    void sendNack(uint8_t txn_id, uint8_t error,
                   uint32_t detail = msg::Nack::kDetailNone) noexcept;
 
     template <typename E>
-    void sendNack(uint8_t req_pkt_id, E error,
+    void sendNack(uint8_t txn_id, E error,
                   uint32_t detail = msg::Nack::kDetailNone) noexcept
     {
-        sendNack(req_pkt_id, static_cast<uint8_t>(error), detail);
+        sendNack(txn_id, static_cast<uint8_t>(error), detail);
+    }
+
+    /** Хук Node: кадр или локальный Timeout (FSM). */
+    inline void ack(const TxSlot& req, const msg::Ack& reply) noexcept
+    {
+        node.onAck(this, req, reply);
+    }
+
+    inline void nack(const TxSlot& req, const msg::Nack& reply) noexcept
+    {
+        node.onNack(this, req, reply);
+    }
+    inline void nack(const TxSlot& req, uint8_t error,
+                     uint32_t detail = msg::Nack::kDetailNone) noexcept
+    {
+        nack(req, msg::Nack::make(error, detail));
+    }
+    template <typename E>
+    void nack(const TxSlot& req, E error,
+              uint32_t detail = msg::Nack::kDetailNone) noexcept
+    {
+        nack(req, static_cast<uint8_t>(error), detail);
+    }
+
+    [[nodiscard]] inline bool set(uint8_t tag, const IBuf& buf) noexcept
+    {
+        return _tagged.set(tag, buf);
+    }
+    [[nodiscard]] inline bool get(uint8_t tag, IBuf& buf) noexcept
+    {
+        return _tagged.get(tag, buf);
     }
 
 protected:
-    /** HB / Ack / Nack. Fault PDU не ест — Node::onPacket. true — Node не зовёт Node::onPacket. */
     [[nodiscard]] virtual bool onPacket(const Packet& pkt) noexcept;
-    /** Peer ещё жив; close(reason != None) до сброса статуса. */
     virtual void onFault(Fault reason) noexcept;
+
+    virtual void onGet(const msg::Get& body, uint8_t txn_id) noexcept;
+    [[nodiscard]] virtual bool onSetBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
+                                           IBuf& buf) noexcept;
+    virtual void onSet(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept;
+    virtual void onReply(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept;
+
+    ReplyWnd _reply;
+    LinkHb _link;
+    MultiByte _mb;
+    TaggedOps _tagged;
 
 private:
     friend class Node;
+    friend class TaggedOps;
     template <typename, typename>
     friend class MISC::ObjRegistry;
 
     void set_id(uint8_t id) noexcept { _id = id; }
 
-    /** Смена `_status`; no-op если тот же. Ребро Open → onLink. */
-    void setStatus(Status status) noexcept;
-
-    // --- pump (только Node) ---
-
     void tick() noexcept;
     [[nodiscard]] const TxSlot* peekTx() noexcept;
     void onTxResult(bool ok) noexcept;
 
-    // --- Heartbeat ---
-
-    void ping() noexcept;
-    void pong() noexcept;
-    void onHeartbeat(uint8_t src_id) noexcept;
-
-    // --- Ack window ---
-
-    void abortAck() noexcept;
-    void onAck(const Packet& pkt) noexcept;
-    void onAckTimeout() noexcept;
-
-    // --- TX внутренности ---
-
     enum class OutSrc : uint8_t { None, Ctrl, Req };
 
-    bool transmit(Message msg, uint8_t pkt_id, bool needs_ack) noexcept;
+    [[nodiscard]] uint8_t allocTxn() noexcept;
+    [[nodiscard]] bool enqueueReq(Message msg, uint8_t txn_id) noexcept;
     void clearTx() noexcept;
     [[nodiscard]] const TxSlot* peekCtrl() noexcept;
-    /** @param allow_waiting true — голова при wait (match/abort); false — TX/retry. */
-    [[nodiscard]] const TxSlot* peekReq(bool allow_waiting = false) noexcept;
 
-    // --- данные ---
-
-    Node& _node;
     uint8_t _id = 0;
     uint8_t _peer_id = 0;
-    /** Последний поставленный class A. До первого — kPktIdMax, следующий кадр = +1. */
-    uint8_t _pkt_tx = protocol::kPktIdMax;
+    uint8_t _txn_tx = 0;
 
-    Status _status = Status::Idle;
     bool _master = false;
-    MISC::ReplyTimer _hb{msg::Heartbeat::kMissMax};
-    MISC::ReplyTimer _ack{msg::Ack::kRetry};
     OutSrc _out = OutSrc::None;
     bool _rr_ctrl = true;
 
-    TxQueue<SMCP_SESSION_TX_CAPACITY> _tx_req;
     TxQueue<SMCP_SESSION_CTRL_TX_CAPACITY> _tx_ctrl;
 };
 
-/** Банк S[N]: ctor регистрирует каждый в Node::sessions() подряд. */
 template <uint8_t N, typename S = Session>
 using SessionBank = MISC::ObjBank<S, N, false>;
 

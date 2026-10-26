@@ -63,7 +63,7 @@ struct WorkPage : nex::Page<54> {
     void refreshCells() noexcept;
 
     /** Telemetry → клетка. Recall группу не перекрашивает. */
-    void onMechTelemetry(uint8_t mech_id) noexcept;
+    void onMechTelemetry(uint8_t axis_id) noexcept;
     /** Select Ack после recall: билет закрыт, подсветка уже на кнопке. */
     void onGroupAck() noexcept;
     /** Select Nack / отказ recall: откат кнопки после MsgBox (`onAfterMsgBox`). */

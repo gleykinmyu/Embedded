@@ -13,8 +13,9 @@
 #include "browser.hpp"
 #include "fio.hpp"
 #include "showFile.hpp"
-#include "smcp/mech/Console/group_bank.hpp"
-#include "smcp/mech/Console/group_console.hpp"
+#include "smcp/show/axis_pool.hpp"
+#include "smcp/show/group_bank.hpp"
+#include "smcp/show/group_console.hpp"
 #include "smcp/ilink.hpp"
 
 struct Settings {
@@ -23,21 +24,31 @@ struct Settings {
 };
 static_assert(sizeof(Settings) == 8u, "SETT wire size");
 
-/** Шоуфайл: GRUP = CGroupBank, SETT. Живой и staging — один тип. */
-class Show : public sf::Show<2> {
+/** Шоуфайл: ATYP/APCH + GRUP + SETT. Одна копия в RAM (live). */
+class Show : public sf::Show<4> {
 public:
-    static constexpr uint32_t kSettingsSectionTag = 0x54544553u;
+    static constexpr uint32_t kMagic = 0x534D4350u; /**< "SMCP". */
+    static constexpr uint16_t kVersion = 0x0118u; /**< 0x0118: ATYP + APCH (show::Patch) */
+    static constexpr sf::Tag kSettingsSectionTag = 0x54544553u;
 
+    smcp::show::AxisPool<> patch;
     smcp::CGroupBank<smcp::kGroupMaxCount> group;
     sf::Section<Settings, 1> sett;
 
     explicit Show(smcp::IGroupConsole& console) noexcept
-        : group{*this, console, true}
+        : sf::Show<4>(kMagic, kVersion)
+        , patch{*this, true}
+        , group{*this, console, true}
         , sett{*this, kSettingsSectionTag, false}
     {}
 
     [[nodiscard]] Settings& settings() noexcept { return *sett.begin(); }
     [[nodiscard]] const Settings& settings() const noexcept { return *sett.begin(); }
+
+    [[nodiscard]] bool isValid() const noexcept override
+    {
+        return sf::Show<4>::isValid() && patch.isValid();
+    }
 };
 
 class MConsole;
@@ -45,9 +56,9 @@ class MConsole;
 /** FIO с хуком в пульт. */
 class Fio final : public sf::Fio {
 public:
-    Fio(MConsole& owner, sf::IBrowser& browser, sf::IShow& live, sf::IShow& incoming,
-        BIF::IFile& main, BIF::IFile& bak) noexcept
-        : sf::Fio(browser, live, incoming, main, bak)
+    Fio(MConsole& owner, sf::IBrowser& browser, sf::IShow& live, BIF::IFile& main,
+        BIF::IFile& bak) noexcept
+        : sf::Fio(browser, live, main, bak)
         , _owner(owner)
     {}
 
@@ -67,24 +78,26 @@ public:
     using Settings = ::Settings;
     static constexpr uint8_t kGroupCount = smcp::kGroupMaxCount;
     static constexpr uint8_t kNoActiveGroup = smcp::IGroupConsole::kNoActiveGroup;
-    static constexpr uint32_t kSettingsSectionTag = Show::kSettingsSectionTag;
+    static constexpr sf::Tag kSettingsSectionTag = Show::kSettingsSectionTag;
     static constexpr uint16_t kFileCache = 64u;
 
     enum class Mode : uint8_t { Work = 0, Show = 1 };
 
-    /** @a bak — тот же объект, что @a file, если резерва нет. */
+    /** @a file — SD; @a bak — W25 LKG (отдельный IFile). */
     MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file, BIF::IFile& bak,
              smcp::ILink& link, smcp::Node::ClockFn clock) noexcept;
 
+    /** Node::begin + LKG с bak (если есть). */
+    void begin(uint8_t console_id) noexcept;
+
 private:
-    /* После Base registry: GServerSession регистрируется в Node::sessions(). */
-    smcp::SessionBank<kSessionCount, smcp::GServerSession> _sessionBank;
+    /* После Base registry: ServerSession регистрируется в Node::sessions(). */
+    smcp::SessionBank<kSessionCount, smcp::ServerSession> _sessionBank;
     /* До cmechs: CMech ctor → storage() → registerAt. */
     smcp::IConsole::MechStore<kMechCount> _mechs;
-    /* Staging до fio; show до cmechs — CGMech смотрит live GRUP. */
-    Show _incoming;
 
 public:
+    /* До cmechs: CGMech смотрит live GRUP. */
     Show show;
     smcp::CGMechBank<kMechCount> cmechs;
     sf::Browser<kFileCache> browser;
@@ -135,7 +148,7 @@ protected:
         return server_id == smcp::msg::kServerIdMin ? &_mechs : nullptr;
     }
 
-    virtual void onMechChanged(uint8_t mech_id) noexcept { (void)mech_id; }
+    virtual void onMechChanged(uint8_t axis_id) noexcept { (void)axis_id; }
     virtual void onConsoleChanged() noexcept {}
 
     void onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept override;

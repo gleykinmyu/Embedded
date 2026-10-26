@@ -3,7 +3,7 @@
  * @brief test: CGroup<MaxMechs> : PoolView<GHDR, GSEL>. Не пульт.
  *
  * Local selection — биты 0…MaxMechs-1; слов GSEL = (MaxMechs+31)/32.
- * Recall пакует Selection по CMech: local_id → server_id + mech_id.
+ * Recall пакует Selection по CMech: local_id → server_id + axis_id.
  */
 
 #pragma once
@@ -14,13 +14,13 @@
 
 #include "section_pool.hpp"
 #include "smcp/mech/Console/console.hpp"
-#include "smcp/mech/group.hpp"
+#include "smcp/show/group.hpp"
 
 namespace smcp {
 namespace test {
 
-inline constexpr uint32_t kGroupHeaderTag = 0x52444847u; /**< "GHDR". */
-inline constexpr uint32_t kGroupSlotTag = 0x4C455347u;   /**< "GSEL". */
+inline constexpr sf::Tag kGroupHeaderTag = 0x52444847u; /**< "GHDR". */
+inline constexpr sf::Tag kGroupSlotTag = 0x4C455347u;   /**< "GSEL". */
 
 /** Заголовок группы в пуле. PoolRef вместо Selection. */
 struct alignas(uint32_t) GroupHeader {
@@ -229,13 +229,13 @@ public:
             if (m == nullptr || !contains(m->localId())) {
                 continue;
             }
-            const uint8_t sid = m->serverId();
-            if (!msg::isServerId(sid)) {
+            const axis::Route r = m->route();
+            if (!msg::isServerId(r.server_id)) {
                 continue;
             }
             uint8_t w = 0u;
             for (; w < nw; ++w) {
-                if (wires[w].sid == sid) {
+                if (wires[w].sid == r.server_id) {
                     break;
                 }
             }
@@ -243,10 +243,10 @@ public:
                 if (nw >= MaxMechs) {
                     return Result::NotSent;
                 }
-                wires[nw].sid = sid;
+                wires[nw].sid = r.server_id;
                 ++nw;
             }
-            wires[w].sel.add(m->id());
+            wires[w].sel.add(r.axis_id);
         }
         if (nw == 0u) {
             return Result::Empty;

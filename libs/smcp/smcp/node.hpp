@@ -2,7 +2,7 @@
  * @file node.hpp
  * @brief Базовый узел SMCP: ILink + TxQueue + registry Session*.
  *
- * Session unicast — Session TX (Full → isTxFull / onTxFull).
+ * Session unicast — Session TX (Full → onTxFull).
  * Node drain сессии + bus; Session создаёт наследник и регистрирует.
  */
 
@@ -38,8 +38,7 @@ class Node;
 struct TxSlot {
     Message msg{};
     uint8_t dst_id = Packet::kBroadcastId;
-    uint8_t pkt_id = 0;
-    bool needs_ack = false;
+    uint8_t txn_id = 0;
 };
 
 /**
@@ -81,6 +80,8 @@ void registerSession(Node& node, Session& session) noexcept;
  */
 class Node {
 public:
+    // --- типы ---
+
     /**
      * Lifecycle: Idle → Listen → Ready.
      * Отказ не понижаем, кроме Idle (clearError / end / begin).
@@ -112,6 +113,7 @@ public:
         None = 0, /**< штатное закрытие (begin/end/stop), не отказ шины */
         HbLost,
         IdConflict,
+        PeerDown, /**< чужой Fault на шине, не IdConflict */
     };
 
     [[nodiscard]] static const char* cstr(Fault reason) noexcept
@@ -120,6 +122,7 @@ public:
         case Fault::None: return "None";
         case Fault::HbLost: return "HbLost";
         case Fault::IdConflict: return "IdConflict";
+        case Fault::PeerDown: return "PeerDown";
         }
         return "?";
     }
@@ -144,7 +147,12 @@ public:
     ILink& link() noexcept { return _link; }
     const ILink& link() const noexcept { return _link; }
 
-    // --- статус узла ---
+    /** Короткое имя (≤ Fault::kDetailMax); уходит в Fault IdConflict.detail. */
+    static constexpr uint8_t kNameMax = msg::Fault::kDetailMax;
+    void setName(const char* node_name) noexcept;
+    [[nodiscard]] const char* name() const noexcept { return _name; }
+
+    // --- статус / lifecycle ---
 
     [[nodiscard]] Status getStatus() const noexcept { return _status; }
     [[nodiscard]] bool isReady() const noexcept { return _status == Status::Ready; }
@@ -171,6 +179,7 @@ public:
     {
         return const_cast<Node*>(this)->sessions().get(slot_id);
     }
+    /** Connecting/Awaiting/Open с этим peer; Idle не отдаём (будит openNewSession / start). */
     Session* sessionByPeer(uint8_t peer_id) noexcept;
     const Session* sessionByPeer(uint8_t peer_id) const noexcept
     {
@@ -189,18 +198,17 @@ public:
      * Non-session TX (обычно broadcast). Unicast — Session::send.
      * Full → stall update() до SMCP_TX_STALL_MS, иначе onTxFull(nullptr).
      */
-    void send(Message msg, uint8_t dst_id = Packet::kBroadcastId, uint8_t pkt_id = 0) noexcept;
+    void send(Message msg, uint8_t dst_id = Packet::kBroadcastId, uint8_t txn_id = 0) noexcept;
 
     template <typename T>
-    void send(const T& pdu, uint8_t dst_id = Packet::kBroadcastId, uint8_t pkt_id = 0) noexcept
+    void send(const T& pdu, uint8_t dst_id = Packet::kBroadcastId, uint8_t txn_id = 0) noexcept
     {
         Message m{};
-        m.id = T::kId;
         if (!pdu.pack(m)) {
             onPackFailed(nullptr, T::kId);
             return;
         }
-        send(m, dst_id, pkt_id);
+        send(m, dst_id, txn_id);
     }
 
     /** RX → acceptRx → session/onPacket → tick → RR Session TX + bus. */
@@ -212,19 +220,11 @@ public:
     /** close(@a reason) по всем слотам. Idle — no-op. */
     void closeAllSessions(Fault reason) noexcept;
 
-protected:
-    friend class Session;
-    friend void detail::registerSession(Node& node, Session& session) noexcept;
-
-    // --- storage (leaf) ---
-
-    [[nodiscard]] virtual SessionReg& sessions() noexcept = 0;
-
-    // --- hooks (leaf / app) ---
+    // --- hooks (leaf / app; public — Session / FSM зовут без friend) ---
 
     /**
      * Demux, если Session кадр не съела.
-     * Fault IdConflict: Session::fault. Наследник, если перекрывает — зовёт Node::onPacket.
+     * Наследник, если перекрывает — зовёт Node::onPacket.
      */
     virtual void onPacket(const Packet& pkt) noexcept;
 
@@ -244,7 +244,7 @@ protected:
     virtual void onSessionFull(uint8_t peer_id) noexcept;
 
     /**
-     * @a session != nullptr — отказ сессии (HbLost / IdConflict), peer жив.
+     * @a session != nullptr — отказ сессии (HbLost / IdConflict / PeerDown), peer жив.
      * @a session == nullptr — свой отказ узла (сейчас IdConflict).
      * close(None) хук не зовёт.
      */
@@ -258,21 +258,15 @@ protected:
 
     /**
      * Ack на class A.
-     * @a req — исходный pending (голова `_tx_req`); валиден только до return
-     * (Session делает drop после хука). @a reply — разобранный Ack.
+     * @a req — исходный pending; валиден только до return (drop после хука).
      */
     virtual void onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept;
 
     /**
      * Nack на class A (с шины) или локальный Timeout.
-     * @a req валиден только до return (Session делает drop после хука).
+     * @a req валиден только до return (drop после хука).
      */
     virtual void onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept;
-
-    /**
-     * Diag: Ack/Nack pkt_id ≠ pending. Сессию не трогаем.
-     */
-    virtual void onPktIdMismatch(Session* session, uint8_t expected, uint8_t got) noexcept;
 
     /**
      * Diag: PDU не pack. Кадр не в очереди. nullptr — Node::send (bus).
@@ -280,8 +274,7 @@ protected:
     virtual void onPackFailed(Session* session, uint8_t msg_id) noexcept;
 
     /**
-     * Wire-результат головы bus `_tx` (очередь без peer: Node::send / broadcast).
-     * Не Session TX — там Session::onTxResult.
+     * Wire-результат головы bus `_tx`.
      * Default: !ok → drop головы (класс D); ok — уже drop в pumpTx.
      */
     virtual void onTxResult(bool ok) noexcept
@@ -291,12 +284,21 @@ protected:
         }
     }
 
-    // --- статус / RX фильтр ---
+protected:
+    friend void detail::registerSession(Node& node, Session& session) noexcept;
+
+    // --- storage (leaf) ---
+
+    [[nodiscard]] virtual SessionReg& sessions() noexcept = 0;
+
+    // --- статус ---
 
     /** Смена `_status`. Отказ не понижаем, кроме Idle и LinkError→Ready. */
     void setStatus(Status status) noexcept;
 
 private:
+    // --- RX фильтр / IdConflict ---
+
     /** src==наш → enterIdConflict; IdConflict → drop; dst≠нам → drop. */
     [[nodiscard]] bool acceptRx(const Packet& pkt) noexcept;
     /**
@@ -322,6 +324,7 @@ private:
     uint8_t _updateDepth = 0;
     uint8_t _drainCursor = 0;
     MISC::MsTimer _listen{};
+    char _name[kNameMax + 1u]{};
 };
 
 template <std::size_t Cap>

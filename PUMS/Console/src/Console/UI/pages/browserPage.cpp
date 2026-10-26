@@ -315,6 +315,9 @@ void BrowserPage::commitOpen() noexcept
         ui().showFileSystemStatus();
         return;
     }
+    if (console.fio.status() == sf::Fio::Status::BakOnly) {
+        ui().showFileSystemStatus();
+    }
     _msg = Msg::None;
     ui().goWork(true);
 }

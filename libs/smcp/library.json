@@ -4,6 +4,6 @@
   "description": "SMCP transport: Message/Packet, ILink/CanLink, Node, Session",
   "build": {
     "libArchive": false,
-    "srcFilter": "+<smcp/*.cpp>"
+    "srcFilter": "+<smcp/*.cpp> +<smcp/session/*.cpp>"
   }
 }

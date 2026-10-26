@@ -28,8 +28,8 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
         SMCP_PICK((dir != nullptr && dir[0] == 'T') ? 'T' : 'R', dir),
         static_cast<unsigned>(pkt.src_id),
         static_cast<unsigned>(pkt.dst_id),
-        static_cast<unsigned>(pkt.pkt_id),
-        SMCP_PICK(msg::cstrMsgS(pkt.msg.id), msg::cstrMsg(pkt.msg.id)),
+        static_cast<unsigned>(pkt.txn_id),
+        SMCP_PICK(msg::cstrS(pkt.msg.id), msg::cstr(pkt.msg.id)),
         static_cast<unsigned>(pkt.msg.dlc));
 }
 

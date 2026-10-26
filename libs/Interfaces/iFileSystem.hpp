@@ -93,6 +93,7 @@ class IFile {
 public:
     virtual ~IFile() = default;
 
+    /** @a for_write — создать заново; read() уже записанных байт тоже разрешён. */
     virtual bool open(const char* path, bool for_write) noexcept = 0;
     virtual void close() noexcept = 0;
 

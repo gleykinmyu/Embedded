@@ -3,23 +3,27 @@
  * @brief CMech: Select/Block/SetTarget через IConsole, зеркало Telemetry.
  */
 
-#include "smcp/mech/Console/cmech.hpp"
+#include "smcp/show/cmech.hpp"
 #include "smcp/mech/Console/console.hpp"
 
 namespace smcp {
 
 CMech::CMech(IConsole& console, uint8_t id) noexcept
-    : CMech(console, msg::kServerIdMin, id, id)
+    : CMech(console, axis::Route{msg::kServerIdMin, id}, id)
 {}
 
 CMech::CMech(IConsole& console, uint8_t server_id, uint8_t id) noexcept
-    : CMech(console, server_id, id, id)
+    : CMech(console, axis::Route{server_id, id}, id)
 {}
 
-CMech::CMech(IConsole& console, uint8_t server_id, uint8_t mech_id, uint8_t local_id) noexcept
-    : IMech(mech_id)
+CMech::CMech(IConsole& console, uint8_t server_id, uint8_t axis_id, uint8_t local_id) noexcept
+    : CMech(console, axis::Route{server_id, axis_id}, local_id)
+{}
+
+CMech::CMech(IConsole& console, axis::Route route, uint8_t local_id) noexcept
+    : IAxis(route.axis_id)
     , _console(&console)
-    , _server_id(server_id)
+    , _route(route)
     , _local_id(local_id)
 {
     detail::registerMech(console, *this);
@@ -29,7 +33,7 @@ void CMech::select(uint8_t console_id) noexcept
 {
     Selection sel;
     sel.add(_id);
-    ServerSession* const s = _console->server(_server_id);
+    ServerSession* const s = _console->server(_route.server_id);
     if (s == nullptr) {
         return;
     }
@@ -40,7 +44,7 @@ void CMech::block(bool blocked) noexcept
 {
     Selection sel;
     sel.add(_id);
-    ServerSession* const s = _console->server(_server_id);
+    ServerSession* const s = _console->server(_route.server_id);
     if (s == nullptr) {
         return;
     }
@@ -49,7 +53,7 @@ void CMech::block(bool blocked) noexcept
 
 void CMech::setTarget(const MotionTarget& target) noexcept
 {
-    ServerSession* const s = _console->server(_server_id);
+    ServerSession* const s = _console->server(_route.server_id);
     if (s == nullptr) {
         return;
     }
@@ -58,21 +62,25 @@ void CMech::setTarget(const MotionTarget& target) noexcept
 
 void CMech::resetFault() noexcept
 {
-    /* Fault сбрасывает сервер; на пульте локального состояния нет. */
+    ServerSession* const s = _console->server(_route.server_id);
+    if (s == nullptr) {
+        return;
+    }
+    s->resetFault(Selection::of(_id));
 }
 
 void CMech::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
 {
-    if (telemetry.mech_id != _id) {
+    if (telemetry.axis_id != _id) {
         return;
     }
-    if (src_id != _server_id) {
+    if (src_id != _route.server_id) {
         return;
     }
 
     /* Зеркало сегмента: holder/status/position только с сервера. */
     _holder = telemetry.holder_id;
-    _position = telemetry.position_mm;
+    _position = telemetry.position;
     _status = telemetry.status;
 }
 

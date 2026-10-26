@@ -3,26 +3,40 @@
  * @brief Northbound PDU (консоль ↔ сервер сегмента). Не транспорт.
  *
  * Demux: SessionConsole (unicast A) / IConsole::onPacket (Telemetry D).
+ * Get/Set/DataBegin/Data — транспорт `smcp/message.hpp` (Node / Session).
  */
 
 #pragma once
 
 #include <cstdint>
 
-#include "smcp/mech/group.hpp"
-#include "smcp/mech/mech.hpp"
+#include "enum_value.hpp"
+#include "smcp/show/group.hpp"
+#include "smcp/mech/axis.hpp"
 #include "smcp/message.hpp"
 
 namespace smcp {
 namespace msg {
 
-/** Northbound MsgId: 0x10… команды, 0x40… telemetry. */
+/**
+ * Northbound MsgId (оси / сервис PIN).
+ * Get/Set/DataBegin/Data — `msg::Id` в libs/smcp. 0x30 — Heartbeat.
+ */
 enum class CMsgId : uint8_t {
-    Select       = 0x10,
-    Block        = 0x11,
-    SetTarget    = 0x20,
+    /** Пульт берёт или отдаёт оси: маска + Add / Remove / Set. */
+    Select = 0x10,
+    /** Сегментный запрет движения: маска + Add / Remove / Set. Не флаг группы на пульте. */
+    Block = 0x11,
+    /** Уставка: одна ось или всё Select консоли (флаг all_selected → DLC 7/8). */
+    SetTarget = 0x20,
+    /** Снимок осей по маске. Состояние сегмента не меняет. Пустая маска — весь inventory. */
     GetTelemetry = 0x21,
-    Telemetry    = 0x40,
+    /** Пустая маска — globalFault (GPIO сервера). Биты — Fault указанных осей. */
+    ResetFault = 0x22,
+    /** Хэш PIN на эту сессию. Совпал с NVM сервера — Ack, нет — Nack. */
+    ServiceUnlock = 0x23,
+    /** Снимок оси: кто держит, статус, позиция в единицах kind. */
+    Telemetry = 0x40,
 };
 
 /** Адреса northbound. Broadcast 0xFF — транспорт (`Packet::kBroadcastId`). */
@@ -35,17 +49,18 @@ inline constexpr uint8_t kServerIdMax = 0xEFu;
 
 /**
  * Коды Nack northbound. Транспорт несёт raw `uint8_t` (Nack::error).
- * Timeout совпадает с Nack::kTimeout (локальный abort Ack в Session).
+ * Прикладные коды — строго выше @c Nack::Error::Max (0x0F).
+ * @c Timeout = @c Nack::kTimeout — локальный abort окна Ack (не с шины).
  */
 enum class ErrorCode : uint8_t {
     Ok           = 0x00, /**< Успех (не в Nack; возврат политики acceptSelect). */
-    Busy         = 0x01, /**< Ось уже выделена другой консолью. */
-    Limits       = 0x02, /**< Концевики / пределы хода (SetTarget). */
-    Crc          = 0x03, /**< Ошибка CRC / целостности. */
-    MechNotFound = 0x04, /**< Нет механизма с таким id. */
-    Safety       = 0x05, /**< Blocked / запрет безопасности. */
-    NotReady     = 0x06, /**< Привод не Ready. */
-    SelectLimit  = 0x07, /**< Политика сегмента (лимит / зоны Select). */
+    Busy         = 0x10, /**< Ось уже выделена другой консолью. */
+    Limits       = 0x11, /**< Концевики / пределы хода (SetTarget). */
+    Crc          = 0x12, /**< Ошибка CRC / целостности. */
+    MechNotFound = 0x13, /**< Нет механизма с таким id. */
+    Safety       = 0x14, /**< Blocked / запрет безопасности. */
+    NotReady     = 0x15, /**< Привод не Ready. */
+    SelectLimit  = 0x16, /**< Политика сегмента (лимит / зоны Select). */
     Timeout      = Nack::kTimeout, /**< Локально: исчерпан retry Ack (не с шины). */
 };
 
@@ -91,6 +106,7 @@ enum class Action : uint8_t {
     Add = 0,    /**< Select / Block. */
     Remove = 1, /**< Deselect / Unblock. */
     Set = 2,    /**< Absolute mask. */
+    Count,
 };
 
 [[nodiscard]] inline const char* cstr(Action action) noexcept
@@ -99,13 +115,9 @@ enum class Action : uint8_t {
     case Action::Add: return "Add";
     case Action::Remove: return "Remove";
     case Action::Set: return "Set";
+    case Action::Count: break;
     }
     return "?";
-}
-
-[[nodiscard]] constexpr bool isValidAction(Action action) noexcept
-{
-    return action == Action::Add || action == Action::Remove || action == Action::Set;
 }
 
 namespace detail {
@@ -116,8 +128,8 @@ namespace detail {
     if (m.dlc != 5) {
         return false;
     }
-    const auto a = static_cast<Action>(m.data[0]);
-    if (!isValidAction(a)) {
+    const auto a = MISC::EnumValue<Action>::from_raw(m.data[0]);
+    if (!a.isValid()) {
         return false;
     }
     action = a;
@@ -137,17 +149,18 @@ namespace detail {
  *   +--------+-------------+
  *   | action | mask LE u32 |
  *   +--------+-------------+
- *    data[0]  data[1..4]     (pkt_id → CAN ID)
+ *    data[0]  data[1..4]     (txn_id → CAN ID)
  */
 struct Select {
     static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Select);
-    static constexpr bool kNeedsAck = true;
 
     Action action = Action::Add;
     Selection selection{};
 
     [[nodiscard]] bool pack(Message& m) const noexcept
     {
+        m = {};
+        m.id = kId;
         return detail::packMaskOp(m, action, selection);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
@@ -161,13 +174,14 @@ struct Select {
  */
 struct Block {
     static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Block);
-    static constexpr bool kNeedsAck = true;
 
     Action action = Action::Add;
     Selection selection{};
 
     [[nodiscard]] bool pack(Message& m) const noexcept
     {
+        m = {};
+        m.id = kId;
         return detail::packMaskOp(m, action, selection);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
@@ -188,12 +202,13 @@ struct Block {
  */
 struct GetTelemetry {
     static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::GetTelemetry);
-    static constexpr bool kNeedsAck = true;
 
     Selection selection{};
 
     [[nodiscard]] bool pack(Message& m) const noexcept
     {
+        m = {};
+        m.id = kId;
         return m.pushU32(selection.raw());
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
@@ -207,73 +222,153 @@ struct GetTelemetry {
 };
 
 /**
- * SetTarget — DLC=7 (accel на шину не кладётся)
- *   +---------+--------------+------------+
- *   | mech_id | target_mm LE | speed LE   |
- *   |   u8    |    i32       | u16 mm/s   |
- *   +---------+--------------+------------+
- *    data[0]   data[1..4]      data[5..6]
+ * SetTarget — одна структура; флаг all_selected задаёт DLC.
+ *
+ * Общий префикс:
+ *   +------+-----------+----------+
+ *   | mode | target LE | speed LE |
+ *   |  u8  |    i32    |   u16    |
+ *   +------+-----------+----------+
+ *    [0]    [1..4]       [5..6]
+ *
+ * DLC=7  — all_selected: уставка на все оси, которые эта консоль держит Select.
+ * DLC=8  — одна ось: + axis_id в data[7].
  */
 struct SetTarget {
     static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::SetTarget);
-    static constexpr bool kNeedsAck = true;
-    uint8_t mech_id = 0;
+
     MotionTarget target{};
+    uint8_t axis_id = 0;
+    bool all_selected = false; /**< true → без axis_id; сервер берёт Select этой консоли. */
 
     [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        return m.push(mech_id)
-            && m.pushU32(static_cast<uint32_t>(target.target_mm))
-            && m.pushU16(target.speed_mm_s);
+        m = {};
+        m.id = kId;
+        if (!m.push(static_cast<uint8_t>(target.mode))
+            || !m.pushU32(static_cast<uint32_t>(target.target))
+            || !m.pushU16(target.speed)) {
+            return false;
+        }
+        if (all_selected) {
+            return true;
+        }
+        return m.push(axis_id);
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
-        if (m.dlc != 7) {
+        if (m.dlc != 7 && m.dlc != 8) {
             return false;
         }
-        mech_id = m.data[0];
-        target.target_mm = static_cast<int32_t>(m.loadU32(1));
-        target.speed_mm_s = m.loadU16(5);
-        target.accel_mm_s2 = 0;
+        const auto mode = MISC::EnumValue<MoveMode>::from_raw(m.data[0]);
+        if (!mode.isValid()) {
+            return false;
+        }
+        target.mode = mode;
+        target.target = static_cast<int32_t>(m.loadU32(1));
+        target.speed = m.loadU16(5);
+        target._reserved = 0;
+        all_selected = (m.dlc == 7);
+        axis_id = all_selected ? 0 : m.data[7];
         return true;
     }
 };
 
 /**
- * Telemetry — DLC=8 (broadcast, pkt_id=0)
+ * ResetFault — DLC=4 (класс A).
+ *   +-------------+
+ *   | mask LE u32 |
+ *   +-------------+
+ *    data[0..3]
+ *
+ * Пустая маска — globalFault, отдельные GPIO сервера (E-Stop release).
+ * Ненулевая — сброс Fault только у указанных осей.
+ */
+struct ResetFault {
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::ResetFault);
+
+    Selection selection{};
+
+    [[nodiscard]] bool pack(Message& m) const noexcept
+    {
+        m = {};
+        m.id = kId;
+        return m.pushU32(selection.raw());
+    }
+    [[nodiscard]] bool unpack(const Message& m) noexcept
+    {
+        if (m.dlc != 4) {
+            return false;
+        }
+        selection = Selection::from_raw(m.loadU32(0));
+        return true;
+    }
+};
+
+/**
+ * Telemetry — DLC=8 (broadcast, txn_id=0)
  *   +---------+----------+--------+--------+--------------+
- *   | mech_id | reserved | holder | status | position LE  |
- *   |   u8    |    u8    |  u8    |   u8   |     i32      |
+ *   | axis_id | reserved | holder | status | position LE  |
+ *   |   u8    |    u8    |  u8    |   u8   | i32 (kind)   |
  *   +---------+----------+--------+--------+--------------+
  */
 struct Telemetry {
     static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::Telemetry);
-    static constexpr bool kNeedsAck = false;
 
-    uint8_t mech_id = 0;
+    uint8_t axis_id = 0;
     uint8_t reserved = 0;
     uint8_t holder_id = kHolderNone;
-    REG::BitMask<IMech::Status> status{};
-    int32_t position_mm = 0;
+    REG::BitMask<IAxis::Status> status{};
+    int32_t position = 0;
 
     [[nodiscard]] bool pack(Message& m) const noexcept
     {
-        return m.push(mech_id)
+        m = {};
+        m.id = kId;
+        return m.push(axis_id)
             && m.push(reserved)
             && m.push(holder_id)
             && m.push(static_cast<uint8_t>(status.raw()))
-            && m.pushU32(static_cast<uint32_t>(position_mm));
+            && m.pushU32(static_cast<uint32_t>(position));
     }
     [[nodiscard]] bool unpack(const Message& m) noexcept
     {
         if (m.dlc != 8) {
             return false;
         }
-        mech_id = m.data[0];
+        axis_id = m.data[0];
         reserved = m.data[1];
         holder_id = m.data[2];
-        status = REG::BitMask<IMech::Status>::from_raw(m.data[3]);
-        position_mm = static_cast<int32_t>(m.loadU32(4));
+        status = REG::BitMask<IAxis::Status>::from_raw(m.data[3]);
+        position = static_cast<int32_t>(m.loadU32(4));
+        return true;
+    }
+};
+
+/**
+ * ServiceUnlock — DLC=4 (класс A). PIN-хэш; проверка на сервере — фаза 7.
+ *   +--------------+
+ *   | pin_hash LE  |
+ *   +--------------+
+ *    data[0..3]
+ */
+struct ServiceUnlock {
+    static constexpr uint8_t kId = static_cast<uint8_t>(CMsgId::ServiceUnlock);
+
+    uint32_t pin_hash = 0;
+
+    [[nodiscard]] bool pack(Message& m) const noexcept
+    {
+        m = {};
+        m.id = kId;
+        return m.pushU32(pin_hash);
+    }
+    [[nodiscard]] bool unpack(const Message& m) noexcept
+    {
+        if (m.dlc != 4) {
+            return false;
+        }
+        pin_hash = m.loadU32(0);
         return true;
     }
 };
@@ -285,9 +380,11 @@ struct Telemetry {
     case CMsgId::Block: return "Block";
     case CMsgId::GetTelemetry: return "GetTelemetry";
     case CMsgId::SetTarget: return "SetTarget";
+    case CMsgId::ResetFault: return "ResetFault";
+    case CMsgId::ServiceUnlock: return "ServiceUnlock";
     case CMsgId::Telemetry: return "Telemetry";
     }
-    return cstrMsg(static_cast<uint8_t>(id));
+    return cstr(static_cast<uint8_t>(id));
 }
 
 #if defined(SMCP_TRACE_SHORT)
@@ -298,9 +395,11 @@ struct Telemetry {
     case CMsgId::Block: return "Blk";
     case CMsgId::GetTelemetry: return "GT";
     case CMsgId::SetTarget: return "Tg";
+    case CMsgId::ResetFault: return "RF";
+    case CMsgId::ServiceUnlock: return "SU";
     case CMsgId::Telemetry: return "Te";
     }
-    return cstrMsgS(static_cast<uint8_t>(id));
+    return cstrS(static_cast<uint8_t>(id));
 }
 #endif
 

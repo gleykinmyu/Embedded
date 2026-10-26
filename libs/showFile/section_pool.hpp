@@ -285,7 +285,7 @@ public:
      * @a required — на обе: одна без другой не имеет смысла.
      * Ёмкость Show должна вмещать +2 секции.
      */
-    SectionPool(IShow& file, uint32_t tag_heads, uint32_t tag_slots, bool required = true) noexcept
+    SectionPool(IShow& file, Tag tag_heads, Tag tag_slots, bool required = true) noexcept
         : IPool<Hdr, Slot>(NH, NS)
         , _heads(file, tag_heads, required)
         , _slots(file, tag_slots, required)

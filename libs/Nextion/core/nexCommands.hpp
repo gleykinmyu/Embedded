@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include "../nexConfig.hpp"
 #include "nexProtocol.hpp"
 #include "nexTypes.hpp"
 #include "nexMessages.hpp"
@@ -177,26 +178,26 @@ namespace assign {
         };
 
         Text(const AttrRef& target, const char* text, Op op) noexcept
-            : _target(target)
+            : _op(op)
+            , _target(target)
             , _text(text)
             , _len(static_cast<std::size_t>(-1))
-            , _op(op)
         {}
         Text(const AttrRef& target, const char* text, std::size_t len, Op op) noexcept
-            : _target(target)
+            : _op(op)
+            , _target(target)
             , _text(text)
             , _len(len)
-            , _op(op)
         {}
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Text)
 
     private:
+        Op _op; /**< сразу после базы — в pad `Command` */
         AttrRef _target;
         const char* _text;
         std::size_t _len;
-        Op _op;
     };
 
     /**
@@ -223,18 +224,18 @@ namespace assign {
     class Numeric final : public Command {
     public:
         Numeric(const AttrRef& target, int32_t value, Op op = Op::Assign) noexcept
-            : _target(target)
+            : _op(op)
+            , _target(target)
             , _value(value)
-            , _op(op)
         {}
 
         bool serialize(TxFrame& tx) const noexcept override;
         NEX_COMMAND_SLOT(Numeric)
 
     private:
+        Op _op; /**< сразу после базы — в pad `Command` */
         AttrRef _target;
         int32_t _value;
-        Op _op;
     };
 
 } // namespace assign
@@ -355,8 +356,10 @@ namespace assign {
         explicit Get(const AttrRef& operand) noexcept : _operand(operand) {}
     };
 
+#if NEX_CMD_STRING
     /**
      * Строковые операции NIS: `covx`, `substr`, `strlen`/`btlen`, `spstr`.
+     * Сборка: `-DNEX_CMD_STRING=1` (см. `nexConfig.hpp`).
      */
     class String final : public Command {
     public:
@@ -369,23 +372,26 @@ namespace assign {
         };
 
         static String covx(const AttrRef& src, const AttrRef& dst, int32_t length, int32_t format) noexcept {
-            return String(Kind::Covx, src, dst, length, format, nullptr);
+            return String(Kind::Covx, src, dst, length, format);
         }
 
         static String substr(const AttrRef& fromTxt, const AttrRef& toTxt, uint32_t start, uint32_t count) noexcept {
-            return String(Kind::Substr, fromTxt, toTxt, static_cast<int32_t>(start), static_cast<int32_t>(count), nullptr);
+            return String(Kind::Substr, fromTxt, toTxt, static_cast<int32_t>(start),
+                static_cast<int32_t>(count));
         }
 
         static String strlen(const AttrRef& txtAttr, const AttrRef& dstNumAttr) noexcept {
-            return String(Kind::Strlen, txtAttr, dstNumAttr, 0, 0, nullptr);
+            return String(Kind::Strlen, txtAttr, dstNumAttr, int32_t{0}, int32_t{0});
         }
 
         static String btlen(const AttrRef& txtAttr, const AttrRef& dstNumAttr) noexcept {
-            return String(Kind::Btlen, txtAttr, dstNumAttr, 0, 0, nullptr);
+            return String(Kind::Btlen, txtAttr, dstNumAttr, int32_t{0}, int32_t{0});
         }
 
-        static String spstr(const AttrRef& src, const AttrRef& dst, const char* delimiterQuoted, uint32_t index) noexcept {
-            return String(Kind::Spstr, src, dst, static_cast<int32_t>(index), 0, delimiterQuoted);
+        static String spstr(const AttrRef& src, const AttrRef& dst, const char* delimiterQuoted,
+            uint32_t index) noexcept
+        {
+            return String(Kind::Spstr, src, dst, static_cast<int32_t>(index), delimiterQuoted);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -395,19 +401,32 @@ namespace assign {
         Kind _kind;
         AttrRef _a1;
         AttrRef _a2;
-        int32_t _i1;
-        int32_t _i2;
-        const char* _delimiterQuoted;
+        int32_t _i1; /**< length / start / spstr index */
+        union {
+            int32_t i2;           /**< format / count — covx, substr */
+            const char* delim;    /**< spstr delimiter (quoted), до serialize */
+        } _u;
 
-        String(Kind kind, const AttrRef& a1, const AttrRef& a2, int32_t i1, int32_t i2,
-                 const char* delimiterQuoted) noexcept
+        String(Kind kind, const AttrRef& a1, const AttrRef& a2, int32_t i1, int32_t i2) noexcept
             : _kind(kind)
             , _a1(a1)
             , _a2(a2)
             , _i1(i1)
-            , _i2(i2)
-            , _delimiterQuoted(delimiterQuoted) {}
+        {
+            _u.i2 = i2;
+        }
+
+        String(Kind kind, const AttrRef& a1, const AttrRef& a2, int32_t index,
+            const char* delimiterQuoted) noexcept
+            : _kind(kind)
+            , _a1(a1)
+            , _a2(a2)
+            , _i1(index)
+        {
+            _u.delim = delimiterQuoted;
+        }
     };
+#endif /* NEX_CMD_STRING */
 
 
     //========== Работа с компонентами =========================================
@@ -552,17 +571,17 @@ namespace assign {
         };
 
         static Eeprom write(const AttrRef& variableOrConstant, uint32_t eepromStart) noexcept {
-            return Eeprom(Op::Write, &variableOrConstant, eepromStart, 0u);
+            return Eeprom(Op::Write, false, eepromStart, &variableOrConstant, 0u);
         }
         static Eeprom read(const AttrRef& destVariable, uint32_t eepromStart) noexcept {
-            return Eeprom(Op::Read, &destVariable, eepromStart, 0u);
+            return Eeprom(Op::Read, false, eepromStart, &destVariable, 0u);
         }
 
         static Eeprom writeT(uint32_t eepromStart, uint32_t byteCount) noexcept {
-            return Eeprom(Op::Write, nullptr, eepromStart, byteCount);
+            return Eeprom(Op::Write, true, eepromStart, nullptr, byteCount);
         }
         static Eeprom readT(uint32_t eepromStart, uint32_t byteCount) noexcept {
-            return Eeprom(Op::Read, nullptr, eepromStart, byteCount);
+            return Eeprom(Op::Read, true, eepromStart, nullptr, byteCount);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -570,15 +589,24 @@ namespace assign {
 
     private:
         Op _op;
-        const AttrRef* _target;
+        bool _transparent; /**< wept/rept vs wepo/repo — в pad после `_op` */
         uint32_t _addr;
-        uint32_t _byteCount;
+        union {
+            const AttrRef* target;
+            uint32_t byteCount;
+        } _u;
 
-        Eeprom(Op op, const AttrRef* target, uint32_t addr, uint32_t byteCount) noexcept
+        Eeprom(Op op, bool transparent, uint32_t addr, const AttrRef* target, uint32_t byteCount) noexcept
             : _op(op)
-            , _target(target)
+            , _transparent(transparent)
             , _addr(addr)
-            , _byteCount(byteCount) {}
+        {
+            if (transparent) {
+                _u.byteCount = byteCount;
+            } else {
+                _u.target = target;
+            }
+        }
     };
 
     /**
@@ -612,21 +640,30 @@ namespace assign {
             WriteT,
         };
 
-        static File remove(const char* pathQuoted) noexcept { return File(Op::Delete, pathQuoted, nullptr, nullptr, 0u, 0u, 0u, 0u); }
-        static File rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept {
-            return File(Op::Rename, pathFromQuoted, pathToQuoted, nullptr, 0u, 0u, 0u, 0u);
+        static File remove(const char* pathQuoted) noexcept
+        {
+            return File(Op::Delete, pathQuoted);
         }
-        static File find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept {
-            return File(Op::Find, pathQuoted, nullptr, &dstNumAttr, 0u, 0u, 0u, 0u);
+        static File rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept
+        {
+            return File(Op::Rename, pathFromQuoted, pathToQuoted);
         }
-        static File create(const char* pathQuoted, uint32_t reservedSize) noexcept {
-            return File(Op::Create, pathQuoted, nullptr, nullptr, reservedSize, 0u, 0u, 0u);
+        static File find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept
+        {
+            return File(Op::Find, pathQuoted, dstNumAttr);
         }
-        static File read(const char* pathQuoted, uint32_t offset, uint32_t byteCount, uint32_t crcOption) noexcept {
-            return File(Op::Read, pathQuoted, nullptr, nullptr, 0u, offset, byteCount, crcOption);
+        static File create(const char* pathQuoted, uint32_t reservedSize) noexcept
+        {
+            return File(Op::Create, pathQuoted, reservedSize);
         }
-        static File writeT(const char* pathQuoted, uint32_t byteCount) noexcept {
-            return File(Op::WriteT, pathQuoted, nullptr, nullptr, byteCount, 0u, 0u, 0u);
+        static File read(const char* pathQuoted, uint32_t offset, uint32_t byteCount,
+            uint32_t crcOption) noexcept
+        {
+            return File(Op::Read, pathQuoted, offset, byteCount, crcOption);
+        }
+        static File writeT(const char* pathQuoted, uint32_t byteCount) noexcept
+        {
+            return File(Op::WriteT, pathQuoted, byteCount);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -635,23 +672,60 @@ namespace assign {
     private:
         Op _op;
         const char* _pathQuoted;
-        const char* _pathToQuoted;
-        const AttrRef* _dstNumAttr;
-        uint32_t _reservedSize;
-        uint32_t _offset;
-        uint32_t _count;
-        uint32_t _crcOption;
+        union {
+            const char* pathTo;       /**< Rename */
+            const AttrRef* dstNum;    /**< Find */
+        } _ref;
+        union {
+            uint32_t size; /**< Create / WriteT */
+            struct {
+                uint32_t offset;
+                uint32_t count;
+                uint32_t crcOption;
+            } read;
+        } _num;
 
-        File(Op op, const char* pathQuoted, const char* pathToQuoted, const AttrRef* dstNumAttr, uint32_t reservedSize, uint32_t offset,
-             uint32_t count, uint32_t crcOption) noexcept
+        explicit File(Op op, const char* pathQuoted) noexcept
             : _op(op)
             , _pathQuoted(pathQuoted)
-            , _pathToQuoted(pathToQuoted)
-            , _dstNumAttr(dstNumAttr)
-            , _reservedSize(reservedSize)
-            , _offset(offset)
-            , _count(count)
-            , _crcOption(crcOption) {}
+        {
+            _ref.pathTo = nullptr;
+            _num.size = 0u;
+        }
+
+        File(Op op, const char* pathQuoted, const char* pathToQuoted) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.pathTo = pathToQuoted;
+            _num.size = 0u;
+        }
+
+        File(Op op, const char* pathQuoted, const AttrRef& dstNumAttr) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.dstNum = &dstNumAttr;
+            _num.size = 0u;
+        }
+
+        File(Op op, const char* pathQuoted, uint32_t size) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.pathTo = nullptr;
+            _num.size = size;
+        }
+
+        File(Op op, const char* pathQuoted, uint32_t offset, uint32_t count, uint32_t crcOption) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.pathTo = nullptr;
+            _num.read.offset = offset;
+            _num.read.count = count;
+            _num.read.crcOption = crcOption;
+        }
     };
 
 
@@ -667,17 +741,21 @@ namespace assign {
             Find,
         };
 
-        static Directory remove(const char* pathQuoted) noexcept {
-            return Directory(Op::Delete, pathQuoted, nullptr, nullptr);
+        static Directory remove(const char* pathQuoted) noexcept
+        {
+            return Directory(Op::Delete, pathQuoted);
         }
-        static Directory create(const char* pathQuoted) noexcept {
-            return Directory(Op::Create, pathQuoted, nullptr, nullptr);
+        static Directory create(const char* pathQuoted) noexcept
+        {
+            return Directory(Op::Create, pathQuoted);
         }
-        static Directory rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept {
-            return Directory(Op::Rename, pathFromQuoted, pathToQuoted, nullptr);
+        static Directory rename(const char* pathFromQuoted, const char* pathToQuoted) noexcept
+        {
+            return Directory(Op::Rename, pathFromQuoted, pathToQuoted);
         }
-        static Directory find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept {
-            return Directory(Op::Find, pathQuoted, nullptr, &dstNumAttr);
+        static Directory find(const char* pathQuoted, const AttrRef& dstNumAttr) noexcept
+        {
+            return Directory(Op::Find, pathQuoted, dstNumAttr);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -686,14 +764,31 @@ namespace assign {
     private:
         Op _op;
         const char* _pathQuoted;
-        const char* _pathToQuoted;
-        const AttrRef* _dstNumAttr;
+        union {
+            const char* pathTo;    /**< Rename */
+            const AttrRef* dstNum; /**< Find */
+        } _ref;
 
-        Directory(Op op, const char* pathQuoted, const char* pathToQuoted, const AttrRef* dstNumAttr) noexcept
+        Directory(Op op, const char* pathQuoted) noexcept
             : _op(op)
             , _pathQuoted(pathQuoted)
-            , _pathToQuoted(pathToQuoted)
-            , _dstNumAttr(dstNumAttr) {}
+        {
+            _ref.pathTo = nullptr;
+        }
+
+        Directory(Op op, const char* pathQuoted, const char* pathToQuoted) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.pathTo = pathToQuoted;
+        }
+
+        Directory(Op op, const char* pathQuoted, const AttrRef& dstNumAttr) noexcept
+            : _op(op)
+            , _pathQuoted(pathQuoted)
+        {
+            _ref.dstNum = &dstNumAttr;
+        }
     };
 
     /**
@@ -709,20 +804,25 @@ namespace assign {
             Find,
         };
 
-        static FileStream open(const CompRef& comp, const char* path) noexcept {
-            return FileStream(Kind::Open, comp, path, 0u, 0u);
+        static FileStream open(const CompRef& comp, const char* path) noexcept
+        {
+            return FileStream(Kind::Open, comp, path);
         }
-        static FileStream read(const CompRef& comp, uint32_t offset, uint32_t byteCount) noexcept {
-            return FileStream(Kind::Read, comp, nullptr, offset, byteCount);
+        static FileStream read(const CompRef& comp, uint32_t offset, uint32_t byteCount) noexcept
+        {
+            return FileStream(Kind::Read, comp, offset, byteCount);
         }
-        static FileStream write(const CompRef& comp, uint32_t byteCount) noexcept {
-            return FileStream(Kind::Write, comp, nullptr, byteCount, 0u);
+        static FileStream write(const CompRef& comp, uint32_t byteCount) noexcept
+        {
+            return FileStream(Kind::Write, comp, byteCount, 0u);
         }
-        static FileStream close(const CompRef& comp) noexcept {
-            return FileStream(Kind::Close, comp, nullptr, 0u, 0u);
+        static FileStream close(const CompRef& comp) noexcept
+        {
+            return FileStream(Kind::Close, comp);
         }
-        static FileStream find(const CompRef& comp, const char* path) noexcept {
-            return FileStream(Kind::Find, comp, path, 0u, 0u);
+        static FileStream find(const CompRef& comp, const char* path) noexcept
+        {
+            return FileStream(Kind::Find, comp, path);
         }
 
         bool serialize(TxFrame& tx) const noexcept override;
@@ -731,17 +831,35 @@ namespace assign {
     private:
         Kind _kind;
         CompRef _comp;
-        const char* _path;
-        uint32_t _arg1;
-        uint32_t _arg2;
+        union {
+            const char* path; /**< Open / Find */
+            struct {
+                uint32_t arg1;
+                uint32_t arg2;
+            } n; /**< Read / Write */
+        } _u;
 
-        FileStream(Kind kind, const CompRef& comp, const char* path, uint32_t arg1, uint32_t arg2) noexcept
+        FileStream(Kind kind, const CompRef& comp) noexcept
             : _kind(kind)
             , _comp(comp)
-            , _path(path)
-            , _arg1(arg1)
-            , _arg2(arg2)
-        {}
+        {
+            _u.path = nullptr;
+        }
+
+        FileStream(Kind kind, const CompRef& comp, const char* path) noexcept
+            : _kind(kind)
+            , _comp(comp)
+        {
+            _u.path = path;
+        }
+
+        FileStream(Kind kind, const CompRef& comp, uint32_t arg1, uint32_t arg2) noexcept
+            : _kind(kind)
+            , _comp(comp)
+        {
+            _u.n.arg1 = arg1;
+            _u.n.arg2 = arg2;
+        }
     };
 
 } // namespace cmd

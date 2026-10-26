@@ -66,8 +66,12 @@ inline constexpr const char* kConsoleBadVersion = "Версия файла не 
 inline constexpr const char* kConsoleBadCrc = "Контрольная сумма не совпала.";
 inline constexpr const char* kConsoleBadLayout = "Файл шоу повреждён.";
 inline constexpr const char* kConsoleTruncated = "Файл шоу обрезан или неполон.";
+inline constexpr const char* kConsoleOverflow =
+    "В файле больше записей,\rчем вмещает пульт.";
 inline constexpr const char* kConsoleMissingGrup = "В файле нет ни одной группы.";
 inline constexpr const char* kConsoleBadGroups = "Данные групп в файле повреждены.";
+inline constexpr const char* kConsoleBakOnly =
+    "Файл на карте не открылся.\rЗагружена копия с пульта.";
 inline constexpr const char* kConsoleInvalidGroup = "Нельзя изменить эту группу.";
 inline constexpr const char* kConsoleNoSelection = "Сначала выберите лебёдки.";
 inline constexpr const char* kConsoleGroupOccupied = "В группе уже есть данные.";

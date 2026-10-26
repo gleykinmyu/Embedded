@@ -260,7 +260,7 @@ public:
             setState(State::Disabled);
             return;
         }
-        const smcp::IMech& mech = con.cmechs[idx];
+        const smcp::IAxis& mech = con.cmechs[idx];
         if (mech.isBlocked()) {
             setState(State::Blocked);
             return;
@@ -273,7 +273,7 @@ public:
             setState(State::Disabled);
             return;
         }
-        const bool ready = mech.status().any(smcp::IMech::Status::Ready);
+        const bool ready = mech.status().any(smcp::IAxis::Status::Ready);
         if (ready && mech.isSelectedBy(con.consoleId())) {
             setState(State::Selected);
         } else if (ready) {

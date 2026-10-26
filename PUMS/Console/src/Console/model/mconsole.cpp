@@ -5,6 +5,8 @@
 
 #include "model/mconsole.hpp"
 
+#include "core/nexDebug.hpp"
+
 void Fio::onEvent(Event ev) noexcept
 {
     _owner.onFioEvent(ev);
@@ -14,12 +16,21 @@ MConsole::MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file,
                    smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
     : Base(link, clock)
     , _sessionBank(*this)
-    , _incoming(*this)
     , show(*this)
     , cmechs(*this, show.group)
     , browser(volume, dir)
-    , fio(*this, browser, show, _incoming, file, bak)
+    , fio(*this, browser, show, file, bak)
 {}
+
+void MConsole::begin(uint8_t console_id) noexcept
+{
+    Base::begin(console_id);
+    if (fio.useBak()) {
+        NEX_DBG("Show from LKG: '%s'\n", show.name());
+    } else {
+        NEX_DBG("No show in LKG (%s)\n", sf::Fio::cstr(fio.status()));
+    }
+}
 
 bool MConsole::hasSelection() const noexcept
 {
@@ -63,7 +74,7 @@ void MConsole::onFioEvent(sf::Fio::Event ev) noexcept
 void MConsole::onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept
 {
     GroupConsole::onTelemetry(src_id, body);
-    onMechChanged(body.mech_id);
+    onMechChanged(body.axis_id);
 }
 
 void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,

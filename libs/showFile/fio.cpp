@@ -1,6 +1,6 @@
 /**
  * @file fio.cpp
- * @brief Fio: open / save (tmp+replaceWith) / restore / bak.
+ * @brief Fio: open / save / bak fallback; Overflow без bak.
  */
 
 #include "fio.hpp"
@@ -18,37 +18,48 @@ const char* Fio::cstr(Status st) noexcept
 {
     switch (st) {
     case Status::Ok: return "Ok";
-    case Status::NoShowOpen: return "NoShowOpen";
+    case Status::BakOnly: return "BakOnly";
     case Status::MissingSection: return "MissingSection";
     case Status::InvalidData: return "InvalidData";
+    case Status::Overflow: return "Overflow";
     case Status::OpenFileProtected: return "OpenFileProtected";
     case Status::BrowserFail: return "BrowserFail";
     case Status::MainFail: return "MainFail";
     case Status::BakFail: return "BakFail";
-    case Status::RestoreFail: return "RestoreFail";
     default: return "?";
     }
 }
 
+bool Fio::fail(Status st) noexcept
+{
+    _status = st;
+    return false;
+}
+
+bool Fio::ok(Event ev, Status st) noexcept
+{
+    _status = st;
+    onEvent(ev);
+    return true;
+}
+
 void Fio::newShow() noexcept
 {
-    /* RAM сбрасывается; edited — да: файла на носителе ещё нет. */
     _live.clearData();
     _live.markEdited();
     _status = Status::Ok;
     onEvent(Event::New);
 }
 
-bool Fio::restore() noexcept
+bool Fio::useBak() noexcept
 {
-    /* Пустой path в loadShows читает bak, не main. */
-    if (!loadShows("")) {
-        return fail(Status::RestoreFail);
+    if (!load("", TagMask::all, false)) {
+        return fail(_status != Status::Ok ? _status : Status::BakFail);
     }
-    return acceptLoaded();
+    return ok(Event::Loaded, Status::BakOnly);
 }
 
-bool Fio::openShow(const char* name) noexcept
+bool Fio::openShow(const char* name, const TagMask& tags, bool allowTruncate) noexcept
 {
     if (!ensureDir()) {
         return false;
@@ -57,19 +68,30 @@ bool Fio::openShow(const char* name) noexcept
     if (!_browser.makePath(path, sizeof(path), name)) {
         return fail(Status::BrowserFail);
     }
-    if (!loadShows(path)) {
+    if (load(path, tags, allowTruncate)) {
+        return ok(Event::Loaded);
+    }
+    /* Файл цел, но не подходит (Overflow / нет required); live не тронут — bak не подменяем. */
+    if (_status == Status::Overflow || _live.status() == ::sf::Status::MissingRequired) {
         return false;
     }
-    return acceptLoaded();
+    const Status sdErr = _status;
+    if (!useBak()) {
+        _status = sdErr;
+        return false;
+    }
+    return true;
 }
 
 bool Fio::saveShow() noexcept
 {
-    if (_live.name()[0] == '\0') {
-        return fail(Status::NoShowOpen);
+    if (_live.name()[0] != '\0' && ensureDir()) {
+        return saveShowAs(showBaseName(_live.name()), true);
     }
-    /* confirmed: перезапись своего же файла без диалога FileExists. */
-    return saveShowAs(showBaseName(_live.name()), true);
+    if (!store(_bak, "", Status::BakFail)) {
+        return false;
+    }
+    return ok(Event::Saved, Status::BakOnly);
 }
 
 bool Fio::saveShowAs(const char* name, bool confirmed) noexcept
@@ -78,15 +100,11 @@ bool Fio::saveShowAs(const char* name, bool confirmed) noexcept
         return false;
     }
     char path[kPathSize]{};
-    if (!_browser.makePath(path, sizeof(path), name)) {
-        return fail(Status::BrowserFail);
-    }
     char tmp[kPathSize]{};
-    if (!_browser.makePath(tmp, sizeof(tmp), kTempBaseName)) {
+    if (!_browser.makePath(path, sizeof(path), name)
+        || !_browser.makePath(tmp, sizeof(tmp), kTempBaseName)) {
         return fail(Status::BrowserFail);
     }
-
-    /* Кэш нужен и для contains, и чтобы replaceWith видел актуальный каталог. */
     if (!_browser.refresh()) {
         return fail(Status::BrowserFail);
     }
@@ -95,20 +113,18 @@ bool Fio::saveShowAs(const char* name, bool confirmed) noexcept
     }
 
     _live.setName(path);
-    /* Сначала tmp: при сбое основной файл не урезан. */
-    if (!saveMain(tmp)) {
+    if (!store(_main, tmp, Status::MainFail)) {
         (void)_browser.remove(kTempBaseName);
         return false;
     }
     if (!_browser.replaceWith(kTempBaseName, name)) {
         return fail(Status::BrowserFail);
     }
-    /* Bak после успешной подмены на томе. */
-    if (!syncBak()) {
+    /* LKG на W25 — тот же полный снимок. */
+    if (!store(_bak, "", Status::BakFail)) {
         return false;
     }
-    _live.clearEdited();
-    return succeed(Event::Saved);
+    return ok(Event::Saved);
 }
 
 bool Fio::removeShow(const char* name) noexcept
@@ -120,14 +136,17 @@ bool Fio::removeShow(const char* name) noexcept
     if (!_browser.makePath(path, sizeof(path), name)) {
         return fail(Status::BrowserFail);
     }
-    /* Нельзя снести файл, который сейчас открыт в live. */
     if (_live.name()[0] != '\0' && std::strcmp(path, _live.name()) == 0) {
         return fail(Status::OpenFileProtected);
     }
     if (!_browser.remove(name)) {
         return fail(Status::BrowserFail);
     }
-    return succeed(Event::Removed);
+    if (_status != Status::BakOnly) {
+        _status = Status::Ok;
+    }
+    onEvent(Event::Removed);
+    return true;
 }
 
 const char* Fio::showBaseName(const char* path) noexcept
@@ -144,19 +163,6 @@ const char* Fio::showBaseName(const char* path) noexcept
     return base;
 }
 
-bool Fio::acceptLoaded() noexcept
-{
-    if (!_live.allRequiredPresent()) {
-        return fail(Status::MissingSection);
-    }
-    if (!_live.isValid()) {
-        return fail(Status::InvalidData);
-    }
-    /* Копия с носителя совпадает с диском. */
-    _live.clearEdited();
-    return succeed(Event::Loaded);
-}
-
 bool Fio::ensureDir() noexcept
 {
     if (_browser.dirPath()[0] == '\0' && !_browser.open(nullptr)) {
@@ -165,40 +171,34 @@ bool Fio::ensureDir() noexcept
     return true;
 }
 
-bool Fio::loadShows(const char* path) noexcept
+bool Fio::load(const char* path, const TagMask& tags, bool allowTruncate) noexcept
 {
-    /* Непустой path — main (SD); пустой — bak (вспышка / тот же IFile). */
     const bool fromMain = (path != nullptr && path[0] != '\0');
     IFile& src = fromMain ? _main : _bak;
     const char* p = fromMain ? path : "";
-    const ::sf::Status st = _incoming.load(src, p);
+    const ::sf::Status st = _live.load(src, p, tags, allowTruncate);
+    if (st == ::sf::Status::Overflow) {
+        return fail(Status::Overflow);
+    }
+    if (st == ::sf::Status::MissingRequired) {
+        return fail(Status::MissingSection);
+    }
     if (st != ::sf::Status::Ok) {
         return fail(fromMain ? Status::MainFail : Status::BakFail);
     }
-    /* Live не трогаем, пока staging не скопировался целиком. */
-    if (!_live.copyFrom(_incoming)) {
-        return fail(fromMain ? Status::MainFail : Status::BakFail);
+    if (!_live.allRequiredPresent()) {
+        return fail(Status::MissingSection);
+    }
+    if (!_live.isValid()) {
+        return fail(Status::InvalidData);
     }
     return true;
 }
 
-bool Fio::saveMain(const char* path) noexcept
+bool Fio::store(IFile& io, const char* path, Status failSt) noexcept
 {
-    const ::sf::Status st = _live.save(_main, path);
-    if (st != ::sf::Status::Ok) {
-        return fail(Status::MainFail);
-    }
-    return true;
-}
-
-bool Fio::syncBak() noexcept
-{
-    if (!hasBak()) {
-        return true;
-    }
-    const ::sf::Status st = _live.save(_bak, "");
-    if (st != ::sf::Status::Ok) {
-        return fail(Status::BakFail);
+    if (_live.save(io, path) != ::sf::Status::Ok) {
+        return fail(failSt);
     }
     return true;
 }

@@ -9,9 +9,9 @@
 
 #include "obj_bank.hpp"
 #include "showFile.hpp"
-#include "smcp/mech/Console/cmech.hpp"
-#include "smcp/mech/group.hpp"
-#include "smcp/mech/Console/group_console.hpp"
+#include "smcp/show/cmech.hpp"
+#include "smcp/show/group.hpp"
+#include "smcp/show/group_console.hpp"
 
 namespace smcp {
 
@@ -26,7 +26,7 @@ public:
     /** Одна blocked-группа и оси, пересекшиеся с последней операцией. */
     struct OverlapSlot {
         uint8_t group = 0xFFu;
-        Selection mech{};
+        Selection sel{};
     };
 
     /** Буфер слотов вызывающего + сколько записали. */
@@ -35,14 +35,14 @@ public:
         uint8_t capacity = 0;
         uint8_t count = 0;
 
-        [[nodiscard]] Selection mechs() const noexcept
+        [[nodiscard]] Selection sels() const noexcept
         {
             Selection all;
             if (slot == nullptr) {
                 return all;
             }
             for (uint8_t i = 0; i < count; ++i) {
-                all = all | slot[i].mech;
+                all = all | slot[i].sel;
             }
             return all;
         }
@@ -61,7 +61,7 @@ public:
     virtual void markEdited() noexcept = 0;
     [[nodiscard]] const Overlap& overlap() const noexcept { return _overlap; }
     /** Ось входит в blocked-группу. */
-    [[nodiscard]] virtual bool containsBlocked(uint8_t mech_id) const noexcept = 0;
+    [[nodiscard]] virtual bool containsBlocked(uint8_t axis_id) const noexcept = 0;
     /**
      * Пересечение @a mask с blocked, кроме @a except_id (kNoExcept — все).
      * Пишет overlap(); true — есть общие оси.
@@ -132,11 +132,11 @@ public:
 
     void markEdited() noexcept override { Base::markEdited(); }
 
-    [[nodiscard]] bool containsBlocked(uint8_t mech_id) const noexcept override
+    [[nodiscard]] bool containsBlocked(uint8_t axis_id) const noexcept override
     {
         for (uint8_t i = 0; i < N; ++i) {
             const Group& g = this->rec(i);
-            if (g.isBlocked() && g.mech.contains(mech_id)) {
+            if (g.isBlocked() && g.sel.contains(axis_id)) {
                 return true;
             }
         }
@@ -152,7 +152,7 @@ public:
             if (g.id == except_id || !g.isBlocked()) {
                 continue;
             }
-            const Selection hit = g.mech & mask;
+            const Selection hit = g.sel & mask;
             if (!hit.any()) {
                 continue;
             }
@@ -160,7 +160,7 @@ public:
             if (_overlap.slot != nullptr && _overlap.count < _overlap.capacity) {
                 OverlapSlot& dst = _overlap.slot[_overlap.count++];
                 dst.group = g.id;
-                dst.mech = hit;
+                dst.sel = hit;
             }
         }
         return any;
@@ -178,8 +178,9 @@ class CGMech : public CMech {
 public:
     CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept;
     CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept;
-    CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t mech_id,
+    CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t axis_id,
            uint8_t local_id) noexcept;
+    CGMech(IConsole& console, IGroupBank& groups, axis::Route route, uint8_t local_id) noexcept;
 
     /** Deselect — Ok, если Select в очереди. Add — Blocked / OverlapsBlocked / Occupied / NotSent. */
     [[nodiscard]] CGroup::Result trySelect(uint8_t console_id) noexcept;

@@ -1,6 +1,6 @@
 /**
  * @file drive_mech.hpp
- * @brief Конкретный IMech сегмента: register в smcp::IServer.
+ * @brief Конкретный IAxis сегмента: register в smcp::IServer.
  */
 
 #pragma once
@@ -8,11 +8,11 @@
 #include <cstdint>
 
 #include "obj_bank.hpp"
-#include "smcp/mech/mech.hpp"
+#include "smcp/mech/axis.hpp"
 #include "smcp/mech/Server/server.hpp"
 
-/** IMech на сервере: commit Select/Block; лимит Selected — `MServer::acceptSelect`. */
-class DriveMech : public smcp::IMech {
+/** IAxis на сервере: commit Select/Block; лимит Selected — `MServer::acceptSelect`. */
+class DriveMech : public smcp::IAxis {
 public:
     static constexpr uint8_t kMaxSelected = 3u;
 

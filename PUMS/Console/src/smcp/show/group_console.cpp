@@ -3,7 +3,7 @@
  * @brief CGroup и билет queued group на Select Ack/Nack.
  */
 
-#include "smcp/mech/Console/group_bank.hpp"
+#include "smcp/show/group_bank.hpp"
 
 namespace smcp {
 
@@ -22,9 +22,9 @@ uint8_t CGroup::id() const noexcept
     return _rec != nullptr ? _rec->id : 0u;
 }
 
-const Selection& CGroup::mech() const noexcept
+const Selection& CGroup::sel() const noexcept
 {
-    return _rec != nullptr ? _rec->mech : kEmptySel;
+    return _rec != nullptr ? _rec->sel : kEmptySel;
 }
 
 REG::BitMask<Group::Flag> CGroup::flags() const noexcept
@@ -42,9 +42,9 @@ bool CGroup::isEmpty() const noexcept
     return _rec == nullptr || _rec->isEmpty();
 }
 
-bool CGroup::contains(uint8_t mech_id) const noexcept
+bool CGroup::contains(uint8_t axis_id) const noexcept
 {
-    return _rec != nullptr && _rec->mech.contains(mech_id);
+    return _rec != nullptr && _rec->sel.contains(axis_id);
 }
 
 bool CGroup::isBlocked() const noexcept
@@ -58,7 +58,7 @@ void CGroup::setBlocked(bool on) noexcept
         return;
     }
     if (on) {
-        (void)_bank->fillBlockedOverlap(_rec->id, _rec->mech);
+        (void)_bank->fillBlockedOverlap(_rec->id, _rec->sel);
     }
     if (_rec->isBlocked() == on) {
         return;
@@ -83,12 +83,12 @@ CGroup::Result CGroup::recall() noexcept
     if (_rec == nullptr || _bank == nullptr || _console == nullptr) {
         return Result::Empty;
     }
-    if (_bank->fillBlockedOverlap(_rec->id, _rec->mech)) {
+    if (_bank->fillBlockedOverlap(_rec->id, _rec->sel)) {
         return Result::OverlapsBlocked;
     }
     const uint8_t peer = _console->serverId(0u);
     ServerSession* const s = _console->server(peer);
-    if (s == nullptr || !s->setSelection(_rec->mech)) {
+    if (s == nullptr || !s->setSelection(_rec->sel)) {
         return Result::NotSent;
     }
     _console->setQueuedGroup(*this, *s);
@@ -106,7 +106,7 @@ CGroup::Result CGroup::record(Selection selection, const char* name, bool confir
     if (!isEmpty() && !confirmed) {
         return Result::Occupied;
     }
-    _rec->mech = selection;
+    _rec->sel = selection;
     if (name != nullptr && name[0] != '\0') {
         _rec->setName(name);
     }
@@ -146,7 +146,7 @@ void IGroupConsole::onAck(Session* session, const TxSlot& req, const msg::Ack& r
     if (session == nullptr || !_queued) {
         return;
     }
-    if (req.msg.id != msg::Select::kId || req.pkt_id != _queuedPkt) {
+    if (req.msg.id != msg::Select::kId || req.txn_id != _queuedTxnId) {
         return;
     }
     const CGroup group = _queued;
@@ -160,7 +160,7 @@ void IGroupConsole::onNack(Session* session, const TxSlot& req, const msg::Nack&
 {
     Node::onNack(session, req, reply);
     if (session != nullptr && _queued && req.msg.id == msg::Select::kId
-        && req.pkt_id == _queuedPkt) {
+        && req.txn_id == _queuedTxnId) {
         clearQueuedGroup();
     }
 }
@@ -190,24 +190,10 @@ void IGroupConsole::onStatus(Status status) noexcept
     }
 }
 
-GServerSession::GServerSession(IGroupConsole& console) noexcept
-    : ServerSession(console)
-    , _group(console)
-{}
-
-bool GServerSession::select(msg::Action action, Selection selection) noexcept
-{
-    if (selection.empty() && action != msg::Action::Set) {
-        return false;
-    }
-    _group.clearQueuedGroup();
-    return ServerSession::select(action, selection);
-}
-
 void IGroupConsole::setQueuedGroup(CGroup group, ServerSession& session) noexcept
 {
     _queued = group;
-    _queuedPkt = session.pktId();
+    _queuedTxnId = session.txnId();
 }
 
 void IGroupConsole::clearActiveGroup() noexcept
@@ -218,7 +204,7 @@ void IGroupConsole::clearActiveGroup() noexcept
 
     for (uint8_t i = 0u; i < 2u; ++i) {
         const CGroup& group = groups[i];
-        if (!group || group.mech().empty()) {
+        if (!group || group.sel().empty()) {
             continue;
         }
         const uint8_t peer = serverId(0u);
@@ -229,7 +215,7 @@ void IGroupConsole::clearActiveGroup() noexcept
         if (link == nullptr || !link->isOpen()) {
             continue;
         }
-        link->select(msg::Action::Remove, group.mech());
+        link->select(msg::Action::Remove, group.sel());
     }
 }
 

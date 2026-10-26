@@ -5,7 +5,7 @@
 #include "Server/model/drive_mech.hpp"
 
 DriveMech::DriveMech(smcp::IServer& owner, uint8_t id, Type type) noexcept
-    : IMech(id)
+    : smcp::IAxis(id)
     , _type(type)
 {
     smcp::detail::registerMech(owner, *this);

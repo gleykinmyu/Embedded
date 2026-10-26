@@ -155,7 +155,7 @@ bool FatFile::open(const char* path, bool for_write) noexcept
     }
 
     const BYTE mode = for_write
-        ? static_cast<BYTE>(FA_WRITE | FA_CREATE_ALWAYS)
+        ? static_cast<BYTE>(FA_READ | FA_WRITE | FA_CREATE_ALWAYS)
         : static_cast<BYTE>(FA_READ);
 
     _last = f_open(&_fil, path, mode);

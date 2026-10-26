@@ -5,7 +5,7 @@
  * Секции — члены наследника Show<SecN>: конструктор берёт IShow& и регистрируется.
  * Порядок объявления членов = порядок записи.
  * load/save — на IShow (обход реестра). CRC/magic — отказ; секции/слоты — Mismatch.
- * edited — на IShow; секция помечает через ISection::markEdited() при правке payload.
+ * Dirty — на секцию (и пул через свою секцию-заголовков); IShow::isEdited() = any.
  */
 
 #pragma once
@@ -14,8 +14,10 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "crc.hpp"
 #include "iFileSystem.hpp"
 #include "obj_registry.hpp"
+#include "tags.hpp"
 
 namespace sf {
 
@@ -24,8 +26,6 @@ class ISection;
 
 using BIF::IFile;
 
-inline constexpr uint32_t kMagic = 0x534D4350u; /**< "SMCP". */
-inline constexpr uint16_t kVersion = 0x0116u;
 inline constexpr std::size_t kCrcChunkSize = 64u;
 
 /** Полный путь шоу: basename + запас под префикс тома (`0:/…`). */
@@ -41,8 +41,12 @@ enum class Status : uint8_t {
     BadVersion,
     BadHeaderCrc,
     BadBodyCrc,
+    BadSectionCrc, /**< CRC payload секции ≠ SectionDesc.crc32. */
     BadLayout,
     Truncated,
+    Overflow, /**< record_count > slotCount и !allowTruncate. */
+    RegisterFailed, /**< Секция не встала в реестр (ctor / overflow N). */
+    MissingRequired, /**< Required-секция не в маске / нет в файле / другой слот. */
 };
 
 [[nodiscard]] inline const char* cstr(Status s) noexcept
@@ -54,35 +58,54 @@ enum class Status : uint8_t {
     case Status::BadVersion: return "BadVersion";
     case Status::BadHeaderCrc: return "BadHeaderCrc";
     case Status::BadBodyCrc: return "BadBodyCrc";
+    case Status::BadSectionCrc: return "BadSectionCrc";
     case Status::BadLayout: return "BadLayout";
     case Status::Truncated: return "Truncated";
+    case Status::Overflow: return "Overflow";
+    case Status::RegisterFailed: return "RegisterFailed";
+    case Status::MissingRequired: return "MissingRequired";
     default: return "?";
     }
 }
 
+/** Заголовок файла на носителе. Поля — только фиксированной ширины (не size_t). */
 struct Header {
     char name[kPathSize]{};
-    uint32_t magic = kMagic;
-    uint16_t version = kVersion;
+    uint32_t magic = 0;
+    uint16_t version = 0;
     uint16_t content_layers = 0;
     uint16_t section_count = 0;
     uint16_t header_crc16 = 0;
     uint32_t body_crc32 = 0;
     uint32_t total_size = 0;
 
+    /** Имя шоу с обрезкой по буферу; терминатор всегда; nullptr — пустое. */
+    void setName(const char* src) noexcept;
     /** Смещение первого payload: sizeof(Header) + catalog. */
     [[nodiscard]] constexpr std::size_t payloadBase() const noexcept;
+    /** CRC16-CCITT заголовка; поле header_crc16 в расчёт не входит. */
+    [[nodiscard]] uint16_t crc16() const noexcept;
+    void updateCrc() noexcept { header_crc16 = crc16(); }
+    /** Прочитать заголовок с позиции @a offset файла. */
+    [[nodiscard]] bool read(IFile& io, std::size_t offset) noexcept;
+    /** Записать заголовок с позиции @a offset файла. */
+    [[nodiscard]] bool write(IFile& io, std::size_t offset) const noexcept;
+    /** Ok / BadMagic / BadVersion / BadHeaderCrc против ожидаемых @a magic_ / @a version_. */
+    [[nodiscard]] Status check(uint32_t magic_, uint16_t version_) const noexcept;
+    /** total_size vs payloadBase и реальный размер файла. Ok / BadLayout / Truncated. */
+    [[nodiscard]] Status checkSize(std::size_t fileSize) const noexcept;
 };
 
 static_assert(sizeof(Header) == kPathSize + 20u);
 static_assert(alignof(Header) == alignof(uint32_t));
 
-/** Запись каталога на носителе. */
+/** Запись каталога на носителе. Поля — только фиксированной ширины (не size_t). */
 struct SectionDesc {
-    uint32_t tag = 0;
+    Tag tag = 0;
     uint32_t offset = 0;
     uint32_t byte_size = 0;
     uint32_t record_count = 0;
+    uint32_t crc32 = 0; /**< CRC32 payload секции (ISO-HDLC). */
 
     [[nodiscard]] constexpr std::size_t payloadSize(std::size_t record_size) const noexcept
     {
@@ -92,9 +115,22 @@ struct SectionDesc {
     {
         return static_cast<std::size_t>(offset) + static_cast<std::size_t>(byte_size);
     }
+    /** Прочитать запись каталога с позиции @a offset файла. */
+    [[nodiscard]] bool read(IFile& io, std::size_t offset) noexcept
+    {
+        return io.seek(offset) && io.read(reinterpret_cast<uint8_t*>(this), sizeof(SectionDesc));
+    }
+    /** Записать запись каталога с позиции @a offset файла. */
+    [[nodiscard]] bool write(IFile& io, std::size_t offset) const noexcept
+    {
+        return io.seek(offset)
+            && io.write(reinterpret_cast<const uint8_t*>(this), sizeof(SectionDesc));
+    }
+    /** Ok / BadLayout: подряд без дыр, в пределах totalSize, byte_size % record_count. */
+    [[nodiscard]] Status check(std::size_t expectedOffset, std::size_t totalSize) const noexcept;
 };
 
-static_assert(sizeof(SectionDesc) == 16u);
+static_assert(sizeof(SectionDesc) == 20u);
 static_assert(alignof(SectionDesc) == alignof(uint32_t));
 
 constexpr std::size_t Header::payloadBase() const noexcept
@@ -102,13 +138,8 @@ constexpr std::size_t Header::payloadBase() const noexcept
     return sizeof(Header) + static_cast<std::size_t>(section_count) * sizeof(SectionDesc);
 }
 
-[[nodiscard]] uint16_t computeHeaderCrc16(const Header& hdr) noexcept;
 [[nodiscard]] bool computeFileCrc32(IFile& io, std::size_t offset, std::size_t length,
                                     uint32_t& out_crc) noexcept;
-[[nodiscard]] Status checkHeader(const Header& hdr) noexcept;
-[[nodiscard]] Status checkFileSize(const Header& hdr, std::size_t fileSize) noexcept;
-[[nodiscard]] Status checkSectionDesc(const SectionDesc& desc, std::size_t expectedOffset,
-                                      uint32_t totalSize) noexcept;
 
 namespace detail {
 void registerSection(IShow& file, ISection& sec) noexcept;
@@ -124,7 +155,7 @@ enum class Diff : uint8_t {
 
 struct Mismatch {
     Diff kind = Diff::MissingSection;
-    uint32_t tag = 0;
+    Tag tag = 0;
     uint16_t expected = 0;
     uint16_t found = 0;
 };
@@ -137,7 +168,7 @@ struct Mismatch {
 class ISection {
 public:
     /** @a data — начало payload наследника (массив Rec[N]). */
-    ISection(IShow& file, uint32_t tag, uint16_t slotCount, uint16_t slotSize, bool required,
+    ISection(IShow& file, Tag tag, uint16_t slotCount, uint16_t slotSize, bool required,
              void* data) noexcept;
 
     ISection(const ISection&) = delete;
@@ -152,12 +183,15 @@ public:
     /** Владелец секции. */
     [[nodiscard]] IShow& showFile() noexcept { return _file; }
     [[nodiscard]] const IShow& showFile() const noexcept { return _file; }
-    /** Пометить шоуфайл edited. */
-    void markEdited() noexcept;
+
+    [[nodiscard]] bool isEdited() const noexcept { return _edited; }
+    /** Пометить эту секцию dirty (UI `*` = any на IShow). */
+    void markEdited() noexcept { _edited = true; }
+    void clearEdited() noexcept { _edited = false; }
 
     [[nodiscard]] uint8_t id() const noexcept { return _id; }
     /** FourCC секции на диске. */
-    [[nodiscard]] uint32_t tag() const noexcept { return _tag; }
+    [[nodiscard]] Tag tag() const noexcept { return _tag; }
     [[nodiscard]] uint16_t slotCount() const noexcept { return _slotCount; }
     [[nodiscard]] uint16_t slotSize() const noexcept { return _slotSize; }
     [[nodiscard]] bool required() const noexcept { return _required; }
@@ -168,13 +202,14 @@ public:
     void setDesc(const SectionDesc& d) noexcept { _desc = d; }
     /** tag=0: секции в файле не было. */
     void clearDesc() noexcept { _desc = {}; }
-    /** Собрать desc под текущий payload, начиная с @a offset. */
+    /** Собрать desc под текущий payload, начиная с @a offset (вкл. crc32). */
     void setDesc(std::size_t offset) noexcept
     {
         _desc.tag = _tag;
         _desc.offset = static_cast<uint32_t>(offset);
         _desc.byte_size = static_cast<uint32_t>(payloadBytes());
         _desc.record_count = _slotCount;
+        _desc.crc32 = MISC::Crc32::compute(&_data, payloadBytes());
     }
 
     /** slotCount × slotSize. */
@@ -185,19 +220,32 @@ public:
     /** Указатель на первый байт payload. */
     [[nodiscard]] const uint8_t* payload() const noexcept { return &_data; }
 
-    /** Прочитать min(n, slotCount) записей в payload. */
-    [[nodiscard]] bool readPayload(IFile& io, uint16_t n) noexcept
+    /** Прочитать min(n, slotCount) записей в payload с позиции @a offset файла. */
+    [[nodiscard]] bool readPayload(IFile& io, std::size_t offset, uint16_t n) noexcept
     {
         const uint16_t m = (n < _slotCount) ? n : _slotCount;
-        return io.read(&_data, static_cast<std::size_t>(m) * static_cast<std::size_t>(_slotSize));
+        return io.seek(offset)
+            && io.read(&_data, static_cast<std::size_t>(m) * static_cast<std::size_t>(_slotSize));
     }
-    /** Записать весь payload. */
-    [[nodiscard]] bool writePayload(IFile& io) const noexcept
+    /** Записать весь payload с позиции @a offset файла. */
+    [[nodiscard]] bool writePayload(IFile& io, std::size_t offset) const noexcept
     {
-        return io.write(&_data, payloadBytes());
+        return io.seek(offset) && io.write(&_data, payloadBytes());
+    }
+    /** Записать desc (запись каталога) с позиции @a offset файла. */
+    [[nodiscard]] bool writeDesc(IFile& io, std::size_t offset) const noexcept
+    {
+        return _desc.write(io, offset);
     }
 
-    /** Payload + desc. Только секция той же раскладки (тег и размер). */
+    /** Ok / BadLayout: та же раскладка, что у @a o (тег и размер payload). */
+    [[nodiscard]] Status checkLayout(const ISection& o) const noexcept
+    {
+        return (tag() == o.tag() && payloadBytes() == o.payloadBytes()) ? Status::Ok
+                                                                        : Status::BadLayout;
+    }
+
+    /** Payload + desc. Только секция той же раскладки (checkLayout). */
     [[nodiscard]] bool copyFrom(const ISection& src) noexcept;
 
 private:
@@ -209,9 +257,10 @@ private:
 
     uint8_t _id = 0;
     bool _required = false;
+    bool _edited = false;
     uint16_t _slotCount = 0;
     uint16_t _slotSize = 0;
-    uint32_t _tag = 0;
+    Tag _tag = 0;
     SectionDesc _desc{};
     uint8_t& _data;
     IShow& _file;
@@ -238,18 +287,26 @@ public:
     {
         return const_cast<IShow*>(this)->_sections.get(id);
     }
-    /** Секция по FourCC. */
-    [[nodiscard]] ISection* find(uint32_t tag) noexcept;
-    [[nodiscard]] const ISection* find(uint32_t tag) const noexcept;
+    /** Секция по FourCC / записи каталога. */
+    [[nodiscard]] ISection* find(Tag tag) noexcept;
+    [[nodiscard]] const ISection* find(Tag tag) const noexcept;
+    [[nodiscard]] ISection* find(const SectionDesc& d) noexcept;
+    [[nodiscard]] const ISection* find(const SectionDesc& d) const noexcept;
 
     /** Полный путь / имя в заголовке файла. */
     void setName(const char* name) noexcept;
     [[nodiscard]] const char* name() const noexcept { return _name; }
 
-    [[nodiscard]] bool isEdited() const noexcept { return _edited; }
-    void markEdited() noexcept { _edited = true; }
-    /** Совпадает с носителем (после load/save). */
-    void clearEdited() noexcept { _edited = false; }
+    /** Magic / версия формата этого шоу (заданы в конструкторе). */
+    const uint32_t magic;
+    const uint16_t version;
+
+    /** true, если хотя бы одна секция dirty. */
+    [[nodiscard]] bool isEdited() const noexcept;
+    /** Пометить dirty секции из маски (default = все, newShow). */
+    void markEdited(const TagMask& tags = TagMask::all) noexcept;
+    /** Снять dirty у секций из маски (default = все / совпадает с носителем). */
+    void clearEdited(const TagMask& tags = TagMask::all) noexcept;
 
     /** CRC / magic / I/O последней load/save. */
     [[nodiscard]] Status status() const noexcept { return _status; }
@@ -260,12 +317,20 @@ public:
     {
         return _mismatches[(i < _mismatchCount) ? i : 0u];
     }
-    /** У каждой required-секции есть desc с диска. */
+    /** Все required-секции имеют desc (маску не смотрит). */
     [[nodiscard]] bool allRequiredPresent() const noexcept;
 
-    /** Прочитать файл в секции; mismatches копятся, CRC/magic — отказ. */
-    [[nodiscard]] Status load(IFile& io, const char* path) noexcept;
-    /** Записать секции: payload, затем header+catalog. */
+    /**
+     * Open (не merge). Body CRC целиком; из файла берутся секции из @a tags,
+     * ВСЕ секции перед этим очищаются. selectsAll() — полный open (имя из файла);
+     * частичный — без имени и edited (новое несохранённое шоу).
+     * До изменения live: Overflow, MissingRequired (required не в маске / нет в файле).
+     * @a allowTruncate — при ExtraSlots читать min(n,N); иначе Status::Overflow.
+     */
+    [[nodiscard]] Status load(IFile& io, const char* path, const TagMask& tags = TagMask::all,
+                              bool allowTruncate = false) noexcept;
+
+    /** Записать шоу целиком (все секции). */
     [[nodiscard]] Status save(IFile& io, const char* path) noexcept;
 
     /**
@@ -275,17 +340,25 @@ public:
     [[nodiscard]] bool copyFrom(const IShow& src) noexcept;
 
 protected:
-    /** Реестр секций (storage наследника Show<N>). */
-    explicit IShow(MISC::ObjRegistry<ISection, uint8_t>& sections) noexcept
-        : _sections(sections)
+    /**
+     * @a sections — реестр Show<N>; @a pendingDesc — staging каталога [capacity],
+     * слот занят ⇔ tag != 0. Указатель с адреса члена Show — в mem-init ок.
+     * @a magic_ / @a version_ — пишутся в заголовок и проверяются при load.
+     */
+    IShow(MISC::ObjRegistry<ISection, uint8_t>& sections, SectionDesc* pendingDesc,
+          uint32_t magic_, uint16_t version_) noexcept
+        : magic(magic_)
+        , version(version_)
+        , _sections(sections)
+        , _pendingDesc(pendingDesc)
     {}
 
 private:
     friend void detail::registerSection(IShow& file, ISection& sec) noexcept;
 
-    void addMismatch(Diff kind, uint32_t tag, uint16_t expected = 0, uint16_t found = 0) noexcept;
-    /** CRC каталога + payload всех секций (как на диске после save). */
-    [[nodiscard]] uint32_t crcBody() const noexcept;
+    void addMismatch(Diff kind, Tag tag, uint16_t expected = 0, uint16_t found = 0) noexcept;
+    [[nodiscard]] SectionDesc& pendingDesc(uint8_t id) noexcept;
+    [[nodiscard]] const SectionDesc& pendingDesc(uint8_t id) const noexcept;
     [[nodiscard]] Status fail(Status st) noexcept;
     /** Закрыть файл и вернуть ошибку. */
     [[nodiscard]] Status fail(IFile& io, Status st) noexcept;
@@ -318,12 +391,22 @@ private:
     }
 
     MISC::ObjRegistry<ISection, uint8_t>& _sections;
+    SectionDesc* _pendingDesc = nullptr; /**< Show<N>::_pendingDesc[N]. */
     char _name[kPathSize]{};
     Status _status = Status::Ok;
     Mismatch _mismatches[kMaxMismatches]{};
     uint8_t _mismatchCount = 0;
-    bool _edited = false;
 };
+
+inline ISection* IShow::find(const SectionDesc& d) noexcept
+{
+    return find(d.tag);
+}
+
+inline const ISection* IShow::find(const SectionDesc& d) const noexcept
+{
+    return find(d.tag);
+}
 
 template <typename Rec, uint16_t N>
 class Section : public ISection {
@@ -337,7 +420,7 @@ public:
     static constexpr std::size_t kPayloadBytes = static_cast<std::size_t>(N) * sizeof(Rec);
 
     /** Регистрирует секцию в @a file; payload — _rec. */
-    explicit Section(IShow& file, uint32_t tag, bool required = false) noexcept
+    explicit Section(IShow& file, Tag tag, bool required = false) noexcept
         : ISection(file, tag, kSlotCount, kSlotSize, required, _rec)
     {}
 
@@ -373,11 +456,15 @@ public:
     static constexpr uint8_t kSectionMax = N;
 
     /** Реестр секций — _store; секции-члены наследника регистрируются в своих ctor. */
-    Show() noexcept : IShow(_store) {}
+    Show(uint32_t magic, uint16_t version) noexcept
+        : IShow(_store, _pendingDesc, magic, version)
+    {}
 
 private:
+    /** FirstId = 0 → индекс pending == id секции. */
     using Store = MISC::ObjStorage<ISection, N, uint8_t, 0>;
     Store _store{};
+    SectionDesc _pendingDesc[N]{};
 };
 
 } // namespace sf

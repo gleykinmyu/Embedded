@@ -88,7 +88,7 @@ bool ServerSession::select(msg::Action action, Selection selection) noexcept
     msg::Select body{};
     body.action = action;
     body.selection = selection;
-    return send(body);
+    return request(body);
 }
 
 bool ServerSession::setSelection(Selection selection) noexcept
@@ -112,7 +112,7 @@ bool ServerSession::block(msg::Action action, Selection selection) noexcept
     msg::Block body{};
     body.action = action;
     body.selection = selection;
-    return send(body);
+    return request(body);
 }
 
 bool ServerSession::setBlocked(Selection selection) noexcept
@@ -125,15 +125,27 @@ bool ServerSession::clearBlocked() noexcept
     return setBlocked(Selection{});
 }
 
-bool ServerSession::setTarget(uint8_t mech_id, const MotionTarget& target) noexcept
+bool ServerSession::setTarget(uint8_t axis_id, const MotionTarget& target) noexcept
 {
     if (!isOpen()) {
         return false;
     }
     msg::SetTarget body{};
-    body.mech_id = mech_id;
     body.target = target;
-    return send(body);
+    body.axis_id = axis_id;
+    body.all_selected = false;
+    return request(body);
+}
+
+bool ServerSession::setTarget(const MotionTarget& target) noexcept
+{
+    if (!isOpen()) {
+        return false;
+    }
+    msg::SetTarget body{};
+    body.target = target;
+    body.all_selected = true;
+    return request(body);
 }
 
 bool ServerSession::getTelemetry(Selection selection) noexcept
@@ -143,7 +155,17 @@ bool ServerSession::getTelemetry(Selection selection) noexcept
     }
     msg::GetTelemetry body{};
     body.selection = selection;
-    return send(body);
+    return request(body);
+}
+
+bool ServerSession::resetFault(Selection selection) noexcept
+{
+    if (!isOpen()) {
+        return false;
+    }
+    msg::ResetFault body{};
+    body.selection = selection;
+    return request(body);
 }
 
 void IConsole::onPacket(const Packet& pkt) noexcept
@@ -165,7 +187,7 @@ void IConsole::onTelemetry(uint8_t src_id, const msg::Telemetry& body) noexcept
     if (bank == nullptr) {
         return;
     }
-    CMech* m = bank->get(body.mech_id);
+    CMech* m = bank->get(body.axis_id);
     if (m == nullptr) {
         return;
     }

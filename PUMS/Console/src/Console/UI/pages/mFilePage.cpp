@@ -35,15 +35,7 @@ void MFilePage::doSave() noexcept
         ui().showFileMsg(Msg::AfterSaveOk, uiMsg::kFileSaved);
         return;
     }
-
-    switch (console.fio.status()) {
-    case sf::Fio::Status::NoShowOpen:
-        ui().showFileMsg(Msg::GoSaveAs, uiMsg::kConsoleNoShowOpen);
-        break;
-    default:
-        ui().showFileSystemStatus(Msg::None);
-        break;
-    }
+    ui().showFileSystemStatus(Msg::None);
 }
 
 void MFilePage::beginNew() noexcept

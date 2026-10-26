@@ -5,6 +5,8 @@ namespace REG {
 /**
  * Маска для enum class со значениями-битами. Хранит сырое слово; неявно строится из Enum.
  * Операторы |, &, ~ комбинируют маски. Enum|Enum для своего enum — в том же namespace, что и enum (ADL), см. REG_BITMASK_ENUM_OPS.
+ *
+ * Для isValid() у Enum должен быть член All = OR всех допустимых бит (как Count у EnumValue).
  */
 template <typename Enum>
 class BitMask {
@@ -24,6 +26,13 @@ public:
     static constexpr BitMask from_raw(Word w) noexcept { return BitMask(w); }
 
     constexpr Word raw() const noexcept { return mask_; }
+
+    /** true, если нет бит вне Enum::All. */
+    [[nodiscard]] constexpr bool isValid() const noexcept
+    {
+        constexpr Word all = static_cast<Word>(Enum::All);
+        return (mask_ & all) == mask_;
+    }
 
     constexpr bool any(BitMask m) const noexcept { return (mask_ & m.mask_) != Word{}; }
 

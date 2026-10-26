@@ -137,8 +137,9 @@ int main(void)
     if (!board.flash.begin()) {
         NEX_DBG("W25Q begin failed\n");
     } else {
-        NEX_DBG("W25Q OK, show mirror sector @ 0x%06X\n",
-            smcp::file::W25qShowFile::kSectorAddr);
+        NEX_DBG("W25Q OK, show LKG A/B @ 0x%06X / 0x%06X\n",
+            smcp::file::W25qShowFile::kSlotAddrA,
+            smcp::file::W25qShowFile::kSlotAddrB);
     }
     if (resetByWatchdog) {
         NEX_DBG("*** Reset caused by IWDG watchdog ***\n");
@@ -197,13 +198,6 @@ int main(void)
 #endif
 
     console.begin(smcp::msg::kConsoleIdMin);
-
-    if (console.fio.restore()) {
-        NEX_DBG("Restored show from W25Q: '%s'\n", console.show.name());
-    } else {
-        NEX_DBG("No valid show mirror in W25Q (%s)\n",
-            sf::Fio::cstr(console.fio.status()));
-    }
 
     board.watchdog.kick();
     app.boot();

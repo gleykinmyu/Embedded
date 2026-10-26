@@ -3,21 +3,25 @@
  * @brief CGMech: Select с проверкой overlap.
  */
 
-#include "smcp/mech/Console/group_bank.hpp"
+#include "smcp/show/group_bank.hpp"
 
 namespace smcp {
 
 CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept
-    : CGMech(console, groups, msg::kServerIdMin, id, id)
+    : CGMech(console, groups, axis::Route{msg::kServerIdMin, id}, id)
 {}
 
 CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept
-    : CGMech(console, groups, server_id, id, id)
+    : CGMech(console, groups, axis::Route{server_id, id}, id)
 {}
 
-CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t mech_id,
+CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t axis_id,
                uint8_t local_id) noexcept
-    : CMech(console, server_id, mech_id, local_id)
+    : CGMech(console, groups, axis::Route{server_id, axis_id}, local_id)
+{}
+
+CGMech::CGMech(IConsole& console, IGroupBank& groups, axis::Route route, uint8_t local_id) noexcept
+    : CMech(console, route, local_id)
     , _groups(groups)
 {}
 

@@ -30,10 +30,15 @@ struct Transaction {
 
     Kind kind = Kind::Command;
     /** Маршрут для `onStatus` / `onResponse` этой tx. */
-    /** Маршрут для `onStatus` / `onResponse` этой tx. */
     Route route;
     /** Атрибут виджета (`attr::Id`) или `SysVarTag` для зеркал и корреляции `get`. */
     uint8_t tag = 0u;
+
+private:
+    /** До `awaiting_status`: на 32-bit указатель закрывает дыру перед `uint64` Mask (24→16). */
+    const Command* _command = nullptr;
+
+public:
     /** Panel status, принимаемые как ответ этой tx; `msg::kAwaitingNone` = NoAwaiting. */
     msg::Status::Mask awaiting_status = msg::kAwaitingAllPanel;
 
@@ -59,10 +64,11 @@ struct Transaction {
     /** Маска plausibility для route status к активной tx: `awaiting_status` × `msg::bkcmdAllowedStatus`.
      *  Может включать fail-биты при OnFailure, пока session ещё Active (до txIdle). */
     [[nodiscard]] bool correlatesWith(const msg::Status& msg, BkCmd bkcmd) const noexcept;
-
-private:
-    const Command* _command = nullptr;
 };
+
+#if UINTPTR_MAX <= 0xFFFFFFFFu
+static_assert(sizeof(Transaction) == 16u, "Transaction layout: kind|route|tag|cmd*|Mask");
+#endif
 
 namespace detail {
 
@@ -76,7 +82,11 @@ public:
     };
 
     static const std::size_t kCapacity = static_cast<std::size_t>(NEX_SESSION_QUEUE_CAPACITY);
-    static constexpr std::size_t kMaxObjectSize = 128u; //TODO перейти на плотную упаковку очереди
+#if NEX_CMD_STRING
+    static constexpr std::size_t kMaxObjectSize = 40u; /**< `sizeof(cmd::String)` */
+#else
+    static constexpr std::size_t kMaxObjectSize = 32u; /**< пик без String: `cmd::Move` */
+#endif
     static constexpr std::size_t kMaxAlign = alignof(std::max_align_t);
 
     TransactionQueue() noexcept = default;
@@ -103,6 +113,13 @@ private:
     static_assert(kMaxObjectSize >= kMaxAlign);
     static_assert(kMaxObjectSize % kMaxAlign == 0u);
     static_assert(kMaxAlign >= alignof(std::max_align_t));
+#if NEX_CMD_STRING
+    static_assert(sizeof(cmd::String) <= kMaxObjectSize);
+#endif
+    static_assert(sizeof(cmd::Move) <= kMaxObjectSize);
+    static_assert(sizeof(cmd::File) <= kMaxObjectSize);
+    static_assert(sizeof(cmd::assign::Text) <= kMaxObjectSize);
+    static_assert(sizeof(cmd::gui::TextInRegion) <= kMaxObjectSize);
 
     struct Slot {
         alignas(kMaxAlign) unsigned char storage[kMaxObjectSize] = {};

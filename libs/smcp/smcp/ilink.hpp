@@ -3,7 +3,7 @@
  * @brief Абстракция SMCP-линка: Packet без привязки к среде.
  *
  * send/receive — общая SMCP-логика; среда — isOpen / write / read.
- * Реализации: CanLink (ICAN) и т.п. Heartbeat / peer / pkt_id — у Session.
+ * Реализации: CanLink (ICAN) и т.п. Heartbeat / peer / txn_id — у Session.
  */
 
 #pragma once

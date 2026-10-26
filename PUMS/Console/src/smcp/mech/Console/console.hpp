@@ -15,7 +15,7 @@
 #include <cstdint>
 
 #include "obj_registry.hpp"
-#include "smcp/mech/Console/cmech.hpp"
+#include "smcp/show/cmech.hpp"
 #include "smcp/mech/message.hpp"
 #include "smcp/ilink.hpp"
 #include "smcp/node.hpp"
@@ -55,6 +55,11 @@ public:
     [[nodiscard]] const CMech* mech(uint8_t server_id, uint8_t id) const noexcept
     {
         return const_cast<IConsole*>(this)->mech(server_id, id);
+    }
+    [[nodiscard]] CMech* mech(axis::Route r) noexcept { return mech(r.server_id, r.axis_id); }
+    [[nodiscard]] const CMech* mech(axis::Route r) const noexcept
+    {
+        return mech(r.server_id, r.axis_id);
     }
 
     /** Ось в локальном inventory (бит группы). Нет — nullptr. Leaf: банк cmechs. */
@@ -119,11 +124,8 @@ class ServerSession : public Session {
 public:
     explicit ServerSession(IConsole& console) noexcept;
 
-    /**
-     * Select: Add / Remove / Set. Пустая маска и не Set — false.
-     * Наследник гасит свой билет до send.
-     */
-    virtual bool select(msg::Action action, Selection selection) noexcept;
+    /** Select: Add / Remove / Set. Пустая маска и не Set — false. */
+    bool select(msg::Action action, Selection selection) noexcept;
     /** Заменить выделение целиком (Action::Set). */
     bool setSelection(Selection selection) noexcept;
     /** Снять выделение со всех осей. */
@@ -136,14 +138,22 @@ public:
     /** Снять блок со всех осей. */
     bool clearBlocked() noexcept;
 
-    /** Уставка одной оси (класс A). */
-    bool setTarget(uint8_t mech_id, const MotionTarget& target) noexcept;
+    /** Уставка одной оси (класс A, DLC=8). */
+    bool setTarget(uint8_t axis_id, const MotionTarget& target) noexcept;
+    /** Та же уставка на всё текущее Select этой консоли (класс A, DLC=7). */
+    bool setTarget(const MotionTarget& target) noexcept;
 
     /**
      * Запрос снимков Telemetry (класс A → Ack + Telemetry D).
      * Пустая маска — все оси сегмента (решает сервер).
      */
     bool getTelemetry(Selection selection) noexcept;
+
+    /**
+     * Пустая маска — globalFault сегмента (GPIO сервера).
+     * Ненустая — Fault указанных осей.
+     */
+    bool resetFault(Selection selection) noexcept;
 };
 
 /** Console<N>: registry сессий MaxSessions. Банк осей — storage() у leaf. */

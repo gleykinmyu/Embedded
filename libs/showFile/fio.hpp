@@ -1,15 +1,10 @@
 /**
  * @file fio.hpp
- * @brief Fio — live/staging + main/bak на носителях, каталог через IBrowser.
+ * @brief Fio — live + main (SD) / bak (W25) через IBrowser.
  *
- * IFile не внутри IShow: шоу — RAM, IFile — ручка тома. Live пишется в оба слота.
- * Один и тот же IFile на main и bak — резерва нет (сравнение по адресу).
- * Пустой path у load — читать резерв. Резерв пишется только в save.
- *
- * TODO(reformat): секции/чекбоксы, accept A2, overflow MsgBox A3, dirty/секция,
- * политика bak=W25 (без SD → только mirror; bad SD → restore с bak) —
- * см. PUMS/Console/src/smcp/ANALYSIS.md «Файл / FIO».
- * A/B слотов W25 — не здесь: в W25qShowFile / драйвере; для Fio bak = обычный IFile.
+ * Одна копия шоу в RAM. W25 A/B — от обрыва питания; битый SD → useBak (LKG).
+ * openShow: TagMask (default = все, частичный open); save — всегда целиком.
+ * Overflow — без bak-fallback; повтор с allowTruncate (как confirmed у save).
  */
 
 #pragma once
@@ -22,29 +17,27 @@ namespace sf {
 class Fio {
 public:
     enum class Status : uint8_t {
-        Ok = 0,
-        NoShowOpen,        /**< Save без открытого имени. */
-        MissingSection,    /**< После load нет обязательной секции. */
+        Ok = 0,            /**< Live согласован с SD (или newShow). */
+        BakOnly,           /**< Live только на bak / LKG. */
+        MissingSection,    /**< Нет обязательной секции. */
         InvalidData,       /**< Секция отвергла payload (isValid). */
+        Overflow,          /**< Ёмкость секции; IShow::status() == Overflow. */
         OpenFileProtected, /**< Нельзя удалить сейчас открытый файл. */
         BrowserFail,       /**< Каталог. Код — IBrowser::status(). */
-        MainFail,          /**< Основной IFile. Код — IShow::status(). */
-        BakFail,           /**< Резерв. Код — IShow::status(). */
-        RestoreFail,       /**< Не удалось прочитать резерв. */
+        MainFail,          /**< SD IFile. Код — IShow::status(). */
+        BakFail,           /**< bak пуст/битый. */
     };
 
-    /** Успешная операция; наследник (пульт) обновляет сессию / UI. */
     enum class Event : uint8_t {
-        New = 0,  /**< Live очищен, edited. */
-        Loaded,   /**< open / restore приняты. */
-        Saved,    /**< Запись на носитель. */
-        Removed,  /**< Файл каталога удалён, live не трогали. */
+        New = 0,
+        Loaded,
+        Saved,
+        Removed,
     };
 
-    Fio(IBrowser& browser, IShow& live, IShow& incoming, IFile& main, IFile& bak) noexcept
+    Fio(IBrowser& browser, IShow& live, IFile& main, IFile& bak) noexcept
         : _browser(browser)
         , _live(live)
-        , _incoming(incoming)
         , _main(main)
         , _bak(bak)
     {}
@@ -57,44 +50,40 @@ public:
     [[nodiscard]] static const char* cstr(Status st) noexcept;
 
     void newShow() noexcept;
-    [[nodiscard]] bool restore() noexcept;
-    [[nodiscard]] bool openShow(const char* name) noexcept;
-    [[nodiscard]] bool saveShow() noexcept;
+
     /**
-     * Сохранить как @a name: запись в tmp, replaceWith, затем bak.
-     * Файл уже есть и !@a confirmed → BrowserFail / FileExists.
+     * SD → live: open по маске (не merge — остальные секции очищаются; частичный — без имени).
+     * Плохо → bak целиком (BakOnly), кроме Overflow / MissingSection до изменения live.
+     * @a allowTruncate — как confirmed у saveShowAs.
      */
+    [[nodiscard]] bool openShow(const char* name, const TagMask& tags = TagMask::all,
+                                bool allowTruncate = false) noexcept;
+
+    /** bak → live целиком, BakOnly. */
+    [[nodiscard]] bool useBak() noexcept;
+
+    /** Имя+SD → SD + bak; иначе только bak → BakOnly. Шоу всегда целиком. */
+    [[nodiscard]] bool saveShow() noexcept;
+
+    /** tmp → replaceWith на SD, затем bak. Шоу всегда целиком. */
     [[nodiscard]] bool saveShowAs(const char* name, bool confirmed = false) noexcept;
+
     [[nodiscard]] bool removeShow(const char* name) noexcept;
     [[nodiscard]] static const char* showBaseName(const char* path) noexcept;
 
 protected:
-    /** Только после успеха. По умолчанию no-op. */
     virtual void onEvent(Event ev) noexcept { (void)ev; }
 
 private:
-    [[nodiscard]] bool fail(Status st) noexcept
-    {
-        _status = st;
-        return false;
-    }
-    [[nodiscard]] bool succeed(Event ev) noexcept
-    {
-        _status = Status::Ok;
-        onEvent(ev);
-        return true;
-    }
+    [[nodiscard]] bool fail(Status st) noexcept;
+    [[nodiscard]] bool ok(Event ev, Status st = Status::Ok) noexcept;
 
-    [[nodiscard]] bool acceptLoaded() noexcept;
     [[nodiscard]] bool ensureDir() noexcept;
-    [[nodiscard]] bool hasBak() const noexcept { return &_main != &_bak; }
-    [[nodiscard]] bool loadShows(const char* path) noexcept;
-    [[nodiscard]] bool saveMain(const char* path) noexcept;
-    [[nodiscard]] bool syncBak() noexcept;
+    [[nodiscard]] bool load(const char* path, const TagMask& tags, bool allowTruncate) noexcept;
+    [[nodiscard]] bool store(IFile& io, const char* path, Status failSt) noexcept;
 
     IBrowser& _browser;
     IShow& _live;
-    IShow& _incoming;
     IFile& _main;
     IFile& _bak;
     Status _status = Status::Ok;

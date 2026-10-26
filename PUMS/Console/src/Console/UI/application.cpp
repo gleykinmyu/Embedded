@@ -33,9 +33,13 @@ namespace {
     case sf::Status::BadMagic: return uiMsg::kConsoleBadMagic;
     case sf::Status::BadVersion: return uiMsg::kConsoleBadVersion;
     case sf::Status::BadHeaderCrc:
-    case sf::Status::BadBodyCrc: return uiMsg::kConsoleBadCrc;
+    case sf::Status::BadBodyCrc:
+    case sf::Status::BadSectionCrc: return uiMsg::kConsoleBadCrc;
     case sf::Status::BadLayout: return uiMsg::kConsoleBadLayout;
     case sf::Status::Truncated: return uiMsg::kConsoleTruncated;
+    case sf::Status::Overflow: return uiMsg::kConsoleOverflow;
+    case sf::Status::MissingRequired: return uiMsg::kConsoleMissingGrup;
+    case sf::Status::RegisterFailed:
     case sf::Status::IoError:
     default: return uiMsg::kStorageError;
     }
@@ -59,19 +63,19 @@ namespace {
 {
     using St = sf::Fio::Status;
     switch (st) {
-    case St::NoShowOpen: return uiMsg::kConsoleNoShowOpen;
     case St::MissingSection: return uiMsg::kConsoleMissingGrup;
     case St::InvalidData: return uiMsg::kConsoleBadGroups;
+    case St::Overflow: return uiMsg::kConsoleOverflow;
     case St::OpenFileProtected: return uiMsg::kBrowserOpenProtected;
     case St::BrowserFail: return fileSystemText(console.browser.status());
     case St::MainFail:
-    case St::BakFail:
-    case St::RestoreFail: {
+    case St::BakFail: {
         const sf::Status fs = (console.show.status() != sf::Status::Ok)
             ? console.show.status()
             : sf::Status::IoError;
         return fileSystemText(fs);
     }
+    case St::BakOnly: return uiMsg::kConsoleBakOnly;
     case St::Ok:
     default: return uiMsg::kOk;
     }
@@ -79,9 +83,9 @@ namespace {
 
 } // namespace
 
-void UiConsole::onMechChanged(uint8_t mech_id) noexcept
+void UiConsole::onMechChanged(uint8_t axis_id) noexcept
 {
-    app.work.onMechTelemetry(mech_id);
+    app.work.onMechTelemetry(axis_id);
 }
 
 void UiConsole::onConsoleChanged() noexcept

@@ -427,7 +427,7 @@ void WorkPage::showSharedWinchesMsg() noexcept
     uint8_t sharedIds[MConsole::kMechCount]{};
     uint8_t sharedCount = 0u;
     for (uint8_t m = 0; m < MConsole::kMechCount; ++m) {
-        if (ov.mechs().contains(m)) {
+        if (ov.sels().contains(m)) {
             sharedIds[sharedCount++] = m;
         }
     }
@@ -511,10 +511,10 @@ void WorkPage::paintGroupSlot(uint8_t index, bool selected) noexcept
     groupBtn[index].sync(&grp, selected, false);
 }
 
-void WorkPage::onMechTelemetry(uint8_t mech_id) noexcept
+void WorkPage::onMechTelemetry(uint8_t axis_id) noexcept
 {
-    if (mech_id < CellButtons::kCount) {
-        cells[mech_id].sync(console);
+    if (axis_id < CellButtons::kCount) {
+        cells[axis_id].sync(console);
     }
 }
 

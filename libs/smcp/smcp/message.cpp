@@ -84,9 +84,9 @@ bool Packet::pack(BIF::CAN::Frame& frame) const noexcept
         return false;
     }
     const uint32_t id_msg = static_cast<uint32_t>(msg.id & protocol::kMsgIdMax);
-    const uint32_t id_pkt = static_cast<uint32_t>(pkt_id & protocol::kPktIdMax);
+    const uint32_t id_txn = static_cast<uint32_t>(txn_id & protocol::kTxnIdMax);
     const uint32_t can_id = (id_msg << protocol::kCanIdMsgPos) | (static_cast<uint32_t>(dst_id) << protocol::kCanIdDstPos)
-         | (static_cast<uint32_t>(src_id) << protocol::kCanIdSrcPos) | id_pkt;
+         | (static_cast<uint32_t>(src_id) << protocol::kCanIdSrcPos) | id_txn;
 
     frame = {};
     frame.id.setExtended(true);
@@ -105,7 +105,7 @@ bool Packet::unpack(const BIF::CAN::Frame& frame) noexcept
     }
 
     const uint32_t can_id = frame.id.get();
-    pkt_id = static_cast<uint8_t>(can_id & protocol::kPktIdMax);
+    txn_id = static_cast<uint8_t>(can_id & protocol::kTxnIdMax);
     src_id = static_cast<uint8_t>((can_id >> protocol::kCanIdSrcPos) & 0xFFu);
     dst_id = static_cast<uint8_t>((can_id >> protocol::kCanIdDstPos) & 0xFFu);
     msg.id = static_cast<uint8_t>((can_id >> protocol::kCanIdMsgPos) & protocol::kMsgIdMax);
@@ -118,7 +118,8 @@ namespace msg {
 
 bool Ack::pack(Message& m) const noexcept
 {
-    (void)m;
+    m = {};
+    m.id = kId;
     return true;
 }
 
@@ -129,6 +130,8 @@ bool Ack::unpack(const Message& m) noexcept
 
 bool Nack::pack(Message& m) const noexcept
 {
+    m = {};
+    m.id = kId;
     return m.push(error) && m.pushU32(detail);
 }
 
@@ -142,30 +145,152 @@ bool Nack::unpack(const Message& m) noexcept
     return true;
 }
 
+void Fault::setDetailStr(const char* s) noexcept
+{
+    detail_len = 0;
+    if (s == nullptr) {
+        return;
+    }
+    std::strncpy(reinterpret_cast<char*>(detail), s, kDetailMax);
+    while (detail_len < kDetailMax && detail[detail_len] != 0u) {
+        ++detail_len;
+    }
+}
+
 bool Fault::pack(Message& m) const noexcept
 {
-    return m.push(error) && m.pushU32(detail);
+    m = {};
+    m.id = kId;
+    if (detail_len > kDetailMax || !m.push(error)) {
+        return false;
+    }
+    for (uint8_t i = 0; i < detail_len; ++i) {
+        if (!m.push(detail[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool Fault::unpack(const Message& m) noexcept
 {
-    if (m.dlc != 5) {
+    if (m.dlc < 1u || m.dlc > Message::kMaxDlc) {
         return false;
     }
     error = m.data[0];
-    detail = m.loadU32(1);
+    detail_len = static_cast<uint8_t>(m.dlc - 1u);
+    if (detail_len > kDetailMax) {
+        return false;
+    }
+    for (uint8_t i = 0; i < detail_len; ++i) {
+        detail[i] = m.data[1u + i];
+    }
     return true;
 }
 
 bool Heartbeat::pack(Message& m) const noexcept
 {
-    (void)m;
+    m = {};
+    m.id = kId;
     return true;
 }
 
 bool Heartbeat::unpack(const Message& m) noexcept
 {
     return m.dlc == 0;
+}
+
+bool Get::pack(Message& m) const noexcept
+{
+    m = {};
+    m.id = kId;
+    return m.push(tag);
+}
+
+bool Get::unpack(const Message& m) noexcept
+{
+    if (m.dlc != 1) {
+        return false;
+    }
+    tag = m.data[0];
+    return true;
+}
+
+bool Set::pack(Message& m) const noexcept
+{
+    m = {};
+    m.id = kId;
+    if (len > kInlineMax || !m.push(tag)) {
+        return false;
+    }
+    for (uint8_t i = 0; i < len; ++i) {
+        if (!m.push(data[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Set::unpack(const Message& m) noexcept
+{
+    if (m.dlc < 1u || m.dlc > Message::kMaxDlc) {
+        return false;
+    }
+    tag = m.data[0];
+    len = static_cast<uint8_t>(m.dlc - 1u);
+    if (len > kInlineMax) {
+        return false;
+    }
+    for (uint8_t i = 0; i < len; ++i) {
+        data[i] = m.data[1u + i];
+    }
+    return true;
+}
+
+bool DataBegin::pack(Message& m) const noexcept
+{
+    m = {};
+    m.id = kId;
+    return m.push(tag) && m.pushU16(size) && m.pushU32(crc32);
+}
+
+bool DataBegin::unpack(const Message& m) noexcept
+{
+    if (m.dlc != 7) {
+        return false;
+    }
+    tag = m.data[0];
+    size = m.loadU16(1);
+    crc32 = m.loadU32(3);
+    return true;
+}
+
+bool Data::pack(Message& m) const noexcept
+{
+    m = {};
+    m.id = kId;
+    if (len > kMaxPayload || !m.push(seq)) {
+        return false;
+    }
+    for (uint8_t i = 0; i < len; ++i) {
+        if (!m.push(data[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Data::unpack(const Message& m) noexcept
+{
+    if (m.dlc < 1u || m.dlc > Message::kMaxDlc) {
+        return false;
+    }
+    seq = m.data[0];
+    len = static_cast<uint8_t>(m.dlc - 1u);
+    for (uint8_t i = 0; i < len; ++i) {
+        data[i] = m.data[1u + i];
+    }
+    return true;
 }
 
 } // namespace msg

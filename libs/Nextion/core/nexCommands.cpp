@@ -345,6 +345,7 @@ bool Get::serialize(TxFrame& tx) const noexcept {
     return printAttrLexeme(tx, _operand);
 }
 
+#if NEX_CMD_STRING
 bool String::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
     if (_kind == Kind::Covx) {
@@ -352,7 +353,7 @@ bool String::serialize(TxFrame& tx) const noexcept {
             return false;
         return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
             && printComma(tx) && printInt32(tx, _i1) && printComma(tx)
-            && printInt32(tx, _i2);
+            && printInt32(tx, _u.i2);
     }
 
     if (_kind == Kind::Substr) {
@@ -360,7 +361,7 @@ bool String::serialize(TxFrame& tx) const noexcept {
             return false;
         return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
             && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_i1)) && printComma(tx)
-            && printUint32(tx, static_cast<uint32_t>(_i2));
+            && printUint32(tx, static_cast<uint32_t>(_u.i2));
     }
 
     if (_kind == Kind::Strlen) {
@@ -378,19 +379,20 @@ bool String::serialize(TxFrame& tx) const noexcept {
     if (_kind != Kind::Spstr)
         return fail(Status::UnknownKind);
 
-    if (_delimiterQuoted == nullptr)
+    if (_u.delim == nullptr)
         return fail(Status::NullPointer);
     if (!NEX_CMD_PRINT_LIT(tx, "spstr") || !printSpace(tx))
         return false;
-    const size_t ndq = std::strlen(_delimiterQuoted);
+    const size_t ndq = std::strlen(_u.delim);
     if (ndq == 0u)
         return fail(Status::EmptyLiteral);
     if (ndq > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
     return printAttrLexeme(tx, _a1) && printComma(tx) && printAttrLexeme(tx, _a2)
-        && printComma(tx) && pushBytes(tx, _delimiterQuoted, static_cast<uint16_t>(ndq))
+        && printComma(tx) && pushBytes(tx, _u.delim, static_cast<uint16_t>(ndq))
         && printComma(tx) && printUint32(tx, static_cast<uint32_t>(_i1));
 }
+#endif /* NEX_CMD_STRING */
 
 bool Component::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
@@ -452,7 +454,9 @@ bool WaveForm::serialize(TxFrame& tx) const noexcept {
 
 bool Eeprom::serialize(TxFrame& tx) const noexcept {
     _status = Status::OK;
-    if (_target != nullptr) {
+    if (!_transparent) {
+        if (_u.target == nullptr)
+            return fail(Status::NullPointer);
         if (_op == Op::Write) {
             if (!NEX_CMD_PRINT_LIT(tx, "wepo") || !printSpace(tx))
                 return false;
@@ -460,10 +464,10 @@ bool Eeprom::serialize(TxFrame& tx) const noexcept {
             if (!NEX_CMD_PRINT_LIT(tx, "repo") || !printSpace(tx))
                 return false;
         }
-        return printAttrLexeme(tx, *_target) && printComma(tx) && printUint32(tx, _addr);
+        return printAttrLexeme(tx, *_u.target) && printComma(tx) && printUint32(tx, _addr);
     }
 
-    if (_target != nullptr || _byteCount == 0u)
+    if (_u.byteCount == 0u)
         return fail(Status::InvalidFields);
     if (_op == Op::Write) {
         if (!NEX_CMD_PRINT_LIT(tx, "wept") || !printSpace(tx))
@@ -472,7 +476,7 @@ bool Eeprom::serialize(TxFrame& tx) const noexcept {
         if (!NEX_CMD_PRINT_LIT(tx, "rept") || !printSpace(tx))
             return false;
     }
-    return printUint32(tx, _addr) && printComma(tx) && printUint32(tx, _byteCount);
+    return printUint32(tx, _addr) && printComma(tx) && printUint32(tx, _u.byteCount);
 }
 
 bool Cfgpio::serialize(TxFrame& tx) const noexcept {
@@ -521,18 +525,18 @@ bool File::serialize(TxFrame& tx) const noexcept {
     }
 
     if (_op == Op::Rename) {
-        if (_pathToQuoted == nullptr)
+        if (_ref.pathTo == nullptr)
             return fail(Status::NullPointer);
         if (!NEX_CMD_PRINT_LIT(tx, "refile") || !printSpace(tx))
             return false;
         const size_t na = std::strlen(_pathQuoted);
-        const size_t nb = std::strlen(_pathToQuoted);
+        const size_t nb = std::strlen(_ref.pathTo);
         if (na == 0u || nb == 0u)
             return fail(Status::EmptyLiteral);
         if (na > UINT16_MAX || nb > UINT16_MAX)
             return fail(Status::TxFrameOverflow);
         return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(na)) && printComma(tx)
-            && pushBytes(tx, _pathToQuoted, static_cast<uint16_t>(nb));
+            && pushBytes(tx, _ref.pathTo, static_cast<uint16_t>(nb));
     }
 
     if (_op == Op::Create) {
@@ -544,7 +548,7 @@ bool File::serialize(TxFrame& tx) const noexcept {
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
         return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
-            && printUint32(tx, _reservedSize);
+            && printUint32(tx, _num.size);
     }
 
     if (_op == Op::Read) {
@@ -556,8 +560,9 @@ bool File::serialize(TxFrame& tx) const noexcept {
         if (n > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
         return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
-            && printUint32(tx, _offset) && printComma(tx) && printUint32(tx, _count)
-            && printComma(tx) && printUint32(tx, _crcOption);
+            && printUint32(tx, _num.read.offset) && printComma(tx)
+            && printUint32(tx, _num.read.count) && printComma(tx)
+            && printUint32(tx, _num.read.crcOption);
     }
 
     if (_op == Op::WriteT) {
@@ -569,10 +574,12 @@ bool File::serialize(TxFrame& tx) const noexcept {
         if (np > static_cast<size_t>(UINT16_MAX))
             return fail(Status::TxFrameOverflow);
         return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(np)) && printComma(tx)
-            && printUint32(tx, _reservedSize);
+            && printUint32(tx, _num.size);
     }
 
-    if (_dstNumAttr == nullptr)
+    if (_op != Op::Find)
+        return fail(Status::UnknownKind);
+    if (_ref.dstNum == nullptr)
         return fail(Status::NullPointer);
     if (!NEX_CMD_PRINT_LIT(tx, "findfile") || !printSpace(tx))
         return false;
@@ -582,8 +589,7 @@ bool File::serialize(TxFrame& tx) const noexcept {
     if (n > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
     return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
-        && printAttrLexeme(tx, *_dstNumAttr);
-    return fail(Status::UnknownKind);
+        && printAttrLexeme(tx, *_ref.dstNum);
 }
 
 bool Directory::serialize(TxFrame& tx) const noexcept {
@@ -608,21 +614,23 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
     }
 
     if (_op == Op::Rename) {
-        if (_pathToQuoted == nullptr)
+        if (_ref.pathTo == nullptr)
             return fail(Status::NullPointer);
         if (!NEX_CMD_PRINT_LIT(tx, "redir") || !printSpace(tx))
             return false;
         const size_t na = std::strlen(_pathQuoted);
-        const size_t nb = std::strlen(_pathToQuoted);
+        const size_t nb = std::strlen(_ref.pathTo);
         if (na == 0u || nb == 0u)
             return fail(Status::EmptyLiteral);
         if (na > UINT16_MAX || nb > UINT16_MAX)
             return fail(Status::TxFrameOverflow);
         return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(na)) && printComma(tx)
-            && pushBytes(tx, _pathToQuoted, static_cast<uint16_t>(nb));
+            && pushBytes(tx, _ref.pathTo, static_cast<uint16_t>(nb));
     }
 
-    if (_dstNumAttr == nullptr)
+    if (_op != Op::Find)
+        return fail(Status::UnknownKind);
+    if (_ref.dstNum == nullptr)
         return fail(Status::NullPointer);
     if (!NEX_CMD_PRINT_LIT(tx, "finddir") || !printSpace(tx))
         return false;
@@ -632,8 +640,7 @@ bool Directory::serialize(TxFrame& tx) const noexcept {
     if (n > static_cast<size_t>(UINT16_MAX))
         return fail(Status::TxFrameOverflow);
     return pushBytes(tx, _pathQuoted, static_cast<uint16_t>(n)) && printComma(tx)
-        && printAttrLexeme(tx, *_dstNumAttr);
-    return fail(Status::UnknownKind);
+        && printAttrLexeme(tx, *_ref.dstNum);
 }
 
 bool FileStream::serialize(TxFrame& tx) const noexcept {
@@ -648,29 +655,29 @@ bool FileStream::serialize(TxFrame& tx) const noexcept {
     if (_kind == Kind::Read) {
         if (!NEX_CMD_PRINT_LIT(tx, "read") || !printSpace(tx))
             return false;
-        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _arg1)
-            && printComma(tx) && printUint32(tx, _arg2);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _u.n.arg1)
+            && printComma(tx) && printUint32(tx, _u.n.arg2);
     }
 
     if (_kind == Kind::Write) {
         if (!NEX_CMD_PRINT_LIT(tx, "write") || !printSpace(tx))
             return false;
-        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _arg1);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printUint32(tx, _u.n.arg1);
     }
 
-    if (_path == nullptr)
+    if (_u.path == nullptr)
         return fail(Status::NullPointer);
 
     if (_kind == Kind::Open) {
         if (!NEX_CMD_PRINT_LIT(tx, "open") || !printSpace(tx))
             return false;
-        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _path);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _u.path);
     }
 
     if (_kind == Kind::Find) {
         if (!NEX_CMD_PRINT_LIT(tx, "find") || !printSpace(tx))
             return false;
-        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _path);
+        return printCompLexeme(tx, _comp) && printComma(tx) && printQuotedString(tx, _u.path);
     }
 
     return fail(Status::UnknownKind);

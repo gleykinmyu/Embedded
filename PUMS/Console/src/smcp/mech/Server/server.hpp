@@ -1,6 +1,6 @@
 /**
  * @file server.hpp
- * @brief IServer + Server<N> + SessionConsole: Select/Block/GetTelemetry/SetTarget → Ack + Telemetry.
+ * @brief IServer + Server<N> + SessionConsole: Select/Block/GetTelemetry/SetTarget/ResetFault.
  *
  * Наследует Node. Session* — в registry; объекты Session владеет leaf (MServer).
  * Сервер: до kMaxConsoles сессий (SessionConsole).
@@ -12,8 +12,8 @@
 #include <cstdint>
 
 #include "obj_registry.hpp"
-#include "smcp/mech/group.hpp"
-#include "smcp/mech/mech.hpp"
+#include "smcp/show/group.hpp"
+#include "smcp/mech/axis.hpp"
 #include "smcp/mech/message.hpp"
 #include "smcp/ilink.hpp"
 #include "smcp/node.hpp"
@@ -26,15 +26,15 @@ class SessionConsole;
 
 namespace detail {
 /** Регистрация оси в inventory сервера (вызывается из DriveMech ctor). */
-void registerMech(IServer& server, IMech& mech) noexcept;
+void registerMech(IServer& server, IAxis& mech) noexcept;
 } // namespace detail
 
-/** Узел сегмента: inventory IMech* + политика Select/Block/SetTarget + broadcast Telemetry. */
+/** Узел сегмента: inventory IAxis* + политика Select/Block/SetTarget + broadcast Telemetry. */
 class IServer : public Node {
 public:
-    using MechReg = MISC::ObjRegistry<IMech, uint8_t>;
+    using MechReg = MISC::ObjRegistry<IAxis, uint8_t>;
     template <uint8_t Cap>
-    using MechStore = MISC::ObjStorage<IMech, Cap, uint8_t, 0>;
+    using MechStore = MISC::ObjStorage<IAxis, Cap, uint8_t, 0>;
 
     virtual ~IServer() = default;
 
@@ -45,8 +45,8 @@ public:
         return static_cast<uint8_t>(const_cast<IServer*>(this)->storage().capacity());
     }
 
-    [[nodiscard]] IMech* mech(uint8_t id) noexcept { return storage().get(id); }
-    [[nodiscard]] const IMech* mech(uint8_t id) const noexcept
+    [[nodiscard]] IAxis* mech(uint8_t id) noexcept { return storage().get(id); }
+    [[nodiscard]] const IAxis* mech(uint8_t id) const noexcept
     {
         return const_cast<IServer*>(this)->storage().get(id);
     }
@@ -61,13 +61,13 @@ public:
     // --- исходящие PDU ---
 
     /** Broadcast Telemetry (класс D) по текущему состоянию оси. */
-    void pushTelemetry(uint8_t mech_id) noexcept;
+    void pushTelemetry(uint8_t axis_id) noexcept;
 
 protected:
     /** session == nullptr (свой IdConflict): снять оставшиеся Select без Telemetry. */
     void onFault(Session* session, Fault reason) noexcept override;
 
-    friend void detail::registerMech(IServer& server, IMech& mech) noexcept;
+    friend void detail::registerMech(IServer& server, IAxis& mech) noexcept;
     friend class SessionConsole;
 
     // --- ctor / storage ---
@@ -104,18 +104,24 @@ protected:
     }
 
     /**
-     * Можно ли консоли @a console_id задать @a target оси @a mech_id.
+     * Можно ли консоли @a console_id задать @a target оси @a axis_id.
      * Leaf: лимиты хода / зоны → ErrorCode::Limits.
      */
     [[nodiscard]] virtual msg::ErrorCode acceptSetTarget(uint8_t console_id,
-                                                         uint8_t mech_id,
+                                                         uint8_t axis_id,
                                                          const MotionTarget& target) const noexcept
     {
         (void)console_id;
-        (void)mech_id;
+        (void)axis_id;
         (void)target;
         return msg::ErrorCode::Ok;
     }
+
+    /**
+     * Пустая маска ResetFault: сброс globalFault.
+     * Это GPIO сегмента, не оси. Пин — в leaf; база ничего не трогает.
+     */
+    virtual void resetGlobalFault() noexcept {}
 
 private:
     void dropPeerSelect(Session* session, bool telemetry) noexcept;
@@ -123,7 +129,9 @@ private:
 };
 
 /**
- * Сессия консоли на сервере: class A (Select/Block/GetTelemetry/SetTarget) → Ack/Nack + Telemetry.
+ * Сессия консоли на сервере: class A → Ack/Nack + Telemetry.
+ * ServiceUnlock: PIN совпал → Ack, иначе Nack (проверка — фаза 7).
+ * Get/Set default Session → Nack NotSupported; тело — Session/MultiByte. Теги — фаза 7.
  */
 class SessionConsole : public Session {
 public:
@@ -159,26 +167,35 @@ private:
     void handleMaskOp(MaskKind kind,
                       msg::Action action,
                       Selection selection,
-                      uint8_t pkt_id) noexcept;
+                      uint8_t txn_id) noexcept;
 
-    /** SetTarget: проверки → acceptSetTarget → setTarget → Ack → Telemetry. */
-    void onSetTarget(const msg::SetTarget& body, uint8_t pkt_id) noexcept;
+    /**
+     * SetTarget: одна ось или all_selected (Select этой консоли).
+     * Сначала проверка всех → commit → Ack → Telemetry.
+     */
+    void onSetTarget(const msg::SetTarget& body, uint8_t txn_id) noexcept;
 
     /** GetTelemetry: проверка маски → Ack → Telemetry по осям (без commit). */
-    void onGetTelemetry(const msg::GetTelemetry& body, uint8_t pkt_id) noexcept;
+    void onGetTelemetry(const msg::GetTelemetry& body, uint8_t txn_id) noexcept;
+
+    /**
+     * Пустая маска → resetGlobalFault, Ack, без Telemetry.
+     * Биты → IAxis::resetFault по осям, Ack + Telemetry. Чужая ось — Nack MechNotFound.
+     */
+    void onResetFault(const msg::ResetFault& body, uint8_t txn_id) noexcept;
 
     /**
      * Бит маски не в mechRegistered → Nack MechNotFound, detail = лишние биты.
      * @return true — уже Nack, выйти.
      */
-    [[nodiscard]] bool checkMechId(Selection selection, uint8_t pkt_id) noexcept;
+    [[nodiscard]] bool checkMechId(Selection selection, uint8_t txn_id) noexcept;
 
     /**
      * Проверка доступа к оси.
      * @param must_own true = SetTarget (нужна наша + drive);
      *                 false = Select (чужой → Busy; свободная → drive; своя → Ok).
      */
-    [[nodiscard]] static msg::ErrorCode mechGuard(const IMech& m,
+    [[nodiscard]] static msg::ErrorCode mechGuard(const IAxis& m,
                                                   uint8_t src,
                                                   bool must_own) noexcept;
 

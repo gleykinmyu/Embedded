@@ -7,7 +7,6 @@
  * Session::onFault(HbLost / IdConflict) — сброс queued+active (без Select).
  * close(None): сброс по onLink(false) / Status Idle·Listen·IdConflict·RegisterFailed.
  * GroupConsole<N> — registry MaxSessions слотов (как Console<N>).
- * GServerSession::select гасит билет до send. recall ставит его после успеха.
  * SessionBank, банк осей и CMechBank — у leaf (MConsole).
  */
 
@@ -16,7 +15,7 @@
 #include <cstdint>
 
 #include "smcp/mech/Console/console.hpp"
-#include "smcp/mech/group.hpp"
+#include "smcp/show/group.hpp"
 
 namespace smcp {
 
@@ -35,12 +34,12 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept { return _rec != nullptr; }
 
     [[nodiscard]] uint8_t id() const noexcept;
-    [[nodiscard]] const Selection& mech() const noexcept;
+    [[nodiscard]] const Selection& sel() const noexcept;
     [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept;
     [[nodiscard]] const char* name() const noexcept;
 
     [[nodiscard]] bool isEmpty() const noexcept;
-    [[nodiscard]] bool contains(uint8_t mech_id) const noexcept;
+    [[nodiscard]] bool contains(uint8_t axis_id) const noexcept;
     [[nodiscard]] bool isBlocked() const noexcept;
     /** Ставит Blocked. При @a on: overlap (инфо); если это queued/active — сброс группы. */
     void setBlocked(bool on = true) noexcept;
@@ -55,7 +54,7 @@ public:
     };
 
     /**
-     * Select маски и билет queued group на pkt_id этого кадра.
+     * Select маски и билет queued group на txn_id этого кадра.
      * Empty / Blocked / OverlapsBlocked / NotSent — отказ.
      */
     [[nodiscard]] Result recall() noexcept;
@@ -117,32 +116,26 @@ protected:
     void clearQueuedGroup() noexcept
     {
         _queued = CGroup{};
-        _queuedPkt = 0u;
+        _queuedTxnId = 0u;
     }
 
 private:
     friend class CGroup;
-    friend class GServerSession;
     /** @a group — вид на запись секции. pkt — кадр, который только что встал в очередь. */
     void setQueuedGroup(CGroup group, ServerSession& session) noexcept;
 
     CGroup _queued{};
     CGroup _active{};
-    uint8_t _queuedPkt = 0u;
+    uint8_t _queuedTxnId = 0u;
 };
 
 /**
- * Сессия пульта с группами: Select гасит билет recall до send.
- * Слот SessionBank у leaf.
+ * INVALID — не использовать.
+ * Раньше override select гасил queued recall; виртуальный select убран.
+ * Слот SessionBank — `ServerSession`.
  */
-class GServerSession : public ServerSession {
-public:
-    explicit GServerSession(IGroupConsole& console) noexcept;
-
-    bool select(msg::Action action, Selection selection) noexcept override;
-
-private:
-    IGroupConsole& _group;
+class GServerSession final {
+    GServerSession() = delete;
 };
 
 /** GroupConsole<N>: registry сессий MaxSessions. Банк осей — storage() у leaf. */
