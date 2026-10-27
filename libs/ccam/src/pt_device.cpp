@@ -4,7 +4,7 @@
 
 namespace ccam::devices {
 
-PtDeviceBase::PtDeviceBase(Rs485Transport& transport)
+PtDeviceBase::PtDeviceBase(Transport& transport)
     : transport_(transport)
 {
 }
@@ -58,43 +58,42 @@ bool isSpeedValid(uint8_t speed)
 
 } // namespace
 
-uint8_t PtDeviceBase::speedForDirection(PtAxisDir dir, uint8_t rate_1_to_49)
+Status PtDeviceBase::matchPtResponse(
+    const uint8_t* data,
+    size_t len,
+    catalog::PtCmd cmd,
+    size_t& payload_pos)
 {
-    uint8_t rate = rate_1_to_49;
-    if (rate < kPtSpeedMin) {
-        rate = kPtSpeedMin;
+    const char* prefix = catalog::ptResponse(cmd);
+    if (prefix == nullptr || prefix[0] == '\0') {
+        return Status::Param;
     }
-    if (rate > 49) {
-        rate = 49;
+    if (data == nullptr) {
+        return Status::Param;
     }
 
-    switch (dir) {
-    case PtAxisDir::Left:
-    case PtAxisDir::Down:
-    case PtAxisDir::Wide:
-    case PtAxisDir::Near:
-        return rate;
-
-    case PtAxisDir::Right:
-    case PtAxisDir::Up:
-    case PtAxisDir::Tele:
-    case PtAxisDir::Far:
-        return static_cast<uint8_t>(kPtSpeedMax - rate + 1);
-
-    default:
-        return kPtSpeedStop;
+    const size_t n = std::strlen(prefix);
+    if (len < n) {
+        return Status::Io;
     }
+    for (size_t i = 0; i < n; ++i) {
+        if (static_cast<char>(data[i]) != prefix[i]) {
+            return Status::Io;
+        }
+    }
+    payload_pos = n;
+    return Status::Ok;
 }
 
 Status PtDeviceBase::buildCommand(PtFrame& frame, const char* cmd, const char* payload)
 {
-    if (cmd == nullptr) {
+    if (cmd == nullptr || cmd[0] == '\0') {
         return Status::Param;
     }
 
     frame.clear();
 
-    Status st = frame.appendByte(kPtPrefix);
+    Status st = frame.appendChar(kPtPrefix);
     if (st != Status::Ok) {
         return st;
     }
@@ -111,50 +110,7 @@ Status PtDeviceBase::buildCommand(PtFrame& frame, const char* cmd, const char* p
         }
     }
 
-    return frame.appendByte(kPtCr);
-}
-
-Status PtDeviceBase::sendBuilt(const PtFrame& frame)
-{
-    if (frame.size() == 0) {
-        return Status::Param;
-    }
-    return transport_.send(frame.data(), frame.size());
-}
-
-Status PtDeviceBase::transactBuilt(
-    const PtFrame& frame,
-    uint8_t* response,
-    size_t response_cap,
-    size_t* response_len,
-    uint32_t timeout_ms)
-{
-    if (frame.size() == 0) {
-        return Status::Param;
-    }
-
-    return transport_.transact(
-        frame.data(),
-        frame.size(),
-        response,
-        response_cap,
-        response_len,
-        timeout_ms);
-}
-
-Status PtDeviceBase::sendRaw(const PtFrame& frame)
-{
-    return sendBuilt(frame);
-}
-
-Status PtDeviceBase::transactRaw(
-    const PtFrame& frame,
-    uint8_t* response,
-    size_t response_cap,
-    size_t* response_len,
-    uint32_t timeout_ms)
-{
-    return transactBuilt(frame, response, response_cap, response_len, timeout_ms);
+    return frame.appendChar(kPtCr);
 }
 
 Status PtDeviceBase::sendCommand(const char* cmd, const char* payload)
@@ -164,7 +120,7 @@ Status PtDeviceBase::sendCommand(const char* cmd, const char* payload)
     if (st != Status::Ok) {
         return st;
     }
-    return sendBuilt(frame);
+    return transport_.send(frame.bytes(), frame.size());
 }
 
 Status PtDeviceBase::transactCommand(
@@ -180,168 +136,76 @@ Status PtDeviceBase::transactCommand(
     if (st != Status::Ok) {
         return st;
     }
-    return transactBuilt(frame, response, response_cap, response_len, timeout_ms);
+    return transport_.transact(
+        frame.bytes(),
+        frame.size(),
+        response,
+        response_cap,
+        response_len,
+        timeout_ms);
 }
 
-Status PtDeviceBase::sendCatalog(const catalog::PtCommandEntry& entry, const char* payload)
+Status PtDeviceBase::sendDec2(catalog::PtCmd cmd, uint8_t value)
 {
-    if (entry.control == nullptr || entry.control[0] == '\0') {
-        return Status::Param;
-    }
-
-    const char* cmd = entry.control;
-    if (cmd[0] == '#') {
-        ++cmd;
-    }
-
-    return sendCommand(cmd, payload);
-}
-
-Status PtDeviceBase::transactCatalog(
-    const catalog::PtCommandEntry& entry,
-    const char* payload,
-    uint8_t* response,
-    size_t response_cap,
-    size_t* response_len,
-    uint32_t timeout_ms)
-{
-    if (entry.control == nullptr || entry.control[0] == '\0') {
-        return Status::Param;
-    }
-
-    const char* cmd = entry.control;
-    if (cmd[0] == '#') {
-        ++cmd;
-    }
-
-    return transactCommand(cmd, payload, response, response_cap, response_len, timeout_ms);
-}
-
-Status PtDeviceBase::sendSpeedCmd(catalog::PtCmd cmd, uint8_t speed)
-{
-    if (!isSpeedValid(speed)) {
+    if (value > 99) {
         return Status::Param;
     }
 
     char payload[3];
-    payload[0] = static_cast<char>('0' + (speed / 10));
-    payload[1] = static_cast<char>('0' + (speed % 10));
+    payload[0] = static_cast<char>('0' + (value / 10));
+    payload[1] = static_cast<char>('0' + (value % 10));
     payload[2] = '\0';
 
     return send(cmd, payload);
 }
 
-Status PtDeviceBase::setPanSpeed(uint8_t speed)
+uint8_t PtDeviceBase::speedFromSigned(int8_t speed)
 {
-    return sendSpeedCmd(catalog::PtCmd::PanSpeed, speed);
-}
-Status PtDeviceBase::setTiltSpeed(uint8_t speed)
-{
-    return sendSpeedCmd(catalog::PtCmd::TiltSpeed, speed);
-}
-Status PtDeviceBase::setZoomSpeed(uint8_t speed)
-{
-    return sendSpeedCmd(catalog::PtCmd::ZoomSpeed, speed);
-}
-Status PtDeviceBase::setFocusSpeed(uint8_t speed)
-{
-    return sendSpeedCmd(catalog::PtCmd::FocusSpeed, speed);
-}
-Status PtDeviceBase::setRollSpeed(uint8_t speed)
-{
-    return sendSpeedCmd(catalog::PtCmd::RollSpeed, speed);
-}
-Status PtDeviceBase::setIrisSpeed(uint8_t speed)
-{
-    return sendSpeedCmd(catalog::PtCmd::IrisSpeed, speed);
+    if (speed == 0) {
+        return kPtSpeedStop;
+    }
+    // |speed| 1..128 (INT8_MIN → 128) → Panasonic rate 1..49
+    const int mag = speed < 0 ? -static_cast<int>(speed) : static_cast<int>(speed);
+    int rate = (mag * 49 + 127) / 128;
+    if (rate < static_cast<int>(kPtSpeedMin)) {
+        rate = kPtSpeedMin;
+    }
+    if (rate > 49) {
+        rate = 49;
+    }
+    if (speed < 0) {
+        return static_cast<uint8_t>(rate);
+    }
+    return static_cast<uint8_t>(kPtSpeedMax - rate + 1);
 }
 
-Status PtDeviceBase::panStop() { return setPanSpeed(kPtSpeedStop); }
-Status PtDeviceBase::tiltStop() { return setTiltSpeed(kPtSpeedStop); }
-Status PtDeviceBase::zoomStop() { return setZoomSpeed(kPtSpeedStop); }
-Status PtDeviceBase::focusStop() { return setFocusSpeed(kPtSpeedStop); }
-Status PtDeviceBase::rollStop() { return setRollSpeed(kPtSpeedStop); }
-Status PtDeviceBase::irisStop() { return setIrisSpeed(kPtSpeedStop); }
-
-Status PtDeviceBase::stopAll()
+Status PtDeviceBase::move(pt::Axis axis, int8_t speed)
 {
-    Status st = panStop();
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = tiltStop();
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = zoomStop();
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = focusStop();
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = rollStop();
-    if (st != Status::Ok) {
-        return st;
-    }
-    return irisStop();
-}
-
-Status PtDeviceBase::movePan(PtAxisDir dir, uint8_t rate_1_to_49)
-{
-    if (dir != PtAxisDir::Left && dir != PtAxisDir::Right) {
+    const uint8_t encoded = speedFromSigned(speed);
+    if (!isSpeedValid(encoded)) {
         return Status::Param;
     }
-    return setPanSpeed(speedForDirection(dir, rate_1_to_49));
+    switch (axis) {
+    case pt::Axis::Pan:
+        return sendDec2(catalog::PtCmd::PanSpeed, encoded);
+    case pt::Axis::Tilt:
+        return sendDec2(catalog::PtCmd::TiltSpeed, encoded);
+    case pt::Axis::Zoom:
+        return sendDec2(catalog::PtCmd::ZoomSpeed, encoded);
+    case pt::Axis::Focus:
+        return sendDec2(catalog::PtCmd::FocusSpeed, encoded);
+    case pt::Axis::Iris:
+        return sendDec2(catalog::PtCmd::IrisSpeed, encoded);
+    case pt::Axis::Roll:
+        return sendDec2(catalog::PtCmd::RollSpeed, encoded);
+    }
+    return Status::Param;
 }
 
-Status PtDeviceBase::moveTilt(PtAxisDir dir, uint8_t rate_1_to_49)
+Status PtDeviceBase::movePT(int8_t pan, int8_t tilt)
 {
-    if (dir != PtAxisDir::Down && dir != PtAxisDir::Up) {
-        return Status::Param;
-    }
-    return setTiltSpeed(speedForDirection(dir, rate_1_to_49));
-}
-
-Status PtDeviceBase::moveZoom(PtAxisDir dir, uint8_t rate_1_to_49)
-{
-    if (dir != PtAxisDir::Wide && dir != PtAxisDir::Tele) {
-        return Status::Param;
-    }
-    return setZoomSpeed(speedForDirection(dir, rate_1_to_49));
-}
-
-Status PtDeviceBase::moveFocus(PtAxisDir dir, uint8_t rate_1_to_49)
-{
-    if (dir != PtAxisDir::Near && dir != PtAxisDir::Far) {
-        return Status::Param;
-    }
-    return setFocusSpeed(speedForDirection(dir, rate_1_to_49));
-}
-
-Status PtDeviceBase::moveRoll(PtAxisDir dir, uint8_t rate_1_to_49)
-{
-    if (dir != PtAxisDir::Left && dir != PtAxisDir::Right) {
-        return Status::Param;
-    }
-    return setRollSpeed(speedForDirection(dir, rate_1_to_49));
-}
-
-Status PtDeviceBase::moveIris(PtAxisDir dir, uint8_t rate_1_to_49)
-{
-    if (dir != PtAxisDir::Near && dir != PtAxisDir::Far) {
-        return Status::Param;
-    }
-    return setIrisSpeed(speedForDirection(dir, rate_1_to_49));
-}
-
-Status PtDeviceBase::setPanTiltSpeed(uint8_t pan_speed, uint8_t tilt_speed)
-{
-    if (pan_speed < kPtSpeedMin || pan_speed > kPtSpeedMax ||
-        tilt_speed < kPtSpeedMin || tilt_speed > kPtSpeedMax) {
-        return Status::Param;
-    }
+    const uint8_t pan_speed = speedFromSigned(pan);
+    const uint8_t tilt_speed = speedFromSigned(tilt);
 
     char payload[5];
     payload[0] = static_cast<char>('0' + (pan_speed / 10));
@@ -353,21 +217,58 @@ Status PtDeviceBase::setPanTiltSpeed(uint8_t pan_speed, uint8_t tilt_speed)
     return send(catalog::PtCmd::PanTiltSpeed, payload);
 }
 
-Status PtDeviceBase::power(PtPowerMode mode)
+Status PtDeviceBase::stop()
+{
+    static constexpr pt::Axis kAxes[] = {
+        pt::Axis::Pan,
+        pt::Axis::Tilt,
+        pt::Axis::Zoom,
+        pt::Axis::Focus,
+        pt::Axis::Roll,
+        pt::Axis::Iris,
+    };
+    for (pt::Axis axis : kAxes) {
+        Status st = move(axis, 0);
+        if (st != Status::Ok) {
+            return st;
+        }
+    }
+    return Status::Ok;
+}
+
+Status PtDeviceBase::goHome()
+{
+    return setPT(pt::PT{kPtPosCenter, kPtPosCenter});
+}
+
+Status PtDeviceBase::setLens(const pt::Lens& lens)
+{
+    Status st = setZoom(lens.zoom);
+    if (st != Status::Ok) {
+        return st;
+    }
+    st = setFocus(lens.focus);
+    if (st != Status::Ok) {
+        return st;
+    }
+    return setIris(lens.iris);
+}
+
+Status PtDeviceBase::power(pt::PowerMode mode)
 {
     uint8_t value = 0;
 
     switch (mode) {
-    case PtPowerMode::Off:
+    case pt::PowerMode::Off:
         value = 0;
         break;
-    case PtPowerMode::On:
+    case pt::PowerMode::On:
         value = 1;
         break;
-    case PtPowerMode::OnWithCameraTx:
+    case pt::PowerMode::OnWithCameraTx:
         value = 2;
         break;
-    case PtPowerMode::OnWithoutCameraTx:
+    case pt::PowerMode::OnWithoutCameraTx:
         value = 3;
         break;
     default:
@@ -377,341 +278,287 @@ Status PtDeviceBase::power(PtPowerMode mode)
     return sendDec1(catalog::PtCmd::Power, value);
 }
 
-Status PtDeviceBase::sendPresetCmd(catalog::PtCmd cmd, uint8_t preset)
-{
-    if (preset > 99) {
-        return Status::Param;
-    }
-
-    char payload[3];
-    payload[0] = static_cast<char>('0' + (preset / 10));
-    payload[1] = static_cast<char>('0' + (preset % 10));
-    payload[2] = '\0';
-
-    return send(cmd, payload);
-}
-
-Status PtDeviceBase::sendDec1Cmd(catalog::PtCmd cmd, uint8_t value)
-{
-    return sendDec1(cmd, value);
-}
-
-Status PtDeviceBase::sendHex3Cmd(const char* cmd, uint16_t value)
+Status PtDeviceBase::sendHex3(catalog::PtCmd cmd, uint16_t value)
 {
     if (value > 0xFFF) {
         return Status::Param;
     }
 
-    PtFrame frame;
-    frame.clear();
-
-    Status st = frame.appendByte(kPtPrefix);
+    Frame<8> payload;
+    Status st = payload.appendHex(value, 3);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendStr(cmd);
+    st = payload.appendChar(0);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(value, 3);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendByte(kPtCr);
-    if (st != Status::Ok) {
-        return st;
-    }
-
-    return sendBuilt(frame);
+    return send(cmd, payload.data());
 }
 
-Status PtDeviceBase::queryHex3(const char* cmd, uint16_t& value)
+Status PtDeviceBase::queryHex3(catalog::PtCmd cmd, uint16_t& value)
 {
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
 
-    Status st = transactCommand(cmd, nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 6) {
-        return Status::Io;
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
+    if (st != Status::Ok) {
+        return st;
     }
-
-    size_t pos = 3;
     return parseHexField(response, response_len, pos, 3, value);
 }
 
 Status PtDeviceBase::recallPreset(uint8_t preset)
 {
-    return sendPresetCmd(catalog::PtCmd::RecallPreset, preset);
+    return sendDec2(catalog::PtCmd::RecallPreset, preset);
 }
 Status PtDeviceBase::savePreset(uint8_t preset)
 {
-    return sendPresetCmd(catalog::PtCmd::SavePreset, preset);
+    return sendDec2(catalog::PtCmd::SavePreset, preset);
 }
 Status PtDeviceBase::deletePreset(uint8_t preset)
 {
-    return sendPresetCmd(catalog::PtCmd::DeletePreset, preset);
+    return sendDec2(catalog::PtCmd::DeletePreset, preset);
 }
-Status PtDeviceBase::setPresetMode(uint8_t mode)
+Status PtDeviceBase::setPresetMode(PrMode mode)
 {
-    return sendDec1Cmd(catalog::PtCmd::PresetMode, mode);
+    return sendDec1(catalog::PtCmd::PresetMode, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setPresetSpeedTable(uint8_t table)
+Status PtDeviceBase::setPresetSpeed(PrSpeed speed)
 {
-    return sendDec1Cmd(catalog::PtCmd::PresetSpeedTable, table);
+    return sendDec1(catalog::PtCmd::PresetSpeedTable, static_cast<uint8_t>(speed));
 }
 
-Status PtDeviceBase::absolutePosition(uint16_t pan, uint16_t tilt)
+Status PtDeviceBase::setPT(const pt::PT& pt)
 {
-    PtFrame frame;
-    frame.clear();
-
-    Status st = frame.appendByte(kPtPrefix);
+    Frame<16> payload;
+    Status st = payload.appendHex(pt.pan, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendStr(catalog::ptControl(catalog::PtCmd::PanTiltAbsolute));
+    st = payload.appendHex(pt.tilt, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(pan, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendHex(tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendByte(kPtCr);
+    st = payload.appendChar(0);
     if (st != Status::Ok) {
         return st;
     }
 
-    return sendBuilt(frame);
+    // Большинство P/T не отвечают; при ошибке — eR1:***[CR] (напр. APC на PH350).
+    uint8_t rx[24];
+    size_t n = 0;
+    st = transact(
+        catalog::PtCmd::PanTiltAbsolute, payload.data(), rx, sizeof(rx), &n, 300);
+    if (st == Status::Timeout) {
+        return Status::Ok; // тишина = норма для P/T
+    }
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (n >= 3 && rx[0] == 'e' && rx[1] == 'R') {
+        return Status::Nack;
+    }
+    return Status::Ok;
 }
 
-Status PtDeviceBase::absolutePositionWithSpeed(
+Status PtDeviceBase::setPTwSpeed(
     uint16_t pan,
     uint16_t tilt,
     uint8_t preset_speed,
-    uint8_t speed_table)
+    PrSpeed speed_table)
 {
-    PtFrame frame;
-    frame.clear();
-
-    Status st = frame.appendByte(kPtPrefix);
+    Frame<16> payload;
+    Status st = payload.appendHex(pan, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendStr(catalog::ptControl(catalog::PtCmd::PanTiltAbsoluteSpeed));
+    st = payload.appendHex(tilt, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(pan, 4);
+    st = payload.appendHex(preset_speed, 2);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(tilt, 4);
+    st = payload.appendHex(static_cast<uint8_t>(speed_table), 1);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(preset_speed, 2);
+    st = payload.appendChar(0);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(speed_table, 1);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendByte(kPtCr);
-    if (st != Status::Ok) {
-        return st;
-    }
-
-    return sendBuilt(frame);
+    return send(catalog::PtCmd::PanTiltAbsoluteSpeed, payload.data());
 }
 
 Status PtDeviceBase::relativePosition(uint16_t pan, uint16_t tilt)
 {
-    PtFrame frame;
-    frame.clear();
-
-    Status st = frame.appendByte(kPtPrefix);
+    Frame<16> payload;
+    Status st = payload.appendHex(pan, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendStr(catalog::ptControl(catalog::PtCmd::PanTiltRelative));
+    st = payload.appendHex(tilt, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(pan, 4);
+    st = payload.appendChar(0);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendByte(kPtCr);
-    if (st != Status::Ok) {
-        return st;
-    }
-
-    return sendBuilt(frame);
+    return send(catalog::PtCmd::PanTiltRelative, payload.data());
 }
 
-Status PtDeviceBase::relativePositionWithSpeed(
+Status PtDeviceBase::relPTwSpeed(
     uint16_t pan,
     uint16_t tilt,
     uint8_t preset_speed,
-    uint8_t speed_table)
+    PrSpeed speed_table)
 {
-    PtFrame frame;
-    frame.clear();
-
-    Status st = frame.appendByte(kPtPrefix);
+    Frame<16> payload;
+    Status st = payload.appendHex(pan, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendStr(catalog::ptControl(catalog::PtCmd::PanTiltRelativeSpeed));
+    st = payload.appendHex(tilt, 4);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(pan, 4);
+    st = payload.appendHex(preset_speed, 2);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(tilt, 4);
+    st = payload.appendHex(static_cast<uint8_t>(speed_table), 1);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(preset_speed, 2);
+    st = payload.appendChar(0);
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendHex(speed_table, 1);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = frame.appendByte(kPtCr);
-    if (st != Status::Ok) {
-        return st;
-    }
-
-    return sendBuilt(frame);
+    return send(catalog::PtCmd::PanTiltRelativeSpeed, payload.data());
 }
 
-Status PtDeviceBase::sendCatalogDec1(catalog::PtCmd cmd, uint8_t value)
+Status PtDeviceBase::setZoom(uint16_t pos)
 {
-    char payload[3];
-    Status st = encodeDec1(value, payload, sizeof(payload));
-    if (st != Status::Ok) {
-        return st;
+    return sendHex3(catalog::PtCmd::ZoomPositionSet, normToPtLens(pos));
+}
+Status PtDeviceBase::setFocus(uint16_t pos)
+{
+    return sendHex3(catalog::PtCmd::FocusPositionSet, normToPtLens(pos));
+}
+Status PtDeviceBase::setIris(uint16_t pos)
+{
+    return sendHex3(catalog::PtCmd::IrisPositionSet, normToPtLens(pos));
+}
+Status PtDeviceBase::requestZoom(uint16_t& pos)
+{
+    uint16_t raw = 0;
+    const Status st = queryHex3(catalog::PtCmd::ZoomPositionQuery, raw);
+    if (st == Status::Ok) {
+        pos = ptLensToNorm(raw);
     }
-    return sendCatalog(catalog::getPtCommand(cmd), payload);
+    return st;
+}
+Status PtDeviceBase::requestFocus(uint16_t& pos)
+{
+    uint16_t raw = 0;
+    const Status st = queryHex3(catalog::PtCmd::FocusPositionQuery, raw);
+    if (st == Status::Ok) {
+        pos = ptLensToNorm(raw);
+    }
+    return st;
+}
+Status PtDeviceBase::requestIris(uint16_t& pos)
+{
+    uint16_t raw = 0;
+    const Status st = queryHex3(catalog::PtCmd::IrisPositionQuery, raw);
+    if (st == Status::Ok) {
+        pos = ptLensToNorm(raw);
+    }
+    return st;
+}
+Status PtDeviceBase::setLensCtrl(Switch mode)
+{
+    return sendDec1(catalog::PtCmd::LensPositionCtrl, static_cast<uint8_t>(mode));
 }
 
-Status PtDeviceBase::sendCatalogSwitch(catalog::PtCmd cmd, ProtocolSwitch sw)
+Status PtDeviceBase::requestPosition(pt::Position& position)
 {
-    return sendCatalog(catalog::getPtCommand(cmd), protocolSwitchPayload(sw));
-}
-
-Status PtDeviceBase::setZoomPosition(uint16_t pos)
-{
-    return sendHex3Cmd(catalog::ptControl(catalog::PtCmd::ZoomPositionSet), pos);
-}
-Status PtDeviceBase::setFocusPosition(uint16_t pos)
-{
-    return sendHex3Cmd(catalog::ptControl(catalog::PtCmd::FocusPositionSet), pos);
-}
-Status PtDeviceBase::setIrisPosition(uint16_t pos)
-{
-    return sendHex3Cmd(catalog::ptControl(catalog::PtCmd::IrisPositionSet), pos);
-}
-Status PtDeviceBase::queryZoomPosition(uint16_t& pos)
-{
-    return queryHex3(catalog::ptControl(catalog::PtCmd::ZoomPositionQuery), pos);
-}
-Status PtDeviceBase::queryFocusPosition(uint16_t& pos)
-{
-    return queryHex3(catalog::ptControl(catalog::PtCmd::FocusPositionQuery), pos);
-}
-Status PtDeviceBase::queryIrisPosition(uint16_t& pos)
-{
-    return queryHex3(catalog::ptControl(catalog::PtCmd::IrisPositionQuery), pos);
-}
-Status PtDeviceBase::setLensPositionCtrl(uint8_t mode)
-{
-    return sendDec1(catalog::PtCmd::LensPositionCtrl, mode);
-}
-
-Status PtDeviceBase::queryPosition(PtPosition& position)
-{
-    PtFrame frame;
+    constexpr auto cmd = catalog::PtCmd::GetPtzPosRaw;
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
+
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+
     size_t pos = 0;
-
-    Status st = buildCommand(frame, catalog::ptControl(catalog::PtCmd::GetPtzPosRaw));
+    st = matchPtResponse(response, response_len, cmd, pos);
     if (st != Status::Ok) {
         return st;
     }
 
-    st = transactBuilt(frame, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    st = parseHexField(response, response_len, pos, 4, position.pt.pan);
     if (st != Status::Ok) {
         return st;
     }
-
-    if (response_len < 4 || response[0] != 'p' || response[1] != 'T' || response[2] != 'V') {
-        return Status::Io;
-    }
-
-    pos = 3;
-    st = parseHexField(response, response_len, pos, 4, position.pan);
+    st = parseHexField(response, response_len, pos, 4, position.pt.tilt);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 4, position.tilt);
+    uint16_t z = 0;
+    uint16_t f = 0;
+    uint16_t i = 0;
+    st = parseHexField(response, response_len, pos, 3, z);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, position.zoom);
+    st = parseHexField(response, response_len, pos, 3, f);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, position.focus);
+    st = parseHexField(response, response_len, pos, 3, i);
     if (st != Status::Ok) {
         return st;
     }
-
-    return parseHexField(response, response_len, pos, 3, position.iris);
+    position.lens.zoom = ptLensToNorm(z);
+    position.lens.focus = ptLensToNorm(f);
+    position.lens.iris = ptLensToNorm(i);
+    return Status::Ok;
 }
 
-Status PtDeviceBase::queryError(uint8_t& error_code)
+Status PtDeviceBase::requestError(uint8_t& error_code)
 {
-    PtFrame frame;
+    constexpr auto cmd = catalog::PtCmd::ErrorStatus;
     uint8_t response[16];
     size_t response_len = 0;
 
-    Status st = buildCommand(frame, "RER");
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
     if (st != Status::Ok) {
         return st;
     }
 
-    st = transactBuilt(frame, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 4 || response[0] != 'r' || response[1] != 'E' || response[2] != 'R') {
+    if (pos >= response_len) {
         return Status::Io;
     }
 
-    const int hi = hexNibble(static_cast<char>(response[3]));
-    const int lo = (response_len > 4) ? hexNibble(static_cast<char>(response[4])) : -1;
+    const int hi = hexNibble(static_cast<char>(response[pos]));
+    const int lo = (pos + 1 < response_len) ? hexNibble(static_cast<char>(response[pos + 1])) : -1;
 
     if (hi < 0) {
         return Status::Io;
@@ -721,227 +568,257 @@ Status PtDeviceBase::queryError(uint8_t& error_code)
     return Status::Ok;
 }
 
-Status PtDeviceBase::queryPositionDisplay(PtPosition& position)
+Status PtDeviceBase::requestPositionDisplay(pt::Position& position)
 {
+    constexpr auto cmd = catalog::PtCmd::GetPtzPosDisplay;
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
+
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+
     size_t pos = 0;
-
-    Status st = transactCommand("PTD", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    st = matchPtResponse(response, response_len, cmd, pos);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 4 || response[0] != 'p' || response[1] != 'T' || response[2] != 'D') {
-        return Status::Io;
-    }
-
-    pos = 3;
-    st = parseHexField(response, response_len, pos, 4, position.pan);
+    st = parseHexField(response, response_len, pos, 4, position.pt.pan);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 4, position.tilt);
+    st = parseHexField(response, response_len, pos, 4, position.pt.tilt);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, position.zoom);
+    uint16_t z = 0;
+    uint16_t f = 0;
+    uint16_t i = 0;
+    st = parseHexField(response, response_len, pos, 3, z);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, position.focus);
+    st = parseHexField(response, response_len, pos, 3, f);
     if (st != Status::Ok) {
         return st;
     }
-
-    return parseHexField(response, response_len, pos, 3, position.iris);
+    st = parseHexField(response, response_len, pos, 3, i);
+    if (st != Status::Ok) {
+        return st;
+    }
+    position.lens.zoom = ptLensToNorm(z);
+    position.lens.focus = ptLensToNorm(f);
+    position.lens.iris = ptLensToNorm(i);
+    return Status::Ok;
 }
 
-Status PtDeviceBase::queryLatestPreset(uint8_t& preset)
+Status PtDeviceBase::requestLatestPreset(uint8_t& preset)
 {
+    constexpr auto cmd = catalog::PtCmd::LatestRecallPresetNo;
     uint8_t response[8];
     size_t response_len = 0;
 
-    Status st = transactCommand("S", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 3 || response[0] != 's') {
-        return Status::Io;
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
+    if (st != Status::Ok) {
+        return st;
     }
 
-    const int tens = (response_len > 1 && response[1] >= '0' && response[1] <= '9') ? (response[1] - '0') : 0;
-    const int ones = (response_len > 2 && response[2] >= '0' && response[2] <= '9') ? (response[2] - '0') : 0;
+    const int tens =
+        (pos < response_len && response[pos] >= '0' && response[pos] <= '9') ? (response[pos] - '0') : 0;
+    const int ones = (pos + 1 < response_len && response[pos + 1] >= '0' && response[pos + 1] <= '9')
+        ? (response[pos + 1] - '0')
+        : 0;
     preset = static_cast<uint8_t>(tens * 10 + ones);
     return Status::Ok;
 }
 
-Status PtDeviceBase::queryExposure(PtExposureInfo& info)
+Status PtDeviceBase::requestExposure(pt::Exposure& exposure)
 {
+    constexpr auto cmd = catalog::PtCmd::GetGainShutterNd;
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
+
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+
     size_t pos = 0;
-
-    Status st = transactCommand("PTG", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    st = matchPtResponse(response, response_len, cmd, pos);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 4 || response[0] != 'p' || response[1] != 'T' || response[2] != 'G') {
-        return Status::Io;
-    }
-
-    pos = 3;
-    st = parseHexField(response, response_len, pos, 3, info.gain);
+    st = parseHexField(response, response_len, pos, 3, exposure.gain);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, info.shutter);
+    st = parseHexField(response, response_len, pos, 3, exposure.shutter);
     if (st != Status::Ok) {
         return st;
     }
 
-    return parseHexField(response, response_len, pos, 3, info.nd);
+    return parseHexField(response, response_len, pos, 3, exposure.nd);
 }
 
-Status PtDeviceBase::queryLensPositionInfo(uint16_t& zoom, uint16_t& focus, uint16_t& iris)
+Status PtDeviceBase::requestLensPositionInfo(uint16_t& zoom, uint16_t& focus, uint16_t& iris)
 {
+    constexpr auto cmd = catalog::PtCmd::LensPositionInfo;
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
+
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+
     size_t pos = 0;
-
-    Status st = transactCommand("LPI", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    st = matchPtResponse(response, response_len, cmd, pos);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 4 || response[0] != 'l' || response[1] != 'P' || response[2] != 'I') {
-        return Status::Io;
-    }
-
-    pos = 3;
-    st = parseHexField(response, response_len, pos, 3, zoom);
+    uint16_t z = 0;
+    uint16_t f = 0;
+    uint16_t i = 0;
+    st = parseHexField(response, response_len, pos, 3, z);
     if (st != Status::Ok) {
         return st;
     }
-    st = parseHexField(response, response_len, pos, 3, focus);
+    st = parseHexField(response, response_len, pos, 3, f);
     if (st != Status::Ok) {
         return st;
     }
-
-    return parseHexField(response, response_len, pos, 3, iris);
-}
-
-Status PtDeviceBase::queryLandingMode(uint8_t& mode)
-{
-    uint8_t response[8];
-    size_t response_len = 0;
-
-    Status st = transactCommand("N", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    st = parseHexField(response, response_len, pos, 3, i);
     if (st != Status::Ok) {
         return st;
     }
-
-    if (response_len < 2 || response[0] != 'n') {
-        return Status::Io;
-    }
-
-    mode = static_cast<uint8_t>(response[1] - '0');
+    zoom = ptLensToNorm(z);
+    focus = ptLensToNorm(f);
+    iris = ptLensToNorm(i);
     return Status::Ok;
 }
 
-Status PtDeviceBase::querySoftwareVersion(char* out, size_t out_cap)
+Status PtDeviceBase::requestLandingMode(LandingMode& mode)
+{
+    constexpr auto cmd = catalog::PtCmd::LandingMode;
+    uint8_t response[8];
+    size_t response_len = 0;
+
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (pos >= response_len) {
+        return Status::Io;
+    }
+
+    const uint8_t raw = static_cast<uint8_t>(response[pos] - '0');
+    if (raw > static_cast<uint8_t>(LandingMode::Soft)) {
+        return Status::Io;
+    }
+    mode = static_cast<LandingMode>(raw);
+    return Status::Ok;
+}
+
+Status PtDeviceBase::requestSoftwareVersion(char* out, size_t out_cap)
 {
     if (out == nullptr || out_cap == 0) {
         return Status::Param;
     }
 
+    constexpr auto cmd = catalog::PtCmd::SoftwareVersionQuery;
     uint8_t response[kPtFrameMax];
     size_t response_len = 0;
 
-    Status st = transactCommand("QSV", nullptr, response, sizeof(response), &response_len, kDefaultRxTimeoutMs);
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
     if (st != Status::Ok) {
         return st;
     }
 
-    if (response_len < 4) {
-        return Status::Io;
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
+    if (st != Status::Ok) {
+        return st;
     }
 
     size_t copy_len = response_len;
-    if (response[response_len - 1] == kPtCr) {
+    if (copy_len > 0 && response[copy_len - 1] == kPtCr) {
         --copy_len;
     }
-
-    const size_t skip = 3;
-    if (copy_len <= skip) {
+    if (copy_len <= pos) {
         out[0] = '\0';
         return Status::Ok;
     }
 
-    copy_len -= skip;
+    copy_len -= pos;
     const size_t n = (copy_len < out_cap - 1) ? copy_len : out_cap - 1;
-    std::memcpy(out, &response[skip], n);
+    std::memcpy(out, &response[pos], n);
     out[n] = '\0';
     return Status::Ok;
 }
 
-Status PtDeviceBase::setLimitation(uint8_t mode)
+Status PtDeviceBase::setLimitation(Limitation mode)
 {
-    return sendDec1(catalog::PtCmd::LimitationSet, mode);
+    return sendDec1(catalog::PtCmd::LimitationSet, static_cast<uint8_t>(mode));
 }
 
-Status PtDeviceBase::setLimitationControl(uint8_t pan_lim, uint8_t tilt_lim)
+Status PtDeviceBase::setLimitationControl(LimitAxis axis, Limitation action)
 {
-    if (pan_lim > 9 || tilt_lim > 9) {
-        return Status::Param;
-    }
-
     char payload[3];
-    payload[0] = static_cast<char>('0' + pan_lim);
-    payload[1] = static_cast<char>('0' + tilt_lim);
+    payload[0] = static_cast<char>('0' + static_cast<uint8_t>(axis));
+    payload[1] = static_cast<char>('0' + static_cast<uint8_t>(action));
     payload[2] = '\0';
 
     return send(catalog::PtCmd::LimitationControl, payload);
 }
 
-Status PtDeviceBase::setTiltRange(uint8_t range)
+Status PtDeviceBase::setTiltRange(TiltRange range)
 {
-    return sendDec1(catalog::PtCmd::TiltRange, range);
+    return sendDec1(catalog::PtCmd::TiltRange, static_cast<uint8_t>(range));
 }
-Status PtDeviceBase::setTallyEnable(uint8_t mode)
+Status PtDeviceBase::setTallyEnable(Switch mode)
 {
-    return sendDec1(catalog::PtCmd::TallyEnable, mode);
+    return sendDec1(catalog::PtCmd::TallyEnable, static_cast<uint8_t>(mode));
 }
 
-Status PtDeviceBase::setTallyEnable(bool on)
+Status PtDeviceBase::setWirelessControl(Switch mode)
 {
-    return setTallyEnable(static_cast<uint8_t>(toProtocolSwitch(on)));
+    return sendDec1(catalog::PtCmd::WirelessControl, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setWirelessControl(uint8_t mode)
+Status PtDeviceBase::setFan(FanMode mode)
 {
-    return sendDec1(catalog::PtCmd::WirelessControl, mode);
+    return sendDec1(catalog::PtCmd::Fan, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setFan(uint8_t mode)
+Status PtDeviceBase::setFan2(FanMode mode)
 {
-    return sendDec1(catalog::PtCmd::Fan, mode);
+    return sendDec1(catalog::PtCmd::Fan2, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setFan2(uint8_t mode)
+Status PtDeviceBase::setWiper(WiperMode mode)
 {
-    return sendDec1(catalog::PtCmd::Fan2, mode);
+    return sendDec1(catalog::PtCmd::WiperCtrl, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setWiper(uint8_t mode)
+Status PtDeviceBase::setWasher(Switch mode)
 {
-    return sendDec1(catalog::PtCmd::WiperCtrl, mode);
+    return sendDec1(catalog::PtCmd::Washer, static_cast<uint8_t>(mode));
 }
-Status PtDeviceBase::setWasher(uint8_t mode)
+Status PtDeviceBase::setOption(Switch mode)
 {
-    return sendDec1(catalog::PtCmd::Washer, mode);
-}
-Status PtDeviceBase::setOption(uint8_t mode)
-{
-    return sendDec1(catalog::PtCmd::Option, mode);
+    return sendDec1(catalog::PtCmd::Option, static_cast<uint8_t>(mode));
 }
 Status PtDeviceBase::setPresetSpeedUnit(const char* hex3)
 {
@@ -953,17 +830,17 @@ Status PtDeviceBase::setPresetSpeedUnit(const char* hex3)
 
 Status PtDeviceBase::sendDec1(catalog::PtCmd cmd, uint8_t value)
 {
-    return sendCatalogDec1(cmd, value);
-}
-
-Status PtDeviceBase::sendSwitch(catalog::PtCmd cmd, ProtocolSwitch sw)
-{
-    return sendCatalogSwitch(cmd, sw);
+    char payload[3];
+    Status st = encodeDec1(value, payload, sizeof(payload));
+    if (st != Status::Ok) {
+        return st;
+    }
+    return send(cmd, payload);
 }
 
 Status PtDeviceBase::send(catalog::PtCmd cmd, const char* payload)
 {
-    return sendCatalog(catalog::getPtCommand(cmd), payload);
+    return sendCommand(catalog::ptControl(cmd), payload);
 }
 
 Status PtDeviceBase::transact(
@@ -974,13 +851,8 @@ Status PtDeviceBase::transact(
     size_t* response_len,
     uint32_t timeout_ms)
 {
-    return transactCatalog(
-        catalog::getPtCommand(cmd), payload, response, response_cap, response_len, timeout_ms);
-}
-
-Status PtDeviceBase::sendEntry(const catalog::PtCommandEntry& entry, const char* payload)
-{
-    return sendCatalog(entry, payload);
+    return transactCommand(
+        catalog::ptControl(cmd), payload, response, response_cap, response_len, timeout_ms);
 }
 
 } // namespace ccam::devices

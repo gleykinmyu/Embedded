@@ -1,12 +1,13 @@
 ﻿/**
  * @file protocol_encoding.hpp
- * @brief Общие значения протокола и кодирование Oxx:n / #Dxx:n (ASCII dec).
+ * @brief Кодирование Oxx:n / #Dxx:n (ASCII dec). Типы значений — pt_types.hpp.
  *
  * ConvertibleProtocol.pdf v3.05 — поле data часто одна цифра '0'..'9'.
  */
 
 #pragma once
 
+#include "protocol/pt_types.hpp"
 #include "transport/types.hpp"
 
 #include <cstddef>
@@ -14,55 +15,14 @@
 
 namespace ccam {
 
-/** Бинарные Oxx:n / меню 0/1 (ONP, ODE, OUS, OAF, …). */
-enum class ProtocolSwitch : uint8_t {
-    Off = 0,
-    On = 1,
-};
-
-/** OFR — Field / Frame. */
-enum class FieldFrameMode : uint8_t {
-    Field = 0,
-    Frame = 1,
-};
-
-/** ORS — Iris Auto / Manual. */
-enum class IrisAutoManual : uint8_t {
-    Auto = 0,
-    Manual = 1,
-};
-
-/** ODD — 3D-DNR, уровень 0..9. */
-enum class Dnr3dLevel : uint8_t {
-    Off = 0,
-    Level1 = 1,
-    Level2 = 2,
-    Level3 = 3,
-    Level4 = 4,
-    Level5 = 5,
-    Level6 = 6,
-    Level7 = 7,
-    Level8 = 8,
-    Level9 = 9,
-};
-
-/** #D2 ND filter на встроенном PTZ (типичные значения, см. PDF). */
-enum class PtNdFilterMode : uint8_t {
-    Clear = 0,
-    NdQuarter = 1,
-    NdSixteenth = 2,
-    NdSixtyFourth = 3,
-    AutoNd = 8,
-};
-
-constexpr const char* protocolSwitchPayload(ProtocolSwitch sw)
+constexpr const char* switchPayload(Switch sw)
 {
-    return sw == ProtocolSwitch::On ? "1" : "0";
+    return sw == Switch::On ? "1" : "0";
 }
 
-inline constexpr ProtocolSwitch toProtocolSwitch(bool on)
+inline constexpr Switch toSwitch(bool on)
 {
-    return on ? ProtocolSwitch::On : ProtocolSwitch::Off;
+    return on ? Switch::On : Switch::Off;
 }
 
 /** Записать 0..99 в ASCII ('0'..'9' или две цифры). out_cap >= 2. */

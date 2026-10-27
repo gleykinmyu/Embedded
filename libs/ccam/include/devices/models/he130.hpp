@@ -37,7 +37,7 @@ enum class He130Scene : uint8_t {
  * Камера AW-HE130.
  *
  * @code
- * ccam::Rs485Transport bus(hal);
+ * ccam::Transport bus(hal);
  * ccam::devices::He130Camera camera(bus);
  * camera.setAwcMode(He130AwcMode::Atw);
  * camera.setSuperGain("02");
@@ -45,8 +45,8 @@ enum class He130Scene : uint8_t {
  */
 class He130Camera : public CameraDeviceBase {
 public:
-    explicit He130Camera(Rs485Transport& transport)
-        : CameraDeviceBase(transport)
+    explicit He130Camera(Transport& transport)
+        : CameraDeviceBase(transport, kGainDbHeWide)
     {
     }
 
@@ -95,15 +95,15 @@ public:
     }
 
     /** 3D-DNR (ODD). */
-    Status set3dDnr(Dnr3dLevel level)
+    Status set3dDnr(Levels level)
     {
-        return applyDec1(catalog::CameraCmd::Dnr3d, static_cast<uint8_t>(level));
+        return sendDec1(catalog::CameraCmd::Dnr3d, static_cast<uint8_t>(level));
     }
 
     /** Digital extender x1.4 (ODE). */
     Status setDigitalExtender(bool on)
     {
-        return applySwitch(catalog::CameraCmd::DigitalExtender, toProtocolSwitch(on));
+        return sendDec1(catalog::CameraCmd::DigitalExtender, static_cast<uint8_t>(toSwitch(on)));
     }
 };
 
@@ -114,19 +114,13 @@ class He130Pt : public PtDeviceBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
-    explicit He130Pt(Rs485Transport& transport)
+    explicit He130Pt(Transport& transport)
         : PtDeviceBase(transport)
     {
     }
 
     PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
     const char* modelLabel() const override { return "AW-HE130 Pan/Tilt"; }
-
-    /** Центр кадра — типичная «домашняя» позиция. */
-    Status goHome()
-    {
-        return absolutePosition(kPtPosCenter, kPtPosCenter);
-    }
 
     /** ND filter (#D2). */
     Status setNdFilter(PtNdFilterMode mode)
@@ -137,7 +131,7 @@ public:
     /** Встроенный AF on/off (#D1), не OAF камеры. */
     Status setAutoFocusAux(bool on)
     {
-        return sendSwitch(catalog::PtCmd::ExtenderAf, toProtocolSwitch(on));
+        return sendDec1(catalog::PtCmd::ExtenderAf, static_cast<uint8_t>(toSwitch(on)));
     }
 };
 

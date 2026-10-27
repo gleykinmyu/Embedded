@@ -38,7 +38,7 @@ int CliEth01::cmd_status(void *ctx, int argc, char **argv) {
     cli->eth_.ip_text(ip, sizeof(ip));
     cli->eth_.mac_text(mac, sizeof(mac));
     printf("eth=%s ip=%s mac=%s http=%s pt=%s rate=%u\n", cli->eth_.link_up() ? "up" : "down", ip,
-           mac, cli->http_.listening() ? "listen" : "down", cli->pt_.model(),
+           mac, cli->http_.listening() ? "listen" : "down", cli->pt_.pt().modelLabel(),
            static_cast<unsigned>(cli->pt_.defaultRate()));
     cli->eth_.print();
     return 0;
@@ -223,17 +223,18 @@ int CliEth01::cmd_pan(void *ctx, int argc, char **argv) {
         printf("pan left|right|stop [1..49]\n");
         return 1;
     }
+    auto &head = cli->pt_.pt();
     if (strcmp(argv[1], "stop") == 0) {
-        print_st(cli->pt_.panStop());
+        print_st(head.move(pt::Axis::Pan, 0));
         return 0;
     }
     const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
     if (strcmp(argv[1], "left") == 0) {
-        print_st(cli->pt_.pan(ccam::PtAxisDir::Left, rate));
+        print_st(head.move(pt::Axis::Pan, static_cast<int8_t>(-rate)));
         return 0;
     }
     if (strcmp(argv[1], "right") == 0) {
-        print_st(cli->pt_.pan(ccam::PtAxisDir::Right, rate));
+        print_st(head.move(pt::Axis::Pan, static_cast<int8_t>(rate)));
         return 0;
     }
     printf("pan left|right|stop [1..49]\n");
@@ -246,17 +247,18 @@ int CliEth01::cmd_tilt(void *ctx, int argc, char **argv) {
         printf("tilt up|down|stop [1..49]\n");
         return 1;
     }
+    auto &head = cli->pt_.pt();
     if (strcmp(argv[1], "stop") == 0) {
-        print_st(cli->pt_.tiltStop());
+        print_st(head.move(pt::Axis::Tilt, 0));
         return 0;
     }
     const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
     if (strcmp(argv[1], "up") == 0) {
-        print_st(cli->pt_.tilt(ccam::PtAxisDir::Up, rate));
+        print_st(head.move(pt::Axis::Tilt, static_cast<int8_t>(rate)));
         return 0;
     }
     if (strcmp(argv[1], "down") == 0) {
-        print_st(cli->pt_.tilt(ccam::PtAxisDir::Down, rate));
+        print_st(head.move(pt::Axis::Tilt, static_cast<int8_t>(-rate)));
         return 0;
     }
     printf("tilt up|down|stop [1..49]\n");
@@ -266,7 +268,7 @@ int CliEth01::cmd_tilt(void *ctx, int argc, char **argv) {
 int CliEth01::cmd_stop(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
-    print_st(static_cast<CliEth01 *>(ctx)->pt_.stop());
+    print_st(static_cast<CliEth01 *>(ctx)->pt_.pt().movePT(0, 0));
     return 0;
 }
 
@@ -277,11 +279,11 @@ int CliEth01::cmd_power(void *ctx, int argc, char **argv) {
         return 1;
     }
     if (strcmp(argv[1], "on") == 0) {
-        print_st(cli->pt_.power(true));
+        print_st(cli->pt_.pt().power(pt::PowerMode::On));
         return 0;
     }
     if (strcmp(argv[1], "off") == 0) {
-        print_st(cli->pt_.power(false));
+        print_st(cli->pt_.pt().power(pt::PowerMode::Off));
         return 0;
     }
     printf("power on|off\n");
@@ -291,7 +293,7 @@ int CliEth01::cmd_power(void *ctx, int argc, char **argv) {
 int CliEth01::cmd_home(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
-    print_st(static_cast<CliEth01 *>(ctx)->pt_.home());
+    print_st(static_cast<CliEth01 *>(ctx)->pt_.pt().goHome());
     return 0;
 }
 
@@ -323,11 +325,11 @@ int CliEth01::cmd_preset(void *ctx, int argc, char **argv) {
         return 1;
     }
     if (strcmp(argv[1], "recall") == 0) {
-        print_st(cli->pt_.recallPreset(static_cast<uint8_t>(n)));
+        print_st(cli->pt_.pt().recallPreset(static_cast<uint8_t>(n)));
         return 0;
     }
     if (strcmp(argv[1], "save") == 0) {
-        print_st(cli->pt_.savePreset(static_cast<uint8_t>(n)));
+        print_st(cli->pt_.pt().savePreset(static_cast<uint8_t>(n)));
         return 0;
     }
     printf("preset recall|save <1..99>\n");
@@ -338,14 +340,14 @@ int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
-    ccam::PtPosition pos{};
-    const ccam::Status st = cli->pt_.queryPosition(pos);
+    pt::Position pos{};
+    const ccam::Status st = cli->pt_.pt().requestPosition(pos);
     if (st != ccam::Status::Ok) {
         print_st(st);
         return 1;
     }
-    printf("pan=0x%04X tilt=0x%04X zoom=0x%04X focus=0x%04X iris=0x%04X\n", pos.pan, pos.tilt,
-           pos.zoom, pos.focus, pos.iris);
+    printf("pan=0x%04X tilt=0x%04X zoom=0x%04X focus=0x%04X iris=0x%04X\n", pos.pt.pan, pos.pt.tilt,
+           pos.lens.zoom, pos.lens.focus, pos.lens.iris);
     return 0;
 }
 
@@ -355,11 +357,15 @@ int CliEth01::cmd_raw(void *ctx, int argc, char **argv) {
         printf("raw <CMD> [payload]   example: raw O 1\n");
         return 1;
     }
+    const char *cmd = argv[1];
+    if (cmd[0] == '#') {
+        ++cmd;
+    }
     const char *payload = (argc >= 3) ? argv[2] : nullptr;
     uint8_t rx[ccam::kPtFrameMax] = {};
     size_t n = 0;
     const ccam::Status st =
-        cli->pt_.transactRaw(argv[1], payload, rx, sizeof(rx), &n, ccam::kDefaultRxTimeoutMs);
+        cli->pt_.pt().transactCommand(cmd, payload, rx, sizeof(rx), &n, ccam::kDefaultRxTimeoutMs);
     if (st != ccam::Status::Ok) {
         print_st(st);
         return 1;
@@ -404,7 +410,7 @@ void CliEth01::begin() {
     reg("tilt", "Tilt up/down/stop", "up|down|stop [1..49]", cmd_tilt);
     reg("stop", "Stop pan/tilt/zoom/focus", nullptr, cmd_stop);
     reg("power", "Head power", "on|off", cmd_power);
-    reg("home", "Go center (#APC)", nullptr, cmd_home);
+    reg("home", "Home = recall preset #01 (PH350: no #APC)", nullptr, cmd_home);
     reg("speed", "Default move rate 1..49", "[1..49]", cmd_speed);
     reg("preset", "Recall/save preset", "recall|save <1..99>", cmd_preset);
     reg("pos", "Query pan/tilt position", nullptr, cmd_pos);

@@ -70,8 +70,8 @@ enum class He870NdFilter : uint8_t {
  */
 class He870Camera : public CameraDeviceBase {
 public:
-    explicit He870Camera(Rs485Transport& transport)
-        : CameraDeviceBase(transport)
+    explicit He870Camera(Transport& transport)
+        : CameraDeviceBase(transport, kGainDbHe870)
     {
     }
 
@@ -92,7 +92,7 @@ public:
     /** SC Coarse — только control command на HE870 (QSC может отличаться). */
     Status setScCoarse(He870ScCoarse value)
     {
-        return applyDec1(catalog::CameraCmd::ScCoarse, static_cast<uint8_t>(value));
+        return sendDec1(catalog::CameraCmd::ScCoarse, static_cast<uint8_t>(value));
     }
 
     Status setNdFilter(He870NdFilter filter)
@@ -103,27 +103,21 @@ public:
             if (encodeDecAscii(v, data, sizeof(data)) != Status::Ok) {
                 return Status::Param;
             }
-            return apply(catalog::CameraCmd::FilterNd, data);
+            return send(catalog::CameraCmd::FilterNd, data);
         }
-        return applyDec1(catalog::CameraCmd::FilterNd, v);
+        return sendDec1(catalog::CameraCmd::FilterNd, v);
     }
 
     /** Digital extender x1.4 (ODE). */
     Status setDigitalExtender(bool on)
     {
-        return applySwitch(catalog::CameraCmd::DigitalExtender, toProtocolSwitch(on));
-    }
-
-    /** Auto Focus (OAF), с AF-объективом. */
-    Status setAutoFocusMode(bool on)
-    {
-        return setAutoFocus(on);
+        return sendDec1(catalog::CameraCmd::DigitalExtender, static_cast<uint8_t>(toSwitch(on)));
     }
 
     /** A.IRIS Light Area (OAR). */
     Status setLightArea(He870LightArea area)
     {
-        return applyDec1(catalog::CameraCmd::LightArea, static_cast<uint8_t>(area));
+        return sendDec1(catalog::CameraCmd::LightArea, static_cast<uint8_t>(area));
     }
 
     /** OSD:48 A.IRIS Level / IRIS Offset. */
@@ -144,18 +138,13 @@ class He870Pt : public PtDeviceBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
-    explicit He870Pt(Rs485Transport& transport)
+    explicit He870Pt(Transport& transport)
         : PtDeviceBase(transport)
     {
     }
 
     PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
     const char* modelLabel() const override { return "AW-HE870 Pan/Tilt"; }
-
-    Status goHome()
-    {
-        return absolutePosition(kPtPosCenter, kPtPosCenter);
-    }
 
     Status setNdFilter(He870NdFilter filter)
     {
@@ -164,7 +153,7 @@ public:
 
     Status setAutoFocusAux(bool on)
     {
-        return sendSwitch(catalog::PtCmd::ExtenderAf, toProtocolSwitch(on));
+        return sendDec1(catalog::PtCmd::ExtenderAf, static_cast<uint8_t>(toSwitch(on)));
     }
 };
 

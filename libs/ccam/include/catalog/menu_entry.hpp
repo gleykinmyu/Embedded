@@ -1,6 +1,6 @@
 /**
  * @file menu_entry.hpp
- * @brief Строка каталога subcode-меню (ConvertibleProtocol.pdf v3.05).
+ * @brief Subcode меню Convertible Protocol (OSD / Video / Extended J).
  */
 
 #pragma once
@@ -9,9 +9,6 @@
 
 namespace ccam::catalog {
 
-struct MenuSubcodeEntry {
-    uint8_t subcode;
-    const char* name;
-};
+using MenuSubcode = uint8_t;
 
 } // namespace ccam::catalog

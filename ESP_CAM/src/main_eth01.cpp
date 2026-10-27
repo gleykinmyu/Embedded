@@ -2,6 +2,7 @@
 #include "eth_lan8720.h"
 #include "http_status.h"
 #include "nvs_flash.h"
+#include "ota_espota.h"
 #include "ph350_ctrl.h"
 
 extern "C" void app_main(void) {
@@ -16,8 +17,10 @@ extern "C" void app_main(void) {
     static EthLan8720 eth;
     static HttpStatus http(eth, pt);
     static CliEth01 cli(eth, http, pt);
+    static OtaEspota ota;
 
     ESP_ERROR_CHECK(pt.begin() ? ESP_OK : ESP_FAIL);
     eth.begin(&http);
+    ota.begin();
     cli.begin();
 }

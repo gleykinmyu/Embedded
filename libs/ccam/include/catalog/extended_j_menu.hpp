@@ -12,19 +12,19 @@
 
 namespace ccam::catalog {
 
-inline constexpr MenuSubcodeEntry kExtendedJMenu[] = {
-    {0x22, "3G SDI Out HDR Output Select"},
-    {0x23, "MONI Out Format"},
-    {0x24, "MONI Out HDR Output Select"},
-    {0x25, "HDMI Out Format"},
-    {0x26, "HDMI Out HDR Output Select"},
-    {0x27, "Color Bar Tone"},
-    {0x35, "Save Preset Name (Single)"},
-    {0x3C, "Preset Name / Preset Thumbnail Counter"},
-    {0x3D, "Zoom Scale"},
-    {0x40, "Operation Lock Status"},
-    {0x45, "Power On Position"},
-    {0x46, "Power On Preset Number"},
+inline constexpr uint8_t kExtendedJMenu[] = {
+    0x22,  // 3G SDI Out HDR Output Select,
+    0x23,  // MONI Out Format,
+    0x24,  // MONI Out HDR Output Select,
+    0x25,  // HDMI Out Format,
+    0x26,  // HDMI Out HDR Output Select,
+    0x27,  // Color Bar Tone,
+    0x35,  // Save Preset Name (Single),
+    0x3C,  // Preset Name / Preset Thumbnail Counter,
+    0x3D,  // Zoom Scale,
+    0x40,  // Operation Lock Status,
+    0x45,  // Power On Position,
+    0x46,  // Power On Preset Number,
 };
 
 inline constexpr size_t kExtendedJMenuCount =

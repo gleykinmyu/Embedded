@@ -51,3 +51,8 @@ static constexpr int RS422_BAUD = 9600;
 #define ETH01_GW4_ADDR  192, 168, 5, 1
 #define ETH01_MASK_ADDR 255, 0, 0, 0
 #define ETH01_DNS4_ADDR 192, 168, 5, 1
+
+// Пароль для PlatformIO espota (`upload_flags = --auth=...`). Пустая строка — без auth.
+#ifndef ESPOTA_PASSWORD
+#define ESPOTA_PASSWORD "esp_cam"
+#endif

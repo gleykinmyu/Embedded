@@ -34,8 +34,8 @@ enum class Ue150Scene : uint8_t {
 /** Камера AW-UE150 (и совместимые UE155, UN145). */
 class Ue150Camera : public CameraDeviceBase {
 public:
-    explicit Ue150Camera(Rs485Transport& transport)
-        : CameraDeviceBase(transport)
+    explicit Ue150Camera(Transport& transport)
+        : CameraDeviceBase(transport, kGainDbHeWide)
     {
     }
 
@@ -75,7 +75,7 @@ public:
     Status setOperationLock(bool locked)
     {
         return setExtendedJMenuSwitch(
-            catalog::ExtendedJItem::OperationLockStatus, toProtocolSwitch(locked));
+            catalog::ExtendedJItem::OperationLockStatus, toSwitch(locked));
     }
 };
 
@@ -84,18 +84,13 @@ class Ue150Pt : public PtDeviceBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
-    explicit Ue150Pt(Rs485Transport& transport)
+    explicit Ue150Pt(Transport& transport)
         : PtDeviceBase(transport)
     {
     }
 
     PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
     const char* modelLabel() const override { return "AW-UE150 Pan/Tilt"; }
-
-    Status goHome()
-    {
-        return absolutePosition(kPtPosCenter, kPtPosCenter);
-    }
 
     Status setNdFilter(PtNdFilterMode mode)
     {

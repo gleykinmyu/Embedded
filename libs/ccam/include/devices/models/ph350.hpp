@@ -25,15 +25,17 @@ namespace ccam::devices {
  * ccam::devices::E650Camera camera(bus);
  * ccam::devices::Ph350Pt pt(bus);
  *
- * pt.power(ccam::PtPowerMode::OnWithCameraTx);
+ * pt.power(pt::PowerMode::OnWithCameraTx);
  * pt.recallPreset(1);
  * @endcode
  */
 class Ph350Pt : public PhHeadBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
+    /** Пресет «дома» (ConvertibleProtocol: #APC у PH350 в матрице не поддержан). */
+    static constexpr uint8_t kDefaultHomePreset = 1;
 
-    explicit Ph350Pt(Rs485Transport& transport)
+    explicit Ph350Pt(Transport& transport)
         : PhHeadBase(transport)
     {
     }
@@ -41,40 +43,39 @@ public:
     PtModelId modelId() const override { return PtModelId::Ph350; }
     const char* modelLabel() const override { return "AW-PH350E"; }
 
-    /** Типичный режим: питание головки + проброс линии camera TX. */
-    Status powerWithCameraLink()
-    {
-        return power(PtPowerMode::OnWithCameraTx);
-    }
+    /**
+     * Home = #Rnn (preset), не #APC80008000.
+     * Сохраните центр через Save preset (по умолчанию #01), затем Home.
+     */
+    Status goHome() override { return recallPreset(home_preset_); }
 
-    Status goHome()
+    void setHomePreset(uint8_t preset_1_to_99)
     {
-        return absolutePosition(kPtPosCenter, kPtPosCenter);
+        if (preset_1_to_99 >= 1 && preset_1_to_99 <= kMaxPreset) {
+            home_preset_ = preset_1_to_99;
+        }
     }
-
-    /** Zoom position #AXZ (555h..FFFh). */
-    Status setZoomPositionHex(uint16_t pos)
-    {
-        return setZoomPosition(pos);
-    }
-
-    /** Focus position #AXF. */
-    Status setFocusPositionHex(uint16_t pos)
-    {
-        return setFocusPosition(pos);
-    }
+    uint8_t homePreset() const { return home_preset_; }
 
     Status queryDefrosterStatus(uint8_t& status)
     {
+        constexpr auto cmd = catalog::PtCmd::DefrosterStatus;
         uint8_t response[8];
         size_t len = 0;
-        Status st = transact(
-            catalog::PtCmd::DefrosterStatus, nullptr, response, sizeof(response), &len);
-        if (st != Status::Ok || len < 2) {
+        Status st = transact(cmd, nullptr, response, sizeof(response), &len);
+        if (st != Status::Ok) {
+            return st;
+        }
+        size_t pos = 0;
+        st = matchPtResponse(response, len, cmd, pos);
+        if (st != Status::Ok || pos >= len) {
             return Status::Io;
         }
-        return decodeDec1ResponseByte(response[1], status);
+        return decodeDec1ResponseByte(response[pos], status);
     }
+
+private:
+    uint8_t home_preset_{kDefaultHomePreset};
 };
 
 } // namespace ccam::devices

@@ -151,7 +151,7 @@ int main()
     StubByteStream uart;
     uart.open(ccam::kBaudRate);
 
-    ccam::Rs485Transport transport(uart, &demoNowMs);
+    ccam::Transport transport(uart, &demoNowMs);
 
     /*
      * Выберите пару «камера + поворотное устройство» под вашу установку:
@@ -179,11 +179,11 @@ int main()
     panel.pan_tilt_rate = 30;
     panel.zoom_focus_rate = 20;
 
-    (void)pt.power(ccam::PtPowerMode::On);
+    (void)pt.power(pt::PowerMode::On);
     operator_panel.tick(joystick.poll(), panel);
 
     char model[48] = {};
-    (void)camera.queryModel(model, sizeof(model));
+    (void)camera.requestModel(model, sizeof(model));
 
     (void)camera.setAwcMode(ccam::devices::He130AwcMode::Atw);
     (void)pt.goHome();
@@ -197,7 +197,7 @@ int main()
         operator_panel.tick(joy, panel);
 
         if (operator_panel.hasPosition()) {
-            const ccam::PtPosition& pos = operator_panel.lastPosition();
+            const pt::Position& pos = operator_panel.lastPosition();
             (void)pos;
         }
 

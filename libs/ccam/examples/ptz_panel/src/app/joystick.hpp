@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "transport/types.hpp"
-
 #include <cstdint>
 
 namespace app {
@@ -21,15 +19,15 @@ struct JoystickAxes {
 };
 
 /**
- * Преобразование оси в код скорости P/T (01..49 / 50 / 51..99).
- * @param axis      Значение оси.
- * @param max_rate  Максимальный rate при полном отклонении (1..49).
+ * Преобразование оси в signed speed для pt::move (−128..127).
+ * @param axis      Значение оси (−1000..1000).
+ * @param max_rate  |скорость| при полном отклонении (1..127).
  * @param deadzone  Мёртвая зона вокруг нуля.
  */
-inline uint8_t axisToPtSpeed(int16_t axis, uint8_t max_rate, int16_t deadzone = 80)
+inline int8_t axisToSignedSpeed(int16_t axis, uint8_t max_rate, int16_t deadzone = 80)
 {
     if (axis > -deadzone && axis < deadzone) {
-        return ccam::kPtSpeedStop;
+        return 0;
     }
 
     int16_t mag = (axis < 0) ? static_cast<int16_t>(-axis) : axis;
@@ -39,16 +37,12 @@ inline uint8_t axisToPtSpeed(int16_t axis, uint8_t max_rate, int16_t deadzone = 
     if (max_rate < 1) {
         max_rate = 1;
     }
-    if (max_rate > 49) {
-        max_rate = 49;
+    if (max_rate > 127) {
+        max_rate = 127;
     }
 
-    const uint8_t rate = static_cast<uint8_t>(1 + (mag * (max_rate - 1)) / 1000);
-
-    if (axis < 0) {
-        return rate;
-    }
-    return static_cast<uint8_t>(ccam::kPtSpeedMax - rate + 1);
+    const int8_t rate = static_cast<int8_t>(1 + (mag * (max_rate - 1)) / 1000);
+    return (axis < 0) ? static_cast<int8_t>(-rate) : rate;
 }
 
 class IJoystick {

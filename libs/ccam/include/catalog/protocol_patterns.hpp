@@ -31,11 +31,5 @@ enum class CameraPattern : uint8_t {
     ExtendedQueryJ = 18, ///< [STX]QSJ:…[ETX]
 };
 
-/** Тип кадра P/T #…CR (PDF стр. 28+). */
-enum class PtPattern : uint8_t {
-    HashCmd,       ///< #XY[data]CR — основной формат
-    HashQuery,     ///< запрос с ответом (#PTV, #RER, #QSV…)
-    HashExtended,  ///< #APS, #RPC, #LC — несколько hex-полей
-};
-
 } // namespace ccam::catalog
+

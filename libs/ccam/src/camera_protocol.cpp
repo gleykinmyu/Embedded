@@ -15,12 +15,12 @@ void camFormatSubcode(char out[3], uint8_t subcode)
 static Status beginFrame(CameraFrame& frame)
 {
     frame.clear();
-    return frame.appendByte(kStx);
+    return frame.appendChar(kStx);
 }
 
 static Status endFrame(CameraFrame& frame)
 {
-    return frame.appendByte(kEtx);
+    return frame.appendChar(kEtx);
 }
 
 Status camBuildTrigger(CameraFrame& frame, const char* cmd3)
@@ -52,7 +52,7 @@ Status camBuildSet(CameraFrame& frame, const char* cmd3, const char* data)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -82,7 +82,7 @@ Status camBuildScene(CameraFrame& frame, uint8_t scene_index)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -106,7 +106,7 @@ Status camBuildMonitor(CameraFrame& frame, const char* dcmd3, const char* data1)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -130,7 +130,7 @@ Status camBuildOsdSet(CameraFrame& frame, uint8_t subcode, const char* data)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -138,7 +138,7 @@ Status camBuildOsdSet(CameraFrame& frame, uint8_t subcode, const char* data)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -162,7 +162,7 @@ Status camBuildOsdQuery(CameraFrame& frame, uint8_t subcode)
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -189,7 +189,7 @@ Status camBuildMenuSet(CameraFrame& frame, const char* prefix, uint8_t subcode, 
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -197,7 +197,7 @@ Status camBuildMenuSet(CameraFrame& frame, const char* prefix, uint8_t subcode, 
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }
@@ -224,7 +224,7 @@ Status camBuildMenuQuery(CameraFrame& frame, const char* prefix, uint8_t subcode
     if (st != Status::Ok) {
         return st;
     }
-    st = frame.appendByte(static_cast<uint8_t>(kCmdSep));
+    st = frame.appendChar(kCmdSep);
     if (st != Status::Ok) {
         return st;
     }

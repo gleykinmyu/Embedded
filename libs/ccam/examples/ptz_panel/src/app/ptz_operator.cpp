@@ -2,7 +2,7 @@
 
 namespace app {
 
-PtzOperator::PtzOperator(ccam::devices::IPtDevice& pt, ccam::devices::ICameraDevice& camera)
+PtzOperator::PtzOperator(pt::IDevice& pt, ccam::devices::ICameraDevice& camera)
     : pt_(pt)
     , camera_(camera)
 {
@@ -15,33 +15,16 @@ void PtzOperator::applyJoystick(const JoystickAxes& joy, const PanelSettings& pa
     }
 
     if (joy.button) {
-        (void)pt_.stopAll();
+        (void)pt_.stop();
         return;
     }
 
-    const uint8_t pan_speed = axisToPtSpeed(joy.pan, panel.pan_tilt_rate);
-    const uint8_t tilt_speed = axisToPtSpeed(joy.tilt, panel.pan_tilt_rate);
+    const int8_t pan = axisToSignedSpeed(joy.pan, panel.pan_tilt_rate);
+    const int8_t tilt = axisToSignedSpeed(joy.tilt, panel.pan_tilt_rate);
+    (void)pt_.movePT(pan, tilt);
 
-    if (pan_speed == ccam::kPtSpeedStop && tilt_speed == ccam::kPtSpeedStop) {
-        (void)pt_.panStop();
-        (void)pt_.tiltStop();
-    } else {
-        (void)pt_.setPanTiltSpeed(pan_speed, tilt_speed);
-    }
-
-    const uint8_t zoom_speed = axisToPtSpeed(joy.zoom, panel.zoom_focus_rate);
-    if (zoom_speed == ccam::kPtSpeedStop) {
-        (void)pt_.zoomStop();
-    } else {
-        (void)pt_.setZoomSpeed(zoom_speed);
-    }
-
-    const uint8_t focus_speed = axisToPtSpeed(joy.focus, panel.zoom_focus_rate);
-    if (focus_speed == ccam::kPtSpeedStop) {
-        (void)pt_.focusStop();
-    } else {
-        (void)pt_.setFocusSpeed(focus_speed);
-    }
+    (void)pt_.move(pt::Axis::Zoom, axisToSignedSpeed(joy.zoom, panel.zoom_focus_rate));
+    (void)pt_.move(pt::Axis::Focus, axisToSignedSpeed(joy.focus, panel.zoom_focus_rate));
 }
 
 void PtzOperator::applyTouchAction(TouchAction action, PanelSettings& panel)
@@ -51,7 +34,7 @@ void PtzOperator::applyTouchAction(TouchAction action, PanelSettings& panel)
         break;
 
     case TouchAction::StopAll:
-        (void)pt_.stopAll();
+        (void)pt_.stop();
         break;
 
     case TouchAction::RecallPreset:
@@ -70,16 +53,15 @@ void PtzOperator::applyTouchAction(TouchAction action, PanelSettings& panel)
     case TouchAction::PowerToggle:
         panel.pt_power_on = !panel.pt_power_on;
         pt_power_on_ = panel.pt_power_on;
-        (void)pt_.power(
-            pt_power_on_ ? ccam::PtPowerMode::On : ccam::PtPowerMode::Off);
+        (void)pt_.power(pt_power_on_ ? pt::PowerMode::On : pt::PowerMode::Off);
         if (!pt_power_on_) {
-            (void)pt_.stopAll();
+            (void)pt_.stop();
         }
         break;
 
     case TouchAction::QueryPosition: {
-        ccam::PtPosition pos{};
-        if (pt_.queryPosition(pos) == ccam::Status::Ok) {
+        pt::Position pos{};
+        if (pt_.requestPosition(pos) == pt::Status::Ok) {
             last_position_ = pos;
             has_position_ = true;
         }
@@ -92,8 +74,7 @@ void PtzOperator::tick(const JoystickAxes& joy, PanelSettings& panel)
 {
     if (panel.pt_power_on != pt_power_on_) {
         pt_power_on_ = panel.pt_power_on;
-        (void)pt_.power(
-            pt_power_on_ ? ccam::PtPowerMode::On : ccam::PtPowerMode::Off);
+        (void)pt_.power(pt_power_on_ ? pt::PowerMode::On : pt::PowerMode::Off);
     }
 
     if (panel.pending != TouchAction::None) {

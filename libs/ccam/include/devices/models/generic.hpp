@@ -13,8 +13,8 @@ namespace ccam::devices {
 /** Любая камера Convertible Protocol (базовый набор команд). */
 class GenericCamera : public CameraDeviceBase {
 public:
-    explicit GenericCamera(Rs485Transport& transport)
-        : CameraDeviceBase(transport)
+    explicit GenericCamera(Transport& transport)
+        : CameraDeviceBase(transport, kGainDbStudio)
     {
     }
 
@@ -25,7 +25,7 @@ public:
 /** Любое поворотное устройство / PTZ (базовый набор #-команд). */
 class GenericPt : public PtDeviceBase {
 public:
-    explicit GenericPt(Rs485Transport& transport)
+    explicit GenericPt(Transport& transport)
         : PtDeviceBase(transport)
     {
     }

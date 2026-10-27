@@ -9,7 +9,6 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
-#include "devices/protocol_values.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
@@ -60,8 +59,8 @@ enum class E600ShutterMode : uint8_t {
  */
 class E600Camera : public CameraDeviceBase {
 public:
-    explicit E600Camera(Rs485Transport& transport)
-        : CameraDeviceBase(transport)
+    explicit E600Camera(Transport& transport)
+        : CameraDeviceBase(transport, kGainDbStudio)
     {
     }
 
@@ -96,32 +95,30 @@ public:
     /** Synchro Scan (OMS) — hex/data по PDF, напр. "001".."0FF". */
     Status setSynchroScan(const char* data)
     {
-        return apply(catalog::CameraCmd::SynchroScan, data);
+        return send(catalog::CameraCmd::SynchroScan, data);
     }
 
     Status setNegPos(bool negative)
     {
-        return applySwitch(
-            catalog::CameraCmd::NegPos,
-            negative ? ProtocolSwitch::On : ProtocolSwitch::Off);
+        return sendDec1(catalog::CameraCmd::NegPos, static_cast<uint8_t>(negative ? Switch::On : Switch::Off));
     }
 
     Status setFieldFrame(FieldFrameMode mode)
     {
-        return applyDec1(catalog::CameraCmd::FieldFrame, static_cast<uint8_t>(mode));
+        return sendDec1(catalog::CameraCmd::FieldFrame, static_cast<uint8_t>(mode));
     }
 
     /** Chroma Level (OCG). */
-    Status setChromaLevel(ChromaLevel level)
+    Status setChromaLevel(Levels level)
     {
-        return applyDec1(catalog::CameraCmd::ChromaLevel, static_cast<uint8_t>(level));
+        return sendDec1(catalog::CameraCmd::ChromaLevel, static_cast<uint8_t>(level));
     }
 
     /** R/B Gain и Pedestal — data в формате протокола (hex). */
-    Status setRGain(const char* data) { return apply(catalog::CameraCmd::RGain, data); }
-    Status setBGain(const char* data) { return apply(catalog::CameraCmd::BGain, data); }
-    Status setRPedestal(const char* data) { return apply(catalog::CameraCmd::RPedestal, data); }
-    Status setBPedestal(const char* data) { return apply(catalog::CameraCmd::BPedestal, data); }
+    Status setRGain(const char* data) { return send(catalog::CameraCmd::RGain, data); }
+    Status setBGain(const char* data) { return send(catalog::CameraCmd::BGain, data); }
+    Status setRPedestal(const char* data) { return send(catalog::CameraCmd::RPedestal, data); }
+    Status setBPedestal(const char* data) { return send(catalog::CameraCmd::BPedestal, data); }
 
     /** User OSD: Gamma (QSD:00). */
     Status setGamma(const char* data) { return setOsd(catalog::OsdItem::Gamma, data); }

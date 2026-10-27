@@ -89,14 +89,5 @@ inline constexpr const char* cameraQuery(CameraCmd cmd)
     return getCameraCommand(cmd).query;
 }
 
-/** P/T control без префикса '#' (PTS, P, APC, …). */
-inline constexpr const char* ptControl(PtCmd cmd)
-{
-    const char* raw = getPtCommand(cmd).control;
-    if (raw != nullptr && raw[0] == '#') {
-        return raw + 1;
-    }
-    return raw;
-}
-
 } // namespace ccam::catalog
+

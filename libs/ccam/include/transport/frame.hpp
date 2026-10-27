@@ -21,13 +21,17 @@ class Frame {
 public:
     void clear() { len_ = 0; }
 
-    uint8_t* data() { return buffer_.data(); }
-    const uint8_t* data() const { return buffer_.data(); }
+    char* data() { return buffer_.data(); }
+    const char* data() const { return buffer_.data(); }
+
+    /** Для Transport::send / IByteStream (байты UART). */
+    uint8_t* bytes() { return reinterpret_cast<uint8_t*>(buffer_.data()); }
+    const uint8_t* bytes() const { return reinterpret_cast<const uint8_t*>(buffer_.data()); }
 
     size_t size() const { return len_; }
     size_t capacity() const { return MaxSize; }
 
-    Status appendByte(uint8_t value)
+    Status appendChar(char value)
     {
         if (len_ >= MaxSize) {
             return Status::Buffer;
@@ -43,7 +47,7 @@ public:
             return Status::Param;
         }
         while (*str != '\0') {
-            Status st = appendByte(static_cast<uint8_t>(*str));
+            Status st = appendChar(*str);
             if (st != Status::Ok) {
                 return st;
             }
@@ -59,17 +63,17 @@ public:
             return Status::Param;
         }
         if (value >= 10) {
-            Status st = appendByte(static_cast<uint8_t>('0' + (value / 10)));
+            Status st = appendChar(static_cast<char>('0' + (value / 10)));
             if (st != Status::Ok) {
                 return st;
             }
         } else {
-            Status st = appendByte('0');
+            Status st = appendChar('0');
             if (st != Status::Ok) {
                 return st;
             }
         }
-        return appendByte(static_cast<uint8_t>('0' + (value % 10)));
+        return appendChar(static_cast<char>('0' + (value % 10)));
     }
 
     /** Hex ASCII фиксированной ширины (напр. 4 символа для pan в #APC). */
@@ -83,7 +87,7 @@ public:
 
         for (int i = static_cast<int>(width) - 1; i >= 0; --i) {
             const uint8_t nibble = static_cast<uint8_t>((value >> (i * 4)) & 0x0F);
-            Status st = appendByte(static_cast<uint8_t>(hex[nibble]));
+            Status st = appendChar(hex[nibble]);
             if (st != Status::Ok) {
                 return st;
             }
@@ -98,7 +102,7 @@ public:
     }
 
 private:
-    std::array<uint8_t, MaxSize> buffer_{};
+    std::array<char, MaxSize> buffer_{};
     size_t len_ = 0;
 };
 

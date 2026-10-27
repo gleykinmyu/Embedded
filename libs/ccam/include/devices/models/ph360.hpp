@@ -18,49 +18,34 @@ namespace ccam::devices {
 /** Базовый класс головки серии PH (общие опции: wiper, fan, tally). */
 class PhHeadBase : public PtDeviceBase {
 public:
-    explicit PhHeadBase(Rs485Transport& transport)
+    explicit PhHeadBase(Transport& transport)
         : PtDeviceBase(transport)
     {
-    }
-
-    Status enableTally(bool on)
-    {
-        return setTallyEnable(on);
-    }
-
-    Status runWiper(uint8_t mode)
-    {
-        return setWiper(mode);
-    }
-
-    Status runWasher(uint8_t mode)
-    {
-        return setWasher(mode);
-    }
-
-    Status setFanMode(uint8_t mode)
-    {
-        return setFan(mode);
     }
 
     /** Запрос состояния обогрева (#HS). */
     Status queryHeaterStatus(uint8_t& status)
     {
+        constexpr auto cmd = catalog::PtCmd::HeaterStatus;
         uint8_t response[8];
         size_t len = 0;
-        Status st = transact(
-            catalog::PtCmd::HeaterStatus, nullptr, response, sizeof(response), &len);
-        if (st != Status::Ok || len < 2) {
+        Status st = transact(cmd, nullptr, response, sizeof(response), &len);
+        if (st != Status::Ok) {
+            return st;
+        }
+        size_t pos = 0;
+        st = matchPtResponse(response, len, cmd, pos);
+        if (st != Status::Ok || pos >= len) {
             return Status::Io;
         }
-        return decodeDec1ResponseByte(response[1], status);
+        return decodeDec1ResponseByte(response[pos], status);
     }
 };
 
 /** AW-PH360 (+ RP400/IF400). */
 class Ph360Pt : public PhHeadBase {
 public:
-    explicit Ph360Pt(Rs485Transport& transport)
+    explicit Ph360Pt(Transport& transport)
         : PhHeadBase(transport)
     {
     }
@@ -72,7 +57,7 @@ public:
 /** AW-PH650. */
 class Ph650Pt : public PhHeadBase {
 public:
-    explicit Ph650Pt(Rs485Transport& transport)
+    explicit Ph650Pt(Transport& transport)
         : PhHeadBase(transport)
     {
     }
@@ -84,7 +69,7 @@ public:
 /** AW-PH405. */
 class Ph405Pt : public PhHeadBase {
 public:
-    explicit Ph405Pt(Rs485Transport& transport)
+    explicit Ph405Pt(Transport& transport)
         : PhHeadBase(transport)
     {
     }

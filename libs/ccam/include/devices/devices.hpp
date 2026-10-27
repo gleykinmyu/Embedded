@@ -5,11 +5,12 @@
  * @code
  * #include "devices/devices.hpp"
  *
- * ccam::Rs485Transport bus(hal);
+ * ccam::Transport bus(hal);
  * ccam::devices::He130Camera camera(bus);
  * ccam::devices::He130Pt pt(bus);
  *
- * camera.setGain("08");
+ * camera.setGain(0);   // 0 dB → OGU:08
+ * camera.setAGC();
  * pt.recallPreset(1);
  * @endcode
  */
@@ -18,7 +19,7 @@
 
 #include "devices/camera_device.hpp"
 #include "devices/device_types.hpp"
-#include "devices/protocol_values.hpp"
+#include "devices/ipt_device.hpp"
 #include "devices/models/generic.hpp"
 #include "devices/models/e600.hpp"
 #include "devices/models/e650.hpp"
