@@ -49,6 +49,26 @@ public:
      */
     Status goHome() override { return recallPreset(home_preset_); }
 
+    /**
+     * PH350: #PTV/#PTD/#APC в матрице нет.
+     * pan/tilt → центр (неизвестно); zoom/focus/iris ← #GZ/#GF/#GI.
+     */
+    Status requestPosition(pt::Position& position) override
+    {
+        position.pt.pan = kPtPosCenter;
+        position.pt.tilt = kPtPosCenter;
+        Status st_z = requestZoom(position.lens.zoom);
+        Status st_f = requestFocus(position.lens.focus);
+        Status st_i = requestIris(position.lens.iris);
+        if (st_z != Status::Ok) {
+            return st_z;
+        }
+        if (st_f != Status::Ok) {
+            return st_f;
+        }
+        return st_i;
+    }
+
     void setHomePreset(uint8_t preset_1_to_99)
     {
         if (preset_1_to_99 >= 1 && preset_1_to_99 <= kMaxPreset) {
@@ -57,7 +77,7 @@ public:
     }
     uint8_t homePreset() const { return home_preset_; }
 
-    Status queryDefrosterStatus(uint8_t& status)
+    Status queryDefrosterStatus(uint8_t& status) override
     {
         constexpr auto cmd = catalog::PtCmd::DefrosterStatus;
         uint8_t response[8];

@@ -8,7 +8,7 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
-#include "devices/pt_device.hpp"
+#include "devices/integrated_ptz.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
@@ -80,16 +80,16 @@ public:
 };
 
 /** Встроенный pan/tilt AW-UE150. */
-class Ue150Pt : public PtDeviceBase {
+class Ue150Pt : public IntegratedPtzBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
     explicit Ue150Pt(Transport& transport)
-        : PtDeviceBase(transport)
+        : IntegratedPtzBase(transport)
     {
     }
 
-    PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
+    PtModelId modelId() const override { return PtModelId::Ue150; }
     const char* modelLabel() const override { return "AW-UE150 Pan/Tilt"; }
 
     Status setNdFilter(PtNdFilterMode mode)

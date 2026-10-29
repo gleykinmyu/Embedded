@@ -32,7 +32,14 @@ size_t Rs422Uart::available() const {
 }
 
 size_t Rs422Uart::availableForWrite() const {
-    return open_ ? 256 : 0;
+    if (!open_) {
+        return 0;
+    }
+    size_t n = 0;
+    if (uart_get_tx_buffer_free_size(static_cast<uart_port_t>(RS422_UART_NUM), &n) != ESP_OK) {
+        return 0;
+    }
+    return n;
 }
 
 void Rs422Uart::purge() {

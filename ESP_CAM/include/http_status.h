@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_http_server.h"
+#include "freertos/semphr.h"
 
 class EthLan8720;
 class Ph350Ctrl;
@@ -27,4 +28,5 @@ private:
     EthLan8720 &eth_;
     Ph350Ctrl &pt_;
     httpd_handle_t srv_{};
+    SemaphoreHandle_t mu_{};
 };

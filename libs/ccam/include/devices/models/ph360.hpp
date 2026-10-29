@@ -24,7 +24,7 @@ public:
     }
 
     /** Запрос состояния обогрева (#HS). */
-    Status queryHeaterStatus(uint8_t& status)
+    Status queryHeaterStatus(uint8_t& status) override
     {
         constexpr auto cmd = catalog::PtCmd::HeaterStatus;
         uint8_t response[8];

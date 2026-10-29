@@ -10,7 +10,7 @@ static constexpr int PIN_ETH_MDIO = 18;
 static constexpr int ETH_PHY_ADDR = 1;
 
 // UART0 (RX0/TX0) — отладка / прошивка / REPL, 115200.
-// На разъёме программирования ETH01: TXD0=GPIO1, RXD0=GPIO3.гыи
+// На разъёме программирования ETH01: TXD0=GPIO1, RXD0=GPIO3.
 static constexpr int PIN_DEBUG_TX = 1; // TX0
 static constexpr int PIN_DEBUG_RX = 3; // RX0
 

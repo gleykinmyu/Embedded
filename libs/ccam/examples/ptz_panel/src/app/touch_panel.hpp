@@ -25,8 +25,8 @@ enum class TouchAction : uint8_t {
  * Храните в RAM / EEPROM — по необходимости.
  */
 struct PanelSettings {
-    uint8_t pan_tilt_rate = 30;   ///< 1..49 — макс. скорость pan/tilt от джойстика
-    uint8_t zoom_focus_rate = 20; ///< 1..49 — макс. скорость zoom/focus
+    uint8_t pan_tilt_rate = 60;   ///< 1..100% — макс. скорость pan/tilt от джойстика
+    uint8_t zoom_focus_rate = 40; ///< 1..100% — макс. скорость zoom/focus
     uint8_t preset = 1;           ///< 0..99 — выбранный пресет
     /** Значение OAW (цифра 0..9); для AW-HE130 = static_cast<uint8_t>(He130AwcMode). */
     uint8_t awc_mode = 0;

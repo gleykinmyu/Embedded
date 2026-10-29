@@ -19,6 +19,7 @@
 
 #include "devices/camera_device.hpp"
 #include "devices/device_types.hpp"
+#include "devices/integrated_ptz.hpp"
 #include "devices/ipt_device.hpp"
 #include "devices/models/generic.hpp"
 #include "devices/models/e600.hpp"

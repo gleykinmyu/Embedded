@@ -1,7 +1,9 @@
 set(CCAM_DIR "${CMAKE_SOURCE_DIR}/../libs/ccam")
 set(BIF_DIR "${CMAKE_SOURCE_DIR}/../libs/Interfaces")
 
-# HTML страница UI → C++ raw-string include (PlatformIO EMBED_TXTFILES ломается с custom build_dir).
+# HTML → C++ raw-string include на configure. CMAKE_CONFIGURE_DEPENDS
+# перезапускает configure при правке status.html (PlatformIO иногда кэширует —
+# тогда: python tools/refresh_html_inc.py && touch http_status.cpp).
 set(STATUS_HTML "${CMAKE_CURRENT_LIST_DIR}/www/status.html")
 set(STATUS_HTML_INC "${CMAKE_CURRENT_BINARY_DIR}/status.html.inc")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${STATUS_HTML}")
@@ -20,8 +22,11 @@ idf_component_register(
         "ota_espota.cpp"
         "${CCAM_DIR}/src/transport.cpp"
         "${CCAM_DIR}/src/pt_device.cpp"
+        "${CCAM_DIR}/src/integrated_ptz.cpp"
         "${CCAM_DIR}/src/camera_protocol.cpp"
         "${CCAM_DIR}/src/camera_device.cpp"
+        "${CCAM_DIR}/src/device_caps.cpp"
+        "${CCAM_DIR}/src/pt_link_health.cpp"
     INCLUDE_DIRS
         "."
         "../include"

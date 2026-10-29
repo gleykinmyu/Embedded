@@ -50,12 +50,6 @@ enum class E600ShutterMode : uint8_t {
 
 /**
  * Студийная камера AW-E600.
- *
- * @code
- * ccam::devices::E600Camera camera(bus);
- * camera.setAwcMode(E600AwcMode::Preset3200K);
- * camera.setSynchroScan("001");
- * @endcode
  */
 class E600Camera : public CameraDeviceBase {
 public:
@@ -79,60 +73,7 @@ public:
 
     Status setShutterMode(E600ShutterMode mode)
     {
-        char data[3];
-        const uint8_t v = static_cast<uint8_t>(mode);
-        if (v >= 10) {
-            data[0] = static_cast<char>('0' + (v / 10));
-            data[1] = static_cast<char>('0' + (v % 10));
-            data[2] = '\0';
-        } else {
-            data[0] = static_cast<char>('0' + v);
-            data[1] = '\0';
-        }
-        return setShutter(data);
-    }
-
-    /** Synchro Scan (OMS) — hex/data по PDF, напр. "001".."0FF". */
-    Status setSynchroScan(const char* data)
-    {
-        return send(catalog::CameraCmd::SynchroScan, data);
-    }
-
-    Status setNegPos(bool negative)
-    {
-        return sendDec1(catalog::CameraCmd::NegPos, static_cast<uint8_t>(negative ? Switch::On : Switch::Off));
-    }
-
-    Status setFieldFrame(FieldFrameMode mode)
-    {
-        return sendDec1(catalog::CameraCmd::FieldFrame, static_cast<uint8_t>(mode));
-    }
-
-    /** Chroma Level (OCG). */
-    Status setChromaLevel(Levels level)
-    {
-        return sendDec1(catalog::CameraCmd::ChromaLevel, static_cast<uint8_t>(level));
-    }
-
-    /** R/B Gain и Pedestal — data в формате протокола (hex). */
-    Status setRGain(const char* data) { return send(catalog::CameraCmd::RGain, data); }
-    Status setBGain(const char* data) { return send(catalog::CameraCmd::BGain, data); }
-    Status setRPedestal(const char* data) { return send(catalog::CameraCmd::RPedestal, data); }
-    Status setBPedestal(const char* data) { return send(catalog::CameraCmd::BPedestal, data); }
-
-    /** User OSD: Gamma (QSD:00). */
-    Status setGamma(const char* data) { return setOsd(catalog::OsdItem::Gamma, data); }
-    Status setAgcMax(const char* data) { return setOsd(catalog::OsdItem::AgcMax, data); }
-
-    /** Video/Film paint menu (OSA/QSA). */
-    Status setTotalDtlLevel(const char* data)
-    {
-        return setVideoMenu(catalog::VideoMenuItem::TotalDtlLevel, data);
-    }
-
-    Status setGenlockInput(const char* data)
-    {
-        return setVideoMenu(catalog::VideoMenuItem::GenlockInput, data);
+        return CameraDeviceBase::setShutterMode(static_cast<uint8_t>(mode));
     }
 };
 

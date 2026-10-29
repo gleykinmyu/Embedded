@@ -19,12 +19,12 @@ struct JoystickAxes {
 };
 
 /**
- * Преобразование оси в signed speed для pt::move (−128..127).
+ * Преобразование оси в проценты для pt::move (−100..+100).
  * @param axis      Значение оси (−1000..1000).
- * @param max_rate  |скорость| при полном отклонении (1..127).
+ * @param max_pct   |%| при полном отклонении (1..100).
  * @param deadzone  Мёртвая зона вокруг нуля.
  */
-inline int8_t axisToSignedSpeed(int16_t axis, uint8_t max_rate, int16_t deadzone = 80)
+inline int8_t axisToSignedSpeed(int16_t axis, uint8_t max_pct, int16_t deadzone = 80)
 {
     if (axis > -deadzone && axis < deadzone) {
         return 0;
@@ -34,15 +34,15 @@ inline int8_t axisToSignedSpeed(int16_t axis, uint8_t max_rate, int16_t deadzone
     if (mag > 1000) {
         mag = 1000;
     }
-    if (max_rate < 1) {
-        max_rate = 1;
+    if (max_pct < 1) {
+        max_pct = 1;
     }
-    if (max_rate > 127) {
-        max_rate = 127;
+    if (max_pct > 100) {
+        max_pct = 100;
     }
 
-    const int8_t rate = static_cast<int8_t>(1 + (mag * (max_rate - 1)) / 1000);
-    return (axis < 0) ? static_cast<int8_t>(-rate) : rate;
+    const int8_t pct = static_cast<int8_t>(1 + (mag * (max_pct - 1)) / 1000);
+    return (axis < 0) ? static_cast<int8_t>(-pct) : pct;
 }
 
 class IJoystick {

@@ -19,6 +19,8 @@ using Status = pt::Status;
 /** Скорость по умолчанию из ConvertibleProtocol.pdf. */
 constexpr uint32_t kBaudRate = 9600;
 constexpr uint32_t kDefaultRxTimeoutMs = 500;
+/** Камера через PH350 CamTX: чуть длиннее + waitAck отбрасывает чужие STX-кадры. */
+constexpr uint32_t kCameraRxTimeoutMs = 1000;
 
 /* --- Протокол камеры: [STX]…[ETX] --- */
 constexpr uint8_t kStx = 0x02;
@@ -34,10 +36,10 @@ constexpr size_t kCameraFrameMax = 64;
 constexpr size_t kPtFrameMax = 48;
 
 /**
- * Шкала скорости P/T (команды #P, #T, #Z, #F):
- * 01..49 — движение в «отрицательную» сторону (влево / вниз / wide / near),
- * 50     — стоп,
- * 51..99 — движение в «положительную» сторону.
+ * Шкала скорости P/T (команды #P, #T, #Z, #F), ConvertibleProtocol:
+ * 01 = Max «−» (Left/Down/Wide/Near) … 49 = Min «−»,
+ * 50 = Stop,
+ * 51 = Min «+» … 99 = Max «+» (Right/Up/Tele/Far).
  */
 constexpr uint8_t kPtSpeedStop = 50;
 constexpr uint8_t kPtSpeedMin = 1;

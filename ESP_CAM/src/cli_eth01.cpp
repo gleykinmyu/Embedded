@@ -22,7 +22,7 @@ CliEth01::CliEth01(EthLan8720 &eth, HttpStatus &http, Ph350Ctrl &pt)
 uint8_t CliEth01::rate_arg(Ph350Ctrl &pt, int argc, char **argv, int idx) {
     if (argc > idx) {
         const int n = atoi(argv[idx]);
-        if (n >= 1 && n <= 49) {
+        if (n >= 1 && n <= 100) {
             return static_cast<uint8_t>(n);
         }
     }
@@ -33,6 +33,7 @@ int CliEth01::cmd_status(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     char ip[16] = {};
     char mac[18] = {};
     cli->eth_.ip_text(ip, sizeof(ip));
@@ -219,8 +220,9 @@ int CliEth01::cmd_ping(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_pan(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
-        printf("pan left|right|stop [1..49]\n");
+        printf("pan left|right|stop [1..100]\n");
         return 1;
     }
     auto &head = cli->pt_.pt();
@@ -230,21 +232,22 @@ int CliEth01::cmd_pan(void *ctx, int argc, char **argv) {
     }
     const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
     if (strcmp(argv[1], "left") == 0) {
-        print_st(head.move(pt::Axis::Pan, static_cast<int8_t>(-rate)));
+        print_st(head.move(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, -1)));
         return 0;
     }
     if (strcmp(argv[1], "right") == 0) {
-        print_st(head.move(pt::Axis::Pan, static_cast<int8_t>(rate)));
+        print_st(head.move(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, +1)));
         return 0;
     }
-    printf("pan left|right|stop [1..49]\n");
+    printf("pan left|right|stop [1..100]\n");
     return 1;
 }
 
 int CliEth01::cmd_tilt(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
-        printf("tilt up|down|stop [1..49]\n");
+        printf("tilt up|down|stop [1..100]\n");
         return 1;
     }
     auto &head = cli->pt_.pt();
@@ -254,26 +257,29 @@ int CliEth01::cmd_tilt(void *ctx, int argc, char **argv) {
     }
     const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
     if (strcmp(argv[1], "up") == 0) {
-        print_st(head.move(pt::Axis::Tilt, static_cast<int8_t>(rate)));
+        print_st(head.move(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, +1)));
         return 0;
     }
     if (strcmp(argv[1], "down") == 0) {
-        print_st(head.move(pt::Axis::Tilt, static_cast<int8_t>(-rate)));
+        print_st(head.move(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, -1)));
         return 0;
     }
-    printf("tilt up|down|stop [1..49]\n");
+    printf("tilt up|down|stop [1..100]\n");
     return 1;
 }
 
 int CliEth01::cmd_stop(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
-    print_st(static_cast<CliEth01 *>(ctx)->pt_.pt().movePT(0, 0));
+    auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
+    print_st(cli->pt_.pt().stop());
     return 0;
 }
 
 int CliEth01::cmd_power(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("power on|off\n");
         return 1;
@@ -293,19 +299,21 @@ int CliEth01::cmd_power(void *ctx, int argc, char **argv) {
 int CliEth01::cmd_home(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
-    print_st(static_cast<CliEth01 *>(ctx)->pt_.pt().goHome());
+    auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
+    print_st(cli->pt_.pt().goHome());
     return 0;
 }
 
 int CliEth01::cmd_speed(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
     if (argc < 2) {
-        printf("speed=%u (1..49)\n", static_cast<unsigned>(cli->pt_.defaultRate()));
+        printf("speed=%u (1..100)\n", static_cast<unsigned>(cli->pt_.defaultRate()));
         return 0;
     }
     const int n = atoi(argv[1]);
-    if (n < 1 || n > 49) {
-        printf("speed 1..49\n");
+    if (n < 1 || n > 100) {
+        printf("speed 1..100\n");
         return 1;
     }
     cli->pt_.setDefaultRate(static_cast<uint8_t>(n));
@@ -315,6 +323,7 @@ int CliEth01::cmd_speed(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_preset(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 3) {
         printf("preset recall|save <1..99>\n");
         return 1;
@@ -340,11 +349,17 @@ int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     pt::Position pos{};
     const ccam::Status st = cli->pt_.pt().requestPosition(pos);
     if (st != ccam::Status::Ok) {
         print_st(st);
         return 1;
+    }
+    if (!cli->pt_.ptCaps().pt_pos) {
+        printf("pan/tilt n/a zoom=0x%04X focus=0x%04X iris=0x%04X\n", pos.lens.zoom, pos.lens.focus,
+               pos.lens.iris);
+        return 0;
     }
     printf("pan=0x%04X tilt=0x%04X zoom=0x%04X focus=0x%04X iris=0x%04X\n", pos.pt.pan, pos.pt.tilt,
            pos.lens.zoom, pos.lens.focus, pos.lens.iris);
@@ -353,6 +368,7 @@ int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_raw(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
+    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("raw <CMD> [payload]   example: raw O 1\n");
         return 1;
@@ -406,12 +422,12 @@ void CliEth01::begin() {
     reg("ip", "Static IP / mask / gw", "[addr|mask|gw] [a.b.c.d]", cmd_ip);
     reg("ping", "ICMP ping", "<ip> [count]", cmd_ping);
     reg("ethreset", "Power-cycle LAN8720", nullptr, cmd_ethreset);
-    reg("pan", "Pan left/right/stop", "left|right|stop [1..49]", cmd_pan);
-    reg("tilt", "Tilt up/down/stop", "up|down|stop [1..49]", cmd_tilt);
+    reg("pan", "Pan left/right/stop", "left|right|stop [1..100]", cmd_pan);
+    reg("tilt", "Tilt up/down/stop", "up|down|stop [1..100]", cmd_tilt);
     reg("stop", "Stop pan/tilt/zoom/focus", nullptr, cmd_stop);
     reg("power", "Head power", "on|off", cmd_power);
     reg("home", "Home = recall preset #01 (PH350: no #APC)", nullptr, cmd_home);
-    reg("speed", "Default move rate 1..49", "[1..49]", cmd_speed);
+    reg("speed", "Default move rate 1..100", "[1..100]", cmd_speed);
     reg("preset", "Recall/save preset", "recall|save <1..99>", cmd_preset);
     reg("pos", "Query pan/tilt position", nullptr, cmd_pos);
     reg("raw", "Raw PT cmd (#/CR), print ASCII reply", "<CMD> [payload]", cmd_raw);

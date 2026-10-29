@@ -8,7 +8,7 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
-#include "devices/pt_device.hpp"
+#include "devices/integrated_ptz.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
@@ -134,16 +134,16 @@ public:
 };
 
 /** Встроенный pan/tilt AW-HE870. */
-class He870Pt : public PtDeviceBase {
+class He870Pt : public IntegratedPtzBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
     explicit He870Pt(Transport& transport)
-        : PtDeviceBase(transport)
+        : IntegratedPtzBase(transport)
     {
     }
 
-    PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
+    PtModelId modelId() const override { return PtModelId::He870; }
     const char* modelLabel() const override { return "AW-HE870 Pan/Tilt"; }
 
     Status setNdFilter(He870NdFilter filter)

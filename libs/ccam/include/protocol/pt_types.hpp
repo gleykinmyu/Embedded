@@ -65,13 +65,16 @@ enum class PrSpeed : uint8_t {
     Fast = 2,  ///< HIGH в части спецификаций
 };
 
-/** #L / #LC Data2 — Limitation Setting / действие. */
+/**
+ * #LC Data2 / ответ #L (l0/l1): Release или Set.
+ * #L1..4 — toggle лимита оси в текущей позиции (не 0/1!).
+ */
 enum class Limitation : uint8_t {
     Release = 0,
     Set = 1,
 };
 
-/** #LC Data1 — ось/сторона лимита. */
+/** #L / #LC Data1 — ось лимита. */
 enum class LimitAxis : uint8_t {
     TiltUp = 1,
     TiltDown = 2,

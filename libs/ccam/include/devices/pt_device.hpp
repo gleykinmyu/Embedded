@@ -8,6 +8,7 @@
 #pragma once
 
 #include "catalog/catalog.hpp"
+#include "devices/device_caps.hpp"
 #include "devices/ipt_device.hpp"
 #include "protocol/protocol_encoding.hpp"
 #include "protocol/pt_types.hpp"
@@ -30,15 +31,25 @@ public:
 
     PtModelId modelId() const override { return PtModelId::Generic; }
     const char* modelLabel() const override { return "Generic Pan/Tilt"; }
+    virtual PtCaps capabilities() const { return ptCapsFor(modelId()); }
 
     Status power(pt::PowerMode mode) override;
+    /**
+     * Запрос состояния питания: #O → p[n] (0=Off, 1=On, 2=On+CamTX, 3=On no CamTX).
+     * Для watchdog / PtLinkHealth.
+     */
+    Status requestPower(uint8_t& code);
     Status move(pt::Axis axis, int8_t speed) override;
     /** #PTS — pan+tilt одной командой. */
     Status movePT(int8_t pan, int8_t tilt) override;
     Status stop() override;
+    /**
+     * Абсолютный PT (#APC) — только у IntegratedPtzBase.
+     * Здесь по умолчанию Status::Param (PH / generic).
+     */
     Status setPT(const pt::PT& pt) override;
     Status setLens(const pt::Lens& lens) override;
-    /** Домой: центр #APC (0x8000, 0x8000). */
+    /** По умолчанию Param; PH350 — preset, IntegratedPtz — #APC. */
     Status goHome() override;
     Status recallPreset(uint8_t preset) override;
     Status savePreset(uint8_t preset) override;
@@ -47,18 +58,6 @@ public:
 
     Status setPresetMode(PrMode mode);
     Status setPresetSpeed(PrSpeed speed);
-
-    Status setPTwSpeed(
-        uint16_t pan,
-        uint16_t tilt,
-        uint8_t preset_speed,
-        PrSpeed speed_table);
-    Status relativePosition(uint16_t pan, uint16_t tilt);
-    Status relPTwSpeed(
-        uint16_t pan,
-        uint16_t tilt,
-        uint8_t preset_speed,
-        PrSpeed speed_table);
 
     /** Оптика: публично 0..FFFF → натив 555h..FFFh. */
     Status setZoom(uint16_t pos);
@@ -77,8 +76,12 @@ public:
     Status requestLandingMode(LandingMode& mode);
     Status requestSoftwareVersion(char* out, size_t out_cap);
 
-    Status setLimitation(Limitation mode);
-    Status setLimitationControl(LimitAxis axis, Limitation action);
+    /**
+     * #L[1..4] — toggle лимита оси в текущей позиции (PDF; PH350 — да).
+     * axis — логическая сторона; при AxisInvert мапится на физическую #L.
+     * Явный Set/Release (#LC) — IntegratedPtzBase::setLimitationControl.
+     */
+    Status toggleLimitation(LimitAxis axis, Limitation* new_state = nullptr);
     Status setTiltRange(TiltRange range);
     Status setTallyEnable(Switch mode);
     Status setWirelessControl(Switch mode);
@@ -88,6 +91,11 @@ public:
     Status setWasher(Switch mode);
     Status setOption(Switch mode);
     Status setPresetSpeedUnit(const char* hex3);
+
+    /** #HS — по умолчанию Param; PH-головки переопределяют. */
+    virtual Status queryHeaterStatus(uint8_t& /*status*/) { return Status::Param; }
+    /** #DS — по умолчанию Param; PH350 переопределяет. */
+    virtual Status queryDefrosterStatus(uint8_t& /*status*/) { return Status::Param; }
 
     /** Сырой cmd без '#'; кадр = #cmd[payload]CR (CLI / отладка). */
     Status sendCommand(const char* cmd, const char* payload = nullptr);
@@ -102,8 +110,13 @@ public:
 protected:
     Transport& transport_;
 
-    /** signed (−128..127) → Panasonic 01..99; 0 → 50. */
-    static uint8_t speedFromSigned(int8_t speed);
+    /** Проценты −100..+100 → Panasonic 01..99; 0 → 50. */
+    static uint8_t speedFromPercent(int8_t percent);
+
+    /** Учесть IDevice::invert_ (0 без изменений). */
+    int8_t applyInvert(pt::Axis axis, int8_t percent) const;
+    /** Логическая LimitAxis → физическая #L/#LC с учётом invert_. */
+    LimitAxis mapLimitAxis(LimitAxis axis) const;
 
     Status buildCommand(PtFrame& frame, const char* cmd, const char* payload = nullptr);
 

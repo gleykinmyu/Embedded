@@ -159,29 +159,76 @@ Status PtDeviceBase::sendDec2(catalog::PtCmd cmd, uint8_t value)
     return send(cmd, payload);
 }
 
-uint8_t PtDeviceBase::speedFromSigned(int8_t speed)
+uint8_t PtDeviceBase::speedFromPercent(int8_t percent)
 {
-    if (speed == 0) {
+    if (percent == 0) {
         return kPtSpeedStop;
     }
-    // |speed| 1..128 (INT8_MIN → 128) → Panasonic rate 1..49
-    const int mag = speed < 0 ? -static_cast<int>(speed) : static_cast<int>(speed);
-    int rate = (mag * 49 + 127) / 128;
+    // |percent| 1..100 → величина 1..49. PDF: 01=Max .. 49=Min | 50=Stop | 51=Min .. 99=Max.
+    int mag = percent < 0 ? -static_cast<int>(percent) : static_cast<int>(percent);
+    if (mag > 100) {
+        mag = 100;
+    }
+    int rate = (mag * 49 + 50) / 100; // округление к ближайшему
     if (rate < static_cast<int>(kPtSpeedMin)) {
         rate = kPtSpeedMin;
     }
     if (rate > 49) {
         rate = 49;
     }
-    if (speed < 0) {
-        return static_cast<uint8_t>(rate);
+    if (percent < 0) {
+        return static_cast<uint8_t>(kPtSpeedStop - rate); // 49..01
     }
-    return static_cast<uint8_t>(kPtSpeedMax - rate + 1);
+    return static_cast<uint8_t>(kPtSpeedStop + rate); // 51..99
+}
+
+int8_t PtDeviceBase::applyInvert(pt::Axis axis, int8_t percent) const
+{
+    if (percent == 0) {
+        return 0;
+    }
+    bool flip = false;
+    switch (axis) {
+    case pt::Axis::Pan:
+        flip = invert_.pan;
+        break;
+    case pt::Axis::Tilt:
+        flip = invert_.tilt;
+        break;
+    case pt::Axis::Zoom:
+        flip = invert_.zoom;
+        break;
+    case pt::Axis::Focus:
+        flip = invert_.focus;
+        break;
+    default:
+        break;
+    }
+    if (!flip) {
+        return percent;
+    }
+    // percent ∈ −100..+100 — безопасное отрицание
+    return static_cast<int8_t>(-percent);
+}
+
+LimitAxis PtDeviceBase::mapLimitAxis(LimitAxis axis) const
+{
+    switch (axis) {
+    case LimitAxis::PanLeft:
+        return invert_.pan ? LimitAxis::PanRight : LimitAxis::PanLeft;
+    case LimitAxis::PanRight:
+        return invert_.pan ? LimitAxis::PanLeft : LimitAxis::PanRight;
+    case LimitAxis::TiltUp:
+        return invert_.tilt ? LimitAxis::TiltDown : LimitAxis::TiltUp;
+    case LimitAxis::TiltDown:
+        return invert_.tilt ? LimitAxis::TiltUp : LimitAxis::TiltDown;
+    }
+    return axis;
 }
 
 Status PtDeviceBase::move(pt::Axis axis, int8_t speed)
 {
-    const uint8_t encoded = speedFromSigned(speed);
+    const uint8_t encoded = speedFromPercent(applyInvert(axis, speed));
     if (!isSpeedValid(encoded)) {
         return Status::Param;
     }
@@ -204,8 +251,8 @@ Status PtDeviceBase::move(pt::Axis axis, int8_t speed)
 
 Status PtDeviceBase::movePT(int8_t pan, int8_t tilt)
 {
-    const uint8_t pan_speed = speedFromSigned(pan);
-    const uint8_t tilt_speed = speedFromSigned(tilt);
+    const uint8_t pan_speed = speedFromPercent(applyInvert(pt::Axis::Pan, pan));
+    const uint8_t tilt_speed = speedFromPercent(applyInvert(pt::Axis::Tilt, tilt));
 
     char payload[5];
     payload[0] = static_cast<char>('0' + (pan_speed / 10));
@@ -238,7 +285,14 @@ Status PtDeviceBase::stop()
 
 Status PtDeviceBase::goHome()
 {
-    return setPT(pt::PT{kPtPosCenter, kPtPosCenter});
+    // Абсолютный home (#APC) — IntegratedPtzBase; PH — override (preset).
+    return Status::Param;
+}
+
+Status PtDeviceBase::setPT(const pt::PT& /*pt*/)
+{
+    // #APC — IntegratedPtzBase.
+    return Status::Param;
 }
 
 Status PtDeviceBase::setLens(const pt::Lens& lens)
@@ -276,6 +330,23 @@ Status PtDeviceBase::power(pt::PowerMode mode)
     }
 
     return sendDec1(catalog::PtCmd::Power, value);
+}
+
+Status PtDeviceBase::requestPower(uint8_t& code)
+{
+    uint8_t response[kPtFrameMax];
+    size_t response_len = 0;
+    constexpr auto cmd = catalog::PtCmd::Power;
+    Status st = transact(cmd, nullptr, response, sizeof(response), &response_len);
+    if (st != Status::Ok) {
+        return st;
+    }
+    size_t pos = 0;
+    st = matchPtResponse(response, response_len, cmd, pos);
+    if (st != Status::Ok || pos >= response_len) {
+        return Status::Io;
+    }
+    return decodeDec1ResponseByte(response[pos], code);
 }
 
 Status PtDeviceBase::sendHex3(catalog::PtCmd cmd, uint16_t value)
@@ -333,117 +404,6 @@ Status PtDeviceBase::setPresetMode(PrMode mode)
 Status PtDeviceBase::setPresetSpeed(PrSpeed speed)
 {
     return sendDec1(catalog::PtCmd::PresetSpeedTable, static_cast<uint8_t>(speed));
-}
-
-Status PtDeviceBase::setPT(const pt::PT& pt)
-{
-    Frame<16> payload;
-    Status st = payload.appendHex(pt.pan, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(pt.tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendChar(0);
-    if (st != Status::Ok) {
-        return st;
-    }
-
-    // Большинство P/T не отвечают; при ошибке — eR1:***[CR] (напр. APC на PH350).
-    uint8_t rx[24];
-    size_t n = 0;
-    st = transact(
-        catalog::PtCmd::PanTiltAbsolute, payload.data(), rx, sizeof(rx), &n, 300);
-    if (st == Status::Timeout) {
-        return Status::Ok; // тишина = норма для P/T
-    }
-    if (st != Status::Ok) {
-        return st;
-    }
-    if (n >= 3 && rx[0] == 'e' && rx[1] == 'R') {
-        return Status::Nack;
-    }
-    return Status::Ok;
-}
-
-Status PtDeviceBase::setPTwSpeed(
-    uint16_t pan,
-    uint16_t tilt,
-    uint8_t preset_speed,
-    PrSpeed speed_table)
-{
-    Frame<16> payload;
-    Status st = payload.appendHex(pan, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(preset_speed, 2);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(static_cast<uint8_t>(speed_table), 1);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendChar(0);
-    if (st != Status::Ok) {
-        return st;
-    }
-    return send(catalog::PtCmd::PanTiltAbsoluteSpeed, payload.data());
-}
-
-Status PtDeviceBase::relativePosition(uint16_t pan, uint16_t tilt)
-{
-    Frame<16> payload;
-    Status st = payload.appendHex(pan, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendChar(0);
-    if (st != Status::Ok) {
-        return st;
-    }
-    return send(catalog::PtCmd::PanTiltRelative, payload.data());
-}
-
-Status PtDeviceBase::relPTwSpeed(
-    uint16_t pan,
-    uint16_t tilt,
-    uint8_t preset_speed,
-    PrSpeed speed_table)
-{
-    Frame<16> payload;
-    Status st = payload.appendHex(pan, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(tilt, 4);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(preset_speed, 2);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendHex(static_cast<uint8_t>(speed_table), 1);
-    if (st != Status::Ok) {
-        return st;
-    }
-    st = payload.appendChar(0);
-    if (st != Status::Ok) {
-        return st;
-    }
-    return send(catalog::PtCmd::PanTiltRelativeSpeed, payload.data());
 }
 
 Status PtDeviceBase::setZoom(uint16_t pos)
@@ -772,19 +732,37 @@ Status PtDeviceBase::requestSoftwareVersion(char* out, size_t out_cap)
     return Status::Ok;
 }
 
-Status PtDeviceBase::setLimitation(Limitation mode)
+Status PtDeviceBase::toggleLimitation(LimitAxis axis, Limitation* new_state)
 {
-    return sendDec1(catalog::PtCmd::LimitationSet, static_cast<uint8_t>(mode));
-}
+    // PDF / HE IP: #L[1..4] — toggle лимита оси в ТЕКУЩЕЙ позиции.
+    // Ответ l0=Release / l1=Set (цифра — состояние, не ось).
+    // axis — логическая сторона (с учётом AxisInvert → физическая #L).
+    const uint8_t ax = static_cast<uint8_t>(mapLimitAxis(axis));
+    if (ax < 1 || ax > 4) {
+        return Status::Param;
+    }
 
-Status PtDeviceBase::setLimitationControl(LimitAxis axis, Limitation action)
-{
-    char payload[3];
-    payload[0] = static_cast<char>('0' + static_cast<uint8_t>(axis));
-    payload[1] = static_cast<char>('0' + static_cast<uint8_t>(action));
-    payload[2] = '\0';
+    char payload[2];
+    payload[0] = static_cast<char>('0' + ax);
+    payload[1] = '\0';
 
-    return send(catalog::PtCmd::LimitationControl, payload);
+    constexpr auto cmd = catalog::PtCmd::LimitationSet;
+    uint8_t rx[16];
+    size_t n = 0;
+    Status st = transact(cmd, payload, rx, sizeof(rx), &n);
+    if (st != Status::Ok) {
+        return st;
+    }
+
+    size_t pos = 0;
+    st = matchPtResponse(rx, n, cmd, pos);
+    if (st != Status::Ok || pos >= n || (rx[pos] != '0' && rx[pos] != '1')) {
+        return Status::Io;
+    }
+    if (new_state != nullptr) {
+        *new_state = (rx[pos] == '1') ? Limitation::Set : Limitation::Release;
+    }
+    return Status::Ok;
 }
 
 Status PtDeviceBase::setTiltRange(TiltRange range)

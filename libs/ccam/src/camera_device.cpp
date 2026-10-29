@@ -110,24 +110,68 @@ void CameraDeviceBase::appendLastRx(const uint8_t* data, size_t len)
 
 Status CameraDeviceBase::waitAck(uint32_t timeout_ms)
 {
-    uint8_t buf[kCameraFrameMax];
-    size_t rx_len = 0;
+    // Камера/мост может отдать запоздавший STX…ETX от прошлого Q/O.
+    // Нельзя принимать первый ETX как Nack — ждём ACK до дедлайна.
+    const uint32_t t0 = transport_.nowMs();
+    for (;;) {
+        const uint32_t elapsed = transport_.nowMs() - t0;
+        if (elapsed >= timeout_ms) {
+            transport_.purge();
+            return Status::Timeout;
+        }
+        const uint32_t left = timeout_ms - elapsed;
 
-    // Читаем до ACK / ETX / CR / timeout — чтобы видеть «голый» ответ при Nack.
-    Status st = transport_.transact(nullptr, 0, buf, sizeof(buf), &rx_len, timeout_ms);
-    appendLastRx(buf, rx_len);
-    if (st == Status::Timeout) {
-        return st;
+        uint8_t buf[kCameraFrameMax];
+        size_t rx_len = 0;
+        Status st = transport_.transact(nullptr, 0, buf, sizeof(buf), &rx_len, left);
+        appendLastRx(buf, rx_len);
+
+        if (st == Status::Timeout) {
+            transport_.purge();
+            return Status::Timeout;
+        }
+        if (st != Status::Ok || rx_len == 0) {
+            continue;
+        }
+
+        for (size_t i = 0; i < rx_len; ++i) {
+            if (buf[i] == kAck) {
+                return Status::Ok;
+            }
+        }
+        // STX…ETX / мусор без ACK — отбрасываем и продолжаем ждать.
     }
-    if (st != Status::Ok || rx_len == 0) {
-        return Status::Nack;
-    }
-    for (size_t i = 0; i < rx_len; ++i) {
-        if (buf[i] == kAck) {
-            return Status::Ok;
+}
+
+void CameraDeviceBase::drainTrailingFrames(uint32_t settle_ms)
+{
+    // После ACK камера иногда шлёт ещё <STX>Oxx:…<ETX> — иначе портит следующий set.
+    const uint32_t t0 = transport_.nowMs();
+    uint32_t last_rx_ms = t0;
+    while (transport_.nowMs() - last_rx_ms < settle_ms) {
+        if (transport_.nowMs() - t0 >= settle_ms * 4u) {
+            break;
+        }
+        uint8_t buf[kCameraFrameMax];
+        size_t n = 0;
+        const Status st =
+            transport_.transact(nullptr, 0, buf, sizeof(buf), &n, settle_ms);
+        if (st != Status::Ok || n == 0) {
+            break;
+        }
+        appendLastRx(buf, n);
+        last_rx_ms = transport_.nowMs();
+        bool only_ack = true;
+        for (size_t i = 0; i < n; ++i) {
+            if (buf[i] != kAck) {
+                only_ack = false;
+                break;
+            }
+        }
+        if (only_ack) {
+            break;
         }
     }
-    return Status::Nack;
 }
 
 Status CameraDeviceBase::transact(
@@ -155,6 +199,7 @@ Status CameraDeviceBase::transact(
     }
 
     if (response == nullptr || response_cap == 0) {
+        drainTrailingFrames(60);
         return Status::Ok;
     }
 
@@ -444,14 +489,310 @@ Status CameraDeviceBase::lensContact(const char* hxx)
     return transact(frame);
 }
 
+namespace {
+
+const char* dataAfterColon(const char* payload)
+{
+    if (payload == nullptr) {
+        return nullptr;
+    }
+    const char* p = payload;
+    while (*p != '\0' && *p != kCmdSep) {
+        ++p;
+    }
+    if (*p != kCmdSep || p[1] == '\0') {
+        return nullptr;
+    }
+    return p + 1;
+}
+
+int hexNibbleCam(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    return -1;
+}
+
+Status parseDecU8(const char* data, uint8_t& out)
+{
+    if (data == nullptr || data[0] == '\0') {
+        return Status::Io;
+    }
+    unsigned v = 0;
+    for (const char* p = data; *p; ++p) {
+        if (*p < '0' || *p > '9') {
+            return Status::Io;
+        }
+        v = v * 10u + static_cast<unsigned>(*p - '0');
+        if (v > 255u) {
+            return Status::Io;
+        }
+    }
+    out = static_cast<uint8_t>(v);
+    return Status::Ok;
+}
+
+Status parseHexU16(const char* data, uint16_t& out)
+{
+    if (data == nullptr || data[0] == '\0') {
+        return Status::Io;
+    }
+    uint32_t v = 0;
+    size_t n = 0;
+    for (const char* p = data; *p; ++p, ++n) {
+        const int nib = hexNibbleCam(*p);
+        if (nib < 0 || n >= 4) {
+            return Status::Io;
+        }
+        v = (v << 4) | static_cast<uint32_t>(nib);
+    }
+    out = static_cast<uint16_t>(v);
+    return Status::Ok;
+}
+
+Status copyDataField(const char* payload, char* out, size_t out_cap)
+{
+    if (out == nullptr || out_cap == 0) {
+        return Status::Param;
+    }
+    const char* data = dataAfterColon(payload);
+    if (data == nullptr) {
+        data = payload;
+    }
+    if (data == nullptr) {
+        out[0] = '\0';
+        return Status::Io;
+    }
+    size_t i = 0;
+    for (; data[i] != '\0' && i + 1 < out_cap; ++i) {
+        out[i] = data[i];
+    }
+    out[i] = '\0';
+    return Status::Ok;
+}
+
+} // namespace
+
+Status CameraDeviceBase::requestDecU8(catalog::CameraCmd cmd, uint8_t& value)
+{
+    char raw[40] = {};
+    Status st = request(cmd, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseDecU8(data, value);
+}
+
+Status CameraDeviceBase::requestSwitchField(catalog::CameraCmd cmd, Switch& mode)
+{
+    uint8_t v = 0;
+    Status st = requestDecU8(cmd, v);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (v > 1) {
+        return Status::Io;
+    }
+    mode = static_cast<Switch>(v);
+    return Status::Ok;
+}
+
 Status CameraDeviceBase::requestModel(char* out, size_t out_cap)
 {
-    return request(catalog::CameraCmd::ModelNumber, out, out_cap);
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::ModelNumber, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    return copyDataField(raw, out, out_cap);
 }
 
 Status CameraDeviceBase::requestSoftwareVersion(char* out, size_t out_cap)
 {
-    return request(catalog::CameraCmd::SoftwareVersion, out, out_cap);
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::SoftwareVersion, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    return copyDataField(raw, out, out_cap);
+}
+
+Status CameraDeviceBase::requestAwcMode(uint8_t& mode)
+{
+    return requestDecU8(catalog::CameraCmd::AwcMode, mode);
+}
+
+Status CameraDeviceBase::requestGain(int& db, bool& agc)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::GainUp, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    uint16_t code = 0;
+    st = parseHexU16(data, code);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (code == kGainAgcCode) {
+        agc = true;
+        db = 0;
+        return Status::Ok;
+    }
+    agc = false;
+    db = static_cast<int>(code) - static_cast<int>(kGainZeroDbCode);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestShutter(uint8_t& code)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::Shutter, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    uint16_t v = 0;
+    st = parseHexU16(data, v);
+    if (st != Status::Ok || v > 0xFF) {
+        return Status::Io;
+    }
+    code = static_cast<uint8_t>(v);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestIrisAutoManual(IrisAutoManual& mode)
+{
+    uint8_t v = 0;
+    Status st = requestDecU8(catalog::CameraCmd::IrisAutoManual, v);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (v > static_cast<uint8_t>(IrisAutoManual::Auto)) {
+        return Status::Io;
+    }
+    mode = static_cast<IrisAutoManual>(v);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestManualIris(uint16_t& norm)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::ManualIrisVolume, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    uint16_t native = 0;
+    st = parseHexU16(data, native);
+    if (st != Status::Ok) {
+        return st;
+    }
+    norm = camIrisToNorm(native);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestDetail(uint8_t& mode)
+{
+    return requestDecU8(catalog::CameraCmd::Detail, mode);
+}
+
+Status CameraDeviceBase::requestSceneFile(uint8_t& scene)
+{
+    return requestDecU8(catalog::CameraCmd::SceneFile, scene);
+}
+
+Status CameraDeviceBase::requestColorBar(Switch& mode)
+{
+    return requestSwitchField(catalog::CameraCmd::ColorBar, mode);
+}
+
+Status CameraDeviceBase::requestMenuOnOff(Switch& mode)
+{
+    return requestSwitchField(catalog::CameraCmd::MenuOnOff, mode);
+}
+
+Status CameraDeviceBase::requestAutoFocus(Switch& mode)
+{
+    return requestSwitchField(catalog::CameraCmd::AutoFocus, mode);
+}
+
+Status CameraDeviceBase::requestFilter(uint8_t& mode)
+{
+    return requestDecU8(catalog::CameraCmd::FilterNd, mode);
+}
+
+Status CameraDeviceBase::requestNegPos(Switch& mode)
+{
+    return requestSwitchField(catalog::CameraCmd::NegPos, mode);
+}
+
+Status CameraDeviceBase::requestFieldFrame(FieldFrameMode& mode)
+{
+    uint8_t v = 0;
+    Status st = requestDecU8(catalog::CameraCmd::FieldFrame, v);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (v > static_cast<uint8_t>(FieldFrameMode::Frame)) {
+        return Status::Io;
+    }
+    mode = static_cast<FieldFrameMode>(v);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestChromaLevel(uint8_t& level)
+{
+    return requestDecU8(catalog::CameraCmd::ChromaLevel, level);
+}
+
+Status CameraDeviceBase::requestRGain(uint16_t& value)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::RGain, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, value);
+}
+
+Status CameraDeviceBase::requestBGain(uint16_t& value)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::BGain, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, value);
 }
 
 Status CameraDeviceBase::awcStart()
@@ -472,6 +813,81 @@ Status CameraDeviceBase::setAwcMode(uint8_t mode)
 Status CameraDeviceBase::setShutter(const char* data_hex)
 {
     return send(catalog::CameraCmd::Shutter, data_hex);
+}
+
+Status CameraDeviceBase::setShutterMode(uint8_t mode_0_to_f)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    char data[2] = {hex[mode_0_to_f & 0x0F], '\0'};
+    return setShutter(data);
+}
+
+Status CameraDeviceBase::setSynchroScan(const char* data)
+{
+    return send(catalog::CameraCmd::SynchroScan, data);
+}
+
+Status CameraDeviceBase::setNegPos(bool negative)
+{
+    return sendDec1(
+        catalog::CameraCmd::NegPos,
+        static_cast<uint8_t>(negative ? Switch::On : Switch::Off));
+}
+
+Status CameraDeviceBase::setFieldFrame(FieldFrameMode mode)
+{
+    return sendDec1(catalog::CameraCmd::FieldFrame, static_cast<uint8_t>(mode));
+}
+
+Status CameraDeviceBase::setChromaLevel(Levels level)
+{
+    return sendDec1(catalog::CameraCmd::ChromaLevel, static_cast<uint8_t>(level));
+}
+
+Status CameraDeviceBase::setRGain(const char* data)
+{
+    return send(catalog::CameraCmd::RGain, data);
+}
+
+Status CameraDeviceBase::setBGain(const char* data)
+{
+    return send(catalog::CameraCmd::BGain, data);
+}
+
+Status CameraDeviceBase::setRPedestal(const char* data)
+{
+    return send(catalog::CameraCmd::RPedestal, data);
+}
+
+Status CameraDeviceBase::setBPedestal(const char* data)
+{
+    return send(catalog::CameraCmd::BPedestal, data);
+}
+
+Status CameraDeviceBase::setGamma(const char* data)
+{
+    return setOsd(catalog::OsdItem::Gamma, data);
+}
+
+Status CameraDeviceBase::setAgcMax(const char* data)
+{
+    return setOsd(catalog::OsdItem::AgcMax, data);
+}
+
+Status CameraDeviceBase::setTotalDtlLevel(const char* data)
+{
+    return setVideoMenu(catalog::VideoMenuItem::TotalDtlLevel, data);
+}
+
+Status CameraDeviceBase::setGenlockInput(const char* data)
+{
+    return setVideoMenu(catalog::VideoMenuItem::GenlockInput, data);
+}
+
+Status CameraDeviceBase::setBlackShadingCorrect(bool on)
+{
+    return setVideoMenuSwitch(
+        catalog::VideoMenuItem::BlackShadingCorrectDig, toSwitch(on));
 }
 
 namespace {

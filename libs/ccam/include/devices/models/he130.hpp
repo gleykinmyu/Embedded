@@ -8,7 +8,7 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
-#include "devices/pt_device.hpp"
+#include "devices/integrated_ptz.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
@@ -110,16 +110,16 @@ public:
 /**
  * Встроенный pan/tilt AW-HE130 (та же RS485-линия, #-протокол).
  */
-class He130Pt : public PtDeviceBase {
+class He130Pt : public IntegratedPtzBase {
 public:
     static constexpr uint8_t kMaxPreset = 99;
 
     explicit He130Pt(Transport& transport)
-        : PtDeviceBase(transport)
+        : IntegratedPtzBase(transport)
     {
     }
 
-    PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
+    PtModelId modelId() const override { return PtModelId::He130; }
     const char* modelLabel() const override { return "AW-HE130 Pan/Tilt"; }
 
     /** ND filter (#D2). */

@@ -180,17 +180,38 @@ bool auth_ok(int sock, const struct sockaddr_in *from, socklen_t fromlen) {
     snprintf(auth_msg, sizeof(auth_msg), "AUTH %s", nonce);
     udp_reply(sock, from, fromlen, auth_msg);
 
-    timeval tv = {};
-    tv.tv_sec = 10;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
+    const TickType_t t0 = xTaskGetTickCount();
+    const TickType_t limit = pdMS_TO_TICKS(10000);
     char areq[128] = {};
     struct sockaddr_in peer = {};
-    socklen_t peerlen = sizeof(peer);
-    const int n = recvfrom(sock, areq, sizeof(areq) - 1, 0, reinterpret_cast<struct sockaddr *>(&peer),
-                           &peerlen);
+    int n = -1;
+    while (static_cast<TickType_t>(xTaskGetTickCount() - t0) < limit) {
+        const uint32_t left_ms =
+            (limit - static_cast<TickType_t>(xTaskGetTickCount() - t0)) * portTICK_PERIOD_MS;
+        if (left_ms == 0) {
+            break;
+        }
+        timeval tv = {};
+        tv.tv_sec = static_cast<time_t>(left_ms / 1000);
+        tv.tv_usec = static_cast<long>((left_ms % 1000) * 1000);
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    tv = {};
+        socklen_t peerlen = sizeof(peer);
+        n = recvfrom(sock, areq, sizeof(areq) - 1, 0, reinterpret_cast<struct sockaddr *>(&peer),
+                     &peerlen);
+        if (n <= 0) {
+            n = -1;
+            break;
+        }
+        if (peer.sin_addr.s_addr != from->sin_addr.s_addr) {
+            ESP_LOGW(TAG, "auth from other host ignored");
+            n = -1;
+            continue;
+        }
+        break;
+    }
+
+    timeval tv = {};
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     if (n <= 0) {
@@ -230,7 +251,7 @@ void handle_invite(int sock, char *msg, const struct sockaddr_in *from, socklen_
         ESP_LOGW(TAG, "bad invite: %s", msg);
         return;
     }
-    if (cmd != kCmdFlash || strlen(md5) != 32 || host_port <= 0 || size == 0) {
+    if (cmd != kCmdFlash || strlen(md5) != 32 || host_port <= 0 || host_port > 65535 || size == 0) {
         udp_reply(sock, from, fromlen, "ERR");
         return;
     }

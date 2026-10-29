@@ -66,6 +66,9 @@ bool EthLan8720::apply_now() {
         http_->stop();
     }
     if (!apply_static_ip()) {
+        if (http_ && link_up_) {
+            http_->start();
+        }
         return false;
     }
     if (link_up_) {
@@ -115,8 +118,11 @@ bool EthLan8720::set_ip(uint32_t addr) {
     if (addr == 0 || addr == 0xFFFFFFFFu) {
         return false;
     }
+    const uint32_t prev = cfg_ip_;
     cfg_ip_ = addr;
     if (!apply_now()) {
+        cfg_ip_ = prev;
+        (void)apply_now();
         return false;
     }
     save();
@@ -127,8 +133,11 @@ bool EthLan8720::set_mask(uint32_t mask) {
     if (mask == 0) {
         return false;
     }
+    const uint32_t prev = cfg_mask_;
     cfg_mask_ = mask;
     if (!apply_now()) {
+        cfg_mask_ = prev;
+        (void)apply_now();
         return false;
     }
     save();
@@ -136,9 +145,14 @@ bool EthLan8720::set_mask(uint32_t mask) {
 }
 
 bool EthLan8720::set_gw(uint32_t gw) {
+    const uint32_t prev_gw = cfg_gw_;
+    const uint32_t prev_dns = cfg_dns_;
     cfg_gw_ = gw;
     cfg_dns_ = gw;
     if (!apply_now()) {
+        cfg_gw_ = prev_gw;
+        cfg_dns_ = prev_dns;
+        (void)apply_now();
         return false;
     }
     save();

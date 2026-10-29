@@ -42,6 +42,17 @@ enum class Axis : uint8_t {
     Roll,  ///< Вращение вокруг оптической оси (если есть на головке)
 };
 
+/**
+ * Инверсия логических направлений (монтаж / зеркало UI).
+ * true → знак move и пара LimitAxis меняются местами.
+ */
+struct AxisInvert {
+    bool pan = false;    ///< Left ↔ Right
+    bool tilt = false;   ///< Down ↔ Up
+    bool zoom = false;   ///< Wide ↔ Tele
+    bool focus = false;  ///< Near ↔ Far
+};
+
 /** Абсолютная позиция pan/tilt. */
 struct PT {
     uint16_t pan = 0;
@@ -93,18 +104,21 @@ public:
     virtual ccam::devices::PtModelId modelId() const = 0;
     virtual const char* modelLabel() const = 0;
 
+    void setAxisInvert(const AxisInvert& invert) { invert_ = invert; }
+    const AxisInvert& axisInvert() const { return invert_; }
+
     virtual Status power(PowerMode mode) = 0;
 
     /**
      * Непрерывное движение по оси.
-     * speed: полный int8_t (−128..127); <0 / >0 — сторона, 0 — стоп оси.
+     * speed: проценты −100..+100 (0 = стоп). Знак = сторона, |speed| = скорость.
      * Масштаб в протокол производителя — в реализации (PtDeviceBase и т.п.).
      * Pan −/+ = Left/Right, Tilt −/+ = Down/Up,
      * Zoom −/+ = Wide/Tele, Focus/Iris −/+ = Near/Far,
      * Roll −/+ = против/по часовой (если ось есть).
      */
     virtual Status move(Axis axis, int8_t speed) = 0;
-    /** Одновременный pan+tilt (signed −128..127; 0 = стоп оси). */
+    /** Одновременный pan+tilt (проценты −100..+100; 0 = стоп оси). */
     virtual Status movePT(int8_t pan, int8_t tilt)
     {
         Status st = move(Axis::Pan, pan);
@@ -136,6 +150,9 @@ public:
     virtual Status savePreset(uint8_t preset) = 0;
     virtual Status deletePreset(uint8_t preset) = 0;
     virtual Status requestPosition(Position& position) = 0;
+
+protected:
+    AxisInvert invert_{};
 };
 
 } // namespace pt

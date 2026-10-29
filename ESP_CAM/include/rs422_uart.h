@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-/** ESP32 UART1 как BIF::IByteStream → RS-422 (full-duplex). */
+/** ESP32 UART2 как BIF::IByteStream → RS-422 (full-duplex). */
 class Rs422Uart : public BIF::IByteStream {
 public:
     size_t write(const uint8_t *data, size_t size) override;

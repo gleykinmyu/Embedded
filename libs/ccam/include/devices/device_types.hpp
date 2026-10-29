@@ -31,8 +31,12 @@ enum class CameraModelId : uint8_t {
 /** Поворотное устройство / P/T-часть PTZ (P/T protocol). */
 enum class PtModelId : uint8_t {
     Generic,
-    /** Встроенный pan/tilt в PTZ-камере (HE/UE/HR…). */
+    /** Встроенный pan/tilt без уточнения модели (база IntegratedPtz). */
     IntegratedPtz,
+    /** Конкретные integrated PTZ. */
+    He130,
+    He870,
+    Ue150,
     /** Отдельная головка AW-PH350 / PH350E и серия PH. */
     Ph350,
     Ph360,
