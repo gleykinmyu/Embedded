@@ -1,0 +1,184 @@
+<section id="sys" class="tab-panel" hidden>
+  <div class="panel">
+    <h2>Models</h2>
+    <p class="sub">Класс протокола (NVS). Питание — в шапке. CamTX — если caps.power_cam_tx.</p>
+    <div class="btn-row wrap" data-cap="power_cam_tx">
+      <button type="button" class="start" data-cmd="power_on_cam">ON + CamTX</button>
+      <button type="button" class="secondary" data-cmd="power_on_nocam">ON no CamTX</button>
+    </div>
+    <div class="fields">
+      <label class="field">PT
+        <select id="ptmodel">
+          <option value="ph350">AW-PH350E</option>
+          <option value="ph360">AW-PH360</option>
+          <option value="ph650">AW-PH650</option>
+          <option value="ph405">AW-PH405</option>
+          <option value="he130">AW-HE130 PT</option>
+          <option value="he870">AW-HE870 PT</option>
+          <option value="ue150">AW-UE150 PT</option>
+        </select>
+      </label>
+      <label class="field">Camera
+        <select id="cammodel">
+          <option value="e650">AW-E650E</option>
+          <option value="e600">AW-E600</option>
+          <option value="he130">AW-HE130</option>
+          <option value="he870">AW-HE870</option>
+          <option value="ue150">AW-UE150</option>
+        </select>
+      </label>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="refresh" data-cmd="set_models" id="savemodels">Save</button>
+    </div>
+    <p class="hint" id="pairhint"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Axis invert</h2>
+    <p class="sub">UI ↔ физика головки (NVS, лимиты #L).</p>
+    <div class="chk-stack">
+      <label class="chk"><input id="inv_pan" type="checkbox"> Invert Pan</label>
+      <label class="chk"><input id="inv_tilt" type="checkbox"> Invert Tilt</label>
+      <label class="chk"><input id="inv_zoom" type="checkbox"> Invert Zoom</label>
+      <label class="chk"><input id="inv_focus" type="checkbox"> Invert Focus</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Limits / options</h2>
+    <p class="sub">PH: упор → Toggle #L1..4. #LC/#APC/#PE — Integrated PTZ.</p>
+    <div class="fields">
+      <label class="field" data-cap="limit_toggle">axis
+        <select id="limax">
+          <option value="1">TiltUp #L1</option><option value="2">TiltDown #L2</option>
+          <option value="3">PanLeft #L3</option><option value="4">PanRight #L4</option>
+        </select>
+      </label>
+      <label class="field" data-cap="limit_ctrl">#LC
+        <select id="limact"><option value="1">Set</option><option value="0">Release</option></select>
+      </label>
+      <label class="field" data-cap="tilt_range">Tilt range
+        <select id="tiltr" data-send="tilt_range"><option value="0">190°</option><option value="1">300°</option></select>
+      </label>
+      <label class="field" data-cap="tally">Tally
+        <select id="tally" data-send="tally"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="wireless">Wireless
+        <select id="wl" data-send="wireless"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="washer">Washer
+        <select id="wash" data-send="washer"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="option">Option
+        <select id="opt" data-send="option"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="fan">Fan
+        <select id="fan" data-send="fan">
+          <option value="0">Auto</option><option value="1">High</option><option value="2">Mid</option><option value="3">Low</option>
+        </select>
+      </label>
+      <label class="field" data-cap="wiper">Wiper
+        <select id="wip" data-send="wiper">
+          <option value="0">Off</option><option value="1">Fast</option><option value="2">Slow</option>
+        </select>
+      </label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="limit_toggle" data-cap="limit_toggle">Toggle #L</button>
+      <button type="button" data-cmd="limit_ctrl" data-cap="limit_ctrl">Apply #LC</button>
+      <button type="button" data-cmd="fan2" data-cap="fan">Fan2</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Camera setup</h2>
+    <p class="sub">Сервисные Oxx · Genlock/Neg/Field — на вкладке Camera → Output/Color.</p>
+    <div class="fields">
+      <label class="field" data-cap="black_shade">Black shade
+        <select id="cbsh" data-api="cam" data-send="black_shade">
+          <option value="0">Off</option><option value="1">On</option>
+        </select>
+      </label>
+      <label class="field" data-cap="lens_h">lens H
+        <input id="clensh" value="00" data-api="cam" data-send="lens_h" data-send-param="data">
+      </label>
+      <label class="field">scene data
+        <input id="cscened" value="0" data-api="cam" data-send="scene_data" data-send-param="data">
+      </label>
+      <label class="field" data-cap="monitor">dxx
+        <input id="cdxx" value="00">
+      </label>
+      <label class="field" data-cap="monitor">mon
+        <input id="cmon" value="0">
+      </label>
+    </div>
+    <div class="btn-row" data-cap="monitor">
+      <button type="button" data-api="cam" data-cmd="monitor">Monitor</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>User Menu (QSD)</h2>
+    <p class="sub">Прямой Set/Get OSD:nn — как CAMERA MENU OP на RP150. Не путать с вкладкой OSD (навигация DUS).</p>
+    <div class="btn-row">
+      <button type="button" id="osd_read_all">Read all</button>
+      <button type="button" id="osd_read_stop">Stop</button>
+    </div>
+    <div id="osd_list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Camera query</h2>
+    <p class="sub">Read params — поток Qxx. Model / Ver — QID / QSV.</p>
+    <div class="btn-row wrap">
+      <button type="button" class="refresh" id="cam_read_params">Read params</button>
+      <button type="button" data-api="cam" data-cmd="model">Q Model</button>
+      <button type="button" data-api="cam" data-cmd="version">Q Ver</button>
+    </div>
+    <pre id="camparams" class="camparams"></pre>
+  </div>
+
+  <div class="panel">
+    <h2>Queries</h2>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="pos_disp" data-cap="pos_disp">Pos disp</button>
+      <button type="button" data-cmd="req_exposure" data-cap="exposure_q">Exposure</button>
+      <button type="button" data-cmd="req_error">Error</button>
+      <button type="button" data-cmd="req_landing" data-cap="landing">Landing</button>
+      <button type="button" data-cmd="req_ver" data-cap="software_ver">Version</button>
+      <button type="button" data-cmd="req_heater" data-cap="heater">Heater</button>
+      <button type="button" data-cmd="req_defrost" data-cap="defroster">Defroster</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Raw PT</h2>
+    <div class="fields">
+      <label class="field">cmd <input id="rawcmd" value="O" maxlength="8"></label>
+      <label class="field">payload <input id="rawpay" value="1"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="raw">Transact</button>
+      <button type="button" data-cmd="raw_send">Send</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Info</h2>
+    <table class="info-table">
+      <tr><td>Link</td><td id="link">…</td></tr>
+      <tr><td>IP</td><td id="ip">…</td></tr>
+      <tr><td>Mask</td><td id="mask">…</td></tr>
+      <tr><td>GW</td><td id="gw">…</td></tr>
+      <tr><td>MAC</td><td id="mac">…</td></tr>
+      <tr><td>PT</td><td id="ptm">…</td></tr>
+      <tr><td>PT link</td><td id="ptlink">…</td></tr>
+      <tr><td>Cam link</td><td id="camlink">…</td></tr>
+      <tr><td>Cam</td><td id="camm">…</td></tr>
+      <tr><td>Rate</td><td id="rateinfo">…</td></tr>
+      <tr><td>Pos</td><td id="pos">—</td></tr>
+      <tr><td>Uptime</td><td id="up">…</td></tr>
+    </table>
+  </div>
+</section>

@@ -18,6 +18,7 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
+#include "devices/cam_param_ranges.hpp"
 #include "devices/device_types.hpp"
 #include "devices/integrated_ptz.hpp"
 #include "devices/ipt_device.hpp"

@@ -9,29 +9,25 @@
 
 #include "devices/camera_device.hpp"
 #include "devices/integrated_ptz.hpp"
+#include "protocol/choice_lists.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
 
 namespace ccam::devices {
 
-/** Режим AWC для HE130 (OAW:data, см. PDF). */
+/** Режим AWC для HE130 (OAW). Тот же список, что HE870 и UE150. */
 enum class He130AwcMode : uint8_t {
-    Atw = 0,
-    AwcA = 1,
-    AwcB = 2,
-    Preset3200K = 3,
-    Preset5600K = 4,
-    Var = 5,
+    CCAM_FOR_EACH_HE_AWC(CCAM_ENUM)
 };
 
 /** Сцена (OSF / XSF), HE130. */
 enum class He130Scene : uint8_t {
-    Halogen = 0,
-    Fluorescent = 1,
-    Outdoor = 2,
-    User = 3,
+    CCAM_FOR_EACH_SCENE(CCAM_ENUM)
 };
+
+CCAM_DEFINE_U8_LABEL(He130AwcMode, CCAM_FOR_EACH_HE_AWC)
+CCAM_DEFINE_U8_LABEL(He130Scene, CCAM_FOR_EACH_SCENE)
 
 /**
  * Камера AW-HE130.
@@ -60,8 +56,7 @@ public:
 
     Status selectScene(He130Scene scene)
     {
-        char data[2] = {static_cast<char>('0' + static_cast<uint8_t>(scene)), '\0'};
-        return CameraDeviceBase::selectScene(data);
+        return setSceneFile(static_cast<uint8_t>(scene));
     }
 
     /** QSA:60 / OSA:60 MODE @S.GAIN (Video menu, PDF стр. 14). */
@@ -105,6 +100,12 @@ public:
     {
         return sendDec1(catalog::CameraCmd::DigitalExtender, static_cast<uint8_t>(toSwitch(on)));
     }
+
+    /** DLT:1 — LEFT SW (PDF: HE120/HE130). */
+    Status leftSw() { return sendDec1(catalog::CameraCmd::LeftSw, 1); }
+
+    /** DRT:1 — RIGHT SW. */
+    Status rightSw() { return sendDec1(catalog::CameraCmd::RightSw, 1); }
 };
 
 /**

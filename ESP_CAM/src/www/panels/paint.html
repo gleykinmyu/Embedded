@@ -1,0 +1,51 @@
+<section id="paint" class="tab-panel" hidden>
+  <div class="panel" data-cap="paint">
+    <h2>Pedestal / Gain</h2>
+    <p class="sub">ORG/OBG/ORD/OBD −30…+30 (как PED / paint gain на RP150).</p>
+    <div class="slide">
+      <span class="nm">R Gain</span>
+      <input id="crg" type="range" min="-30" max="30" value="0" data-api="cam" data-send="r_gain" data-paint>
+      <b id="crg_v">0</b>
+    </div>
+    <div class="slide">
+      <span class="nm">B Gain</span>
+      <input id="cbg" type="range" min="-30" max="30" value="0" data-api="cam" data-send="b_gain" data-paint>
+      <b id="cbg_v">0</b>
+    </div>
+    <div class="slide">
+      <span class="nm">R Ped</span>
+      <input id="crp" type="range" min="-30" max="30" value="0" data-api="cam" data-send="r_ped" data-paint>
+      <b id="crp_v">0</b>
+    </div>
+    <div class="slide">
+      <span class="nm">B Ped</span>
+      <input id="cbp" type="range" min="-30" max="30" value="0" data-api="cam" data-send="b_ped" data-paint>
+      <b id="cbp_v">0</b>
+    </div>
+  </div>
+
+  <div class="panel" data-cap="paint">
+    <h2>Chroma / Detail</h2>
+    <div class="slide" data-cap="chroma">
+      <span class="nm">Chroma</span>
+      <input id="cchr" type="range" min="0" max="6" value="3" data-api="cam" data-send="chroma" title="0=−3 … 3=0 … 6=+3">
+      <b id="cchr_v">0</b>
+    </div>
+    <div class="fields">
+      <label class="field">Detail
+        <select id="cdet" data-api="cam" data-send="detail">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="hd_detail">HD Detail
+        <select id="chdet" data-api="cam" data-send="hd_detail" title="В основном HE870">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="total_dtl">Total DTL
+        <select id="cdtl" data-range="total_dtl" data-api="cam" data-send="total_dtl" data-send-param="data"></select>
+      </label>
+    </div>
+  </div>
+
+</section>

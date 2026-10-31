@@ -9,6 +9,7 @@
 
 #include "devices/camera_device.hpp"
 #include "devices/integrated_ptz.hpp"
+#include "protocol/choice_lists.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
@@ -16,20 +17,15 @@
 namespace ccam::devices {
 
 enum class Ue150AwcMode : uint8_t {
-    Atw = 0,
-    AwcA = 1,
-    AwcB = 2,
-    Preset3200K = 3,
-    Preset5600K = 4,
-    Var = 5,
+    CCAM_FOR_EACH_HE_AWC(CCAM_ENUM)
 };
 
 enum class Ue150Scene : uint8_t {
-    Scene1 = 0,
-    Scene2 = 1,
-    Scene3 = 2,
-    Scene4 = 3,
+    CCAM_FOR_EACH_UE_SCENE(CCAM_ENUM)
 };
+
+CCAM_DEFINE_U8_LABEL(Ue150AwcMode, CCAM_FOR_EACH_HE_AWC)
+CCAM_DEFINE_U8_LABEL(Ue150Scene, CCAM_FOR_EACH_UE_SCENE)
 
 /** Камера AW-UE150 (и совместимые UE155, UN145). */
 class Ue150Camera : public CameraDeviceBase {
@@ -49,8 +45,7 @@ public:
 
     Status selectScene(Ue150Scene scene)
     {
-        char data[2] = {static_cast<char>('0' + static_cast<uint8_t>(scene)), '\0'};
-        return CameraDeviceBase::selectScene(data);
+        return setSceneFile(static_cast<uint8_t>(scene));
     }
 
     /** QSA:60 / OSA:60 MODE @S.GAIN. */

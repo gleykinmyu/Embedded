@@ -1,0 +1,115 @@
+<section id="ptz" class="tab-panel">
+  <div class="panel ctrl-pt">
+    <div class="pads">
+      <div class="pads-pt">
+        <div class="pad" title="Pan / Tilt">
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="tilt_up">▲</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="pan_left">◀</button>
+          <button type="button" class="kill" data-cmd="stop" title="Stop">■</button>
+          <button type="button" data-hold="pan_right">▶</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="tilt_down">▼</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+        </div>
+        <div class="rockers">
+          <div class="rocker-col" title="Zoom">
+            <div class="lbl">Zoom</div>
+            <div class="pad rocker">
+              <button type="button" data-hold="zoom_tele" title="Tele">▲</button>
+              <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+              <button type="button" data-hold="zoom_wide" title="Wide">▼</button>
+            </div>
+          </div>
+          <div class="rocker-col" title="Focus">
+            <div class="lbl">Focus</div>
+            <div class="pad rocker">
+              <button type="button" data-hold="focus_far" title="Far">▲</button>
+              <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+              <button type="button" data-hold="focus_near" title="Near">▼</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide spd-slide">
+      <span class="nm">Speed</span>
+      <input id="rate" type="range" min="1" max="100" value="60" title="Скорость 1…100%">
+      <b id="spd">60</b>
+    </div>
+    <div class="btn-row">
+      <button type="button" id="limit_arm" class="limit-arm" data-cap="limit_toggle"
+        title="Западает → стрелка ставит #L/#LC на эту ось, затем гаснет" aria-pressed="false">Limit</button>
+      <button type="button" class="refresh" data-cmd="home" title="PH: preset #01 · HE: #APC center">Home</button>
+    </div>
+  </div>
+
+  <div class="panel ctrl-preset">
+    <h2>Preset memory</h2>
+    <p class="sub">Номер = Recall. Store/Delete залипают → номер; сброс — повтор или пустое место.</p>
+    <div class="modes" id="prmodes" role="group">
+      <button type="button" class="secondary" data-cmd="preset_latest" title="#S">Latest</button>
+      <button type="button" class="save idle" data-pr-mode="save" title="Залипнуть → номер">Store</button>
+      <button type="button" class="kill idle" data-pr-mode="delete" title="Залипнуть → номер">Delete</button>
+    </div>
+    <div class="banks pr-tabs" id="prbanks" role="tablist" aria-label="Preset bank"></div>
+    <div class="presets" id="prquick"></div>
+    <div class="btn-row wrap pr-meta-row">
+      <span class="meta" id="prinfo">P01 · Recall</span>
+      <input id="pr" type="hidden" value="1">
+      <button type="button" data-cmd="preset_map" data-cap="preset_map" title="#PE">Map #PE</button>
+    </div>
+    <div class="fields">
+      <label class="field">Mode
+        <select id="prmode" data-send="preset_mode">
+          <option value="0">Normal</option><option value="1">Diagonal</option>
+        </select>
+      </label>
+      <label class="field">Speed
+        <select id="prspd" data-send="preset_speed">
+          <option value="0">Slow</option><option value="1">Mid</option><option value="2">Fast</option>
+        </select>
+      </label>
+      <label class="field">Unit
+        <input id="prunit" value="080" maxlength="3" data-send="preset_speed_unit" data-send-param="data">
+      </label>
+      <label class="field">Lens
+        <select id="lensctrl" data-send="lens_ctrl"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel" data-cap="abs_pt">
+    <h2>Absolute PT (#APC)</h2>
+    <p class="sub">Integrated PTZ (HE/UE). 0000..FFFF.</p>
+    <div class="fields">
+      <label class="field">Pan <input id="apan" value="0x8000"></label>
+      <label class="field">Tilt <input id="atilt" value="0x8000"></label>
+    </div>
+    <div class="btn-row"><button type="button" data-cmd="set_pt">Go #APC</button></div>
+  </div>
+
+  <div class="panel" data-cap="lens_q">
+    <h2>Lens position (PT)</h2>
+    <p class="sub">set #AX*[Data] · get #GZ/#GF/#GI · UI 0000..FFFF</p>
+    <div class="fields">
+      <label class="field">Z <input id="zoom" value="0x0000"></label>
+      <label class="field">F <input id="focus" value="0x8000"></label>
+      <label class="field">I <input id="iris" value="0x8000"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="set_lens">Set all</button>
+      <button type="button" data-cmd="set_zoom" title="#AXZ+data">Set Z</button>
+      <button type="button" data-cmd="set_focus" title="#AXF+data">Set F</button>
+      <button type="button" data-cmd="set_iris" title="#AXI+data">Set I</button>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="pos" data-cap="pt_pos">Pos</button>
+      <button type="button" data-cmd="get_zoom" title="#GZ">Get Z</button>
+      <button type="button" data-cmd="get_focus" title="#GF">Get F</button>
+      <button type="button" data-cmd="get_iris" title="#GI">Get I</button>
+      <button type="button" data-cmd="req_lens" title="#LPI">Q Lens</button>
+    </div>
+  </div>
+</section>

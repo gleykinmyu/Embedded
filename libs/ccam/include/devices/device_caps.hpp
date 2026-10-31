@@ -29,10 +29,11 @@ struct PtCaps {
     bool defroster = false;  ///< #DS (PH350)
     bool pos_disp = false;   ///< #PTD
     bool pt_pos = false;     ///< #PTV / requestPosition pan+tilt (не PH: фейковый центр)
-    bool lens_q = false;     ///< #GZ/#GF/#GI / #AXI — оптика по P/T (integrated PTZ)
+    bool lens_q = false;     ///< #AXZ/#AXF/#AXI (+ get) и/или Request #GZ/#GF/#GI
     bool exposure_q = false; ///< #LU и т.п.
     bool landing = false;
     bool software_ver = false;
+    bool power_cam_tx = false; ///< отдельные #O CamTX-режимы (не PH)
 };
 
 /** Флаги camera-команд. */
@@ -51,6 +52,7 @@ struct CamCaps {
     bool total_dtl = false;
     bool monitor = false;
     bool lens_h = false;
+    bool menu_lr = false; ///< DLT/DRT Left/Right SW (HE120/HE130…)
 };
 
 /** Подпись для UI / NVS-ключа. */

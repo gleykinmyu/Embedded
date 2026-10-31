@@ -33,12 +33,12 @@ public:
     const char* modelLabel() const override { return "Generic Pan/Tilt"; }
     virtual PtCaps capabilities() const { return ptCapsFor(modelId()); }
 
-    Status power(pt::PowerMode mode) override;
     /**
-     * Запрос состояния питания: #O → p[n] (0=Off, 1=On, 2=On+CamTX, 3=On no CamTX).
-     * Для watchdog / PtLinkHealth.
+     * Шлёт bare #O (в матрице PDF — колонка Confirmation Command), ждёт p[Data].
+     * Отдельного текста «query» в ConvertibleProtocol нет; на PH350 код может
+     * залипать — не единственный признак питания (см. getZoom / #GZ).
      */
-    Status requestPower(uint8_t& code);
+    virtual Status requestPower(uint8_t& code);
     Status move(pt::Axis axis, int8_t speed) override;
     /** #PTS — pan+tilt одной командой. */
     Status movePT(int8_t pan, int8_t tilt) override;
@@ -59,13 +59,19 @@ public:
     Status setPresetMode(PrMode mode);
     Status setPresetSpeed(PrSpeed speed);
 
-    /** Оптика: публично 0..FFFF → натив 555h..FFFh. */
+    /**
+     * Оптика, шкала UI 0..FFFF ↔ натив 555h..FFFh.
+     * set* = Control #AXZ|#AXF|#AXI[Data].
+     * get* = Request #GZ|#GF|#GI (D/A; --- @ Power OFF).
+     * Bare #AXZ/#AXF/#AXI без данных НЕ используем: на практике сбрасывает в 555h.
+     * #AY* не поддерживаем.
+     */
     Status setZoom(uint16_t pos);
     Status setFocus(uint16_t pos);
     Status setIris(uint16_t pos);
-    Status requestZoom(uint16_t& pos);
-    Status requestFocus(uint16_t& pos);
-    Status requestIris(uint16_t& pos);
+    Status getZoom(uint16_t& pos);
+    Status getFocus(uint16_t& pos);
+    Status getIris(uint16_t& pos);
     Status setLensCtrl(Switch mode);
     Status requestLensPositionInfo(uint16_t& zoom, uint16_t& focus, uint16_t& iris);
 

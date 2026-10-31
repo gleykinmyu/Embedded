@@ -18,9 +18,14 @@ using Status = pt::Status;
 
 /** Скорость по умолчанию из ConvertibleProtocol.pdf. */
 constexpr uint32_t kBaudRate = 9600;
-constexpr uint32_t kDefaultRxTimeoutMs = 500;
-/** Камера через PH350 CamTX: чуть длиннее + waitAck отбрасывает чужие STX-кадры. */
-constexpr uint32_t kCameraRxTimeoutMs = 1000;
+/** P/T (#…CR). Ответ обычно быстрый; 500 ms тянул health/опрос при сбоях. */
+constexpr uint32_t kDefaultRxTimeoutMs = 350;
+/**
+ * Камера через PH350 CamTX. ACK/Oxx обычно <100 ms @9600;
+ * 1000 ms делал cmd=params (~15 Qxx) очень долгим при любом сбое.
+ * waitAck всё ещё отбрасывает чужие STX…ETX до дедлайна.
+ */
+constexpr uint32_t kCameraRxTimeoutMs = 350;
 
 /* --- Протокол камеры: [STX]…[ETX] --- */
 constexpr uint8_t kStx = 0x02;
@@ -55,7 +60,7 @@ constexpr uint16_t kPtPosCenter = 0x8000;
 constexpr uint16_t kNormPosMin = 0x0000;
 constexpr uint16_t kNormPosMax = 0xFFFF;
 
-/** Натив P/T #AXZ / #AXF / #AXI / #GZ / #GF / #GI (ConvertibleProtocol). */
+/** Натив P/T: Control/Confirmation #AX* и Request D/A #GZ/#GF/#GI (ConvertibleProtocol). */
 constexpr uint16_t kPtLensNativeMin = 0x555;
 constexpr uint16_t kPtLensNativeMax = 0xFFF;
 

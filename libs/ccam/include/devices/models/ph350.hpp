@@ -18,14 +18,13 @@ namespace ccam::devices {
 /**
  * AW-PH350E — головка серии PH350.
  *
- * Поддерживает power 0..3 (в т.ч. ON w/ Camera TX), pan/tilt/zoom/focus,
- * пресеты, wiper/fan/tally (через PhHeadBase).
+ * Питание — PhHeadBase::power (#O0/#O1). Пресеты / wiper/fan/tally — PhHeadBase.
  *
  * @code
  * ccam::devices::E650Camera camera(bus);
  * ccam::devices::Ph350Pt pt(bus);
  *
- * pt.power(pt::PowerMode::OnWithCameraTx);
+ * pt.power(pt::PowerMode::On);
  * pt.recallPreset(1);
  * @endcode
  */
@@ -51,15 +50,15 @@ public:
 
     /**
      * PH350: #PTV/#PTD/#APC в матрице нет.
-     * pan/tilt → центр (неизвестно); zoom/focus/iris ← #GZ/#GF/#GI.
+     * pan/tilt → центр (неизвестно); zoom/focus/iris ← get* (#GZ/#GF/#GI).
      */
     Status requestPosition(pt::Position& position) override
     {
         position.pt.pan = kPtPosCenter;
         position.pt.tilt = kPtPosCenter;
-        Status st_z = requestZoom(position.lens.zoom);
-        Status st_f = requestFocus(position.lens.focus);
-        Status st_i = requestIris(position.lens.iris);
+        Status st_z = getZoom(position.lens.zoom);
+        Status st_f = getFocus(position.lens.focus);
+        Status st_i = getIris(position.lens.iris);
         if (st_z != Status::Ok) {
             return st_z;
         }

@@ -1,5 +1,6 @@
 #include "devices/camera_device.hpp"
 #include "protocol/camera_protocol.hpp"
+#include "protocol/choice_lists.hpp"
 
 #include <cstring>
 
@@ -644,12 +645,30 @@ Status CameraDeviceBase::requestGain(int& db, bool& agc)
     if (data == nullptr) {
         return Status::Io;
     }
+    // Только hex-цифры (отрезать мусор/CR).
+    char hex[8] = {};
+    size_t n = 0;
+    for (const char* p = data; *p && n + 1 < sizeof(hex); ++p) {
+        if (hexNibbleCam(*p) < 0) {
+            break;
+        }
+        hex[n++] = *p;
+    }
+    hex[n] = '\0';
+    if (n == 0) {
+        return Status::Io;
+    }
     uint16_t code = 0;
-    st = parseHexU16(data, code);
+    st = parseHexU16(hex, code);
     if (st != Status::Ok) {
         return st;
     }
-    if (code == kGainAgcCode) {
+    // PDF: AGC SET = 80h. E650 live: SET OGU:80 → QGU:00 (control≠query).
+    // Manual минимум 08h (0 dB) — 00h как query = AGC на студии.
+    const CameraModelId id = modelId();
+    const bool studio = (id == CameraModelId::E650 || id == CameraModelId::E600 ||
+                         id == CameraModelId::Generic);
+    if (code == kGainAgcCode || (studio && code == 0x00)) {
         agc = true;
         db = 0;
         return Status::Ok;
@@ -723,9 +742,18 @@ Status CameraDeviceBase::requestSceneFile(uint8_t& scene)
     return requestDecU8(catalog::CameraCmd::SceneFile, scene);
 }
 
-Status CameraDeviceBase::requestColorBar(Switch& mode)
+Status CameraDeviceBase::requestColorBar(ColorBarMode& mode)
 {
-    return requestSwitchField(catalog::CameraCmd::ColorBar, mode);
+    uint8_t v = 0;
+    Status st = requestDecU8(catalog::CameraCmd::ColorBar, v);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (v > static_cast<uint8_t>(ColorBarMode::ColorBar)) {
+        return Status::Io;
+    }
+    mode = static_cast<ColorBarMode>(v);
+    return Status::Ok;
 }
 
 Status CameraDeviceBase::requestMenuOnOff(Switch& mode)
@@ -755,7 +783,7 @@ Status CameraDeviceBase::requestFieldFrame(FieldFrameMode& mode)
     if (st != Status::Ok) {
         return st;
     }
-    if (v > static_cast<uint8_t>(FieldFrameMode::Frame)) {
+    if (v > static_cast<uint8_t>(FieldFrameMode::Frame2)) {
         return Status::Io;
     }
     mode = static_cast<FieldFrameMode>(v);
@@ -795,6 +823,58 @@ Status CameraDeviceBase::requestBGain(uint16_t& value)
     return parseHexU16(data, value);
 }
 
+Status CameraDeviceBase::requestTPedestal(uint16_t& value)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::TPedestal, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, value);
+}
+
+Status CameraDeviceBase::requestDigitalGainUp(uint8_t& code)
+{
+    return requestDecU8(catalog::CameraCmd::DigitalGainUp, code);
+}
+
+Status CameraDeviceBase::requestLightPeakAvg(uint8_t& code)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::LightPeakAvg, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    uint16_t v = 0;
+    st = parseHexU16(data, v);
+    if (st != Status::Ok) {
+        return st;
+    }
+    if (v > 100) {
+        return Status::Param;
+    }
+    code = static_cast<uint8_t>(v);
+    return Status::Ok;
+}
+
+Status CameraDeviceBase::requestLightArea(uint8_t& code)
+{
+    return requestDecU8(catalog::CameraCmd::LightArea, code);
+}
+
+Status CameraDeviceBase::requestDnr3d(uint8_t& level)
+{
+    return requestDecU8(catalog::CameraCmd::Dnr3d, level);
+}
+
 Status CameraDeviceBase::awcStart()
 {
     return sendTrigger(catalog::CameraCmd::AwcAwbSet);
@@ -807,7 +887,15 @@ Status CameraDeviceBase::abcStart()
 
 Status CameraDeviceBase::setAwcMode(uint8_t mode)
 {
-    return sendDec1(catalog::CameraCmd::AwcMode, mode);
+    uint8_t wire = mode;
+    const CameraModelId id = modelId();
+    // Студия: UI/QAW → OAW control (PDF). HE/UE: код на шине совпадает.
+    if (id == CameraModelId::E650 || id == CameraModelId::E600 || id == CameraModelId::Generic) {
+        if (!studioAwcQueryToControl(mode, wire)) {
+            return Status::Param;
+        }
+    }
+    return sendDec1(catalog::CameraCmd::AwcMode, wire);
 }
 
 Status CameraDeviceBase::setShutter(const char* data_hex)
@@ -841,7 +929,17 @@ Status CameraDeviceBase::setFieldFrame(FieldFrameMode mode)
 
 Status CameraDeviceBase::setChromaLevel(Levels level)
 {
-    return sendDec1(catalog::CameraCmd::ChromaLevel, static_cast<uint8_t>(level));
+    // OCG:00…06 (−3…+3); PDF — две цифры (не encodeDec1 одной).
+    const uint8_t v = static_cast<uint8_t>(level);
+    if (v > 6) {
+        return Status::Param;
+    }
+    const char data[3] = {
+        static_cast<char>('0' + (v / 10u)),
+        static_cast<char>('0' + (v % 10u)),
+        '\0',
+    };
+    return send(catalog::CameraCmd::ChromaLevel, data);
 }
 
 Status CameraDeviceBase::setRGain(const char* data)
@@ -862,6 +960,31 @@ Status CameraDeviceBase::setRPedestal(const char* data)
 Status CameraDeviceBase::setBPedestal(const char* data)
 {
     return send(catalog::CameraCmd::BPedestal, data);
+}
+
+Status CameraDeviceBase::setTPedestal(const char* data)
+{
+    return send(catalog::CameraCmd::TPedestal, data);
+}
+
+Status CameraDeviceBase::setDigitalGainUp(uint8_t code)
+{
+    return sendDec1(catalog::CameraCmd::DigitalGainUp, code);
+}
+
+Status CameraDeviceBase::setLightPeakAvg(const char* data)
+{
+    return send(catalog::CameraCmd::LightPeakAvg, data);
+}
+
+Status CameraDeviceBase::setLightArea(uint8_t code)
+{
+    return sendDec1(catalog::CameraCmd::LightArea, code);
+}
+
+Status CameraDeviceBase::setDnr3d(uint8_t level)
+{
+    return sendDec1(catalog::CameraCmd::Dnr3d, level);
 }
 
 Status CameraDeviceBase::setGamma(const char* data)
@@ -958,15 +1081,21 @@ Status CameraDeviceBase::setManualIris(uint16_t value)
 
 Status CameraDeviceBase::setSceneFile(uint8_t scene)
 {
+    // PDF SCENE FILE: «Data of control and question is different».
+    // OSF (query) 0..3 = Halogen..User; XSF (control) = OSF+1 → 1..4.
+    // E650 live: XSF:0 ignored; XSF:1→OSF:0, …, XSF:4→OSF:3.
+    if (scene > 8) {
+        return Status::Param;
+    }
     char data[4];
-    Status st = encodeDecAscii(scene, data, sizeof(data));
+    Status st = encodeDecAscii(static_cast<uint8_t>(scene + 1u), data, sizeof(data));
     if (st != Status::Ok) {
         return st;
     }
     return send(catalog::CameraCmd::SceneFile, data);
 }
 
-Status CameraDeviceBase::setColorBar(Switch mode)
+Status CameraDeviceBase::setColorBar(ColorBarMode mode)
 {
     return sendDec1(catalog::CameraCmd::ColorBar, static_cast<uint8_t>(mode));
 }
@@ -978,22 +1107,22 @@ Status CameraDeviceBase::setMenuOnOff(Switch mode)
 
 Status CameraDeviceBase::menuSw()
 {
-    return setMonitor("PG", "1"); // DPG — MENU SW
+    return sendDec1(catalog::CameraCmd::MenuSw, 1);
 }
 
 Status CameraDeviceBase::itemSw()
 {
-    return setMonitor("IT", "1"); // DIT — ITEM SW
+    return sendDec1(catalog::CameraCmd::ItemSw, 1);
 }
 
 Status CameraDeviceBase::yesSw()
 {
-    return setMonitor("UP", "1"); // DUP — YES SW
+    return sendDec1(catalog::CameraCmd::YesSw, 1);
 }
 
 Status CameraDeviceBase::noSw()
 {
-    return setMonitor("DW", "1"); // DDW — NO SW
+    return sendDec1(catalog::CameraCmd::NoSw, 1);
 }
 
 Status CameraDeviceBase::setAutoFocus(Switch mode)

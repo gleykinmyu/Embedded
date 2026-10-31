@@ -25,6 +25,9 @@ public:
 
     PtModelId modelId() const override { return PtModelId::IntegratedPtz; }
 
+    /** PDF-map: Off→0, On/On+CamTX→1, On no CamTX→2 (уточнять RAW). */
+    Status power(pt::PowerMode mode) override;
+
     /** #APC — абсолютный pan/tilt. */
     Status setPT(const pt::PT& pt) override;
     /** Home = центр #APC. */

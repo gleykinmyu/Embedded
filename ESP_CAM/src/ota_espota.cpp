@@ -16,6 +16,7 @@
 #include "lwip/sockets.h"
 
 static const char *TAG = "ota";
+static volatile bool g_ota_busy = false;
 
 namespace {
 
@@ -23,6 +24,31 @@ constexpr int kOtaPort = 3232;
 constexpr int kCmdFlash = 0;
 constexpr int kCmdAuth = 200;
 constexpr size_t kChunk = 1460;
+/** Выше pt_health/http (обычно 5), ниже lwIP/timer. */
+constexpr UBaseType_t kOtaFlashPriority = 12;
+
+struct OtaFlashGuard {
+    TaskHandle_t self;
+    UBaseType_t prev_prio;
+
+    OtaFlashGuard() {
+        self = xTaskGetCurrentTaskHandle();
+        prev_prio = uxTaskPriorityGet(self);
+        g_ota_busy = true;
+        vTaskPrioritySet(self, kOtaFlashPriority);
+        ESP_LOGI(TAG, "flash mode on (prio %u→%u)", static_cast<unsigned>(prev_prio),
+                 static_cast<unsigned>(kOtaFlashPriority));
+    }
+
+    ~OtaFlashGuard() {
+        vTaskPrioritySet(self, prev_prio);
+        g_ota_busy = false;
+        ESP_LOGI(TAG, "flash mode off");
+    }
+
+    OtaFlashGuard(const OtaFlashGuard &) = delete;
+    OtaFlashGuard &operator=(const OtaFlashGuard &) = delete;
+};
 
 void digest_to_hex(const uint8_t dig[16], char out[33]) {
     for (int i = 0; i < 16; ++i) {
@@ -49,6 +75,10 @@ void udp_reply(int sock, const struct sockaddr_in *to, socklen_t tolen, const ch
 
 bool run_flash(const struct sockaddr_in *host, uint16_t host_port, uint32_t size,
                const char md5_hex_expect[33]) {
+    OtaFlashGuard flash_guard;
+    // дать pt_health увидеть otaIsBusy() и выйти из tick
+    vTaskDelay(pdMS_TO_TICKS(300));
+
     const esp_partition_t *part = esp_ota_get_next_update_partition(nullptr);
     if (!part) {
         ESP_LOGE(TAG, "no OTA partition");
@@ -60,16 +90,11 @@ bool run_flash(const struct sockaddr_in *host, uint16_t host_port, uint32_t size
         return false;
     }
 
-    esp_ota_handle_t handle = 0;
-    esp_err_t err = esp_ota_begin(part, size, &handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
-        return false;
-    }
-
+    // Сначала TCP: host ждёт accept ~10с. esp_ota_begin стирает раздел и может
+    // занять дольше (особенно при активном опросе камеры) — раньше connect не успевал.
     const int tcp = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (tcp < 0) {
-        esp_ota_abort(handle);
+        ESP_LOGE(TAG, "TCP socket failed");
         return false;
     }
 
@@ -86,7 +111,16 @@ bool run_flash(const struct sockaddr_in *host, uint16_t host_port, uint32_t size
     if (connect(tcp, reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest)) != 0) {
         ESP_LOGE(TAG, "TCP connect failed");
         close(tcp);
-        esp_ota_abort(handle);
+        return false;
+    }
+    ESP_LOGI(TAG, "TCP connected, begin flash erase/write");
+
+    esp_ota_handle_t handle = 0;
+    esp_err_t err = esp_ota_begin(part, size, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
+        (void)send(tcp, "ERROR", 5, 0);
+        close(tcp);
         return false;
     }
 
@@ -255,7 +289,13 @@ void handle_invite(int sock, char *msg, const struct sockaddr_in *from, socklen_
         udp_reply(sock, from, fromlen, "ERR");
         return;
     }
+
+    // Пауза health уже на auth — до erase/TCP.
+    g_ota_busy = true;
+    vTaskDelay(pdMS_TO_TICKS(300));
+
     if (!auth_ok(sock, from, fromlen)) {
+        g_ota_busy = false;
         return;
     }
 
@@ -303,6 +343,10 @@ void ota_task(void *) {
 }
 
 } // namespace
+
+bool otaIsBusy() {
+    return g_ota_busy;
+}
 
 void OtaEspota::begin() {
     if (xTaskCreate(ota_task, "espota", 8192, nullptr, 5, nullptr) != pdPASS) {

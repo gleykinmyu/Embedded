@@ -1,0 +1,27 @@
+<section id="osd" class="tab-panel" hidden>
+  <div class="panel">
+    <h2>Camera Menu</h2>
+    <p class="sub">On/Off = DUS. Навигация — после включения; подписи и раскладка по модели.</p>
+    <div class="btn-row osd-pwr">
+      <button type="button" id="osd_on" data-api="cam" data-cmd="menu_on">Menu ON</button>
+      <button type="button" id="osd_off" data-api="cam" data-cmd="menu_off">Menu OFF</button>
+    </div>
+    <div id="osd_nav" class="osd-nav" hidden data-osd-layout="">
+      <p id="osd_hint" class="osd-hint"></p>
+      <!--
+        Studio E650: Item↑(=Menu/DPG) · Item↓(DIT) · NO | YES(Enter)
+        HE/UE: ↑↓ строки · ←→ HE130 · Enter · Menu
+      -->
+      <div class="osd-pad">
+        <button type="button" id="osd_up" class="osd-btn" data-api="cam" data-cmd="item_sw" data-osd-slot="up" title="DIT">ITEM</button>
+        <button type="button" id="osd_left" class="osd-btn" data-api="cam" data-cmd="left_sw" data-osd-slot="left" data-cap="menu_lr" title="DLT">←</button>
+        <button type="button" id="osd_mid" class="osd-btn" data-api="cam" data-cmd="item_sw" data-osd-slot="mid" title="DIT" hidden>Enter</button>
+        <button type="button" id="osd_right" class="osd-btn" data-api="cam" data-cmd="right_sw" data-osd-slot="right" data-cap="menu_lr" title="DRT">→</button>
+        <button type="button" id="osd_down" class="osd-btn" data-api="cam" data-cmd="no_sw" data-osd-slot="down" title="DDW" hidden>Down</button>
+        <button type="button" id="osd_yes" class="osd-btn" data-api="cam" data-cmd="yes_sw" data-osd-slot="yes" title="DUP">YES</button>
+        <button type="button" id="osd_no" class="osd-btn" data-api="cam" data-cmd="no_sw" data-osd-slot="no" title="DDW">NO</button>
+        <button type="button" id="osd_menu" class="osd-btn" data-api="cam" data-cmd="menu_sw" data-osd-slot="menu" title="DPG">MENU</button>
+      </div>
+    </div>
+  </div>
+</section>

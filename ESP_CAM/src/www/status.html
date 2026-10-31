@@ -2,370 +2,2517 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PH350 · E650</title>
 <style>
-:root{--bg:#0e1116;--panel:#161b22;--fg:#e6edf3;--muted:#8b949e;--line:#30363d;--acc:#2f81f7;--danger:#f85149;--ok:#3fb950;--bar:44px}
-*{box-sizing:border-box}
-body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--fg);padding-bottom:calc(var(--bar)+14px)}
-main{max-width:780px;margin:0 auto;padding:12px 12px 8px}
-.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
-h1{font-size:17px;margin:0;font-weight:600}
-.sub{color:var(--muted);font-size:12px;margin:0}
-.tabs{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tabs button{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--muted);
-  border-radius:6px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
-.tabs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.panel{display:none}.panel.on{display:block}
-[data-cap].cap-off{display:none!important}
-h2{font-size:11px;color:var(--muted);font-weight:600;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em}
-.hint{color:var(--muted);margin:0 0 8px;font-size:11px;line-height:1.35}
-.pads{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin-bottom:10px}
-.pad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;width:168px}
-.pad.rocker{grid-template-columns:1fr;width:72px}
-.pad .lbl{text-align:center;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:2px 0}
-.grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
-.pad button,.grid button,.row button{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--fg);
-  border-radius:6px;padding:9px 10px;font-size:13px;cursor:pointer}
-.pad button{padding:14px 8px;font-size:16px}
-.pad button:active,.grid button:active,.row button:active{background:var(--acc);border-color:var(--acc)}
-.pad .sp{visibility:hidden}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
-.row label,.field{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px}
-input,select{background:#0d1117;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 8px;font-size:13px}
-input[type=range]{width:140px;padding:0;accent-color:var(--acc)}
-input[type=checkbox]{width:1.1em;height:1.1em;accent-color:var(--acc)}
-input[type=number]{width:4.8em}
-.slide{display:flex;align-items:center;gap:8px;margin-bottom:8px;width:100%}
-.slide .nm{flex:0 0 5.5em;color:var(--muted);font-size:12px}
-.slide input[type=range]{flex:1;min-width:100px;max-width:420px}
-.slide b{flex:0 0 3.2em;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
-.slide .unit{flex:0 0 2em;color:var(--muted);font-size:11px}
-input.wide{width:6.5em}
-input.xwide{width:10em}
-table{border-collapse:collapse;width:100%}
-td{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
-td:first-child{color:var(--muted);width:6.5em}
-.danger{border-color:#6e2a2a!important;background:#2a1515!important}
-.danger.on{background:#a32020!important;border-color:#f85149!important;color:#fff}
-.banks,.modes{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
-.banks button,.modes button{flex:1;min-width:2.4em;padding:8px 6px;font-size:12px}
-.banks button.on,.modes button.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.modes button.save.on{background:#238636;border-color:#238636}
-.presets{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
-.presets button{padding:14px 4px;font-size:14px;font-weight:600}
-.presets button.sel{outline:2px solid var(--acc);outline-offset:1px}
-.presets button.occ{border-color:#3fb950}
-#bar{position:fixed;left:0;right:0;bottom:0;min-height:var(--bar);max-height:28vh;overflow:auto;padding:7px 12px;background:#010409;border-top:1px solid var(--line);
-  font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted);display:flex;align-items:flex-start;gap:8px;z-index:9}
-#bar .st{color:var(--fg);word-break:break-all;white-space:pre-wrap}
-#bar.ok .st{color:var(--ok)}#bar.bad .st{color:var(--danger)}
-#bar .cmd{color:var(--acc);flex:0 0 auto}
+/* === IPTV kit: page.css === */
+/* Общая база UI админки IPTV.
+ * Подключается через {{SITE_NAV_CSS}} (inject_nav.py).
+ * Страничные CSS — только локальные отличия.
+ */
+
+html {
+  color-scheme: dark;
+  overflow-x: hidden;
+  max-width: 100%;
+  /* чтобы fixed-меню не «уезжало», когда появляется вертикальный скроллбар */
+  scrollbar-gutter: stable;
+}
+
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --line: #2d3a4d;
+  --text: #e7ecf3;
+  --muted: #8b9bb4;
+  --ok: #3ecf8e;
+  --bad: #f07178;
+  --warn: #e6b450;
+  --accent: #5b9fd4;
+  --accent2: #9b7bde;
+  --input-bg: #0b1017;
+  --btn-secondary: #2a3544;
+  --btn-secondary-hover: #344255;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background-color: var(--bg);
+  background-image: radial-gradient(1200px 600px at 10% -10%, #1c2a40 0%, var(--bg) 55%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: var(--text);
+  min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.wrap {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  min-width: 0;
+}
+.wrap.wrap-wide { max-width: 1320px; }
+.wrap.wrap-narrow { max-width: 960px; }
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 1.65rem;
+  letter-spacing: 0.02em;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.sub {
+  color: var(--muted);
+  margin: 0 0 20px;
+  font-size: 0.95rem;
+}
+.sub code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.88em;
+  color: var(--accent);
+}
+
+a.back {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+a.back:hover { text-decoration: underline; }
+
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+.meta { color: var(--muted); font-size: 0.85rem; }
+.meta b { color: var(--text); font-weight: 600; }
+.updated {
+  font-size: 0.78rem;
+  margin-top: 10px;
+  text-align: right;
+  color: var(--muted);
+}
+.num {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- buttons ----
+ * Роли (везде одинаково):
+ *   default / .secondary / .stop  — нейтральная (Отмена, Обзор, Обновить, ×)
+ *   .primary / .refresh           — главное действие (Сохранить, Создать, OK, Добавить)
+ *   .danger  / .kill              — разрушительное (Удалить, Отключить)
+ *   .success / .start             — только «включить / запустить» (служба, эфир)
+ * Не красьте Отмену в красный и не делайте все кнопки accent.
+ */
+button {
+  appearance: none;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 650;
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: var(--btn-secondary);
+  color: var(--text);
+}
+button:hover:not(:disabled) {
+  background: var(--btn-secondary-hover);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.secondary,
+.secondary,
+button.stop,
+.stop {
+  background: var(--btn-secondary);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+button.secondary:hover:not(:disabled),
+.secondary:hover:not(:disabled),
+button.stop:hover:not(:disabled),
+.stop:hover:not(:disabled) {
+  background: var(--btn-secondary-hover);
+}
+
+button.primary,
+.primary,
+button.refresh,
+.refresh {
+  background: var(--accent);
+  color: #041018;
+  border-color: transparent;
+}
+button.primary:hover:not(:disabled),
+.primary:hover:not(:disabled),
+button.refresh:hover:not(:disabled),
+.refresh:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button.danger,
+.danger,
+button.kill,
+.kill {
+  background: var(--bad);
+  color: #2a0608;
+  border-color: transparent;
+}
+button.danger:hover:not(:disabled),
+.danger:hover:not(:disabled),
+button.kill:hover:not(:disabled),
+.kill:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button.success,
+.success,
+button.start,
+.start {
+  background: var(--ok);
+  color: #062416;
+  border-color: transparent;
+}
+button.success:hover:not(:disabled),
+.success:hover:not(:disabled),
+button.start:hover:not(:disabled),
+.start:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Ссылки-кнопки (то же оформление, что у button.*) */
+a.secondary,
+a.stop,
+a.primary,
+a.refresh,
+a.danger,
+a.kill,
+a.success,
+a.start {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 650;
+  font-size: 0.88rem;
+  font-family: inherit;
+  line-height: 1.2;
+  text-decoration: none;
+  box-sizing: border-box;
+  background: var(--btn-secondary);
+  color: var(--text);
+}
+a.secondary:hover,
+a.stop:hover {
+  background: var(--btn-secondary-hover);
+  text-decoration: none;
+}
+a.primary,
+a.refresh {
+  background: var(--accent);
+  color: #041018;
+  border-color: transparent;
+}
+a.primary:hover,
+a.refresh:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+a.danger,
+a.kill {
+  background: var(--bad);
+  color: #2a0608;
+  border-color: transparent;
+}
+a.danger:hover,
+a.kill:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+a.success,
+a.start {
+  background: var(--ok);
+  color: #062416;
+  border-color: transparent;
+}
+a.success:hover,
+a.start:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+a.is-disabled,
+a[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.4;
+  filter: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.actions button {
+  font-size: 0.82rem;
+  padding: 5px 10px;
+}
+
+/* ---- layout blocks ---- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.toolbar input[type="search"] {
+  flex: 1;
+  min-width: 180px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.toolbar select { min-width: 140px; }
+.toolbar .iptv-dd {
+  display: inline-block;
+  width: auto;
+  min-width: 140px;
+  flex: 0 0 auto;
+}
+
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  user-select: none;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.panel h2 {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 650;
+}
+.panel.panel-table {
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+/* Кликабельная плитка (.panel) — главная и подобные сетки */
+a.panel,
+button.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.25;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+a.panel:hover,
+button.panel:hover {
+  background: var(--panel);
+  border-color: rgba(91, 159, 212, 0.45);
+  text-decoration: none;
+  filter: none;
+}
+a.panel:focus-visible,
+button.panel:focus-visible {
+  outline: 2px solid rgba(91, 159, 212, 0.55);
+  outline-offset: 2px;
+}
+.panel-title {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.panel-desc {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* ---- notes (IptvNote) ----
+ * kind: (нет) нейтральный/загрузка · info · ok · err · warn
+ * Автоскрытие — common/note.js (ttl по kind / data-note-ttl / configure).
+ */
+.note {
+  background: rgba(91, 159, 212, 0.1);
+  border: 1px solid rgba(91, 159, 212, 0.35);
+  color: var(--accent);
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.note.hidden { display: none !important; }
+.note.info {
+  background: rgba(91, 159, 212, 0.1);
+  border-color: rgba(91, 159, 212, 0.35);
+  color: var(--accent);
+}
+.note.ok {
+  background: rgba(62, 207, 142, 0.1);
+  border-color: rgba(62, 207, 142, 0.35);
+  color: var(--ok);
+}
+.note.err {
+  background: rgba(240, 113, 120, 0.1);
+  border-color: rgba(240, 113, 120, 0.35);
+  color: var(--bad);
+}
+.note.warn {
+  background: rgba(230, 180, 80, 0.1);
+  border-color: rgba(230, 180, 80, 0.35);
+  color: var(--warn);
+}
+/* files: #status — те же цвета через .note.* */
+.status-box.note { margin: 10px 0 0; }
+
+/* ---- segmented control (IptvSeg) ----
+ * <div class="iptv-seg" role="group">
+ *   <button type="button" class="iptv-seg__btn" data-value="a">A</button>
+ *   <button type="button" class="iptv-seg__btn is-active" data-value="b">B</button>
+ * </div>
+ * data-tone="warn"|"ok"|"bad" — цвет активного сегмента (по умолчанию accent)
+ * Ширина по содержимому, не на всю колонку (.field).
+ */
+.iptv-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: max-content;
+  max-width: 100%;
+  align-self: flex-start;
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--input-bg);
+  vertical-align: top;
+}
+.iptv-seg__btn {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  width: auto;
+}
+.iptv-seg__btn + .iptv-seg__btn {
+  border-left: 1px solid var(--line);
+}
+.iptv-seg__btn:hover:not(:disabled):not(.is-active) {
+  color: var(--text);
+  background: rgba(91, 159, 212, 0.08);
+}
+.iptv-seg__btn.is-active {
+  color: #041018;
+  background: var(--accent);
+}
+.iptv-seg__btn.is-active[data-tone="ok"] {
+  color: #062416;
+  background: var(--ok);
+}
+.iptv-seg__btn.is-active[data-tone="warn"] {
+  color: #2a1600;
+  background: var(--warn);
+}
+.iptv-seg__btn.is-active[data-tone="bad"] {
+  color: #2a0608;
+  background: var(--bad);
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.badge.on {
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--ok);
+  border-color: rgba(62, 207, 142, 0.35);
+}
+.badge.off {
+  background: rgba(240, 113, 120, 0.12);
+  color: var(--bad);
+  border-color: rgba(240, 113, 120, 0.35);
+}
+.badge.warn {
+  background: rgba(230, 180, 80, 0.14);
+  color: var(--warn);
+  border-color: rgba(230, 180, 80, 0.35);
+}
+.badge.muted,
+.badge.inactive {
+  background: rgba(139, 155, 180, 0.12);
+  color: var(--muted);
+  border-color: rgba(139, 155, 180, 0.3);
+}
+.badge.accent {
+  background: rgba(91, 159, 212, 0.14);
+  color: var(--accent);
+  border-color: rgba(91, 159, 212, 0.35);
+}
+.badge.path {
+  background: rgba(139, 155, 180, 0.12);
+  color: var(--muted);
+  border-color: rgba(139, 155, 180, 0.35);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.badge-wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+/* ---- forms ---- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 0.88rem;
+}
+.field > span,
+.field-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.field input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.field textarea {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-family: inherit;
+}
+.field input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field select { width: 100%; }
+.field .iptv-dd,
+.field .iptv-listbox {
+  width: 100%;
+}
+.pass-show { margin-top: 8px; }
+
+/* ---- time input (IptvTimeInput) ---- */
+input.time,
+input[data-iptv-time] {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+input.time.is-invalid,
+input[data-iptv-time].is-invalid {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 1px rgba(240, 113, 120, 0.35);
+}
+
+/* ---- базовые поля (не только .field) ---- */
+input[type="text"],
+input[type="password"],
+input[type="search"],
+input[type="number"],
+input[type="url"],
+input[type="email"],
+input[type="tel"],
+textarea {
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+input[type="number"]:focus,
+input[type="url"]:focus,
+input[type="email"]:focus,
+input[type="tel"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.28);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---- selects (общие выпадающие списки) ---- */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 9px 36px 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background-color: var(--input-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b9bb4' d='M1.1 1.1a.75.75 0 0 1 1.06 0L6 4.94l3.84-3.84a.75.75 0 1 1 1.06 1.06L6.53 6.53a.75.75 0 0 1-1.06 0L1.1 2.16a.75.75 0 0 1 0-1.06z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+select:hover:not(:disabled) {
+  border-color: rgba(91, 159, 212, 0.45);
+}
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.35);
+}
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+select option,
+select optgroup {
+  background: var(--panel);
+  color: var(--text);
+}
+/* список с size>1 (часовой пояс и т.п.) — без стрелки */
+select[size]:not([size="1"]),
+select[multiple] {
+  padding: 8px 10px;
+  background-image: none;
+  cursor: default;
+  overflow: auto;
+}
+select[size]:not([size="1"]) option,
+select[multiple] option {
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin: 1px 0;
+  cursor: pointer;
+}
+select[size]:not([size="1"]) option:checked,
+select[multiple] option:checked {
+  background: linear-gradient(0deg, rgba(91, 159, 212, 0.28), rgba(91, 159, 212, 0.28));
+  color: var(--text);
+}
+
+/* ---- tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+th {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 650;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td {
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+tr:last-child td { border-bottom: 0; }
+tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.empty-row {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px 12px !important;
+}
+
+/* ---- tabs ---- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 4px;
+  background: rgba(11, 16, 23, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  width: fit-content;
+  max-width: 100%;
+}
+button.tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-weight: 650;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+button.tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+button.tab.active {
+  color: #041018;
+  background: var(--accent);
+}
+.tab-panel.hidden,
+.tab-panel[hidden] { display: none; }
+.tab-sub {
+  margin-top: -6px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+}
+
+/* ---- drag ---- */
+.col-drag {
+  width: 28px;
+  padding-left: 4px !important;
+  padding-right: 0 !important;
+}
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 28px;
+  cursor: grab;
+  color: var(--muted);
+  user-select: none;
+  font-size: 0.95rem;
+  letter-spacing: -0.12em;
+  line-height: 1;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+.drag-handle:hover {
+  color: var(--text);
+  background: rgba(91, 159, 212, 0.12);
+}
+.drag-handle:active { cursor: grabbing; }
+.drag-handle.is-disabled,
+.drag-handle.is-disabled:hover {
+  cursor: default;
+  opacity: 0.35;
+  background: transparent;
+  color: var(--muted);
+}
+.is-dragging { opacity: 0.45; }
+.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+tr.is-dragging td { opacity: 0.45; }
+tr.drag-over-before td {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+tr.drag-over-after td {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* ---- code / logs ---- */
+pre.logs,
+pre.file {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow: auto;
+  max-height: min(50vh, 420px);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+
+/* ---- custom dropdown (стилизованный список) ---- */
+.iptv-dd {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  vertical-align: middle;
+  z-index: 1;
+}
+.iptv-dd.is-open {
+  z-index: 90;
+}
+
+/* Таблицы с overflow: не обрезать выпадающий список */
+.table-wrap:has(.iptv-dd.is-open),
+.panel.panel-table:has(.iptv-dd.is-open),
+.panel:has(> .table-wrap .iptv-dd.is-open) > .table-wrap {
+  overflow: visible;
+}
+.iptv-dd-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, border-radius 0.12s ease, box-shadow 0.12s ease;
+}
+.iptv-dd-toggle::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 12px;
+  height: 8px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b9bb4' d='M1.1 1.1a.75.75 0 0 1 1.06 0L6 4.94l3.84-3.84a.75.75 0 1 1 1.06 1.06L6.53 6.53a.75.75 0 0 1-1.06 0L1.1 2.16a.75.75 0 0 1 0-1.06z'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform 0.15s ease;
+}
+.iptv-dd.is-open .iptv-dd-toggle::after {
+  transform: rotate(180deg);
+}
+.iptv-dd-toggle:hover:not(:disabled) {
+  border-color: rgba(91, 159, 212, 0.45);
+}
+.iptv-dd-toggle:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.28);
+}
+/* открыт: шапка и меню — один силуэт */
+.iptv-dd.is-open .iptv-dd-toggle {
+  outline: none;
+  border-color: var(--accent);
+  border-bottom-color: rgba(91, 159, 212, 0.28);
+  border-radius: 8px 8px 0 0;
+  box-shadow: none;
+  position: relative;
+  z-index: 2;
+}
+.iptv-dd-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.iptv-dd-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iptv-dd-menu {
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  max-height: min(280px, 50vh);
+  margin: 0;
+  margin-top: -1px; /* стык с нижней границей toggle */
+  padding: 4px;
+  list-style: none;
+  border-radius: 0 0 8px 8px;
+  border: 1px solid var(--accent);
+  border-top-color: rgba(91, 159, 212, 0.28);
+  background: var(--input-bg);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.42);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.iptv-dd-menu.hidden { display: none; }
+.iptv-dd-menu.is-fixed {
+  /* меню на body — не зависит от overflow панели/таблицы */
+  position: fixed;
+}
+.iptv-dd-menu [role="option"] {
+  padding: 8px 10px;
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iptv-dd-menu [role="option"]:hover {
+  background: rgba(91, 159, 212, 0.12);
+}
+.iptv-dd-menu [role="option"].is-active {
+  background: rgba(91, 159, 212, 0.22);
+  color: #cfe6f7;
+}
+.iptv-dd-menu [role="option"].is-offline {
+  color: var(--muted);
+}
+
+/* узкий инлайн-вариант (тулбары), если не нужен width:100% */
+.iptv-dd.iptv-dd--inline {
+  display: inline-block;
+  width: auto;
+  min-width: 140px;
+}
+
+
+/* ---- hide enhanced native selects ---- */
+select.iptv-native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ---- listbox (timezone и size>1) ---- */
+.iptv-listbox {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  min-height: 180px;
+  max-height: min(40vh, 320px);
+  overflow: auto;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+}
+.iptv-listbox-item {
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iptv-listbox-item:hover {
+  background: rgba(91, 159, 212, 0.12);
+}
+.iptv-listbox-item.is-active {
+  background: rgba(91, 159, 212, 0.22);
+  color: #cfe6f7;
+}
+.iptv-listbox-empty {
+  padding: 16px 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* ---- checkboxes ---- */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 18px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  cursor: pointer;
+  vertical-align: middle;
+  position: relative;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+input[type="checkbox"]:hover {
+  border-color: rgba(91, 159, 212, 0.5);
+}
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.4);
+}
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #041018;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.chk { cursor: pointer; }
+.chk input[type="checkbox"] { margin-top: 0; }
+
+/* ---- table inputs (globals types etc.) ---- */
+table input[type="text"],
+table input[type="password"],
+table input[type="search"],
+.type-id,
+.type-label {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+table input[type="text"]:focus,
+table input[type="password"]:focus,
+.type-id:focus,
+.type-label:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+table .iptv-dd { min-width: 140px; width: 100%; }
+
+/* ---- scrollbars ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4a5e var(--input-bg);
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track {
+  background: var(--input-bg);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #3a4a5e;
+  border-radius: 8px;
+  border: 2px solid var(--input-bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: #4d6078; }
+
+/* ---- autofill ---- */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  transition: background-color 99999s ease-out;
+  caret-color: var(--text);
+}
+
+/* === IPTV kit: modal.css === */
+/* Shared modal dialogs — confirm / prompt / password / form modals
+ * Подключается через {{SITE_NAV_CSS}} (inject_nav.py).
+ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal.hidden {
+  display: none !important;
+}
+
+.modal-box {
+  width: min(100%, 440px);
+  background: var(--panel, #1a2332);
+  border: 1px solid var(--line, #2d3a4d);
+  border-radius: 14px;
+  padding: 20px 18px;
+  max-height: calc(100vh - 40px);
+  /* скролл не на этом элементе — иначе полоса режет border */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* Прокрутка внутри: форма / .modal-scroll — обводка .modal-box целая */
+.modal-box > form,
+.modal-box > .modal-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Открытый кастомный select: не обрезать меню */
+.modal-box:has(.iptv-dd.is-open),
+.modal-box:has(.iptv-dd.is-open) > form,
+.modal-box:has(.iptv-dd.is-open) > .modal-scroll {
+  overflow: visible;
+}
+
+.modal-box.modal-wide {
+  width: min(100%, 640px);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--text, #e7ecf3);
+}
+
+.modal-head .btn-modal-close {
+  min-width: 36px;
+  padding: 6px 10px;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+/* Заголовок без .modal-head (старые разметки) */
+.modal-box > h2 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal.confirm-modal,
+.modal.prompt-modal {
+  z-index: 130;
+}
+
+.modal-box.modal-confirm {
+  width: min(100%, 420px);
+}
+
+.confirm-text {
+  margin: 0 0 18px;
+  color: var(--text, #e7ecf3);
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line, #2d3a4d);
+}
+/* Единый порядок:
+ *   [Удалить]                    [Отмена] [Сохранить]
+ * Удалить — .modal-actions-danger (слева). Primary — крайний справа.
+ */
+.modal-actions-danger {
+  margin-right: auto;
+}
+.modal-actions-danger.hidden {
+  display: none !important;
+}
+
+/* Поле + кнопка «Обзор…» (группы / создать плейлист) */
+.acl-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.acl-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.acl-row button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted, #8b9bb4);
+}
+
+.field-hint code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.9em;
+  color: var(--accent, #5b9fd4);
+}
+
+/* Смена пароля (home) */
+#password-modal .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+#password-modal .field > span {
+  color: var(--muted, #8b9bb4);
+  font-size: 0.85rem;
+}
+
+#password-modal .field input:not([type="checkbox"]):not([type="radio"]) {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #2d3a4d);
+  background: #0b1017;
+  color: var(--text, #e7ecf3);
+  font-size: 0.92rem;
+}
+
+#password-modal .pass-show {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding-bottom: 4px;
+}
+
+#password-modal .modal-actions {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line, #2d3a4d);
+}
+
+/* === ESP_CAM app.css === */
+/* ESP_CAM — поверх IPTV UI kit. Mobile-first, вертикальный стек. */
+
+:root {
+  --fg: var(--text);
+  --acc: var(--accent);
+  --danger: var(--bad);
+  --bar: 52px;
+  /* PT-стрелки крупные; текстовые действия — компактные */
+  --pt-cell: 56px;
+  --pad-gap: 8px;
+  --btn-action: 32px; /* Limit / Home / Store / Delete */
+  --btn: 40px;        /* пресеты, ON/OFF */
+  --btn-sm: 32px;     /* вкладки, банки */
+  --btn-gap: 8px;
+  --touch: var(--btn);
+}
+
+body {
+  padding-bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 12px);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wrap.wrap-cam {
+  max-width: 480px;
+  padding: 12px 14px 28px;
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(14px, env(safe-area-inset-right));
+}
+
+/* ---- header ---- */
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+.top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px 12px;
+}
+.top-brand {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.top h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.top .sub {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+}
+.badge-wrap {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px !important;
+  row-gap: 8px !important;
+  column-gap: 8px !important;
+  max-width: 100%;
+}
+.badge-wrap .badge {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  position: static !important;
+  flex: 0 0 auto !important; /* не сжимать — иначе наезжают */
+  width: auto !important;
+  max-width: none;
+  margin: 0 !important;
+  box-sizing: border-box;
+  line-height: 1.2;
+  padding: 6px 10px;
+  letter-spacing: 0.02em;
+  overflow: visible;
+  white-space: nowrap;
+}
+.pwr-bar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-left: 20px; /* чуть правее от заголовка, не липнут */
+}
+.pwr-bar .pwr-cam.cap-off {
+  display: none !important;
+}
+.pwr-bar button {
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  min-width: 4.2em;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 650;
+  box-sizing: border-box;
+  width: auto;
+}
+.linkmini {
+  margin: 0;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+/* ---- sticky tabs — как .banks.pr-tabs: отступ от рамки по периметру ---- */
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(11, 16, 23, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.tabs .tab {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 4.2em;
+  min-height: var(--btn-sm);
+  height: var(--btn-sm);
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.tabs .tab:not(.active) {
+  background: transparent;
+  color: var(--muted);
+}
+.tabs .tab:hover:not(:disabled):not(.active) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  filter: none;
+}
+.tabs .tab.active {
+  color: #041018;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.tab-panel[hidden] { display: none !important; }
+.tab-panel > .panel { margin-bottom: 12px; }
+.tab-panel > .panel:last-child { margin-bottom: 0; }
+
+/* .slide {display:flex} иначе перебивает атрибут hidden */
+.slide[hidden],
+[data-cap].cap-off { display: none !important; }
+
+/* ---- forms: вертикальные поля ---- */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+.field select,
+.field input:not([type="checkbox"]):not([type="range"]) {
+  width: 100%;
+  min-height: 40px;
+  font-size: 15px;
+}
+
+/* Camera: короткие подписи слева, контролы плотнее */
+.fields-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin-bottom: 8px;
+}
+.fields-compact .field {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 11px;
+  min-width: 0;
+}
+.fields-compact .field > select,
+.fields-compact .field > input:not([type="checkbox"]):not([type="range"]),
+.fields-compact .field > .field-ctrl,
+.fields-compact .field > .btn-inline.wide {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  font-size: 14px;
+}
+.field-ctrl {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.field-ctrl select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  font-size: 14px;
+}
+.btn-inline {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.btn-inline.wide { width: 100%; }
+.fields-compact .field[hidden],
+.fields-compact .field.cap-off { display: none !important; }
+@media (max-width: 380px) {
+  .fields-compact { grid-template-columns: 1fr; }
+}
+
+.btn-row {
+  display: flex;
+  gap: var(--btn-gap);
+  align-items: center;
+  margin-bottom: 10px;
+}
+.btn-row.wrap { flex-wrap: wrap; }
+.btn-row button {
+  flex: 1 1 auto;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.readout .nm { color: var(--muted); font-size: 12px; min-width: 3.2em; }
+.readout b { font-variant-numeric: tabular-nums; }
+
+.chk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chk-stack .chk {
+  min-height: 40px;
+  align-items: center;
+}
+
+/* legacy .row — тоже в колонку на узком */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  width: 100%;
+}
+.row label select,
+.row label input:not([type="checkbox"]):not([type="range"]) {
+  width: 100%;
+  min-height: 40px;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.grid button {
+  flex: 1 1 calc(50% - 8px);
+  min-height: var(--btn);
+  height: var(--btn);
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+/* ---- sliders ---- */
+.slide {
+  display: grid;
+  grid-template-columns: 4.5em 1fr 2.6em auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+.slide .nm {
+  color: var(--muted);
+  font-size: 12px;
+}
+.slide input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.slide b {
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.slide .unit {
+  color: var(--muted);
+  font-size: 11px;
+}
+.spd-slide { margin-top: 4px; }
+
+/* ---- PT pads: крест + Zoom/Focus — одна сетка квадратов ---- */
+.panel.ctrl-pt {
+  padding-top: 8px;
+  padding-bottom: 10px;
+}
+.pads {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.pads-pt {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.rockers {
+  display: flex;
+  gap: var(--pad-gap);
+  align-items: flex-end;
+}
+.rocker-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.rocker-col .lbl {
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--pt-cell));
+  grid-template-rows: repeat(3, var(--pt-cell));
+  gap: var(--pad-gap);
+  width: max-content;
+  height: max-content;
+}
+.pad.rocker {
+  grid-template-columns: var(--pt-cell);
+  grid-template-rows: repeat(3, var(--pt-cell));
+  width: var(--pt-cell);
+}
+.pads-pt .pad button,
+.pads-pt .pad .sp {
+  box-sizing: border-box !important;
+  width: var(--pt-cell) !important;
+  height: var(--pt-cell) !important;
+  min-width: var(--pt-cell) !important;
+  min-height: var(--pt-cell) !important;
+  max-width: var(--pt-cell) !important;
+  max-height: var(--pt-cell) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 22px;
+  line-height: 1;
+  flex: none !important;
+  align-self: stretch;
+  justify-self: stretch;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pad .sp {
+  visibility: hidden;
+  pointer-events: none;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* Limit / Home — компактные, по ширине как блок стрелок */
+.ctrl-pt .btn-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--btn-gap);
+  max-width: 100%;
+}
+.ctrl-pt .btn-row .limit-arm,
+.ctrl-pt .btn-row button {
+  flex: 0 1 6.5em;
+  width: 6.5em;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  box-sizing: border-box;
+}
+.limit-arm {
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.limit-arm.armed {
+  background: var(--accent, #5b9fd4);
+  color: #0b1220;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.35);
+  border-color: transparent;
+}
+
+/* ---- presets ---- */
+.modes {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: stretch;
+  gap: var(--btn-gap);
+  margin-bottom: 10px;
+  width: 100%;
+}
+.modes button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 6px;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+.pr-meta-row {
+  justify-content: space-between;
+}
+.pr-meta-row button {
+  flex: 0 0 auto;
+  min-width: 5.5em;
+}
+/* страницы пресетов — как верхние вкладки .tabs */
+.banks.pr-tabs {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 10px;
+  padding: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(11, 16, 23, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  flex-wrap: nowrap;
+  box-sizing: border-box;
+}
+.banks.pr-tabs button {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 2em;
+  min-height: var(--btn-sm);
+  height: var(--btn-sm);
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.banks.pr-tabs button:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  filter: none;
+}
+.banks.pr-tabs button.active {
+  color: #041018;
+  background: var(--accent);
+  border-color: transparent;
+}
+/* Store/Delete неактивны, пока не залипли */
+.modes button.save.idle,
+.modes button.kill.idle {
+  opacity: 0.4;
+  filter: saturate(0.35);
+}
+.modes button.save.armed {
+  opacity: 1;
+  filter: none;
+  background: var(--ok);
+  border-color: transparent;
+  color: #041018;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
+}
+.modes button.kill.armed {
+  opacity: 1;
+  filter: none;
+  background: var(--bad, #c44);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
+}
+.presets.await-slot button {
+  outline: 1px dashed var(--muted);
+}
+.presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--btn-gap);
+  margin-bottom: 10px;
+}
+.presets button {
+  min-height: var(--btn);
+  height: var(--btn);
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 650;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
+.presets button.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.presets button.occ { border-color: var(--ok); }
+
+.camparams {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+  max-height: 10em;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+
+.info-table {
+  width: 100%;
+  font-size: 0.85rem;
+}
+.info-table td:first-child {
+  color: var(--muted);
+  width: 38%;
+  padding: 6px 8px 6px 0;
+  vertical-align: top;
+}
+.info-table td:last-child {
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+/* sticky status note */
+#note.note-bar {
+  position: fixed;
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 20;
+  margin: 0;
+  max-height: 26vh;
+  overflow: auto;
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+#note .note-cmd {
+  color: var(--accent);
+  margin-right: 8px;
+  font-weight: 650;
+}
+
+/* ---- tablet+ : чуть шире, pads в ряд ---- */
+@media (min-width: 560px) {
+  .wrap.wrap-cam {
+    max-width: 560px;
+    padding-top: 18px;
+  }
+  .top h1 { font-size: 1.2rem; }
+  .fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+  }
+  .slide {
+    grid-template-columns: 5.5em 1fr 3em auto;
+  }
+}
+
+@media (min-width: 900px) {
+  .wrap.wrap-cam { max-width: 640px; }
+}
+
+/* === ESP_CAM osd.css === */
+.osd-pwr button {
+  flex: 1 1 0;
+  min-height: var(--btn, 44px);
+  height: var(--btn, 44px);
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+.osd-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border, #2a3544);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.12);
+}
+.osd-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+.osd-pad {
+  --osd-gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, 48px);
+  gap: var(--osd-gap);
+  max-width: 280px;
+  margin: 0 auto;
+  width: 100%;
+}
+.osd-pad .osd-btn {
+  min-height: 48px;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 1.15;
+  box-sizing: border-box;
+}
+/* слоты сетки */
+.osd-pad [data-osd-slot="up"]   { grid-column: 2; grid-row: 1; }
+.osd-pad [data-osd-slot="left"] { grid-column: 1; grid-row: 2; }
+.osd-pad [data-osd-slot="mid"]  { grid-column: 2; grid-row: 2; }
+.osd-pad [data-osd-slot="right"]{ grid-column: 3; grid-row: 2; }
+.osd-pad [data-osd-slot="down"] { grid-column: 2; grid-row: 3; }
+/* E650: NO слева, YES(Enter) справа; HE: yes/no скрыты */
+.osd-pad [data-osd-slot="no"]   { grid-column: 1; grid-row: 2; }
+.osd-pad [data-osd-slot="yes"]  { grid-column: 3; grid-row: 2; }
+.osd-pad [data-osd-slot="menu"] { grid-column: 1 / -1; grid-row: 4; }
+
+/* Studio E650: Item↑/↓ + NO/YES; mid/left/right/menu скрыты */
+.osd-nav[data-osd-layout="studio"] [data-osd-slot="mid"],
+.osd-nav[data-osd-layout="studio"] [data-osd-slot="left"],
+.osd-nav[data-osd-layout="studio"] [data-osd-slot="right"],
+.osd-nav[data-osd-layout="studio"] [data-osd-slot="menu"] {
+  display: none !important;
+}
+.osd-nav[data-osd-layout="studio"] .osd-pad {
+  grid-template-rows: repeat(3, 48px);
+}
+.osd-nav[data-osd-layout="studio"] [data-osd-slot="down"] { grid-row: 3; }
+
+/* HE: YES/NO-слоты не используются (Up/Down = DUP/DDW) */
+.osd-nav[data-osd-layout="he"] [data-osd-slot="yes"],
+.osd-nav[data-osd-layout="he"] [data-osd-slot="no"] {
+  display: none !important;
+}
+
+.osd-nav[hidden] { display: none !important; }
+#osd_on.is-on { outline: 2px solid var(--ok, #3dcc8a); }
+#osd_off.is-on { outline: 2px solid var(--muted); }
+
+.osd-grp {
+  margin: 14px 0 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.osd-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #2a3544);
+}
+.osd-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.osd-name { font-size: 13px; }
+.osd-code {
+  margin-right: 6px;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--muted);
+}
+.osd-row button {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+.osd-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.osd-ctl select,
+.osd-ctl input[type="range"] {
+  flex: 1;
+  min-height: 36px;
+  width: 100%;
+}
+.osd-lab {
+  min-width: 4.8em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.osd-note, .osd-res {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-word;
+}
+.osd-res { font-family: ui-monospace, Consolas, monospace; }
+.osd-res.osd-ok { color: var(--ok, #3ddc97); }
+.osd-res.osd-bad { color: var(--bad, #ff5d5d); }
+
 </style>
 </head>
-<body>
-<main>
-<div class="top">
-  <div>
-    <h1 id="title">AW-PH350E · AW-E650E</h1>
-    <p class="sub">Convertible Protocol · live control</p>
-  </div>
-  <p class="sub" id="linkmini">…</p>
-</div>
-<div class="tabs">
-  <button class="on" data-tab="ptz">PTZ</button>
-  <button data-tab="preset">Preset</button>
-  <button data-tab="cam">Camera</button>
-  <button data-tab="paint">Paint</button>
-  <button data-tab="sys">System</button>
-</div>
-
-<section id="ptz" class="panel on">
-  <div class="card">
-    <div class="pads">
-      <div class="pad" title="Pan / Tilt">
-        <button class="sp">·</button>
-        <button data-hold="tilt_up">▲</button>
-        <button class="sp">·</button>
-        <button data-hold="pan_left">◀</button>
-        <button class="danger" data-cmd="stop">■</button>
-        <button data-hold="pan_right">▶</button>
-        <button class="sp">·</button>
-        <button data-hold="tilt_down">▼</button>
-        <button class="sp">·</button>
+<body data-note-ttl="6000" data-note-el="note">
+<div class="wrap wrap-cam">
+  <header class="top">
+    <div class="top-row">
+      <div class="top-brand">
+        <h1 id="title">AW-PH350E · AW-E650E</h1>
+        <p class="sub">Convertible Protocol · live control</p>
       </div>
-      <div class="pad rocker">
-        <div class="lbl">Zoom</div>
-        <button data-hold="zoom_tele" title="Tele">▲</button>
-        <button data-hold="zoom_wide" title="Wide">▼</button>
-      </div>
-      <div class="pad rocker">
-        <div class="lbl">Focus</div>
-        <button data-hold="focus_far" title="Far">▲</button>
-        <button data-hold="focus_near" title="Near">▼</button>
+      <div class="pwr-bar" title="Питание головки">
+        <button type="button" class="start pwr-on" data-cmd="power_on">ON</button>
+        <button type="button" class="kill pwr-off" data-cmd="power_off">OFF</button>
+        <button type="button" class="start pwr-cam" data-cmd="power_on_cam" data-cap="power_cam_tx" title="On + CamTX">+Cam</button>
       </div>
     </div>
-    <div class="row">
-      <label>Speed <b id="spd">60</b>
-        <input id="rate" type="range" min="1" max="100" value="60" title="Скорость 1…100%">
+    <div class="badge-wrap" id="badges">
+      <span class="badge muted" id="badge-eth">ETH —</span>
+      <span class="badge muted" id="badge-pt">PT —</span>
+      <span class="badge muted" id="badge-cam">Cam —</span>
+    </div>
+    <p class="meta linkmini" id="linkmini">…</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab active" data-tab="ptz">Control</button>
+    <button type="button" class="tab" data-tab="cam">Camera</button>
+    <button type="button" class="tab" data-tab="osd">Menu</button>
+    <button type="button" class="tab" data-tab="sys">System</button>
+  </nav>
+
+  <section id="ptz" class="tab-panel">
+  <div class="panel ctrl-pt">
+    <div class="pads">
+      <div class="pads-pt">
+        <div class="pad" title="Pan / Tilt">
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="tilt_up">▲</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="pan_left">◀</button>
+          <button type="button" class="kill" data-cmd="stop" title="Stop">■</button>
+          <button type="button" data-hold="pan_right">▶</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+          <button type="button" data-hold="tilt_down">▼</button>
+          <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+        </div>
+        <div class="rockers">
+          <div class="rocker-col" title="Zoom">
+            <div class="lbl">Zoom</div>
+            <div class="pad rocker">
+              <button type="button" data-hold="zoom_tele" title="Tele">▲</button>
+              <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+              <button type="button" data-hold="zoom_wide" title="Wide">▼</button>
+            </div>
+          </div>
+          <div class="rocker-col" title="Focus">
+            <div class="lbl">Focus</div>
+            <div class="pad rocker">
+              <button type="button" data-hold="focus_far" title="Far">▲</button>
+              <button type="button" class="sp" tabindex="-1" aria-hidden="true">·</button>
+              <button type="button" data-hold="focus_near" title="Near">▼</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide spd-slide">
+      <span class="nm">Speed</span>
+      <input id="rate" type="range" min="1" max="100" value="60" title="Скорость 1…100%">
+      <b id="spd">60</b>
+    </div>
+    <div class="btn-row">
+      <button type="button" id="limit_arm" class="limit-arm" data-cap="limit_toggle"
+        title="Западает → стрелка ставит #L/#LC на эту ось, затем гаснет" aria-pressed="false">Limit</button>
+      <button type="button" class="refresh" data-cmd="home" title="PH: preset #01 · HE: #APC center">Home</button>
+    </div>
+  </div>
+
+  <div class="panel ctrl-preset">
+    <h2>Preset memory</h2>
+    <p class="sub">Номер = Recall. Store/Delete залипают → номер; сброс — повтор или пустое место.</p>
+    <div class="modes" id="prmodes" role="group">
+      <button type="button" class="secondary" data-cmd="preset_latest" title="#S">Latest</button>
+      <button type="button" class="save idle" data-pr-mode="save" title="Залипнуть → номер">Store</button>
+      <button type="button" class="kill idle" data-pr-mode="delete" title="Залипнуть → номер">Delete</button>
+    </div>
+    <div class="banks pr-tabs" id="prbanks" role="tablist" aria-label="Preset bank"></div>
+    <div class="presets" id="prquick"></div>
+    <div class="btn-row wrap pr-meta-row">
+      <span class="meta" id="prinfo">P01 · Recall</span>
+      <input id="pr" type="hidden" value="1">
+      <button type="button" data-cmd="preset_map" data-cap="preset_map" title="#PE">Map #PE</button>
+    </div>
+    <div class="fields">
+      <label class="field">Mode
+        <select id="prmode" data-send="preset_mode">
+          <option value="0">Normal</option><option value="1">Diagonal</option>
+        </select>
+      </label>
+      <label class="field">Speed
+        <select id="prspd" data-send="preset_speed">
+          <option value="0">Slow</option><option value="1">Mid</option><option value="2">Fast</option>
+        </select>
+      </label>
+      <label class="field">Unit
+        <input id="prunit" value="080" maxlength="3" data-send="preset_speed_unit" data-send-param="data">
+      </label>
+      <label class="field">Lens
+        <select id="lensctrl" data-send="lens_ctrl"><option value="0">Off</option><option value="1">On</option></select>
       </label>
     </div>
   </div>
-  <h2>Power</h2>
-  <div class="grid">
-    <button data-cmd="boot" title="#O2 → wait → QID">Boot</button>
-    <button data-cmd="power_on">ON</button>
-    <button data-cmd="power_on_cam">ON + CamTX</button>
-    <button data-cmd="power_on_nocam">ON no CamTX</button>
-    <button class="danger" data-cmd="power_off">OFF</button>
-    <button data-cmd="home" title="PH350: recall preset #01 / HE: #APC center">Home</button>
-    <button data-cmd="stop">Stop</button>
-  </div>
-  <div data-cap="abs_pt">
+
+  <div class="panel" data-cap="abs_pt">
     <h2>Absolute PT (#APC)</h2>
-    <p class="hint">Только Integrated PTZ (HE/UE). 0000..FFFF.</p>
-    <div class="row">
-      <label>Pan <input id="apan" class="wide" value="0x8000"></label>
-      <label>Tilt <input id="atilt" class="wide" value="0x8000"></label>
-      <button data-cmd="set_pt">Go #APC</button>
+    <p class="sub">Integrated PTZ (HE/UE). 0000..FFFF.</p>
+    <div class="fields">
+      <label class="field">Pan <input id="apan" value="0x8000"></label>
+      <label class="field">Tilt <input id="atilt" value="0x8000"></label>
     </div>
+    <div class="btn-row"><button type="button" data-cmd="set_pt">Go #APC</button></div>
   </div>
-  <div data-cap="lens_q">
+
+  <div class="panel" data-cap="lens_q">
     <h2>Lens position (PT)</h2>
-    <p class="hint">#AXZ/#AXF/#AXI · 0000..FFFF — integrated PTZ.</p>
-    <div class="row">
-      <label>Z <input id="zoom" class="wide" value="0x0000"></label>
-      <label>F <input id="focus" class="wide" value="0x8000"></label>
-      <label>I <input id="iris" class="wide" value="0x8000"></label>
-      <button data-cmd="set_lens">Set all</button>
-      <button data-cmd="set_zoom">Z</button>
-      <button data-cmd="set_focus">F</button>
-      <button data-cmd="set_iris">I</button>
+    <p class="sub">set #AX*[Data] · get #GZ/#GF/#GI · UI 0000..FFFF</p>
+    <div class="fields">
+      <label class="field">Z <input id="zoom" value="0x0000"></label>
+      <label class="field">F <input id="focus" value="0x8000"></label>
+      <label class="field">I <input id="iris" value="0x8000"></label>
     </div>
-    <div class="grid">
-      <button data-cmd="pos" data-cap="pt_pos">Pos</button>
-      <button data-cmd="req_zoom">Q Z</button>
-      <button data-cmd="req_focus">Q F</button>
-      <button data-cmd="req_iris">Q I</button>
-      <button data-cmd="req_lens">Q Lens</button>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="set_lens">Set all</button>
+      <button type="button" data-cmd="set_zoom" title="#AXZ+data">Set Z</button>
+      <button type="button" data-cmd="set_focus" title="#AXF+data">Set F</button>
+      <button type="button" data-cmd="set_iris" title="#AXI+data">Set I</button>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="pos" data-cap="pt_pos">Pos</button>
+      <button type="button" data-cmd="get_zoom" title="#GZ">Get Z</button>
+      <button type="button" data-cmd="get_focus" title="#GF">Get F</button>
+      <button type="button" data-cmd="get_iris" title="#GI">Get I</button>
+      <button type="button" data-cmd="req_lens" title="#LPI">Q Lens</button>
     </div>
   </div>
 </section>
 
-<section id="preset" class="panel">
-  <div class="card">
-    <p class="hint">Банк × 10 слотов (1–99). Выбери режим, затем номер. Удаление — с подтверждением.</p>
-    <div class="modes" id="prmodes">
-      <button type="button" class="on" data-pr-mode="recall">Recall</button>
-      <button type="button" class="save" data-pr-mode="save">Save</button>
-      <button type="button" class="danger" data-pr-mode="delete">Delete</button>
+  <section id="cam" class="tab-panel" hidden>
+  <!-- User Mode E650 / Brightness+Color HE870: зависимые поля в одном блоке -->
+
+  <div class="panel" id="cam_brightness">
+    <h2>Brightness</h2>
+    <p class="sub">Iris · Shutter · Gain — Iris/Shutter/Gain Set · Brightness Set</p>
+    <div class="fields fields-compact">
+      <label class="field">Iris
+        <select id="ciris" data-api="cam" data-send="iris_am">
+          <option value="0">Manual</option><option value="1">Auto</option>
+        </select>
+      </label>
+      <label class="field">A.Iris Area
+        <select id="carea" data-api="cam" data-send="light_area">
+          <option value="0">All</option>
+          <option value="1">Center</option>
+          <option value="5">Top Cut</option>
+          <option value="6">Bottom</option>
+          <option value="7">Left/Right</option>
+        </select>
+      </label>
+      <label class="field">Shutter
+        <select id="shut" data-range="shutter" data-api="cam" data-send="shutter_mode"></select>
+      </label>
+      <label class="field">Gain
+        <select id="cgain_mode" data-api="cam" data-send="gain_mode">
+          <option value="manual">Manual</option>
+          <option value="agc">AGC</option>
+        </select>
+      </label>
+      <label class="field" id="cdig_field" data-cam="e650 e600" data-dep="gain:manual" hidden>Dig.Gain
+        <select id="cdig" data-api="cam" data-send="dig_gain" title="E650: only when Gain≠Auto">
+          <option value="0">0 dB</option>
+          <option value="1">6 dB</option>
+          <option value="2">12 dB</option>
+          <option value="3">18 dB</option>
+          <option value="4">24 dB</option>
+          <option value="5">30 dB</option>
+        </select>
+      </label>
+      <label class="field" id="cagc_field" data-cap="agc_max" data-dep="gain:agc" hidden>AGC max
+        <select id="cagc" data-range="agc_max" data-api="cam" data-send="agc_max" data-send-param="data"></select>
+      </label>
     </div>
-    <div class="banks" id="prbanks"></div>
-    <div class="presets" id="prquick"></div>
-    <div class="row">
-      <span class="hint" id="prinfo">P01 · Recall</span>
-      <input id="pr" type="hidden" value="1">
-      <button data-cmd="preset_latest">Latest #S</button>
-      <button data-cmd="preset_map" data-cap="preset_map" title="#PE">Map #PE</button>
+    <div id="cmiris_wrap" class="slide" data-dep="iris:manual">
+      <span class="nm">Iris</span>
+      <input id="cmiris" type="range" min="0" max="100" value="50" data-api="cam" data-send="man_iris" title="0% close … 100% open">
+      <b id="cmiris_v">50</b><span class="unit">%</span>
+    </div>
+    <div class="slide" id="airis_wrap" title="Picture Level — AUTO IRIS / AGC / ELC">
+      <span class="nm">Pic.Lvl</span>
+      <input id="airis" type="range" min="0" max="100" value="50" data-api="cam" data-send="osd_set" data-key="airis" title="OSD:48 Picture Level −50…+50 → 00…64h">
+      <b id="airis_v">50</b>
+    </div>
+    <div class="slide" id="cpeak_wrap" title="Light PEAK/AVG">
+      <span class="nm">Pk/Avg</span>
+      <input id="cpeak" type="range" min="0" max="100" value="50" data-api="cam" data-send="light_peak" title="OPV Peak/Avg −50…+50">
+      <b id="cpeak_v">0</b>
+    </div>
+    <div id="cgain_wrap" class="slide" data-dep="gain:manual">
+      <span class="nm">Gain</span>
+      <input id="cgain" type="range" min="0" max="18" value="0" data-api="cam" data-send="gain">
+      <b id="cgain_v">0</b><span class="unit">dB</span>
+    </div>
+    <div id="sync_wrap" class="slide" data-cap="synchro" data-dep="shut:synchro" hidden>
+      <span class="nm">Sync</span>
+      <input id="sync" type="range" data-range="synchro" data-api="cam" data-send="synchro" value="1">
+      <b id="sync_v">001</b>
     </div>
   </div>
-  <h2>Motion</h2>
-  <div class="row">
-    <label>Mode
-      <select id="prmode" data-send="preset_mode">
-        <option value="0">Normal</option><option value="1">Diagonal</option>
-      </select>
-    </label>
-    <label>Speed
-      <select id="prspd" data-send="preset_speed">
-        <option value="0">Slow</option><option value="1">Mid</option><option value="2">Fast</option>
-      </select>
-    </label>
-    <label>Unit <input id="prunit" class="wide" value="080" maxlength="3" data-send="preset_speed_unit" data-send-param="data"></label>
+
+  <div class="panel" id="cam_color">
+    <h2>Color</h2>
+    <p class="sub">White Bal · Painting · Pedestal — Color Set</p>
+    <div class="fields fields-compact">
+      <label class="field">Scene
+        <select id="scene" data-range="scene" data-api="cam" data-send="scene"></select>
+      </label>
+      <label class="field">WhiteBal
+        <span class="field-ctrl">
+          <select id="awc" data-range="awc" data-api="cam" data-send="awc_mode"></select>
+          <button type="button" id="awc_exec" class="btn-inline" data-api="cam" data-cmd="awc_start" hidden title="OWS">Exec</button>
+        </span>
+      </label>
+      <label class="field" id="atw_field" data-dep="awc:atw" hidden>ATW Spd
+        <select id="catw" data-api="cam" data-send="osd_set" data-key="atw" title="OSD:72">
+          <option value="00">Slow 2</option>
+          <option value="01">Slow 1</option>
+          <option value="02">Middle</option>
+          <option value="03">Fast 1</option>
+          <option value="04">Fast 2</option>
+        </select>
+      </label>
+      <label class="field" data-cap="chroma">Chroma
+        <input id="cchr" type="range" min="0" max="6" value="3" data-api="cam" data-send="chroma" title="−3…+3">
+      </label>
+      <label class="field" data-cap="neg_pos">Nega/Posi
+        <select id="cneg" data-api="cam" data-send="negpos">
+          <option value="0">Posi</option><option value="1">Nega</option>
+        </select>
+      </label>
+      <label class="field" data-cap="abc">ABC
+        <button type="button" class="btn-inline wide" data-api="cam" data-cmd="abc_start">ABC/ABB</button>
+      </label>
+    </div>
+    <div id="paint_block" data-cap="paint">
+      <p class="sub">−150…+150 step 5 · R/B Gain — AWC A/B · R/B Ped — не 3200/5600</p>
+      <div class="slide">
+        <span class="nm">Ped</span>
+        <input id="ctped" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="t_ped" data-paint>
+        <b id="ctped_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:mem">
+        <span class="nm">R Gain</span>
+        <input id="crg" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="r_gain" data-paint>
+        <b id="crg_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:mem">
+        <span class="nm">B Gain</span>
+        <input id="cbg" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="b_gain" data-paint>
+        <b id="cbg_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:nopreset">
+        <span class="nm">R Ped</span>
+        <input id="crp" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="r_ped" data-paint>
+        <b id="crp_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:nopreset">
+        <span class="nm">B Ped</span>
+        <input id="cbp" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="b_ped" data-paint>
+        <b id="cbp_v">0</b>
+      </div>
+    </div>
   </div>
-  <div class="row">
-    <label>lens ctrl
-      <select id="lensctrl" data-send="lens_ctrl"><option value="0">Off</option><option value="1">On</option></select>
-    </label>
+
+  <div class="panel" id="cam_matrix" data-cam="e650 e600 he870">
+    <h2>Color Matrix</h2>
+    <p class="sub">User Mode · Matrix R-G…B-G (E650 / HE870)</p>
+    <div class="slide"><span class="nm">R−G</span>
+      <input id="cmx_rg" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_rg">
+      <b id="cmx_rg_v">0</b></div>
+    <div class="slide"><span class="nm">R−B</span>
+      <input id="cmx_rb" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_rb">
+      <b id="cmx_rb_v">0</b></div>
+    <div class="slide"><span class="nm">G−R</span>
+      <input id="cmx_gr" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_gr">
+      <b id="cmx_gr_v">0</b></div>
+    <div class="slide"><span class="nm">G−B</span>
+      <input id="cmx_gb" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_gb">
+      <b id="cmx_gb_v">0</b></div>
+    <div class="slide"><span class="nm">B−R</span>
+      <input id="cmx_br" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_br">
+      <b id="cmx_br_v">0</b></div>
+    <div class="slide"><span class="nm">B−G</span>
+      <input id="cmx_bg" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_bg">
+      <b id="cmx_bg_v">0</b></div>
+  </div>
+
+  <div class="panel" id="cam_detail">
+    <h2>Detail</h2>
+    <div class="fields fields-compact">
+      <label class="field">Detail
+        <select id="cdet" data-api="cam" data-send="detail">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="hd_detail">HD Detail
+        <select id="chdet" data-api="cam" data-send="hd_detail">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="total_dtl">Total DTL
+        <select id="cdtl" data-range="total_dtl" data-api="cam" data-send="total_dtl" data-send-param="data"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_other">
+    <h2>Other</h2>
+    <p class="sub">Other Set1: Gamma · Knee · White Clip · Clean/3D DNR</p>
+    <div class="fields fields-compact">
+      <label class="field" data-cap="gamma">Gamma
+        <select id="cgam" data-range="gamma" data-api="cam" data-send="gamma" data-send-param="data"></select>
+      </label>
+      <label class="field">Knee
+        <select id="cknee" data-api="cam" data-send="osd_set" data-key="knee">
+          <option value="FF">Dynamic</option>
+          <option value="00">88%</option><option value="01">89%</option><option value="02">90%</option>
+          <option value="03">91%</option><option value="04">92%</option><option value="05">93%</option>
+          <option value="06">94%</option><option value="07">95%</option><option value="08">96%</option>
+          <option value="09">97%</option><option value="0A">98%</option>
+        </select>
+      </label>
+      <label class="field">Clean DNR
+        <select id="ccdnr" data-api="cam" data-send="osd_set" data-key="cdnr">
+          <option value="00">Off</option><option value="01">Low</option><option value="02">High</option>
+        </select>
+      </label>
+      <label class="field" data-cam="e650 e600">3D-DNR
+        <select id="c3dnr" data-api="cam" data-send="dnr3d">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+    </div>
+    <div class="slide">
+      <span class="nm">W.Clip</span>
+      <input id="cwclip" type="range" min="0" max="15" value="15" data-api="cam" data-send="osd_set" data-key="wclip" title="95…110%">
+      <b id="cwclip_v">110</b><span class="unit">%</span>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_output">
+    <h2>Output</h2>
+    <div class="fields fields-compact">
+      <label class="field">Bar
+        <select id="cbar" data-range="colorbar" data-api="cam" data-send="colorbar" title="DCB">
+          <option value="0">Camera</option>
+          <option value="1">Color Bar</option>
+        </select>
+      </label>
+      <label class="field">ND
+        <select id="cfilt" data-api="cam" data-send="filter">
+          <option value="0">Clear</option><option value="1">1/4</option>
+          <option value="2">1/16</option><option value="3">1/64</option>
+        </select>
+      </label>
+      <label class="field">AF
+        <select id="caf" data-api="cam" data-send="af">
+          <option value="0">Off</option><option value="1">On</option>
+        </select>
+      </label>
+      <label class="field" data-cap="field_frame">Field/Frm
+        <select id="cff" data-api="cam" data-send="fieldframe">
+          <option value="0">Field</option><option value="1">Frame1</option><option value="2">Frame2</option>
+        </select>
+      </label>
+      <label class="field" data-cap="genlock">Genlock
+        <select id="cgen" data-range="genlock" data-api="cam" data-send="genlock" data-send-param="data"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Raw</h2>
+    <div class="fields fields-compact">
+      <label class="field">cmd <input id="camrawcmd" value="QAW" maxlength="3" spellcheck="false"></label>
+      <label class="field">data <input id="camrawpay" value="" placeholder="1" spellcheck="false"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-api="cam" data-cmd="raw">Transact</button>
+      <button type="button" data-api="cam" data-cmd="raw_send">Send</button>
+    </div>
   </div>
 </section>
 
-<section id="cam" class="panel">
-  <div class="grid">
-    <button data-api="cam" data-cmd="params">Read params</button>
-    <button data-api="cam" data-cmd="awc_start">AWC Exec</button>
-    <button data-api="cam" data-cmd="abc_start" data-cap="abc">ABC/ABB</button>
-    <button data-api="cam" data-cmd="model">Q Model</button>
-    <button data-api="cam" data-cmd="version">Q Ver</button>
-  </div>
-  <pre id="camparams" style="font-size:11px;color:var(--muted);white-space:pre-wrap;margin:6px 0 0;max-height:12em;overflow:auto"></pre>
-
-  <h2>White / scene / shutter</h2>
-  <p class="hint">OAW 0..9 · OSF Halogen/Fluorescent/Outdoor/User · OSH 0/1/2/3/5/A/B (E650).</p>
-  <div class="row">
-    <label>AWC
-      <select id="awc" data-api="cam" data-send="awc_mode">
-        <option value="0">0 ATW</option><option value="1">1 AWC A</option><option value="2">2 AWC B</option>
-        <option value="3">3 3200K</option><option value="4">4 5600K</option><option value="5">5 4500K</option>
-        <option value="6">6 6000K</option><option value="7">7 2800K</option><option value="8">8 VAR</option><option value="9">9</option>
-      </select>
-    </label>
-    <label>Scene
-      <select id="scene" data-api="cam" data-send="scene">
-        <option value="0">Halogen</option><option value="1">Fluorescent</option>
-        <option value="2">Outdoor</option><option value="3">User</option>
-      </select>
-    </label>
-  </div>
-  <div class="row">
-    <label>Shutter
-      <select id="shut" data-api="cam" data-send="shutter_mode">
-        <option value="0">Off</option>
-        <option value="1">1/50</option>
-        <option value="2">1/60</option>
-        <option value="3">1/100·120</option>
-        <option value="5">1/250</option>
-        <option value="10">A Synchro</option>
-        <option value="11">B ELC</option>
-      </select>
-    </label>
-    <label data-cap="synchro">Synchro <input id="sync" class="wide" value="001" maxlength="3" data-api="cam" data-send="synchro" data-send-param="data" title="OMS 001..0FF"></label>
-  </div>
-
-  <h2>Gain / iris / ND</h2>
-  <p class="hint">OGU E650: 0..18 dB · AGC=80h. Iris Manual: объём 0..100% → ORV 000..3FF.</p>
-  <div class="slide">
-    <span class="nm">Gain</span>
-    <input id="cgain" type="range" min="0" max="18" value="0" data-api="cam" data-send="gain">
-    <b id="cgain_v">0</b><span class="unit">dB</span>
-  </div>
-  <div class="row">
-    <button data-api="cam" data-cmd="agc">AGC ON</button>
-    <label>Iris
-      <select id="ciris" data-api="cam" data-send="iris_am">
-        <option value="0">Manual</option><option value="1">Auto</option>
-      </select>
-    </label>
-  </div>
-  <div class="slide">
-    <span class="nm">Iris vol</span>
-    <input id="cmiris" type="range" min="0" max="100" value="50" data-api="cam" data-send="man_iris" title="0% close … 100% open">
-    <b id="cmiris_v">50</b><span class="unit">%</span>
-  </div>
-  <div class="row">
-    <label>ND filter
-      <select id="cfilt" data-api="cam" data-send="filter">
-        <option value="0">Clear</option><option value="1">1/4</option>
-        <option value="2">1/16</option><option value="3">1/64</option>
-      </select>
-    </label>
-    <label>Color bar
-      <select id="cbar" data-api="cam" data-send="colorbar">
-        <option value="0">Off</option><option value="1">On</option>
-      </select>
-    </label>
-    <label>AF
-      <select id="caf" data-api="cam" data-send="af">
-        <option value="0">Off</option><option value="1">On</option>
-      </select>
-    </label>
-  </div>
-
-  <h2>Menu / switches</h2>
-  <div class="row">
-    <label>OSD
-      <select id="cmenu" data-api="cam" data-send="menu">
-        <option value="0">Off</option><option value="1">On</option>
-      </select>
-    </label>
-    <button data-api="cam" data-cmd="menu_sw">Menu ↑</button>
-    <button data-api="cam" data-cmd="item_sw">Item ↓</button>
-    <button data-api="cam" data-cmd="yes_sw">Yes +</button>
-    <button data-api="cam" data-cmd="no_sw">No −</button>
-  </div>
-  <div class="row">
-    <label data-cap="neg_pos">Neg/Pos
-      <select id="cneg" data-api="cam" data-send="negpos">
-        <option value="0">Positive</option><option value="1">Negative</option>
-      </select>
-    </label>
-    <label data-cap="field_frame">Field/Frame
-      <select id="cff" data-api="cam" data-send="fieldframe">
-        <option value="0">Field</option><option value="1">Frame</option>
-      </select>
-    </label>
-    <label data-cap="black_shade">Black shade
-      <select id="cbsh" data-api="cam" data-send="black_shade">
-        <option value="0">Off</option><option value="1">On</option>
-      </select>
-    </label>
+  <section id="osd" class="tab-panel" hidden>
+  <div class="panel">
+    <h2>Camera Menu</h2>
+    <p class="sub">On/Off = DUS. Навигация — после включения; подписи и раскладка по модели.</p>
+    <div class="btn-row osd-pwr">
+      <button type="button" id="osd_on" data-api="cam" data-cmd="menu_on">Menu ON</button>
+      <button type="button" id="osd_off" data-api="cam" data-cmd="menu_off">Menu OFF</button>
+    </div>
+    <div id="osd_nav" class="osd-nav" hidden data-osd-layout="">
+      <p id="osd_hint" class="osd-hint"></p>
+      <!--
+        Studio E650: Item↑(=Menu/DPG) · Item↓(DIT) · NO | YES(Enter)
+        HE/UE: ↑↓ строки · ←→ HE130 · Enter · Menu
+      -->
+      <div class="osd-pad">
+        <button type="button" id="osd_up" class="osd-btn" data-api="cam" data-cmd="item_sw" data-osd-slot="up" title="DIT">ITEM</button>
+        <button type="button" id="osd_left" class="osd-btn" data-api="cam" data-cmd="left_sw" data-osd-slot="left" data-cap="menu_lr" title="DLT">←</button>
+        <button type="button" id="osd_mid" class="osd-btn" data-api="cam" data-cmd="item_sw" data-osd-slot="mid" title="DIT" hidden>Enter</button>
+        <button type="button" id="osd_right" class="osd-btn" data-api="cam" data-cmd="right_sw" data-osd-slot="right" data-cap="menu_lr" title="DRT">→</button>
+        <button type="button" id="osd_down" class="osd-btn" data-api="cam" data-cmd="no_sw" data-osd-slot="down" title="DDW" hidden>Down</button>
+        <button type="button" id="osd_yes" class="osd-btn" data-api="cam" data-cmd="yes_sw" data-osd-slot="yes" title="DUP">YES</button>
+        <button type="button" id="osd_no" class="osd-btn" data-api="cam" data-cmd="no_sw" data-osd-slot="no" title="DDW">NO</button>
+        <button type="button" id="osd_menu" class="osd-btn" data-api="cam" data-cmd="menu_sw" data-osd-slot="menu" title="DPG">MENU</button>
+      </div>
+    </div>
   </div>
 </section>
 
-<section id="paint" class="panel">
-  <p class="hint">OGR/OGB/ORD/OBD: −30…+30 · ODT Off/Low/High · OCG −3…+3.</p>
-  <div class="card" data-cap="paint">
-    <div class="slide">
-      <span class="nm">R Gain</span>
-      <input id="crg" type="range" min="-30" max="30" value="0" data-api="cam" data-send="r_gain" data-paint>
-      <b id="crg_v">0</b>
+  <section id="sys" class="tab-panel" hidden>
+  <div class="panel">
+    <h2>Models</h2>
+    <p class="sub">Класс протокола (NVS). Питание — в шапке. CamTX — если caps.power_cam_tx.</p>
+    <div class="btn-row wrap" data-cap="power_cam_tx">
+      <button type="button" class="start" data-cmd="power_on_cam">ON + CamTX</button>
+      <button type="button" class="secondary" data-cmd="power_on_nocam">ON no CamTX</button>
     </div>
-    <div class="slide">
-      <span class="nm">B Gain</span>
-      <input id="cbg" type="range" min="-30" max="30" value="0" data-api="cam" data-send="b_gain" data-paint>
-      <b id="cbg_v">0</b>
-    </div>
-    <div class="slide">
-      <span class="nm">R Ped</span>
-      <input id="crp" type="range" min="-30" max="30" value="0" data-api="cam" data-send="r_ped" data-paint>
-      <b id="crp_v">0</b>
-    </div>
-    <div class="slide">
-      <span class="nm">B Ped</span>
-      <input id="cbp" type="range" min="-30" max="30" value="0" data-api="cam" data-send="b_ped" data-paint>
-      <b id="cbp_v">0</b>
-    </div>
-    <div class="slide" data-cap="chroma">
-      <span class="nm">Chroma</span>
-      <input id="cchr" type="range" min="0" max="6" value="3" data-api="cam" data-send="chroma" title="0=−3 … 3=0 … 6=+3">
-      <b id="cchr_v">0</b>
-    </div>
-  </div>
-  <div class="row">
-    <label>Detail
-      <select id="cdet" data-api="cam" data-send="detail">
-        <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
-      </select>
-    </label>
-    <label data-cap="hd_detail">HD Detail
-      <select id="chdet" data-api="cam" data-send="hd_detail" title="В основном HE870">
-        <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
-      </select>
-    </label>
-  </div>
-  <h2>OSD / menu extras</h2>
-  <div class="row">
-    <label data-cap="gamma">Gamma <input id="cgam" class="wide" value="0" data-api="cam" data-send="gamma" data-send-param="data"></label>
-    <label data-cap="agc_max">AGC max <input id="cagc" class="wide" value="0" data-api="cam" data-send="agc_max" data-send-param="data"></label>
-    <label data-cap="total_dtl">Total DTL <input id="cdtl" class="wide" value="0" data-api="cam" data-send="total_dtl" data-send-param="data"></label>
-    <label data-cap="genlock">Genlock <input id="cgen" class="wide" value="0" data-api="cam" data-send="genlock" data-send-param="data"></label>
-  </div>
-  <div class="row">
-    <label data-cap="monitor">dxx <input id="cdxx" class="wide" value="00"></label>
-    <label data-cap="monitor">mon <input id="cmon" class="wide" value="0"></label>
-    <button data-api="cam" data-cmd="monitor" data-cap="monitor">Monitor</button>
-    <label data-cap="lens_h">lens H <input id="clensh" class="wide" value="00" data-api="cam" data-send="lens_h" data-send-param="data"></label>
-    <label>scene data <input id="cscened" class="wide" value="0" data-api="cam" data-send="scene_data" data-send-param="data"></label>
-  </div>
-</section>
-
-<section id="sys" class="panel">
-  <h2>Models</h2>
-  <p class="hint">Выбор класса протокола (NVS). Меняет доступные команды в UI по карте PDF.</p>
-  <div class="card">
-    <div class="row">
-      <label>PT
+    <div class="fields">
+      <label class="field">PT
         <select id="ptmodel">
           <option value="ph350">AW-PH350E</option>
           <option value="ph360">AW-PH360</option>
@@ -376,7 +2523,7 @@ td:first-child{color:var(--muted);width:6.5em}
           <option value="ue150">AW-UE150 PT</option>
         </select>
       </label>
-      <label>Camera
+      <label class="field">Camera
         <select id="cammodel">
           <option value="e650">AW-E650E</option>
           <option value="e600">AW-E600</option>
@@ -385,102 +2532,623 @@ td:first-child{color:var(--muted);width:6.5em}
           <option value="ue150">AW-UE150</option>
         </select>
       </label>
-      <button data-cmd="set_models" id="savemodels">Save</button>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="refresh" data-cmd="set_models" id="savemodels">Save</button>
     </div>
     <p class="hint" id="pairhint"></p>
   </div>
-  <h2>Axis invert</h2>
-  <p class="hint">Логические направления UI ↔ физика головки. Сохраняется в NVS (и для лимитов #L).</p>
-  <div class="card">
-    <div class="row">
-      <label><input id="inv_pan" type="checkbox"> Invert Pan</label>
-      <label><input id="inv_tilt" type="checkbox"> Invert Tilt</label>
-      <label><input id="inv_zoom" type="checkbox"> Invert Zoom</label>
-      <label><input id="inv_focus" type="checkbox"> Invert Focus</label>
+
+  <div class="panel">
+    <h2>Axis invert</h2>
+    <p class="sub">UI ↔ физика головки (NVS, лимиты #L).</p>
+    <div class="chk-stack">
+      <label class="chk"><input id="inv_pan" type="checkbox"> Invert Pan</label>
+      <label class="chk"><input id="inv_tilt" type="checkbox"> Invert Tilt</label>
+      <label class="chk"><input id="inv_zoom" type="checkbox"> Invert Zoom</label>
+      <label class="chk"><input id="inv_focus" type="checkbox"> Invert Focus</label>
     </div>
   </div>
-  <h2>Limits / options</h2>
-  <p class="hint">PH: подъехать к упору → Toggle #L1..4. #LC/#APC/#PE — Integrated PTZ (HE/UE).</p>
-  <div class="row">
-    <label data-cap="limit_toggle">axis
-      <select id="limax">
-        <option value="1">TiltUp #L1</option><option value="2">TiltDown #L2</option>
-        <option value="3">PanLeft #L3</option><option value="4">PanRight #L4</option>
-      </select>
-    </label>
-    <button data-cmd="limit_toggle" data-cap="limit_toggle">Toggle #L</button>
-    <label data-cap="limit_ctrl">#LC
-      <select id="limact"><option value="1">Set</option><option value="0">Release</option></select>
-    </label>
-    <button data-cmd="limit_ctrl" data-cap="limit_ctrl">Apply #LC</button>
+
+  <div class="panel">
+    <h2>Limits / options</h2>
+    <p class="sub">PH: упор → Toggle #L1..4. #LC/#APC/#PE — Integrated PTZ.</p>
+    <div class="fields">
+      <label class="field" data-cap="limit_toggle">axis
+        <select id="limax">
+          <option value="1">TiltUp #L1</option><option value="2">TiltDown #L2</option>
+          <option value="3">PanLeft #L3</option><option value="4">PanRight #L4</option>
+        </select>
+      </label>
+      <label class="field" data-cap="limit_ctrl">#LC
+        <select id="limact"><option value="1">Set</option><option value="0">Release</option></select>
+      </label>
+      <label class="field" data-cap="tilt_range">Tilt range
+        <select id="tiltr" data-send="tilt_range"><option value="0">190°</option><option value="1">300°</option></select>
+      </label>
+      <label class="field" data-cap="tally">Tally
+        <select id="tally" data-send="tally"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="wireless">Wireless
+        <select id="wl" data-send="wireless"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="washer">Washer
+        <select id="wash" data-send="washer"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="option">Option
+        <select id="opt" data-send="option"><option value="0">Off</option><option value="1">On</option></select>
+      </label>
+      <label class="field" data-cap="fan">Fan
+        <select id="fan" data-send="fan">
+          <option value="0">Auto</option><option value="1">High</option><option value="2">Mid</option><option value="3">Low</option>
+        </select>
+      </label>
+      <label class="field" data-cap="wiper">Wiper
+        <select id="wip" data-send="wiper">
+          <option value="0">Off</option><option value="1">Fast</option><option value="2">Slow</option>
+        </select>
+      </label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="limit_toggle" data-cap="limit_toggle">Toggle #L</button>
+      <button type="button" data-cmd="limit_ctrl" data-cap="limit_ctrl">Apply #LC</button>
+      <button type="button" data-cmd="fan2" data-cap="fan">Fan2</button>
+    </div>
   </div>
-  <div class="row">
-    <label data-cap="tilt_range">Tilt range
-      <select id="tiltr" data-send="tilt_range"><option value="0">190°</option><option value="1">300°</option></select>
-    </label>
-    <label data-cap="tally">Tally <select id="tally" data-send="tally"><option value="0">Off</option><option value="1">On</option></select></label>
-    <label data-cap="wireless">Wireless <select id="wl" data-send="wireless"><option value="0">Off</option><option value="1">On</option></select></label>
-    <label data-cap="washer">Washer <select id="wash" data-send="washer"><option value="0">Off</option><option value="1">On</option></select></label>
-    <label data-cap="option">Option <select id="opt" data-send="option"><option value="0">Off</option><option value="1">On</option></select></label>
+
+  <div class="panel">
+    <h2>Camera setup</h2>
+    <p class="sub">Сервисные Oxx · Genlock/Neg/Field — на вкладке Camera → Output/Color.</p>
+    <div class="fields">
+      <label class="field" data-cap="black_shade">Black shade
+        <select id="cbsh" data-api="cam" data-send="black_shade">
+          <option value="0">Off</option><option value="1">On</option>
+        </select>
+      </label>
+      <label class="field" data-cap="lens_h">lens H
+        <input id="clensh" value="00" data-api="cam" data-send="lens_h" data-send-param="data">
+      </label>
+      <label class="field">scene data
+        <input id="cscened" value="0" data-api="cam" data-send="scene_data" data-send-param="data">
+      </label>
+      <label class="field" data-cap="monitor">dxx
+        <input id="cdxx" value="00">
+      </label>
+      <label class="field" data-cap="monitor">mon
+        <input id="cmon" value="0">
+      </label>
+    </div>
+    <div class="btn-row" data-cap="monitor">
+      <button type="button" data-api="cam" data-cmd="monitor">Monitor</button>
+    </div>
   </div>
-  <div class="row">
-    <label data-cap="fan">Fan
-      <select id="fan" data-send="fan">
-        <option value="0">Auto</option><option value="1">High</option><option value="2">Mid</option><option value="3">Low</option>
-      </select>
-    </label>
-    <button data-cmd="fan2" data-cap="fan">Fan2</button>
-    <label data-cap="wiper">Wiper
-      <select id="wip" data-send="wiper">
-        <option value="0">Off</option><option value="1">Fast</option><option value="2">Slow</option>
-      </select>
-    </label>
+
+  <div class="panel">
+    <h2>User Menu (QSD)</h2>
+    <p class="sub">Прямой Set/Get OSD:nn — как CAMERA MENU OP на RP150. Не путать с вкладкой OSD (навигация DUS).</p>
+    <div class="btn-row">
+      <button type="button" id="osd_read_all">Read all</button>
+      <button type="button" id="osd_read_stop">Stop</button>
+    </div>
+    <div id="osd_list"></div>
   </div>
-  <h2>Queries</h2>
-  <div class="grid">
-    <button data-cmd="pos_disp" data-cap="pos_disp">Pos disp</button>
-    <button data-cmd="req_exposure" data-cap="exposure_q">Exposure</button>
-    <button data-cmd="req_error">Error</button>
-    <button data-cmd="req_landing" data-cap="landing">Landing</button>
-    <button data-cmd="req_ver" data-cap="software_ver">Version</button>
-    <button data-cmd="req_heater" data-cap="heater">Heater</button>
-    <button data-cmd="req_defrost" data-cap="defroster">Defroster</button>
+
+  <div class="panel">
+    <h2>Camera query</h2>
+    <p class="sub">Read params — поток Qxx. Model / Ver — QID / QSV.</p>
+    <div class="btn-row wrap">
+      <button type="button" class="refresh" id="cam_read_params">Read params</button>
+      <button type="button" data-api="cam" data-cmd="model">Q Model</button>
+      <button type="button" data-api="cam" data-cmd="version">Q Ver</button>
+    </div>
+    <pre id="camparams" class="camparams"></pre>
   </div>
-  <h2>Raw PT</h2>
-  <div class="row">
-    <label>cmd <input id="rawcmd" class="wide" value="O" maxlength="8"></label>
-    <label>payload <input id="rawpay" class="xwide" value="1"></label>
-    <button data-cmd="raw">Transact</button>
-    <button data-cmd="raw_send">Send</button>
+
+  <div class="panel">
+    <h2>Queries</h2>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="pos_disp" data-cap="pos_disp">Pos disp</button>
+      <button type="button" data-cmd="req_exposure" data-cap="exposure_q">Exposure</button>
+      <button type="button" data-cmd="req_error">Error</button>
+      <button type="button" data-cmd="req_landing" data-cap="landing">Landing</button>
+      <button type="button" data-cmd="req_ver" data-cap="software_ver">Version</button>
+      <button type="button" data-cmd="req_heater" data-cap="heater">Heater</button>
+      <button type="button" data-cmd="req_defrost" data-cap="defroster">Defroster</button>
+    </div>
   </div>
-  <h2>Info</h2>
-  <table>
-    <tr><td>Link</td><td id="link">…</td></tr>
-    <tr><td>IP</td><td id="ip">…</td></tr>
-    <tr><td>Mask</td><td id="mask">…</td></tr>
-    <tr><td>GW</td><td id="gw">…</td></tr>
-    <tr><td>MAC</td><td id="mac">…</td></tr>
-    <tr><td>PT</td><td id="ptm">…</td></tr>
-    <tr><td>PT link</td><td id="ptlink">…</td></tr>
-    <tr><td>Cam</td><td id="camm">…</td></tr>
-    <tr><td>Rate</td><td id="rateinfo">…</td></tr>
-    <tr><td>Pos</td><td id="pos">—</td></tr>
-    <tr><td>Uptime</td><td id="up">…</td></tr>
-  </table>
+
+  <div class="panel">
+    <h2>Raw PT</h2>
+    <div class="fields">
+      <label class="field">cmd <input id="rawcmd" value="O" maxlength="8"></label>
+      <label class="field">payload <input id="rawpay" value="1"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-cmd="raw">Transact</button>
+      <button type="button" data-cmd="raw_send">Send</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Info</h2>
+    <table class="info-table">
+      <tr><td>Link</td><td id="link">…</td></tr>
+      <tr><td>IP</td><td id="ip">…</td></tr>
+      <tr><td>Mask</td><td id="mask">…</td></tr>
+      <tr><td>GW</td><td id="gw">…</td></tr>
+      <tr><td>MAC</td><td id="mac">…</td></tr>
+      <tr><td>PT</td><td id="ptm">…</td></tr>
+      <tr><td>PT link</td><td id="ptlink">…</td></tr>
+      <tr><td>Cam link</td><td id="camlink">…</td></tr>
+      <tr><td>Cam</td><td id="camm">…</td></tr>
+      <tr><td>Rate</td><td id="rateinfo">…</td></tr>
+      <tr><td>Pos</td><td id="pos">—</td></tr>
+      <tr><td>Uptime</td><td id="up">…</td></tr>
+    </table>
+  </div>
 </section>
-</main>
-<div id="bar"><span class="cmd">ready</span><span class="st">—</span></div>
+
+</div>
+
+<div id="note" class="note note-bar hidden" role="status"><span class="note-cmd"></span><span class="note-text">—</span></div>
+<!-- Shared confirm dialog — inject via {{SITE_CONFIRM}} -->
+<div id="confirm-modal" class="modal confirm-modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="modal-box modal-confirm">
+    <div class="modal-head">
+      <h2 id="confirm-title">Подтверждение</h2>
+      <button type="button" class="stop btn-modal-close" id="confirm-close" data-modal-close aria-label="Закрыть">×</button>
+    </div>
+    <p id="confirm-text" class="confirm-text"></p>
+    <div class="modal-actions">
+      <button type="button" class="stop" id="confirm-cancel" data-modal-close>Отмена</button>
+      <button type="button" class="kill" id="confirm-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+
 <script>
+/* === IPTV kit: modal.js === */
+/* Общий контроллер модалок (.modal) и оверлеев (.file-picker-overlay).
+ *
+ * IptvModal.open(id|el)
+ * IptvModal.close(id|el)
+ * IptvModal.isOpen(id|el)
+ * IptvModal.anyOpen(except?)
+ * IptvModal.syncBody()
+ * IptvModal.bind(id|el, { onClose, backdrop=true, escape=true })
+ *
+ * Кнопки закрытия: атрибут data-modal-close (крестик / Отмена).
+ * Клик по фону закрывает, если backdrop не выключен.
+ * Escape закрывает верхнее окно (по data-modal-opened).
+ */
+(function (global) {
+  'use strict';
+
+  var DIALOG_SEL = '.modal, .file-picker-overlay';
+
+  function resolve(elOrId) {
+    if (!elOrId) return null;
+    if (typeof elOrId === 'string') return document.getElementById(elOrId);
+    return elOrId.nodeType ? elOrId : null;
+  }
+
+  function eachDialog(fn) {
+    Array.prototype.forEach.call(document.querySelectorAll(DIALOG_SEL), fn);
+  }
+
+  function anyOpen(except) {
+    var exceptEl = resolve(except);
+    var found = false;
+    eachDialog(function (m) {
+      if (found) return;
+      if (m.classList.contains('hidden')) return;
+      if (exceptEl && m === exceptEl) return;
+      found = true;
+    });
+    return found;
+  }
+
+  function syncBody() {
+    if (anyOpen()) document.body.classList.add('modal-open');
+    else document.body.classList.remove('modal-open');
+  }
+
+  function topOpen() {
+    var best = null;
+    var bestTs = -1;
+    eachDialog(function (m) {
+      if (m.classList.contains('hidden')) return;
+      var ts = parseInt(m.getAttribute('data-modal-opened') || '0', 10);
+      if (ts >= bestTs) {
+        bestTs = ts;
+        best = m;
+      }
+    });
+    return best;
+  }
+
+  function open(elOrId) {
+    var modal = resolve(elOrId);
+    if (!modal) return null;
+    modal.classList.remove('hidden');
+    modal.style.removeProperty('display');
+    modal.setAttribute('data-modal-opened', String(Date.now()));
+    document.body.classList.add('modal-open');
+    return modal;
+  }
+
+  function close(elOrId) {
+    var modal = resolve(elOrId);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.style.removeProperty('display');
+    modal.removeAttribute('data-modal-opened');
+    syncBody();
+  }
+
+  /** Закрыть все .modal и .file-picker-overlay (аварийный сброс «залипшего» оверлея). */
+  function closeAll() {
+    eachDialog(function (m) {
+      m.classList.add('hidden');
+      m.style.removeProperty('display');
+      m.removeAttribute('data-modal-opened');
+      /* не трогаем __iptvRequestClose — bind() один раз, обнуление ломает Esc */
+    });
+    document.body.classList.remove('modal-open');
+  }
+
+  function isOpen(elOrId) {
+    var modal = resolve(elOrId);
+    return !!(modal && !modal.classList.contains('hidden'));
+  }
+
+  /**
+   * @param {string|Element} elOrId
+   * @param {{onClose?: Function, backdrop?: boolean, escape?: boolean}} [opts]
+   */
+  function bind(elOrId, opts) {
+    opts = opts || {};
+    var modal = resolve(elOrId);
+    if (!modal) return null;
+    if (modal.getAttribute('data-iptv-modal') === '1') return modal;
+    modal.setAttribute('data-iptv-modal', '1');
+
+    function requestClose(ev) {
+      if (typeof opts.onClose === 'function') {
+        try { opts.onClose(ev); } catch (err) { console.warn(err); }
+      }
+      close(modal);
+    }
+
+    modal.__iptvRequestClose = requestClose;
+
+    modal.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t && t.nodeType === 3) t = t.parentElement;
+      if (!t || !t.closest) return;
+
+      if (opts.backdrop !== false && t === modal) {
+        requestClose(e);
+        return;
+      }
+
+      var btn = t.closest('[data-modal-close]');
+      if (btn && modal.contains(btn)) {
+        e.preventDefault();
+        requestClose(e);
+      }
+    });
+
+    if (opts.escape !== false) {
+      modal.setAttribute('data-modal-escape', '1');
+    }
+
+    return modal;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var top = topOpen();
+    if (!top || top.getAttribute('data-modal-escape') !== '1') return;
+    if (typeof top.__iptvRequestClose === 'function') top.__iptvRequestClose(e);
+    else close(top);
+  });
+
+  global.IptvModal = {
+    open: open,
+    close: close,
+    closeAll: closeAll,
+    isOpen: isOpen,
+    anyOpen: anyOpen,
+    syncBody: syncBody,
+    topOpen: topOpen,
+    bind: bind,
+  };
+})(window);
+
+/* === IPTV kit: note.js === */
+/* IptvNote — единые статусные сообщения панели.
+ *
+ * Разметка: <div id="note" class="note hidden" role="status"></div>
+ * Files: #status.status-box.note + #status-text + .status-progress
+ * Player: #player-note.note.player-note
+ *
+ * IptvNote.show(text, kind?, opts?)
+ *   kind: '' | 'info' | 'ok' | 'err' | 'warn'
+ *   opts: {
+ *     el: 'note' | Element,   // цель (по умолчанию #note)
+ *     ttl: ms | 0 | false,    // автоскрытие; 0/false = не скрывать
+ *     sticky: true,           // то же, что ttl: 0
+ *     progress: 0..100|null   // полоса прогресса (files)
+ *   }
+ * IptvNote.clear(el?)
+ * IptvNote.configure({ defaultTtl, defaultEl, ttlByKind })
+ *
+ * Страница: body[data-note-ttl="5000"] или IptvNote.configure({ defaultTtl: 5000 })
+ *
+ * По умолчанию: ok / warn / err / info — автоскрытие;
+ * пустой kind (загрузка…) — sticky, пока не сменят сообщение или clear().
+ */
+(function (global) {
+  'use strict';
+
+  var DEFAULT_TTL = 4500;
+  var TTL_BY_KIND = { ok: 4000, warn: 5500, err: 7000, info: 4500 };
+  var DEFAULT_EL = 'note';
+  var timers = new WeakMap();
+  var KIND_RE = /\b(ok|err|warn|info)\b/g;
+
+  function cfgFromBody() {
+    var b = document.body;
+    if (!b) return;
+    var ttl = parseInt(b.getAttribute('data-note-ttl') || '', 10);
+    if (ttl > 0) DEFAULT_TTL = ttl;
+    var el = b.getAttribute('data-note-el');
+    if (el) DEFAULT_EL = el;
+  }
+
+  function resolveEl(elOrId) {
+    if (elOrId == null || elOrId === '') elOrId = DEFAULT_EL;
+    if (typeof elOrId === 'string') return document.getElementById(elOrId);
+    return elOrId && elOrId.nodeType ? elOrId : null;
+  }
+
+  function textTarget(box) {
+    if (!box) return null;
+    var inner = box.querySelector('.note-text, .status-text');
+    if (inner) return inner;
+    if (box.id === 'status') {
+      var st = document.getElementById('status-text');
+      if (st) return st;
+    }
+    return box;
+  }
+
+  function clearTimer(box) {
+    var t = timers.get(box);
+    if (t) {
+      clearTimeout(t);
+      timers.delete(box);
+    }
+  }
+
+  function normalizeKind(kind) {
+    if (!kind) return '';
+    kind = String(kind);
+    if (kind === 'error') return 'err';
+    if (kind === 'success') return 'ok';
+    if (kind === 'warning') return 'warn';
+    return kind;
+  }
+
+  function resolveTtl(kind, opts) {
+    opts = opts || {};
+    if (opts.sticky) return 0;
+    if (opts.ttl === 0 || opts.ttl === false) return 0;
+    if (typeof opts.ttl === 'number' && opts.ttl > 0) return opts.ttl;
+    if (!kind) return 0;
+    if (TTL_BY_KIND[kind] != null) return TTL_BY_KIND[kind];
+    return DEFAULT_TTL;
+  }
+
+  function setProgress(box, pct) {
+    var prog =
+      box.querySelector('.status-progress') ||
+      (box.id === 'status' ? document.getElementById('status-progress') : null);
+    var bar =
+      box.querySelector('.status-progress-bar') ||
+      document.getElementById('status-progress-bar');
+    if (!prog || !bar) return;
+    if (pct == null || pct === false) {
+      prog.classList.add('hidden');
+      bar.style.width = '0%';
+      return;
+    }
+    prog.classList.remove('hidden');
+    bar.style.width = Math.max(0, Math.min(100, Number(pct) || 0)) + '%';
+  }
+
+  function stripKinds(box) {
+    box.className = String(box.className || '').replace(KIND_RE, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function clear(elOrId) {
+    var box = resolveEl(elOrId);
+    if (!box) return;
+    clearTimer(box);
+    stripKinds(box);
+    box.classList.add('hidden');
+    var target = textTarget(box);
+    if (target) target.textContent = '';
+    setProgress(box, null);
+  }
+
+  function show(text, kind, opts) {
+    opts = opts || {};
+    if (typeof kind === 'object' && kind !== null) {
+      opts = kind;
+      kind = opts.kind || '';
+    }
+    kind = normalizeKind(kind);
+
+    var box = resolveEl(opts.el);
+    if (!box) return null;
+
+    if (text == null || text === '') {
+      clear(box);
+      return box;
+    }
+
+    clearTimer(box);
+    stripKinds(box);
+    if (!/\bnote\b/.test(box.className)) {
+      box.className = (box.className ? box.className + ' ' : '') + 'note';
+    }
+    if (kind) box.classList.add(kind);
+    box.classList.remove('hidden');
+
+    var target = textTarget(box);
+    if (target) target.textContent = String(text);
+
+    if ('progress' in opts) setProgress(box, opts.progress);
+    else setProgress(box, null);
+
+    var ttl = resolveTtl(kind, opts);
+    if (ttl > 0) {
+      var handle = setTimeout(function () {
+        timers.delete(box);
+        clear(box);
+      }, ttl);
+      timers.set(box, handle);
+    }
+    return box;
+  }
+
+  function configure(opts) {
+    opts = opts || {};
+    if (typeof opts.defaultTtl === 'number' && opts.defaultTtl >= 0) {
+      DEFAULT_TTL = opts.defaultTtl;
+    }
+    if (opts.defaultEl) DEFAULT_EL = opts.defaultEl;
+    if (opts.ttlByKind && typeof opts.ttlByKind === 'object') {
+      Object.keys(opts.ttlByKind).forEach(function (k) {
+        TTL_BY_KIND[k] = opts.ttlByKind[k];
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', cfgFromBody);
+  } else {
+    cfgFromBody();
+  }
+
+  global.IptvNote = {
+    show: show,
+    clear: clear,
+    configure: configure,
+  };
+})(window);
+
+/* === IPTV kit: confirm.js === */
+/* Shared confirm dialog — requires {{SITE_CONFIRM}} / #confirm-modal in page */
+(function (global) {
+  var pending = null;
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function close(result) {
+    if (global.IptvModal) IptvModal.close('confirm-modal');
+    else {
+      var modal = el('confirm-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+    if (pending) {
+      var done = pending;
+      pending = null;
+      done(!!result);
+    }
+  }
+
+  function ask(message, okLabel) {
+    var modal = el('confirm-modal');
+    if (!modal) {
+      return Promise.resolve(window.confirm(message));
+    }
+    if (pending) close(false);
+    el('confirm-text').textContent = message || '';
+    var ok = el('confirm-ok');
+    var label = okLabel || 'OK';
+    ok.textContent = label;
+    /* destructive primary — красный; иначе accent */
+    var danger = /удал|delete|remove|kill|сброс|reset/i.test(label);
+    ok.className = danger ? 'kill' : 'refresh';
+    if (global.IptvModal) IptvModal.open(modal);
+    else {
+      modal.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+    }
+    setTimeout(function () {
+      var ok = el('confirm-ok');
+      if (ok) ok.focus();
+    }, 0);
+    return new Promise(function (resolve) {
+      pending = resolve;
+    });
+  }
+
+  function bind() {
+    var modal = el('confirm-modal');
+    if (!modal || modal.getAttribute('data-bound') === '1') return;
+    modal.setAttribute('data-bound', '1');
+    el('confirm-ok').addEventListener('click', function () { close(true); });
+    if (global.IptvModal) {
+      IptvModal.bind(modal, {
+        onClose: function () {
+          if (pending) {
+            var done = pending;
+            pending = null;
+            done(false);
+          }
+        },
+      });
+    } else {
+      el('confirm-cancel').addEventListener('click', function () { close(false); });
+      var closeBtn = el('confirm-close');
+      if (closeBtn) closeBtn.addEventListener('click', function () { close(false); });
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) close(false);
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+
+  global.IptvConfirm = { ask: ask, close: close };
+})(window);
+
+/* === ESP_CAM app.js === */
 const $=id=>document.getElementById(id);
+/** Painting UI −150…+150 step5 → wire 00h…3Ch (E650/HE: Data×5). */
 function paintHex(n){
   let v=parseInt(n,10); if(isNaN(v)) v=0;
+  v=Math.round(v/5);
   if(v<-30)v=-30; if(v>30)v=30;
   return (v+30).toString(16).toUpperCase().padStart(2,'0');
 }
+function paintFromWire(code){
+  const c=parseInt(code,10);
+  if(isNaN(c)) return 0;
+  return Math.max(-150,Math.min(150,(c-30)*5));
+}
 function showBar(cmd,d){
-  const bar=$('bar');
-  bar.className=(d&&d.ok)?'ok':(d?'bad':'');
-  bar.querySelector('.cmd').textContent=cmd||'';
   let t=(d&&d.status)||'—';
   if(d&&d.data!==undefined&&d.data!=='') t+=' | '+d.data;
   if(d&&d.tx) t+=' | TX '+d.tx;
@@ -495,18 +3163,34 @@ function showBar(cmd,d){
   if(d&&d.preset!==undefined) t+=' preset='+d.preset;
   if(d&&d.value!==undefined) t+=' value='+d.value;
   if(d&&d.limit!==undefined) t+=' axis='+d.axis+' limit='+d.limit;
-  if(d&&(d.awc!==undefined||d.model!==undefined||d.version!==undefined||d.gain_db!==undefined)){
-    const skip={ok:1,status:1,tx:1,rx:1,data:1};
+  if(d&&(d.awc!==undefined||d.model!==undefined||d.version!==undefined||d.gain_db!==undefined||d.gain_mode!==undefined)){
+    const skip={ok:1,status:1,tx:1,rx:1,data:1,stream:1,phase:1,done:1};
     const lines=Object.keys(d).filter(k=>!skip[k]).map(k=>k+'='+d[k]);
     const el=$('camparams'); if(el) el.textContent=lines.join('\n');
     t+=' | params '+lines.length;
     applyCamParams(d);
   }
-  bar.querySelector('.st').textContent=t;
-  if(d&&d.pan!==undefined){
+  const kind=(d&&d.ok)?'ok':(d?'err':'warn');
+  const msg=(cmd?cmd+' · ':'')+t;
+  if(window.IptvNote) IptvNote.show(msg, kind);
+  else {
+    const note=$('note');
+    if(note){
+      const te=note.querySelector('.note-text')||note;
+      te.textContent=msg;
+      note.className='note note-bar '+kind;
+      note.classList.remove('hidden');
+    }
+  }
+  if(d&&d.pan!==undefined && $('pos')){
     $('pos').textContent='pan 0x'+d.pan.toString(16).padStart(4,'0')+
       ' tilt 0x'+d.tilt.toString(16).padStart(4,'0')+
       (d.zoom!==undefined?(' z 0x'+Number(d.zoom).toString(16)):'');
+  }
+  if(d&&d.ok){
+    if(d.zoom!==undefined && $('zoom')) $('zoom').value='0x'+Number(d.zoom).toString(16).toUpperCase().padStart(4,'0');
+    if(d.focus!==undefined && $('focus')) $('focus').value='0x'+Number(d.focus).toString(16).toUpperCase().padStart(4,'0');
+    if(d.iris!==undefined && $('iris')) $('iris').value='0x'+Number(d.iris).toString(16).toUpperCase().padStart(4,'0');
   }
   if(cmd==='ptz/preset_map'&&d&&d.ok&&Array.isArray(d.presets)&&window.PresetUI)
     window.PresetUI.applyMap(d.presets);
@@ -555,13 +3239,23 @@ async function ptz(cmd){
   if(cmd==='set_models'&&d&&d.ok) tick();
   return d;
 }
-async function cam(cmd){
+async function cam(cmd, el){
   const p={};
+  let apiCmd=cmd;
+  if(cmd==='menu_on'){ apiCmd='menu'; p.v='1'; }
+  if(cmd==='menu_off'){ apiCmd='menu'; p.v='0'; }
   if(cmd==='awc_mode') p.v=$('awc').value;
   if(cmd==='scene') p.v=$('scene').value;
   if(cmd==='shutter_mode') p.v=$('shut').value;
-  if(cmd==='synchro') p.data=$('sync').value;
+  if(cmd==='synchro'){
+    const n=Math.max(1,Math.min(255,parseInt($('sync').value,10)||1));
+    p.data=n.toString(16).toUpperCase().padStart(3,'0');
+  }
   if(cmd==='gain') p.v=$('cgain').value;
+  if(cmd==='gain_mode'){
+    if($('cgain_mode')&&$('cgain_mode').value==='agc'){ apiCmd='agc'; }
+    else { apiCmd='gain'; p.v=$('cgain')?$('cgain').value:'0'; }
+  }
   if(cmd==='detail') p.v=$('cdet').value;
   if(cmd==='hd_detail') p.v=$('chdet').value;
   if(cmd==='iris_am') p.v=$('ciris').value;
@@ -571,7 +3265,7 @@ async function cam(cmd){
   }
   if(cmd==='filter') p.v=$('cfilt').value;
   if(cmd==='colorbar') p.v=$('cbar').value;
-  if(cmd==='menu') p.v=$('cmenu').value;
+  if(cmd==='menu') p.v=$('cmenu')?$('cmenu').value:p.v;
   if(cmd==='af') p.v=$('caf').value;
   if(cmd==='negpos') p.v=$('cneg').value;
   if(cmd==='fieldframe') p.v=$('cff').value;
@@ -581,21 +3275,101 @@ async function cam(cmd){
   if(cmd==='b_gain') p.data=paintHex($('cbg').value);
   if(cmd==='r_ped') p.data=paintHex($('crp').value);
   if(cmd==='b_ped') p.data=paintHex($('cbp').value);
+  if(cmd==='t_ped') p.data=paintHex($('ctped').value);
   if(cmd==='gamma') p.data=$('cgam').value;
   if(cmd==='agc_max') p.data=$('cagc').value;
   if(cmd==='total_dtl') p.data=$('cdtl').value;
   if(cmd==='genlock') p.data=$('cgen').value;
+  if(cmd==='dig_gain') p.v=$('cdig')?$('cdig').value:(el&&el.value);
+  if(cmd==='light_area') p.v=$('carea')?$('carea').value:(el&&el.value);
+  if(cmd==='light_peak'){
+    const n=Math.max(0,Math.min(100,parseInt((el&&el.value)||($('cpeak')&&$('cpeak').value)||50,10)));
+    p.data=n.toString(16).toUpperCase().padStart(2,'0');
+  }
+  if(cmd==='dnr3d') p.v=$('c3dnr')?$('c3dnr').value:(el&&el.value);
+  if(cmd==='osd_set'){
+    const src=el||document.activeElement;
+    p.v=(src&&src.dataset&&src.dataset.key)||'';
+    let v=src&&src.value;
+    if(src&&src.type==='range'&&src.dataset.key==='airis'){
+      v=Math.max(0,Math.min(100,parseInt(v,10)||0)).toString(16).toUpperCase().padStart(2,'0');
+    }else if(src&&src.type==='range'&&src.dataset.key==='wclip'){
+      v=Math.max(0,Math.min(15,parseInt(v,10)||0)).toString(16).toUpperCase().padStart(2,'0');
+    }else if(src&&src.type==='range'&&String(src.dataset.key||'').indexOf('mx_')===0){
+      v=Math.max(0,Math.min(62,parseInt(v,10)||0)).toString(16).toUpperCase().padStart(2,'0');
+    }
+    p.data=v||'00';
+  }
   if(cmd==='monitor'){p.data=$('cdxx').value;p.data2=$('cmon').value}
   if(cmd==='lens_h') p.data=$('clensh').value;
   if(cmd==='scene_data') p.data=$('cscened').value;
-  return call('cam',cmd,p);
+  if(cmd==='raw'||cmd==='raw_send'){
+    p.data=val('camrawcmd','QAW').trim().toUpperCase();
+    p.data2=val('camrawpay','');
+  }
+  const d=await call('cam',apiCmd,p);
+  if((cmd==='menu_on'||cmd==='menu_off') && d&&d.ok) setOsdUi(cmd==='menu_on');
+  if(cmd==='iris_am'||cmd==='shutter_mode'||cmd==='agc'||cmd==='gain'||cmd==='gain_mode'||cmd==='awc_mode'){
+    if(cmd==='gain_mode'||cmd==='agc'||cmd==='gain'){
+      window._gainAgc=($('cgain_mode')&&$('cgain_mode').value==='agc');
+    }
+    updateCamDeps();
+  }
+  return d;
 }
-document.querySelectorAll('.tabs button').forEach(b=>{
+/** Условная видимость как в меню E650/HE870. */
+function updateCamDeps(){
+  const irisAm=$('ciris')?$('ciris').value:'0';
+  const shut=$('shut')?$('shut').value:'';
+  const agc=($('cgain_mode')&&$('cgain_mode').value==='agc')||!!window._gainAgc;
+  window._gainAgc=!!agc;
+  const awc=$('awc')?String($('awc').value):'';
+  const camId=(window._rangesCamId||($('cammodel')&&$('cammodel').value)||'').toLowerCase();
+  const synV=window._shutSynchroV;
+  const shutSyn=synV!=null && synV!=='' && shut===String(synV);
+  /* E650 QAW: 0=ATW,2/3=A/B,4/5=3200/5600. HE: 0=ATW,1/2=A/B,3/4=3200/5600 */
+  const awcHe=/^(he|ue)/.test(camId);
+  const awcAtw=(awc==='0');
+  const awcMem=awcHe?(awc==='1'||awc==='2'):(awc==='2'||awc==='3');
+  const awcPreset=awcHe?(awc==='3'||awc==='4'):(awc==='4'||awc==='5');
+
+  const camOk=(el)=>{
+    const raw=el.getAttribute('data-cam');
+    if(!raw) return true;
+    const list=raw.toLowerCase().split(/\s+/);
+    return list.includes(camId)||list.some(x=>camId.indexOf(x)===0);
+  };
+  const depOk=(el)=>{
+    const dep=el.getAttribute('data-dep');
+    if(!dep) return true;
+    if(dep==='iris:manual') return irisAm==='0';
+    if(dep==='iris:auto') return irisAm==='1';
+    if(dep==='gain:manual') return !agc;
+    if(dep==='gain:agc') return !!agc;
+    if(dep==='shut:synchro') return shutSyn;
+    if(dep==='awc:atw') return awcAtw;
+    if(dep==='awc:mem') return awcMem;
+    if(dep==='awc:nopreset') return !awcPreset;
+    return true;
+  };
+  document.querySelectorAll('[data-dep],[data-cam]').forEach(el=>{
+    el.hidden=!(camOk(el)&&depOk(el));
+  });
+  if($('cmiris')) $('cmiris').disabled=(irisAm==='1');
+  if($('cgain')) $('cgain').disabled=agc;
+  const awcExec=$('awc_exec');
+  if(awcExec) awcExec.hidden=!awcMem;
+}
+function updateExposureUi(){ updateCamDeps(); }
+document.querySelectorAll('.tabs .tab').forEach(b=>{
   b.onclick=()=>{
-    document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
-    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    $(b.dataset.tab).classList.add('on');
+    document.querySelectorAll('.tabs .tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x=>{ x.hidden=true; });
+    b.classList.add('active');
+    const pan=$(b.dataset.tab);
+    if(pan) pan.hidden=false;
+    if(b.dataset.tab==='cam') loadCamParams(true);
+    if(b.dataset.tab==='osd') applyOsdLabels();
   };
 });
 document.body.addEventListener('click',e=>{
@@ -607,7 +3381,7 @@ document.body.addEventListener('click',e=>{
 function sendFromEl(el){
   const cmd=el.dataset.send; if(!cmd) return;
   const api=el.dataset.api||'ptz';
-  if(api==='cam') cam(cmd); else ptz(cmd);
+  if(api==='cam') cam(cmd, el); else ptz(cmd);
 }
 const _slideDebounce=new WeakMap();
 function updateSlideLabel(el){
@@ -615,8 +3389,16 @@ function updateSlideLabel(el){
   if(id==='rate'){ spd.textContent=v; return; }
   if(id==='cgain'&&$('cgain_v')) $('cgain_v').textContent=v;
   if(id==='cmiris'&&$('cmiris_v')) $('cmiris_v').textContent=v;
-  if(id==='cchr'&&$('cchr_v')) $('cchr_v').textContent=String(parseInt(v,10)-3);
-  if((id==='crg'||id==='cbg'||id==='crp'||id==='cbp')&&$(id+'_v')) $(id+'_v').textContent=v;
+  if(id==='cpeak'&&$('cpeak_v')) $('cpeak_v').textContent=String(parseInt(v,10)-50);
+  if(id==='airis'&&$('airis_v')) $('airis_v').textContent=v;
+  if(id==='cwclip'&&$('cwclip_v')) $('cwclip_v').textContent=String(95+parseInt(v,10));
+  if(id==='cchr'){ /* chroma may be naked range in field */ }
+  if(id==='sync'&&$('sync_v')){
+    const n=Math.max(1,Math.min(255,parseInt(v,10)||1));
+    $('sync_v').textContent=n.toString(16).toUpperCase().padStart(3,'0');
+  }
+  if((id==='crg'||id==='cbg'||id==='crp'||id==='cbp'||id==='ctped')&&$(id+'_v')) $(id+'_v').textContent=v;
+  if(id.indexOf('cmx_')===0&&$(id+'_v')) $(id+'_v').textContent=String(parseInt(v,10)-31);
 }
 function onSlideInput(el){
   updateSlideLabel(el);
@@ -641,9 +3423,7 @@ document.body.addEventListener('change',e=>{
     return;
   }
   sendFromEl(el);
-  if(el.id==='ciris'){
-    $('cmiris').disabled=el.value==='1';
-  }
+  if(el.id==='ciris'||el.id==='shut'||el.id==='awc'||el.id==='cgain_mode') updateCamDeps();
 });
 document.body.addEventListener('input',e=>{
   const el=e.target;
@@ -654,16 +3434,56 @@ document.body.addEventListener('input',e=>{
   }
   if(el.matches('input[type=number][data-send]')) sendFromEl(el);
 });
-['cgain','cmiris','crg','cbg','crp','cbp','cchr','rate'].forEach(id=>{
+['cgain','cmiris','cpeak','airis','cwclip','crg','cbg','crp','cbp','ctped','cchr','rate','sync',
+ 'cmx_rg','cmx_rb','cmx_gr','cmx_gb','cmx_br','cmx_bg'].forEach(id=>{
   const el=$(id); if(el) updateSlideLabel(el);
 });
-$('cmiris').disabled=$('ciris').value==='1';
+updateExposureUi();
+setOsdUi(false);
+const HOLD_LIMIT_AXIS={tilt_up:1,tilt_down:2,pan_left:3,pan_right:4};
+function setLimitArm(on){
+  window._limitArm=!!on;
+  const b=$('limit_arm');
+  if(b){ b.classList.toggle('armed', !!on); b.setAttribute('aria-pressed', on?'true':'false'); }
+}
+function fireLimitAxis(ax){
+  setLimitArm(false);
+  if($('limax')) $('limax').value=String(ax);
+  const caps=window._ptCaps||{};
+  if(caps.limit_ctrl){
+    if($('limact')) $('limact').value='1';
+    return ptz('limit_ctrl');
+  }
+  return ptz('limit_toggle');
+}
+const limArmBtn=$('limit_arm');
+if(limArmBtn){
+  limArmBtn.addEventListener('click',()=>{
+    setLimitArm(!window._limitArm);
+  });
+}
+/* сброс Limit: клик в пустое (не Limit и не ось PT) */
+document.addEventListener('pointerdown',e=>{
+  if(!window._limitArm) return;
+  const t=e.target;
+  if(!t||!t.closest) return;
+  if(t.closest('#limit_arm')) return;
+  const hold=t.closest('[data-hold]');
+  if(hold && HOLD_LIMIT_AXIS[hold.dataset.hold]) return;
+  setLimitArm(false);
+}, true);
 function bindHold(el){
   const cmd=el.dataset.hold;
   let down=false;
   const go=ev=>{
     if(ev.pointerType==='mouse' && ev.button!==0) return;
     ev.preventDefault();
+    const limAx=HOLD_LIMIT_AXIS[cmd];
+    if(window._limitArm && limAx){
+      try{ el.setPointerCapture(ev.pointerId); }catch(err){}
+      fireLimitAxis(limAx);
+      return;
+    }
     try{ el.setPointerCapture(ev.pointerId); }catch(err){}
     if(down) return;
     down=true;
@@ -687,9 +3507,10 @@ const PresetUI=(()=>{
   const occ=new Array(100).fill(false);
   const banksEl=$('prbanks'), padEl=$('prquick'), info=$('prinfo');
   function absNum(slot){ return bank*SLOTS + slot + 1; }
+  function armed(){ return mode==='save'||mode==='delete'; }
   function syncInfo(){
     $('pr').value=String(selected);
-    const m=mode==='recall'?'Recall':(mode==='save'?'Save':'Delete');
+    const m=mode==='recall'?'Recall':(mode==='save'?'Store…':'Delete…');
     info.textContent='P'+String(selected).padStart(2,'0')+' · '+m+' · bank '+(bank+1);
   }
   function paintPad(){
@@ -701,25 +3522,46 @@ const PresetUI=(()=>{
       b.classList.toggle('sel', n===selected);
       b.classList.toggle('occ', n<=MAX_PRESET && !!occ[n-1]);
     });
-    banksEl.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===bank));
-    document.querySelectorAll('#prmodes [data-pr-mode]').forEach(b=>b.classList.toggle('on', b.dataset.prMode===mode));
+    padEl.classList.toggle('await-slot', armed());
+    banksEl.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active', i===bank));
+    document.querySelectorAll('#prmodes [data-pr-mode]').forEach(b=>{
+      const m=b.dataset.prMode;
+      b.classList.toggle('armed', mode===m);
+      b.classList.toggle('idle', mode!==m);
+    });
     syncInfo();
   }
   function setBank(b){ bank=Math.max(0,Math.min(BANKS-1,b)); paintPad(); }
-  function setMode(m){ mode=m; paintPad(); }
+  function setMode(m){
+    if(m!=='save'&&m!=='delete'){ mode='recall'; paintPad(); return; }
+    mode=(mode===m)?'recall':m; /* повтор = сброс в Recall */
+    paintPad();
+  }
+  function clearArm(){ if(armed()){ mode='recall'; paintPad(); } }
+  async function askDelete(msg){
+    if(window.IptvConfirm && typeof IptvConfirm.ask==='function')
+      return IptvConfirm.ask(msg, 'Удалить');
+    return window.confirm(msg);
+  }
   async function runSlot(n){
     if(n<1||n>MAX_PRESET) return;
     selected=n; $('pr').value=String(n); paintPad();
     if(mode==='recall') return ptz('preset_recall');
     if(mode==='save'){
       const d=await ptz('preset_save');
-      if(d&&d.ok){ occ[n-1]=true; paintPad(); }
+      if(d&&d.ok) occ[n-1]=true;
+      mode='recall';
+      paintPad();
       return d;
     }
     if(mode==='delete'){
-      if(!confirm('Удалить пресет P'+String(n).padStart(2,'0')+'?')) return;
+      if(!(await askDelete('Удалить пресет P'+String(n).padStart(2,'0')+'?'))){
+        mode='recall'; paintPad(); return;
+      }
       const d=await ptz('preset_delete');
-      if(d&&d.ok){ occ[n-1]=false; paintPad(); }
+      if(d&&d.ok) occ[n-1]=false;
+      mode='recall';
+      paintPad();
       return d;
     }
   }
@@ -746,8 +3588,17 @@ const PresetUI=(()=>{
   document.querySelectorAll('#prmodes [data-pr-mode]').forEach(b=>{
     b.onclick=()=>setMode(b.dataset.prMode);
   });
+  /* сброс залипания: пустое место (не Store/Delete и не номер пресета) */
+  document.addEventListener('pointerdown',e=>{
+    if(!armed()) return;
+    const t=e.target;
+    if(!t||!t.closest) return;
+    if(t.closest('#prquick')) return;
+    if(t.closest('#prmodes [data-pr-mode]')) return;
+    clearArm();
+  }, true);
   paintPad();
-  window.PresetUI={applyMap, paintPad};
+  window.PresetUI={applyMap, paintPad, clearArm};
 })();
 function applyInvertUi(d){
   if(!d) return;
@@ -757,12 +3608,19 @@ function applyInvertUi(d){
   if(typeof d.inv_focus==='boolean') $('inv_focus').checked=d.inv_focus;
 }
 function applyCaps(d){
-  const caps=Object.assign({}, d&&d.pt_caps, d&&d.cam_caps);
+  window._ptCaps=Object.assign({}, d&&d.pt_caps);
+  const caps=Object.assign({}, window._ptCaps, d&&d.cam_caps);
   document.querySelectorAll('[data-cap]').forEach(el=>{
     const key=el.getAttribute('data-cap');
     if(caps[key]===undefined){ el.classList.remove('cap-off'); return; }
     el.classList.toggle('cap-off', !caps[key]);
   });
+  /* Limit arm: PH #L или HE #LC */
+  const lim=$('limit_arm');
+  if(lim && caps.limit_toggle===false && caps.limit_ctrl){
+    lim.classList.remove('cap-off');
+  }
+  updateCamDeps();
 }
 function applyModels(d){
   if(!d) return;
@@ -773,32 +3631,158 @@ function applyModels(d){
     if(t){ $('title').textContent=t; document.title=t; }
   }
   updatePairHint();
+  applyOsdLabels();
+  if(d.cam_id && d.cam_id!==window._rangesCamId) loadCamRanges();
+}
+/** Заполнить select/range из /api/cam?cmd=ranges (ccam camParamCatalog). */
+function fillCamRanges(ranges){
+  if(!ranges) return;
+  Object.keys(ranges).forEach(key=>{
+    const spec=ranges[key];
+    const el=document.querySelector('[data-range="'+key+'"]');
+    if(!el||!spec) return;
+    if(spec.kind==='choices' && el.tagName==='SELECT'){
+      const cur=el.value;
+      el.innerHTML='';
+      (spec.items||[]).forEach(it=>{
+        const o=document.createElement('option');
+        o.value=it.v; o.textContent=it.l;
+        el.appendChild(o);
+      });
+      if(key==='shutter'){
+        const syn=(spec.items||[]).find(it=>String(it.l||'').toLowerCase()==='synchro');
+        window._shutSynchroV=syn?String(syn.v):'';
+      }
+      if(cur!==''&&cur!=null&&[...el.options].some(o=>o.value===cur)) el.value=cur;
+    }else if(spec.kind==='hex_range' && el.type==='range'){
+      el.min=String(spec.min); el.max=String(spec.max);
+      const v=parseInt(el.value,10);
+      if(isNaN(v)||v<spec.min||v>spec.max) el.value=String(spec.min);
+      el.title='OMS '+Number(spec.min).toString(16).toUpperCase().padStart(spec.digits||3,'0')
+        +'…'+Number(spec.max).toString(16).toUpperCase().padStart(spec.digits||3,'0');
+      updateSlideLabel(el);
+    }
+  });
+}
+async function loadCamRanges(){
+  try{
+    const r=await fetch('/api/cam?cmd=ranges',{cache:'no-store'});
+    const d=await r.json();
+    if(!d||!d.ok||!d.ranges) return;
+    window._rangesCamId=d.cam_id||'';
+    fillCamRanges(d.ranges);
+    loadOsdRanges();
+  }catch(e){}
 }
 function setSel(id,v){ const el=$(id); if(el&&v!==undefined&&v!==null&&typeof v!=='string') el.value=String(v); else if(el&&typeof v==='string'&&v!=='timeout'&&v!=='io'&&v!=='nack'&&v!=='param') el.value=v; }
+async function loadCamParams(quiet){
+  if(window._camParamsBusy) return;
+  window._camParamsBusy=true;
+  const acc={ok:true,status:'ok'};
+  try{
+    const r=await fetch('/api/cam?cmd=params',{cache:'no-store'});
+    if(!r.ok) throw new Error('http');
+    /* NDJSON stream: поле за полем; fallback — один JSON (старая прошивка) */
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    if(!r.body||!ct.includes('ndjson')){
+      const d=await r.json();
+      if(quiet){ if(d&&d.ok) applyCamParams(d); }
+      else showBar('cam/params',d);
+      return;
+    }
+    const reader=r.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      for(;;){
+        const i=buf.indexOf('\n');
+        if(i<0) break;
+        const line=buf.slice(0,i).trim();
+        buf=buf.slice(i+1);
+        if(!line) continue;
+        let obj;
+        try{ obj=JSON.parse(line); }catch(e){ continue; }
+        Object.assign(acc,obj);
+        if(obj.done) continue;
+        applyCamParams(acc);
+      }
+    }
+    if(buf.trim()){
+      try{ Object.assign(acc, JSON.parse(buf.trim())); }catch(e){}
+    }
+    applyCamParams(acc);
+    if(!quiet) showBar('cam/params',acc);
+  }catch(e){
+    if(!quiet) showBar('cam/params',{ok:false,status:'net'});
+  }finally{
+    window._camParamsBusy=false;
+  }
+}
 function applyCamParams(d){
   if(!d||!d.ok) return;
   setSel('awc',d.awc); setSel('scene',d.scene); setSel('shut',d.shutter);
-  setSel('cdet',d.detail); setSel('cbar',d.colorbar); setSel('cmenu',d.menu);
+  setSel('cdet',d.detail); setSel('cbar',d.colorbar);
   setSel('caf',d.af); setSel('cfilt',d.filter); setSel('cneg',d.negpos);
   setSel('cff',d.fieldframe); setSel('ciris',d.iris_am);
-  if(typeof d.gain_db==='number' && $('cgain')){
-    $('cgain').value=d.gain_db; if($('cgain_v')) $('cgain_v').textContent=d.gain_db;
+  if(d.menu!==undefined&&d.menu!==null&&d.menu!=='timeout'&&d.menu!=='io'&&d.menu!=='nack'){
+    setOsdUi(String(d.menu)==='1'||d.menu===1);
+  }
+  /* gain_mode из QGU (80h→agc). Числовой d.gain от PT exposure — не режим камеры. */
+  const gmode=(d.gain_mode!==undefined&&d.gain_mode!=='')?d.gain_mode:d.gain;
+  if(gmode==='agc'){
+    window._gainAgc=true;
+    setSel('cgain_mode','agc');
+  }else if(gmode==='manual'||typeof d.gain_db==='number'){
+    window._gainAgc=false;
+    setSel('cgain_mode','manual');
+    if(typeof d.gain_db==='number'&&$('cgain')){
+      $('cgain').value=d.gain_db; if($('cgain_v')) $('cgain_v').textContent=d.gain_db;
+    }
   }
   if(typeof d.iris==='number' && $('cmiris')){
     const pct=Math.max(0,Math.min(100,Math.round(d.iris*100/65535)));
     $('cmiris').value=pct; if($('cmiris_v')) $('cmiris_v').textContent=pct;
   }
-  if(typeof d.chroma==='number' && $('cchr')){
-    $('cchr').value=d.chroma; if($('cchr_v')) $('cchr_v').textContent=(d.chroma-3);
+  if(d.gamma!==undefined) setSel('cgam',d.gamma);
+  if(d.agc_max!==undefined) setSel('cagc',d.agc_max);
+  if(d.dig_gain!==undefined) setSel('cdig',d.dig_gain);
+  if(d.light_area!==undefined) setSel('carea',d.light_area);
+  if(d.knee!==undefined) setSel('cknee',d.knee);
+  if(d.cdnr!==undefined) setSel('ccdnr',d.cdnr);
+  if(d.atw!==undefined) setSel('catw',d.atw);
+  if(d.dnr3d!==undefined) setSel('c3dnr',d.dnr3d);
+  if(typeof d.light_peak==='number' && $('cpeak')){
+    $('cpeak').value=d.light_peak; if($('cpeak_v')) $('cpeak_v').textContent=d.light_peak-50;
   }
-  // OGR: 0x1E = 0 → slider = code-30
+  if(d.airis!==undefined && $('airis')){
+    const a=(typeof d.airis==='number')?d.airis:parseInt(String(d.airis),16);
+    if(!isNaN(a)){ $('airis').value=a; if($('airis_v')) $('airis_v').textContent=a; }
+  }
+  if(typeof d.wclip==='number' && $('cwclip')){
+    $('cwclip').value=d.wclip; if($('cwclip_v')) $('cwclip_v').textContent=95+d.wclip;
+  }
+  if(typeof d.chroma==='number' && $('cchr')) $('cchr').value=d.chroma;
+  // ORG/OGR: 0x1E=0 → UI=(code-30)*5 (−150…+150)
   const paintToSlider=(code,id,vid)=>{
     if(typeof code!=='number'||!$(id)) return;
-    const s=Math.max(-30,Math.min(30,code-30));
+    const s=paintFromWire(code);
     $(id).value=s; if($(vid)) $(vid).textContent=s;
   };
   paintToSlider(d.r_gain,'crg','crg_v');
   paintToSlider(d.b_gain,'cbg','cbg_v');
+  paintToSlider(d.r_ped,'crp','crp_v');
+  paintToSlider(d.b_ped,'cbp','cbp_v');
+  paintToSlider(d.t_ped,'ctped','ctped_v');
+  const mx=(code,id)=>{
+    if(typeof code!=='number'||!$(id)) return;
+    $(id).value=code; if($(id+'_v')) $(id+'_v').textContent=code-31;
+  };
+  mx(d.mx_rg,'cmx_rg'); mx(d.mx_rb,'cmx_rb'); mx(d.mx_gr,'cmx_gr');
+  mx(d.mx_gb,'cmx_gb'); mx(d.mx_br,'cmx_br'); mx(d.mx_bg,'cmx_bg');
+  updateCamDeps();
 }
 const PAIR={ph350:'e650',ph360:'e650',ph650:'e650',ph405:'e650',he130:'he130',he870:'he870',ue150:'ue150'};
 function updatePairHint(){
@@ -836,18 +3820,52 @@ async function tick(){
   try{
     const r=await fetch('/api/status',{cache:'no-store'});
     const d=await r.json();
-    link.textContent=d.link?'up':'down';
+    if($('link')) link.textContent=d.link?'up':'down';
     const ptOk=!!d.pt_alive;
-    const pwr=['Off','On','On+Cam','On no Cam'][d.pt_power]||'?';
-    linkmini.textContent=(d.link?'●':'○')+(ptOk?'●':'○')+' '+(d.ip||'');
-    linkmini.title='ETH '+(d.link?'up':'down')+' · PT '+(ptOk?('alive p'+d.pt_power+' '+pwr):'DEAD');
-    ip.textContent=d.ip;mask.textContent=d.mask;gw.textContent=d.gw;mac.textContent=d.mac;
-    ptm.textContent=d.model;camm.textContent=d.cam||'—';
+    const pwr=d.pt_power_s||(d.pt_power===undefined?'?':String(d.pt_power));
+    const camOk=!!d.cam_alive;
+    const camTx=!!d.cam_tx;
+    if($('badge-eth')){
+      $('badge-eth').textContent='ETH '+(d.link?'up':'down');
+      $('badge-eth').className='badge '+(d.link?'on':'off');
+    }
+    if($('badge-pt')){
+      const headOk=!!d.pt_powered;
+      $('badge-pt').textContent=ptOk?(headOk?('PT '+pwr):('PT '+pwr+' · off')):'PT dead';
+      $('badge-pt').className='badge '+(ptOk?(headOk?'on':'warn'):'off');
+    }
+    if($('badge-cam')){
+      let camTxt='Cam —';
+      let camCls='badge muted';
+      if(!ptOk){camTxt='Cam ?';camCls='badge muted';}
+      else if(!camTx){camTxt='Cam off path';camCls='badge muted';}
+      else if(camOk){camTxt='Cam '+(d.cam_qid||'ok');camCls='badge on';}
+      else{camTxt='Cam missing';camCls='badge '+(d.cam_fail>0?'off':'warn');}
+      $('badge-cam').textContent=camTxt;
+      $('badge-cam').className=camCls;
+    }
+    if($('linkmini')){
+      linkmini.textContent=d.ip||'';
+      linkmini.title='ETH '+(d.link?'up':'down')
+        +' · PT '+(ptOk?('alive p'+d.pt_power+' '+pwr):'DEAD')
+        +' · Cam '+(camOk?(d.cam_qid||'ok'):(camTx?'missing':'n/a'));
+    }
+    if($('ip')){ ip.textContent=d.ip;mask.textContent=d.mask;gw.textContent=d.gw;mac.textContent=d.mac; }
+    if($('ptm')){ ptm.textContent=d.model;camm.textContent=d.cam||'—'; }
     if($('ptlink')){
+      const err=(d.pt_error!=null&&d.pt_error!==255)?(' · err 0x'+Number(d.pt_error).toString(16)):'';
+      const optics=d.pt_optics===true?' · GZ ok':(d.pt_optics===false?(' · GZ —'+(d.pt_optics_fail?('×'+d.pt_optics_fail):'')):'');
       $('ptlink').textContent=ptOk
-        ?('alive · p'+d.pt_power+' ('+pwr+')'+(d.pt_powered?'':' · off'))
+        ?('alive · p'+d.pt_power+' ('+pwr+')'+optics+(d.pt_powered?'':' · head off')+err)
         :('DEAD · fails '+(d.pt_fail||0));
-      $('ptlink').style.color=ptOk?'var(--ok)':'var(--danger)';
+      $('ptlink').style.color=ptOk?(d.pt_powered?(d.pt_error&&d.pt_error!==0&&d.pt_error!==255?'var(--warn)':'var(--ok)'):'var(--warn)'):'var(--bad)';
+    }
+    if($('camlink')){
+      if(!ptOk) $('camlink').textContent='— (PT dead)';
+      else if(!camTx) $('camlink').textContent='CamTX off (p'+d.pt_power+')';
+      else if(camOk) $('camlink').textContent='alive · QID '+(d.cam_qid||'?');
+      else $('camlink').textContent='no reply · fails '+(d.cam_fail||0);
+      $('camlink').style.color=camOk?'var(--ok)':(camTx?'var(--bad)':'');
     }
     rateinfo.textContent=d.rate;up.textContent=d.uptime_s+' s';
     /* не перетирать слайдер, пока пользователь крутит / уже задал локально */
@@ -860,7 +3878,235 @@ async function tick(){
     applyCaps(d);
   }catch(e){showBar('status',{ok:false,status:'net'})}
 }
+if($('cam_read_params')) $('cam_read_params').onclick=()=>loadCamParams(false);
+loadCamRanges();
+/* params — только при входе на Camera (или Read params); на старте тормозит UI */
 tick();setInterval(tick,4000);
+
+
+/* === ESP_CAM osd.js === */
+/** Раскладка OSD: studio (E650) ≠ HE — одни и те же Dxx, разная роль. */
+function osdCamId(){
+  return (window._rangesCamId||($('cammodel')&&$('cammodel').value)||'').toLowerCase();
+}
+function osdIsStudio(id){
+  id=id||osdCamId();
+  return id==='e650'||id==='e600'||id==='e800'||id.indexOf('e6')===0;
+}
+function osdSetBtn(el, cmd, label, title, show){
+  if(!el) return;
+  el.hidden=show===false;
+  if(cmd) el.dataset.cmd=cmd;
+  if(label!=null) el.textContent=label;
+  if(title!=null) el.title=title;
+}
+function applyOsdLabels(){
+  const nav=$('osd_nav'); if(!nav) return;
+  const id=osdCamId();
+  const studio=osdIsStudio(id);
+  nav.dataset.osdLayout=studio?'studio':'he';
+
+  const up=$('osd_up'), down=$('osd_down'), mid=$('osd_mid');
+  const yes=$('osd_yes'), no=$('osd_no'), menu=$('osd_menu');
+  const left=$('osd_left'), right=$('osd_right'), hint=$('osd_hint');
+
+  if(studio){
+    /* E650: Item↑ = Menu(DPG); Item↓ = ITEM(DIT); NO / YES(Enter) = значение */
+    osdSetBtn(up, 'menu_sw', 'Item ↑', 'DPG · Menu (Item Up)', true);
+    osdSetBtn(down, 'item_sw', 'Item ↓', 'DIT · следующая строка (Item Down)', true);
+    osdSetBtn(no, 'no_sw', 'NO −', 'DDW · − значение', true);
+    osdSetBtn(yes, 'yes_sw', 'YES (Enter)', 'DUP · + значение / Enter', true);
+    osdSetBtn(menu, null, null, null, false);
+    osdSetBtn(mid, null, null, null, false);
+    if(hint) hint.textContent='E650: Item↑=Menu · Item↓=строки · NO / YES(Enter)=значение';
+  }else{
+    /* HE/UE: ↑↓ строки; Enter=DIT; Menu=DPG; ←→ только HE130 (cap) */
+    osdSetBtn(up, 'yes_sw', '▲ Up', 'DUP · вверх по меню', true);
+    osdSetBtn(down, 'no_sw', '▼ Down', 'DDW · вниз по меню', true);
+    osdSetBtn(mid, 'item_sw', 'Enter', 'DIT · вход / выбор', true);
+    osdSetBtn(menu, 'menu_sw', 'Menu', 'DPG · выход', true);
+    osdSetBtn(yes, null, null, null, false);
+    osdSetBtn(no, null, null, null, false);
+    if(left){ left.textContent='←'; left.title='DLT · влево'; }
+    if(right){ right.textContent='→'; right.title='DRT · вправо'; }
+    if(hint){
+      hint.textContent=(id==='he130')
+        ?'HE130: ↑↓ строки · ←→ · Enter / Menu'
+        :'PTZ: ↑↓ строки · Enter / Menu';
+    }
+  }
+}
+function setOsdUi(on){
+  window._osdOn=!!on;
+  const nav=$('osd_nav');
+  if(nav) nav.hidden=!on;
+  if($('osd_on')) $('osd_on').classList.toggle('is-on', !!on);
+  if($('osd_off')) $('osd_off').classList.toggle('is-on', !on);
+  applyOsdLabels();
+}
+function osdWire(row){
+  const el=row.querySelector('[data-osd-val]');
+  if(!el) return null;
+  if(el.tagName==='SELECT') return el.value;
+  const n=parseInt(el.value,10);
+  if(isNaN(n)) return null;
+  return n.toString(16).toUpperCase().padStart(2,'0');
+}
+function osdShowLab(row){
+  const p=row._param;
+  const lab=row.querySelector('.osd-lab');
+  const el=row.querySelector('[data-osd-val]');
+  if(!p||!lab||!el) return;
+  if(p.kind==='choices'){
+    const it=(p.items||[]).find(x=>x.v===el.value);
+    lab.textContent=it?it.l:el.value;
+    return;
+  }
+  const code=parseInt(el.value,10)||0;
+  if(p.lo||p.hi){
+    lab.textContent=code.toString(16).toUpperCase().padStart(2,'0');
+    return;
+  }
+  const n=code+(p.bias||0);
+  lab.textContent=String(n)+(p.unit||'');
+}
+function osdPaintRow(d,row){
+  const res=row.querySelector('.osd-res');
+  if(d&&d.ok&&d.data){
+    const m=String(d.data).match(/:([0-9A-Fa-f]{2})\s*$/);
+    if(m){
+      const code=m[1].toUpperCase();
+      const el=row.querySelector('[data-osd-val]');
+      row._apply=true;
+      if(el&&el.tagName==='SELECT'){
+        if([...el.options].some(o=>o.value===code)) el.value=code;
+        else if(res) res.dataset.outside=code;
+      }else if(el){
+        const n=parseInt(code,16);
+        if(n>=parseInt(el.min,10)&&n<=parseInt(el.max,10)) el.value=String(n);
+        else if(res) res.dataset.outside=code;
+      }
+      row._apply=false;
+      osdShowLab(row);
+    }
+  }
+  const bits=[];
+  if(d&&d.data) bits.push(d.data);
+  if(res&&res.dataset.outside) bits.push('вне шкалы '+res.dataset.outside);
+  if(d&&d.tx) bits.push('TX '+d.tx);
+  if(d&&d.rx) bits.push('RX '+d.rx);
+  else if(d&&d.rx==='') bits.push('RX —');
+  if(res){
+    delete res.dataset.outside;
+    res.textContent=(d&&d.ok?'ok':'err')+' · '+(bits.join(' · ')||(d&&d.status)||'—');
+    res.classList.toggle('osd-ok', !!(d&&d.ok));
+    res.classList.toggle('osd-bad', !!(d&&!d.ok));
+  }
+}
+async function osdExchange(row, kind){
+  const p={v:row.dataset.key};
+  if(kind==='set'){
+    const data=osdWire(row);
+    if(data==null||data==='') return {ok:false,status:'param'};
+    p.data=data;
+  }
+  const d=await call('cam', kind==='set'?'osd_set':'osd_get', p);
+  osdPaintRow(d,row);
+  return d;
+}
+function osdBuild(items){
+  const list=$('osd_list');
+  if(!list) return;
+  list.innerHTML='';
+  let group='';
+  items.forEach(p=>{
+    if(p.group!==group){
+      group=p.group;
+      const h=document.createElement('div');
+      h.className='osd-grp';
+      h.textContent=group;
+      list.appendChild(h);
+    }
+    const row=document.createElement('div');
+    row.className='osd-row';
+    row.dataset.key=p.key;
+    row._param=p;
+    let ctrl='';
+    if(p.kind==='choices'){
+      ctrl='<select data-osd-val>'+(p.items||[]).map(it=>'<option value="'+it.v+'">'+it.l+'</option>').join('')+'</select>';
+    }else{
+      const lo=p.lo?(' title="'+p.lo+' … '+(p.hi||'')+'"'):'';
+      ctrl='<input type="range" data-osd-val min="'+p.min+'" max="'+p.max+'" value="'+p.min+'"'+lo+'>';
+    }
+    row.innerHTML=
+      '<div class="osd-head"><span class="osd-name"><span class="osd-code">'+p.code+'</span>'+p.name+'</span>'+
+      '<button type="button" data-osd="get">Read</button></div>'+
+      '<div class="osd-ctl">'+ctrl+'<b class="osd-lab"></b></div>'+
+      (p.note?'<p class="osd-note">'+p.note+'</p>':'')+
+      '<p class="osd-res"></p>';
+    list.appendChild(row);
+    osdShowLab(row);
+  });
+}
+async function loadOsdRanges(){
+  const list=$('osd_list');
+  if(!list) return;
+  try{
+    const r=await fetch('/api/cam?cmd=osd_ranges',{cache:'no-store'});
+    const d=await r.json();
+    if(!d||!d.ok||!Array.isArray(d.items)){
+      list.textContent='каталог OSD не пришёл';
+      return;
+    }
+    osdBuild(d.items);
+  }catch(e){
+    list.textContent='каталог OSD не пришёл';
+  }
+}
+(function initOsd(){
+  const list=$('osd_list');
+  if(!list) return;
+  window._osdStop=false;
+  list.addEventListener('click',e=>{
+    const b=e.target.closest('[data-osd]');
+    if(!b) return;
+    const row=b.closest('.osd-row');
+    if(row) osdExchange(row, b.dataset.osd);
+  });
+  list.addEventListener('change',e=>{
+    const el=e.target.closest('select[data-osd-val]');
+    if(!el) return;
+    const row=el.closest('.osd-row');
+    if(!row||row._apply) return;
+    osdShowLab(row);
+    osdExchange(row,'set');
+  });
+  list.addEventListener('input',e=>{
+    const el=e.target;
+    if(!el.matches('input[type=range][data-osd-val]')) return;
+    const row=el.closest('.osd-row');
+    if(!row||row._apply) return;
+    osdShowLab(row);
+    clearTimeout(row._t);
+    row._t=setTimeout(()=>osdExchange(row,'set'),120);
+  });
+  if($('osd_read_all')) $('osd_read_all').onclick=async()=>{
+    if(window._osdBusy) return;
+    window._osdBusy=true;
+    window._osdStop=false;
+    try{
+      for(const row of list.querySelectorAll('.osd-row')){
+        if(window._osdStop) break;
+        row.scrollIntoView({block:'nearest'});
+        await osdExchange(row,'get');
+      }
+    }finally{
+      window._osdBusy=false;
+    }
+  };
+  if($('osd_read_stop')) $('osd_read_stop').onclick=()=>{ window._osdStop=true; };
+})();
+
 </script>
 </body>
 </html>

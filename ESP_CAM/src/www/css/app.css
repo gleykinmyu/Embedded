@@ -1,0 +1,636 @@
+/* ESP_CAM — поверх IPTV UI kit. Mobile-first, вертикальный стек. */
+
+:root {
+  --fg: var(--text);
+  --acc: var(--accent);
+  --danger: var(--bad);
+  --bar: 52px;
+  /* PT-стрелки крупные; текстовые действия — компактные */
+  --pt-cell: 56px;
+  --pad-gap: 8px;
+  --btn-action: 32px; /* Limit / Home / Store / Delete */
+  --btn: 40px;        /* пресеты, ON/OFF */
+  --btn-sm: 32px;     /* вкладки, банки */
+  --btn-gap: 8px;
+  --touch: var(--btn);
+}
+
+body {
+  padding-bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 12px);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wrap.wrap-cam {
+  max-width: 480px;
+  padding: 12px 14px 28px;
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(14px, env(safe-area-inset-right));
+}
+
+/* ---- header ---- */
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+.top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px 12px;
+}
+.top-brand {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.top h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.top .sub {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+}
+.badge-wrap {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px !important;
+  row-gap: 8px !important;
+  column-gap: 8px !important;
+  max-width: 100%;
+}
+.badge-wrap .badge {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  position: static !important;
+  flex: 0 0 auto !important; /* не сжимать — иначе наезжают */
+  width: auto !important;
+  max-width: none;
+  margin: 0 !important;
+  box-sizing: border-box;
+  line-height: 1.2;
+  padding: 6px 10px;
+  letter-spacing: 0.02em;
+  overflow: visible;
+  white-space: nowrap;
+}
+.pwr-bar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-left: 20px; /* чуть правее от заголовка, не липнут */
+}
+.pwr-bar .pwr-cam.cap-off {
+  display: none !important;
+}
+.pwr-bar button {
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  min-width: 4.2em;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 650;
+  box-sizing: border-box;
+  width: auto;
+}
+.linkmini {
+  margin: 0;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+/* ---- sticky tabs — как .banks.pr-tabs: отступ от рамки по периметру ---- */
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(11, 16, 23, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.tabs .tab {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 4.2em;
+  min-height: var(--btn-sm);
+  height: var(--btn-sm);
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.tabs .tab:not(.active) {
+  background: transparent;
+  color: var(--muted);
+}
+.tabs .tab:hover:not(:disabled):not(.active) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  filter: none;
+}
+.tabs .tab.active {
+  color: #041018;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.tab-panel[hidden] { display: none !important; }
+.tab-panel > .panel { margin-bottom: 12px; }
+.tab-panel > .panel:last-child { margin-bottom: 0; }
+
+/* .slide {display:flex} иначе перебивает атрибут hidden */
+.slide[hidden],
+[data-cap].cap-off { display: none !important; }
+
+/* ---- forms: вертикальные поля ---- */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+.field select,
+.field input:not([type="checkbox"]):not([type="range"]) {
+  width: 100%;
+  min-height: 40px;
+  font-size: 15px;
+}
+
+/* Camera: короткие подписи слева, контролы плотнее */
+.fields-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin-bottom: 8px;
+}
+.fields-compact .field {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 11px;
+  min-width: 0;
+}
+.fields-compact .field > select,
+.fields-compact .field > input:not([type="checkbox"]):not([type="range"]),
+.fields-compact .field > .field-ctrl,
+.fields-compact .field > .btn-inline.wide {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  font-size: 14px;
+}
+.field-ctrl {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.field-ctrl select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  font-size: 14px;
+}
+.btn-inline {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.btn-inline.wide { width: 100%; }
+.fields-compact .field[hidden],
+.fields-compact .field.cap-off { display: none !important; }
+@media (max-width: 380px) {
+  .fields-compact { grid-template-columns: 1fr; }
+}
+
+.btn-row {
+  display: flex;
+  gap: var(--btn-gap);
+  align-items: center;
+  margin-bottom: 10px;
+}
+.btn-row.wrap { flex-wrap: wrap; }
+.btn-row button {
+  flex: 1 1 auto;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.readout .nm { color: var(--muted); font-size: 12px; min-width: 3.2em; }
+.readout b { font-variant-numeric: tabular-nums; }
+
+.chk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chk-stack .chk {
+  min-height: 40px;
+  align-items: center;
+}
+
+/* legacy .row — тоже в колонку на узком */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  width: 100%;
+}
+.row label select,
+.row label input:not([type="checkbox"]):not([type="range"]) {
+  width: 100%;
+  min-height: 40px;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.grid button {
+  flex: 1 1 calc(50% - 8px);
+  min-height: var(--btn);
+  height: var(--btn);
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+/* ---- sliders ---- */
+.slide {
+  display: grid;
+  grid-template-columns: 4.5em 1fr 2.6em auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+.slide .nm {
+  color: var(--muted);
+  font-size: 12px;
+}
+.slide input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.slide b {
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.slide .unit {
+  color: var(--muted);
+  font-size: 11px;
+}
+.spd-slide { margin-top: 4px; }
+
+/* ---- PT pads: крест + Zoom/Focus — одна сетка квадратов ---- */
+.panel.ctrl-pt {
+  padding-top: 8px;
+  padding-bottom: 10px;
+}
+.pads {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.pads-pt {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.rockers {
+  display: flex;
+  gap: var(--pad-gap);
+  align-items: flex-end;
+}
+.rocker-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.rocker-col .lbl {
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--pt-cell));
+  grid-template-rows: repeat(3, var(--pt-cell));
+  gap: var(--pad-gap);
+  width: max-content;
+  height: max-content;
+}
+.pad.rocker {
+  grid-template-columns: var(--pt-cell);
+  grid-template-rows: repeat(3, var(--pt-cell));
+  width: var(--pt-cell);
+}
+.pads-pt .pad button,
+.pads-pt .pad .sp {
+  box-sizing: border-box !important;
+  width: var(--pt-cell) !important;
+  height: var(--pt-cell) !important;
+  min-width: var(--pt-cell) !important;
+  min-height: var(--pt-cell) !important;
+  max-width: var(--pt-cell) !important;
+  max-height: var(--pt-cell) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 22px;
+  line-height: 1;
+  flex: none !important;
+  align-self: stretch;
+  justify-self: stretch;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pad .sp {
+  visibility: hidden;
+  pointer-events: none;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* Limit / Home — компактные, по ширине как блок стрелок */
+.ctrl-pt .btn-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--btn-gap);
+  max-width: 100%;
+}
+.ctrl-pt .btn-row .limit-arm,
+.ctrl-pt .btn-row button {
+  flex: 0 1 6.5em;
+  width: 6.5em;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  box-sizing: border-box;
+}
+.limit-arm {
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.limit-arm.armed {
+  background: var(--accent, #5b9fd4);
+  color: #0b1220;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.35);
+  border-color: transparent;
+}
+
+/* ---- presets ---- */
+.modes {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: stretch;
+  gap: var(--btn-gap);
+  margin-bottom: 10px;
+  width: 100%;
+}
+.modes button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--btn-action);
+  height: var(--btn-action);
+  padding: 0 6px;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+.pr-meta-row {
+  justify-content: space-between;
+}
+.pr-meta-row button {
+  flex: 0 0 auto;
+  min-width: 5.5em;
+}
+/* страницы пресетов — как верхние вкладки .tabs */
+.banks.pr-tabs {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 10px;
+  padding: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(11, 16, 23, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  flex-wrap: nowrap;
+  box-sizing: border-box;
+}
+.banks.pr-tabs button {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 2em;
+  min-height: var(--btn-sm);
+  height: var(--btn-sm);
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.banks.pr-tabs button:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  filter: none;
+}
+.banks.pr-tabs button.active {
+  color: #041018;
+  background: var(--accent);
+  border-color: transparent;
+}
+/* Store/Delete неактивны, пока не залипли */
+.modes button.save.idle,
+.modes button.kill.idle {
+  opacity: 0.4;
+  filter: saturate(0.35);
+}
+.modes button.save.armed {
+  opacity: 1;
+  filter: none;
+  background: var(--ok);
+  border-color: transparent;
+  color: #041018;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
+}
+.modes button.kill.armed {
+  opacity: 1;
+  filter: none;
+  background: var(--bad, #c44);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
+}
+.presets.await-slot button {
+  outline: 1px dashed var(--muted);
+}
+.presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--btn-gap);
+  margin-bottom: 10px;
+}
+.presets button {
+  min-height: var(--btn);
+  height: var(--btn);
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 650;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
+.presets button.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.presets button.occ { border-color: var(--ok); }
+
+.camparams {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+  max-height: 10em;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+
+.info-table {
+  width: 100%;
+  font-size: 0.85rem;
+}
+.info-table td:first-child {
+  color: var(--muted);
+  width: 38%;
+  padding: 6px 8px 6px 0;
+  vertical-align: top;
+}
+.info-table td:last-child {
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+/* sticky status note */
+#note.note-bar {
+  position: fixed;
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 20;
+  margin: 0;
+  max-height: 26vh;
+  overflow: auto;
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+#note .note-cmd {
+  color: var(--accent);
+  margin-right: 8px;
+  font-weight: 650;
+}
+
+/* ---- tablet+ : чуть шире, pads в ряд ---- */
+@media (min-width: 560px) {
+  .wrap.wrap-cam {
+    max-width: 560px;
+    padding-top: 18px;
+  }
+  .top h1 { font-size: 1.2rem; }
+  .fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+  }
+  .slide {
+    grid-template-columns: 5.5em 1fr 3em auto;
+  }
+}
+
+@media (min-width: 900px) {
+  .wrap.wrap-cam { max-width: 640px; }
+}

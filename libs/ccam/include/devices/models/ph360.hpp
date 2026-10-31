@@ -23,6 +23,19 @@ public:
     {
     }
 
+    /** Off→#O0, On→#O1; CamTX-режимы Param (на живых PH не работают). */
+    Status power(pt::PowerMode mode) override
+    {
+        switch (mode) {
+        case pt::PowerMode::Off:
+            return sendDec1(catalog::PtCmd::Power, 0);
+        case pt::PowerMode::On:
+            return sendDec1(catalog::PtCmd::Power, 1);
+        default:
+            return Status::Param;
+        }
+    }
+
     /** Запрос состояния обогрева (#HS). */
     Status queryHeaterStatus(uint8_t& status) override
     {

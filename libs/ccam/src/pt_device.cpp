@@ -308,30 +308,6 @@ Status PtDeviceBase::setLens(const pt::Lens& lens)
     return setIris(lens.iris);
 }
 
-Status PtDeviceBase::power(pt::PowerMode mode)
-{
-    uint8_t value = 0;
-
-    switch (mode) {
-    case pt::PowerMode::Off:
-        value = 0;
-        break;
-    case pt::PowerMode::On:
-        value = 1;
-        break;
-    case pt::PowerMode::OnWithCameraTx:
-        value = 2;
-        break;
-    case pt::PowerMode::OnWithoutCameraTx:
-        value = 3;
-        break;
-    default:
-        return Status::Param;
-    }
-
-    return sendDec1(catalog::PtCmd::Power, value);
-}
-
 Status PtDeviceBase::requestPower(uint8_t& code)
 {
     uint8_t response[kPtFrameMax];
@@ -346,7 +322,7 @@ Status PtDeviceBase::requestPower(uint8_t& code)
     if (st != Status::Ok || pos >= response_len) {
         return Status::Io;
     }
-    return decodeDec1ResponseByte(response[pos], code);
+    return decodePowerResponseByte(response[pos], code);
 }
 
 Status PtDeviceBase::sendHex3(catalog::PtCmd cmd, uint16_t value)
@@ -418,28 +394,29 @@ Status PtDeviceBase::setIris(uint16_t pos)
 {
     return sendHex3(catalog::PtCmd::IrisPositionSet, normToPtLens(pos));
 }
-Status PtDeviceBase::requestZoom(uint16_t& pos)
+Status PtDeviceBase::getZoom(uint16_t& pos)
 {
     uint16_t raw = 0;
-    const Status st = queryHex3(catalog::PtCmd::ZoomPositionQuery, raw);
+    const Status st = queryHex3(catalog::PtCmd::ZoomDaPosition, raw);
     if (st == Status::Ok) {
         pos = ptLensToNorm(raw);
     }
     return st;
 }
-Status PtDeviceBase::requestFocus(uint16_t& pos)
+Status PtDeviceBase::getFocus(uint16_t& pos)
 {
     uint16_t raw = 0;
-    const Status st = queryHex3(catalog::PtCmd::FocusPositionQuery, raw);
+    const Status st = queryHex3(catalog::PtCmd::FocusDaPosition, raw);
     if (st == Status::Ok) {
         pos = ptLensToNorm(raw);
     }
     return st;
 }
-Status PtDeviceBase::requestIris(uint16_t& pos)
+Status PtDeviceBase::getIris(uint16_t& pos)
 {
     uint16_t raw = 0;
-    const Status st = queryHex3(catalog::PtCmd::IrisPositionQuery, raw);
+    // #GI → gi[Data1][Data2]; Data1 = позиция (Data2 auto пока не разбираем)
+    const Status st = queryHex3(catalog::PtCmd::IrisDaPosition, raw);
     if (st == Status::Ok) {
         pos = ptLensToNorm(raw);
     }

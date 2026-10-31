@@ -9,6 +9,7 @@
 #pragma once
 
 #include "devices/device_types.hpp"
+#include "protocol/choice_lists.hpp"
 
 #include <cstdint>
 
@@ -24,13 +25,15 @@ enum class Status {
     Buffer,   ///< Переполнение буфера кадра
 };
 
-/** Режим питания головки / PTZ. */
+/**
+ * Режим питания головки / PTZ.
+ * Starting и OffPtControl приходят только в ответе #O (символы n и f).
+ */
 enum class PowerMode : uint8_t {
-    Off = 0,
-    On = 1,
-    OnWithCameraTx = 2,
-    OnWithoutCameraTx = 3,
+    CCAM_FOR_EACH_POWER(CCAM_ENUM)
 };
+
+CCAM_DEFINE_U8_LABEL(PowerMode, CCAM_FOR_EACH_POWER)
 
 /** Ось непрерывного движения. */
 enum class Axis : uint8_t {

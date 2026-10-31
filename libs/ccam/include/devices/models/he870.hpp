@@ -9,59 +9,43 @@
 
 #include "devices/camera_device.hpp"
 #include "devices/integrated_ptz.hpp"
+#include "protocol/choice_lists.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
 
 namespace ccam::devices {
 
-/** Режим AWC (OAW), HE870. */
+/** Режим AWC (OAW), HE870. Тот же список, что HE130 и UE150. */
 enum class He870AwcMode : uint8_t {
-    Atw = 0,
-    AwcA = 1,
-    AwcB = 2,
-    Preset3200K = 3,
-    Preset5600K = 4,
-    Var = 5,
+    CCAM_FOR_EACH_HE_AWC(CCAM_ENUM)
 };
 
 /** Сцена (OSF / XSF). */
 enum class He870Scene : uint8_t {
-    Halogen = 0,
-    Fluorescent = 1,
-    Outdoor = 2,
-    User = 3,
+    CCAM_FOR_EACH_SCENE(CCAM_ENUM)
 };
 
 /** SC Coarse (OSC) — HE870 поддерживает 45° шаги (OSC 5..8). */
 enum class He870ScCoarse : uint8_t {
-    Deg0 = 1,
-    Deg90 = 2,
-    Deg180 = 3,
-    Deg270 = 4,
-    Deg45 = 5,
-    Deg135 = 6,
-    Deg225 = 7,
-    Deg315 = 8,
+    CCAM_FOR_EACH_SC_COARSE(CCAM_ENUM)
 };
 
-/** OAR — Light Area (A.IRIS). */
+/** Light Area A.IRIS (Control ORA, reply OAR). */
 enum class He870LightArea : uint8_t {
-    All = 0,
-    Center = 1,
-    TopCut = 5,
-    Bottom = 6,
-    LeftRight = 7,
+    CCAM_FOR_EACH_LIGHT_AREA(CCAM_ENUM)
 };
 
-/** ND / фильтр (OFT), HE870. */
+/** ND / фильтр (OFT), HE870. Те же коды, что PtNdFilterMode. */
 enum class He870NdFilter : uint8_t {
-    Clear = 0,
-    NdQuarter = 1,
-    NdSixteenth = 2,
-    NdSixtyFourth = 3,
-    AutoNd = 8,
+    CCAM_FOR_EACH_ND(CCAM_ENUM)
 };
+
+CCAM_DEFINE_U8_LABEL(He870AwcMode, CCAM_FOR_EACH_HE_AWC)
+CCAM_DEFINE_U8_LABEL(He870Scene, CCAM_FOR_EACH_SCENE)
+CCAM_DEFINE_U8_LABEL(He870ScCoarse, CCAM_FOR_EACH_SC_COARSE)
+CCAM_DEFINE_U8_LABEL(He870LightArea, CCAM_FOR_EACH_LIGHT_AREA)
+CCAM_DEFINE_U8_LABEL(He870NdFilter, CCAM_FOR_EACH_ND)
 
 /**
  * Камера AW-HE870.
@@ -85,8 +69,7 @@ public:
 
     Status selectScene(He870Scene scene)
     {
-        char data[2] = {static_cast<char>('0' + static_cast<uint8_t>(scene)), '\0'};
-        return CameraDeviceBase::selectScene(data);
+        return setSceneFile(static_cast<uint8_t>(scene));
     }
 
     /** SC Coarse — только control command на HE870 (QSC может отличаться). */
@@ -114,16 +97,10 @@ public:
         return sendDec1(catalog::CameraCmd::DigitalExtender, static_cast<uint8_t>(toSwitch(on)));
     }
 
-    /** A.IRIS Light Area (OAR). */
+    /** A.IRIS Light Area (Control ORA, reply OAR). */
     Status setLightArea(He870LightArea area)
     {
         return sendDec1(catalog::CameraCmd::LightArea, static_cast<uint8_t>(area));
-    }
-
-    /** OSD:48 A.IRIS Level / IRIS Offset. */
-    Status setAirisLevel(const char* data)
-    {
-        return setOsd(catalog::OsdItem::AirisLevel, data);
     }
 
     /** Video menu: MODE @S.GAIN (QSA:60 / OSA:60, PDF стр. 14). */

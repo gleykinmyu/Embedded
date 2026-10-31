@@ -17,7 +17,11 @@ namespace ccam {
 
 constexpr const char* switchPayload(Switch sw)
 {
-    return sw == Switch::On ? "1" : "0";
+    switch (static_cast<unsigned>(sw)) {
+        CCAM_FOR_EACH_SWITCH(CCAM_SW_PAYLOAD_CASE)
+    default:
+        return "0";
+    }
 }
 
 inline constexpr Switch toSwitch(bool on)
@@ -68,6 +72,27 @@ inline Status decodeDec1ResponseByte(uint8_t ascii_byte, uint8_t& value)
     }
     value = static_cast<uint8_t>(ascii_byte - '0');
     return Status::Ok;
+}
+
+/**
+ * Ответ Power `p[Data]` (Convertible Protocol).
+ * Цифры 0..3 — штатные режимы; `n` = Starting (14); `f` = Off P/T Control (15).
+ */
+inline Status decodePowerResponseByte(uint8_t ascii_byte, uint8_t& value)
+{
+    if (ascii_byte >= '0' && ascii_byte <= '9') {
+        value = static_cast<uint8_t>(ascii_byte - '0');
+        return Status::Ok;
+    }
+    if (ascii_byte == 'n' || ascii_byte == 'N') {
+        value = static_cast<uint8_t>(pt::PowerMode::Starting);
+        return Status::Ok;
+    }
+    if (ascii_byte == 'f' || ascii_byte == 'F') {
+        value = static_cast<uint8_t>(pt::PowerMode::OffPtControl);
+        return Status::Ok;
+    }
+    return Status::Io;
 }
 
 } // namespace ccam

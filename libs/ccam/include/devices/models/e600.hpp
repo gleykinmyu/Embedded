@@ -9,44 +9,31 @@
 #pragma once
 
 #include "devices/camera_device.hpp"
+#include "protocol/choice_lists.hpp"
 #include "protocol/protocol_encoding.hpp"
 
 #include <cstdint>
 
 namespace ccam::devices {
 
-/** AWC mode (OAW), E600 — полный набор 0..9. */
+/** AWC — коды QAW/UI (как E650). setAwcMode шлёт OAW control. */
 enum class E600AwcMode : uint8_t {
-    Atw = 0,
-    AwcA = 1,
-    AwcB = 2,
-    Preset3200K = 3,
-    Preset5600K = 4,
-    Preset4500K = 5,
-    Preset6000K = 6,
-    Preset2800K = 7,
-    Var = 8,
-    Mode9 = 9,
+    CCAM_FOR_EACH_STUDIO_AWC(CCAM_ENUM)
 };
 
 /** Scene file (OSF). */
 enum class E600Scene : uint8_t {
-    Halogen = 0,
-    Fluorescent = 1,
-    Outdoor = 2,
-    User = 3,
+    CCAM_FOR_EACH_SCENE(CCAM_ENUM)
 };
 
-/** Shutter mode (OSH) — типичные значения E600, см. PDF. */
+/** OSH — как у E650. */
 enum class E600ShutterMode : uint8_t {
-    Off = 0,
-    Shutter1_50 = 1,
-    Shutter1_60 = 2,
-    Shutter1_100_120 = 3,
-    Shutter1_250 = 5,
-    SynchroScan = 0x0A,
-    Elc = 0x0B,
+    CCAM_FOR_EACH_STUDIO_SHUTTER(CCAM_ENUM)
 };
+
+CCAM_DEFINE_U8_LABEL(E600AwcMode, CCAM_FOR_EACH_STUDIO_AWC)
+CCAM_DEFINE_U8_LABEL(E600Scene, CCAM_FOR_EACH_SCENE)
+CCAM_DEFINE_U8_LABEL(E600ShutterMode, CCAM_FOR_EACH_STUDIO_SHUTTER)
 
 /**
  * Студийная камера AW-E600.

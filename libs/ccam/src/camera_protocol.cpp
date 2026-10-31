@@ -70,8 +70,9 @@ Status camBuildQuery(CameraFrame& frame, const char* cmd3)
 
 Status camBuildScene(CameraFrame& frame, uint8_t scene_index)
 {
+    // scene_index = OSF/UI 0..n; XSF control = index+1 (PDF control≠question).
     char data[4];
-    data[0] = static_cast<char>('0' + (scene_index % 10));
+    data[0] = static_cast<char>('0' + ((scene_index + 1u) % 10u));
     data[1] = '\0';
 
     Status st = beginFrame(frame);

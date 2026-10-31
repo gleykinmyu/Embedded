@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PH350 · E650</title>
+<style>
+/*INLINE_CSS*/
+</style>
+</head>
+<body data-note-ttl="6000" data-note-el="note">
+<div class="wrap wrap-cam">
+  <header class="top">
+    <div class="top-row">
+      <div class="top-brand">
+        <h1 id="title">AW-PH350E · AW-E650E</h1>
+        <p class="sub">Convertible Protocol · live control</p>
+      </div>
+      <div class="pwr-bar" title="Питание головки">
+        <button type="button" class="start pwr-on" data-cmd="power_on">ON</button>
+        <button type="button" class="kill pwr-off" data-cmd="power_off">OFF</button>
+        <button type="button" class="start pwr-cam" data-cmd="power_on_cam" data-cap="power_cam_tx" title="On + CamTX">+Cam</button>
+      </div>
+    </div>
+    <div class="badge-wrap" id="badges">
+      <span class="badge muted" id="badge-eth">ETH —</span>
+      <span class="badge muted" id="badge-pt">PT —</span>
+      <span class="badge muted" id="badge-cam">Cam —</span>
+    </div>
+    <p class="meta linkmini" id="linkmini">…</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab active" data-tab="ptz">Control</button>
+    <button type="button" class="tab" data-tab="cam">Camera</button>
+    <button type="button" class="tab" data-tab="osd">Menu</button>
+    <button type="button" class="tab" data-tab="sys">System</button>
+  </nav>
+
+  <!-- INCLUDE panels/ptz.html -->
+  <!-- INCLUDE panels/cam.html -->
+  <!-- INCLUDE panels/osd.html -->
+  <!-- INCLUDE panels/sys.html -->
+</div>
+
+<div id="note" class="note note-bar hidden" role="status"><span class="note-cmd"></span><span class="note-text">—</span></div>
+<!-- INCLUDE vendor/iptv-ui/kit/html/confirm.html -->
+
+<script>
+/*INLINE_JS*/
+</script>
+</body>
+</html>

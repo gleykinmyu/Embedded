@@ -32,6 +32,18 @@ public:
 
     PtModelId modelId() const override { return PtModelId::Generic; }
     const char* modelLabel() const override { return "Generic Pan/Tilt"; }
+
+    Status power(pt::PowerMode mode) override
+    {
+        switch (mode) {
+        case pt::PowerMode::Off:
+            return sendDec1(catalog::PtCmd::Power, 0);
+        case pt::PowerMode::On:
+            return sendDec1(catalog::PtCmd::Power, 1);
+        default:
+            return Status::Param;
+        }
+    }
 };
 
 } // namespace ccam::devices

@@ -18,6 +18,7 @@ PtCaps capsIntegrated()
     c.pos_disp = true;
     c.pt_pos = true;
     c.lens_q = true;
+    c.power_cam_tx = true;
     return c;
 }
 
@@ -241,11 +242,20 @@ CamCaps camCapsFor(CameraModelId id)
     case CameraModelId::He870:
         c.hd_detail = true;
         c.neg_pos = true;
+        c.chroma = true;
+        c.synchro = true;
+        c.abc = true;
         c.paint = true;
         c.gamma = true;
+        c.agc_max = true;
         c.monitor = true;
         break;
     case CameraModelId::He130:
+        c.paint = true;
+        c.gamma = true;
+        c.monitor = true;
+        c.menu_lr = true; // DLT/DRT
+        break;
     case CameraModelId::Ue150:
         c.paint = true;
         c.gamma = true;

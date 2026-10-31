@@ -11,3 +11,4 @@ board_select.cmake
 managed_components
 dependencies.lock
 .cache
+src/generated/

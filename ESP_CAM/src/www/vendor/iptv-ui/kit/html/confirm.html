@@ -1,0 +1,15 @@
+<!-- Shared confirm dialog — inject via {{SITE_CONFIRM}} -->
+<div id="confirm-modal" class="modal confirm-modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="modal-box modal-confirm">
+    <div class="modal-head">
+      <h2 id="confirm-title">Подтверждение</h2>
+      <button type="button" class="stop btn-modal-close" id="confirm-close" data-modal-close aria-label="Закрыть">×</button>
+    </div>
+    <p id="confirm-text" class="confirm-text"></p>
+    <div class="modal-actions">
+      <button type="button" class="stop" id="confirm-cancel" data-modal-close>Отмена</button>
+      <button type="button" class="kill" id="confirm-ok">OK</button>
+    </div>
+  </div>
+</div>
+<script src="/common/ui/confirm.js?v=4"></script>

@@ -1,0 +1,254 @@
+<section id="cam" class="tab-panel" hidden>
+  <!-- User Mode E650 / Brightness+Color HE870: зависимые поля в одном блоке -->
+
+  <div class="panel" id="cam_brightness">
+    <h2>Brightness</h2>
+    <p class="sub">Iris · Shutter · Gain — Iris/Shutter/Gain Set · Brightness Set</p>
+    <div class="fields fields-compact">
+      <label class="field">Iris
+        <select id="ciris" data-api="cam" data-send="iris_am">
+          <option value="0">Manual</option><option value="1">Auto</option>
+        </select>
+      </label>
+      <label class="field">A.Iris Area
+        <select id="carea" data-api="cam" data-send="light_area">
+          <option value="0">All</option>
+          <option value="1">Center</option>
+          <option value="5">Top Cut</option>
+          <option value="6">Bottom</option>
+          <option value="7">Left/Right</option>
+        </select>
+      </label>
+      <label class="field">Shutter
+        <select id="shut" data-range="shutter" data-api="cam" data-send="shutter_mode"></select>
+      </label>
+      <label class="field">Gain
+        <select id="cgain_mode" data-api="cam" data-send="gain_mode">
+          <option value="manual">Manual</option>
+          <option value="agc">AGC</option>
+        </select>
+      </label>
+      <label class="field" id="cdig_field" data-cam="e650 e600" data-dep="gain:manual" hidden>Dig.Gain
+        <select id="cdig" data-api="cam" data-send="dig_gain" title="E650: only when Gain≠Auto">
+          <option value="0">0 dB</option>
+          <option value="1">6 dB</option>
+          <option value="2">12 dB</option>
+          <option value="3">18 dB</option>
+          <option value="4">24 dB</option>
+          <option value="5">30 dB</option>
+        </select>
+      </label>
+      <label class="field" id="cagc_field" data-cap="agc_max" data-dep="gain:agc" hidden>AGC max
+        <select id="cagc" data-range="agc_max" data-api="cam" data-send="agc_max" data-send-param="data"></select>
+      </label>
+    </div>
+    <div id="cmiris_wrap" class="slide" data-dep="iris:manual">
+      <span class="nm">Iris</span>
+      <input id="cmiris" type="range" min="0" max="100" value="50" data-api="cam" data-send="man_iris" title="0% close … 100% open">
+      <b id="cmiris_v">50</b><span class="unit">%</span>
+    </div>
+    <div class="slide" id="airis_wrap" title="Picture Level — AUTO IRIS / AGC / ELC">
+      <span class="nm">Pic.Lvl</span>
+      <input id="airis" type="range" min="0" max="100" value="50" data-api="cam" data-send="osd_set" data-key="airis" title="OSD:48 Picture Level −50…+50 → 00…64h">
+      <b id="airis_v">50</b>
+    </div>
+    <div class="slide" id="cpeak_wrap" title="Light PEAK/AVG">
+      <span class="nm">Pk/Avg</span>
+      <input id="cpeak" type="range" min="0" max="100" value="50" data-api="cam" data-send="light_peak" title="OPV Peak/Avg −50…+50">
+      <b id="cpeak_v">0</b>
+    </div>
+    <div id="cgain_wrap" class="slide" data-dep="gain:manual">
+      <span class="nm">Gain</span>
+      <input id="cgain" type="range" min="0" max="18" value="0" data-api="cam" data-send="gain">
+      <b id="cgain_v">0</b><span class="unit">dB</span>
+    </div>
+    <div id="sync_wrap" class="slide" data-cap="synchro" data-dep="shut:synchro" hidden>
+      <span class="nm">Sync</span>
+      <input id="sync" type="range" data-range="synchro" data-api="cam" data-send="synchro" value="1">
+      <b id="sync_v">001</b>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_color">
+    <h2>Color</h2>
+    <p class="sub">White Bal · Painting · Pedestal — Color Set</p>
+    <div class="fields fields-compact">
+      <label class="field">Scene
+        <select id="scene" data-range="scene" data-api="cam" data-send="scene"></select>
+      </label>
+      <label class="field">WhiteBal
+        <span class="field-ctrl">
+          <select id="awc" data-range="awc" data-api="cam" data-send="awc_mode"></select>
+          <button type="button" id="awc_exec" class="btn-inline" data-api="cam" data-cmd="awc_start" hidden title="OWS">Exec</button>
+        </span>
+      </label>
+      <label class="field" id="atw_field" data-dep="awc:atw" hidden>ATW Spd
+        <select id="catw" data-api="cam" data-send="osd_set" data-key="atw" title="OSD:72">
+          <option value="00">Slow 2</option>
+          <option value="01">Slow 1</option>
+          <option value="02">Middle</option>
+          <option value="03">Fast 1</option>
+          <option value="04">Fast 2</option>
+        </select>
+      </label>
+      <label class="field" data-cap="chroma">Chroma
+        <input id="cchr" type="range" min="0" max="6" value="3" data-api="cam" data-send="chroma" title="−3…+3">
+      </label>
+      <label class="field" data-cap="neg_pos">Nega/Posi
+        <select id="cneg" data-api="cam" data-send="negpos">
+          <option value="0">Posi</option><option value="1">Nega</option>
+        </select>
+      </label>
+      <label class="field" data-cap="abc">ABC
+        <button type="button" class="btn-inline wide" data-api="cam" data-cmd="abc_start">ABC/ABB</button>
+      </label>
+    </div>
+    <div id="paint_block" data-cap="paint">
+      <p class="sub">−150…+150 step 5 · R/B Gain — AWC A/B · R/B Ped — не 3200/5600</p>
+      <div class="slide">
+        <span class="nm">Ped</span>
+        <input id="ctped" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="t_ped" data-paint>
+        <b id="ctped_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:mem">
+        <span class="nm">R Gain</span>
+        <input id="crg" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="r_gain" data-paint>
+        <b id="crg_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:mem">
+        <span class="nm">B Gain</span>
+        <input id="cbg" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="b_gain" data-paint>
+        <b id="cbg_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:nopreset">
+        <span class="nm">R Ped</span>
+        <input id="crp" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="r_ped" data-paint>
+        <b id="crp_v">0</b>
+      </div>
+      <div class="slide" data-dep="awc:nopreset">
+        <span class="nm">B Ped</span>
+        <input id="cbp" type="range" min="-150" max="150" step="5" value="0" data-api="cam" data-send="b_ped" data-paint>
+        <b id="cbp_v">0</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_matrix" data-cam="e650 e600 he870">
+    <h2>Color Matrix</h2>
+    <p class="sub">User Mode · Matrix R-G…B-G (E650 / HE870)</p>
+    <div class="slide"><span class="nm">R−G</span>
+      <input id="cmx_rg" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_rg">
+      <b id="cmx_rg_v">0</b></div>
+    <div class="slide"><span class="nm">R−B</span>
+      <input id="cmx_rb" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_rb">
+      <b id="cmx_rb_v">0</b></div>
+    <div class="slide"><span class="nm">G−R</span>
+      <input id="cmx_gr" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_gr">
+      <b id="cmx_gr_v">0</b></div>
+    <div class="slide"><span class="nm">G−B</span>
+      <input id="cmx_gb" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_gb">
+      <b id="cmx_gb_v">0</b></div>
+    <div class="slide"><span class="nm">B−R</span>
+      <input id="cmx_br" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_br">
+      <b id="cmx_br_v">0</b></div>
+    <div class="slide"><span class="nm">B−G</span>
+      <input id="cmx_bg" type="range" min="0" max="62" value="31" data-api="cam" data-send="osd_set" data-key="mx_bg">
+      <b id="cmx_bg_v">0</b></div>
+  </div>
+
+  <div class="panel" id="cam_detail">
+    <h2>Detail</h2>
+    <div class="fields fields-compact">
+      <label class="field">Detail
+        <select id="cdet" data-api="cam" data-send="detail">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="hd_detail">HD Detail
+        <select id="chdet" data-api="cam" data-send="hd_detail">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+      <label class="field" data-cap="total_dtl">Total DTL
+        <select id="cdtl" data-range="total_dtl" data-api="cam" data-send="total_dtl" data-send-param="data"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_other">
+    <h2>Other</h2>
+    <p class="sub">Other Set1: Gamma · Knee · White Clip · Clean/3D DNR</p>
+    <div class="fields fields-compact">
+      <label class="field" data-cap="gamma">Gamma
+        <select id="cgam" data-range="gamma" data-api="cam" data-send="gamma" data-send-param="data"></select>
+      </label>
+      <label class="field">Knee
+        <select id="cknee" data-api="cam" data-send="osd_set" data-key="knee">
+          <option value="FF">Dynamic</option>
+          <option value="00">88%</option><option value="01">89%</option><option value="02">90%</option>
+          <option value="03">91%</option><option value="04">92%</option><option value="05">93%</option>
+          <option value="06">94%</option><option value="07">95%</option><option value="08">96%</option>
+          <option value="09">97%</option><option value="0A">98%</option>
+        </select>
+      </label>
+      <label class="field">Clean DNR
+        <select id="ccdnr" data-api="cam" data-send="osd_set" data-key="cdnr">
+          <option value="00">Off</option><option value="01">Low</option><option value="02">High</option>
+        </select>
+      </label>
+      <label class="field" data-cam="e650 e600">3D-DNR
+        <select id="c3dnr" data-api="cam" data-send="dnr3d">
+          <option value="0">Off</option><option value="1">Low</option><option value="2">High</option>
+        </select>
+      </label>
+    </div>
+    <div class="slide">
+      <span class="nm">W.Clip</span>
+      <input id="cwclip" type="range" min="0" max="15" value="15" data-api="cam" data-send="osd_set" data-key="wclip" title="95…110%">
+      <b id="cwclip_v">110</b><span class="unit">%</span>
+    </div>
+  </div>
+
+  <div class="panel" id="cam_output">
+    <h2>Output</h2>
+    <div class="fields fields-compact">
+      <label class="field">Bar
+        <select id="cbar" data-range="colorbar" data-api="cam" data-send="colorbar" title="DCB">
+          <option value="0">Camera</option>
+          <option value="1">Color Bar</option>
+        </select>
+      </label>
+      <label class="field">ND
+        <select id="cfilt" data-api="cam" data-send="filter">
+          <option value="0">Clear</option><option value="1">1/4</option>
+          <option value="2">1/16</option><option value="3">1/64</option>
+        </select>
+      </label>
+      <label class="field">AF
+        <select id="caf" data-api="cam" data-send="af">
+          <option value="0">Off</option><option value="1">On</option>
+        </select>
+      </label>
+      <label class="field" data-cap="field_frame">Field/Frm
+        <select id="cff" data-api="cam" data-send="fieldframe">
+          <option value="0">Field</option><option value="1">Frame1</option><option value="2">Frame2</option>
+        </select>
+      </label>
+      <label class="field" data-cap="genlock">Genlock
+        <select id="cgen" data-range="genlock" data-api="cam" data-send="genlock" data-send-param="data"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Raw</h2>
+    <div class="fields fields-compact">
+      <label class="field">cmd <input id="camrawcmd" value="QAW" maxlength="3" spellcheck="false"></label>
+      <label class="field">data <input id="camrawpay" value="" placeholder="1" spellcheck="false"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-api="cam" data-cmd="raw">Transact</button>
+      <button type="button" data-api="cam" data-cmd="raw_send">Send</button>
+    </div>
+  </div>
+</section>

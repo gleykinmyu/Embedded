@@ -1,15 +1,96 @@
 ﻿/**
  * @file pt_commands.hpp
- * @brief Каталог команд P/T (ConvertibleProtocol.pdf v3.05).
- * control без '#'; префикс добавляет PtDeviceBase::buildCommand.
- * response — ожидаемый префикс ответа (пусто, если ответа нет / notify).
+ * @brief P/T: PtCmd и kPtCommands из одного списка.
+ *
+ * ConvertibleProtocol.pdf v3.05. control без '#'; префикс добавляет PtDeviceBase.
+ * response пустой, если ответа нет.
+ * X(name, control, response)
  */
 
 #pragma once
 
-#include "catalog/command_ids.hpp"
-
 #include <cstddef>
+#include <cstdint>
+
+#define CCAM_FOR_EACH_PT_CMD(X)                                                                    \
+    X(Power, "O", "p")                                                                             \
+    X(PanSpeed, "P", "pS")                                                                         \
+    X(TiltSpeed, "T", "tS")                                                                        \
+    X(ZoomSpeed, "Z", "zS")                                                                        \
+    X(ZoomPositionSet, "AXZ", "axz")     /* только с Data; голый #AXZ не шлём */                  \
+    X(FocusSpeed, "F", "fS")                                                                       \
+    X(FocusPositionSet, "AXF", "axf")    /* только с Data */                                      \
+    X(RollSpeed, "RO", "rO")                                                                       \
+    X(IrisSpeed, "I", "iC")                                                                        \
+    X(IrisPositionSet, "AXI", "axi")     /* только с Data */                                      \
+    X(ExtenderAf, "D1", "d1")                                                                      \
+    X(NdFilter, "D2", "d2")                                                                        \
+    X(IrisAutoManual, "D3", "d3")                                                                  \
+    X(Lamp, "D4", "d4")                                                                            \
+    X(LampAlarm, "D5", "d5")                                                                       \
+    X(OptionSwDayNight, "D6", "d6")                                                                \
+    X(Defroster, "D7", "d7")                                                                       \
+    X(Wiper, "D8", "d8")                                                                           \
+    X(HeaterFan, "D9", "d9")                                                                       \
+    X(Tally, "DA", "dA")                                                                           \
+    X(LatestRecallPresetNo, "S", "s")                                                              \
+    X(SavePreset, "M", "s")                                                                        \
+    X(RecallPreset, "R", "s")                                                                      \
+    X(DeletePreset, "C", "s")                                                                      \
+    X(PresetDoneNotify, "", "q")                                                                   \
+    X(PresetMode, "RT", "rt")                                                                      \
+    X(LimitationSet, "L", "l")                                                                     \
+    X(LandingMode, "N", "n")                                                                       \
+    X(ZoomDaPosition, "GZ", "gz")                                                                  \
+    X(FocusDaPosition, "GF", "gf")                                                                 \
+    X(IrisDaPosition, "GI", "gi")                                                                  \
+    X(TiltRange, "AGL", "aGL")                                                                     \
+    X(SoftwareVersionQuery, "QSV", "qSV")                                                          \
+    X(SoftwareVersionCtrl, "CSV", "")                                                              \
+    X(FirmwareVersion, "V?", "")                                                                   \
+    X(TallyEnable, "TAE", "tAE")                                                                   \
+    X(InstallPosition, "INS", "iNS")                                                               \
+    X(SpeedWithZoomPos, "SWZ", "sWZ")                                                              \
+    X(PanTiltAbsolute, "APC", "aPC")                                                               \
+    X(PanTiltAbsoluteSpeed, "APS", "aPS")                                                          \
+    X(PanTiltRelative, "RPC", "rPC")                                                               \
+    X(PanTiltRelativeSpeed, "RPS", "rPS")                                                          \
+    X(LimitationControl, "LC", "lC")                                                               \
+    X(PanTiltSpeed, "PTS", "pTS")                                                                  \
+    X(WirelessControl, "WLC", "wLC")                                                               \
+    X(ErrorStatus, "RER", "rER")                                                                   \
+    X(LensPositionInfo, "LPI", "lPI")                                                              \
+    X(LensPositionCtrl, "LPC", "lPC")                                                              \
+    X(SmartPictureFlip, "SPF", "sPF")                                                              \
+    X(FlipDetectAngle, "FDA", "fDA")                                                               \
+    X(PinpPosition, "PD", "pD")                                                                    \
+    X(CameraPinp, "CMP", "cMP")                                                                    \
+    X(GuideLine, "GDL", "gDL")                                                                     \
+    X(IrRemoteId, "RID", "rID")                                                                    \
+    X(Resolution, "RZL", "rZL")                                                                    \
+    X(ImageFreezePreset, "PRF", "pRF")                                                             \
+    X(PresetSpeedTable, "PST", "pST")                                                              \
+    X(StatusLamp, "LMP", "lMP")                                                                    \
+    X(Fan, "FAN", "fAN")                                                                           \
+    X(Fan2, "FA2", "fA2")                                                                          \
+    X(WiperCtrl, "WIP", "wIP")                                                                     \
+    X(Washer, "WAS", "wAS")                                                                        \
+    X(FanStatus1, "FS1", "fS1")                                                                    \
+    X(FanStatus2, "FS2", "fS2")                                                                    \
+    X(HeaterStatus, "HS", "hS")                                                                    \
+    X(DefrosterStatus, "DS", "dS")                                                                 \
+    X(WasherPtPosition, "WPT", "wPT")                                                              \
+    X(WasherPtReset, "WPR", "wPR")                                                                 \
+    X(GetGainShutterNd, "PTG", "pTG")                                                              \
+    X(GetPtzPosRaw, "PTV", "pTV")                                                                  \
+    X(GetPtzPosDisplay, "PTD", "pTD")                                                              \
+    X(TallyInformation, "TAA", "tAA")                                                              \
+    X(PresetSpeedUnit, "UPVS", "uPVS")                                                             \
+    X(Option, "OPT", "oPT")                                                                        \
+    X(PresetEntryConfirm, "PE", "pE")
+
+#define CCAM_PT_CMD_ENUM(name, control, response) name,
+#define CCAM_PT_CMD_ROW(name, control, response) {control, response},
 
 namespace ccam::catalog {
 
@@ -18,86 +99,13 @@ struct PtCommandEntry {
     const char* response;
 };
 
-/** Индекс = PtCmd. */
+enum class PtCmd : uint8_t {
+    CCAM_FOR_EACH_PT_CMD(CCAM_PT_CMD_ENUM)
+    Count
+};
+
 inline constexpr PtCommandEntry kPtCommands[] = {
-    {"O", "p"},        // Power
-    {"P", "pS"},       // Pan Speed
-    {"T", "tS"},       // Tilt Speed
-    {"Z", "zS"},       // Zoom Speed
-    {"AXZ", "axz"},    // Zoom Position Set
-    {"AYZ", "ayz"},    // Zoom Position Query
-    {"F", "fS"},       // Focus Speed
-    {"AXF", "axf"},    // Focus Position Set
-    {"AYF", "ayf"},    // Focus Position Query
-    {"RO", "rO"},      // Roll Speed
-    {"I", "iC"},       // Iris Speed
-    {"AXI", "axi"},    // Iris Position Set
-    {"AYI", "ayi"},    // Iris Position Query
-    {"D1", "d1"},      // Extender/AF
-    {"D2", "d2"},      // ND Filter
-    {"D3", "d3"},      // Iris Auto/Manual
-    {"D4", "d4"},      // Lamp
-    {"D5", "d5"},      // Lamp Alarm
-    {"D6", "d6"},      // Option SW Day/Night
-    {"D7", "d7"},      // Defroster
-    {"D8", "d8"},      // Wiper
-    {"D9", "d9"},      // Heater/Fan
-    {"DA", "dA"},      // Tally
-    {"S", "s"},        // Latest Recall Preset No.
-    {"M", "s"},        // Save Preset
-    {"R", "s"},        // Recall Preset
-    {"C", "s"},        // Delete Preset
-    {"", "q"},         // Preset Done Notify
-    {"RT", "rt"},      // Preset Mode
-    {"L", "l"},        // Limitation Set
-    {"N", "n"},        // Landing Mode
-    {"GZ", "gz"},      // Zoom D/A Position
-    {"GF", "gf"},      // Focus D/A Position
-    {"GI", "gi"},      // Iris D/A Position
-    {"AGL", "aGL"},    // Tilt Range
-    {"QSV", "qSV"},    // Software Version Query
-    {"CSV", ""},       // Software Version Ctrl
-    {"V?", ""},        // Firmware Version
-    {"TAE", "tAE"},    // Tally Enable
-    {"INS", "iNS"},    // Install Position
-    {"SWZ", "sWZ"},    // Speed With Zoom POS
-    {"APC", "aPC"},    // Pan/Tilt Absolute
-    {"APS", "aPS"},    // Pan/Tilt Absolute+Speed
-    {"RPC", "rPC"},    // Pan/Tilt Relative
-    {"RPS", "rPS"},    // Pan/Tilt Relative+Speed
-    {"LC", "lC"},      // Limitation Control
-    {"PTS", "pTS"},    // Pan+Tilt Speed
-    {"WLC", "wLC"},    // Wireless Control
-    {"RER", "rER"},    // Error Status
-    {"LPI", "lPI"},    // Lens Position Info
-    {"LPC", "lPC"},    // Lens Position Ctrl
-    {"SPF", "sPF"},    // Smart Picture Flip
-    {"FDA", "fDA"},    // Flip Detect Angle
-    {"PD", "pD"},      // PinP Position
-    {"CMP", "cMP"},    // Camera/PinP
-    {"GDL", "gDL"},    // Guide Line
-    {"RID", "rID"},    // IR Remote ID
-    {"RZL", "rZL"},    // Resolution
-    {"PRF", "pRF"},    // Image Freeze Preset
-    {"PST", "pST"},    // Preset Speed Table
-    {"LMP", "lMP"},    // Status Lamp
-    {"FAN", "fAN"},    // Fan
-    {"FA2", "fA2"},    // Fan2
-    {"WIP", "wIP"},    // Wiper Ctrl
-    {"WAS", "wAS"},    // Washer
-    {"FS1", "fS1"},    // Fan Status1
-    {"FS2", "fS2"},    // Fan Status2
-    {"HS", "hS"},      // Heater Status
-    {"DS", "dS"},      // Defroster Status
-    {"WPT", "wPT"},    // Washer PT Position
-    {"WPR", "wPR"},    // Washer PT Reset
-    {"PTG", "pTG"},    // Get Gain/Shutter/ND
-    {"PTV", "pTV"},    // Get PTZ Pos (raw)
-    {"PTD", "pTD"},    // Get PTZ Pos (display)
-    {"TAA", "tAA"},    // Tally Information
-    {"UPVS", "uPVS"},  // Preset Speed Unit
-    {"OPT", "oPT"},    // Option
-    {"PE", "pE"},      // Preset Entry Confirm
+    CCAM_FOR_EACH_PT_CMD(CCAM_PT_CMD_ROW)
 };
 
 inline constexpr size_t kPtCommandCount = sizeof(kPtCommands) / sizeof(kPtCommands[0]);
@@ -124,3 +132,7 @@ inline constexpr const char* ptResponse(PtCmd cmd)
 }
 
 } // namespace ccam::catalog
+
+#undef CCAM_PT_CMD_ENUM
+#undef CCAM_PT_CMD_ROW
+#undef CCAM_FOR_EACH_PT_CMD

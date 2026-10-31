@@ -1,0 +1,19 @@
+<!-- Shared text prompt dialog — inject with {{SITE_CONFIRM}} -->
+<div id="prompt-modal" class="modal prompt-modal hidden" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+  <div class="modal-box modal-confirm">
+    <div class="modal-head">
+      <h2 id="prompt-title">Ввод</h2>
+      <button type="button" class="stop btn-modal-close" id="prompt-close" data-modal-close aria-label="Закрыть">×</button>
+    </div>
+    <p id="prompt-text" class="confirm-text hidden"></p>
+    <label class="field" id="prompt-field">
+      <span id="prompt-label">Имя</span>
+      <input type="text" id="prompt-input" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="stop" id="prompt-cancel" data-modal-close>Отмена</button>
+      <button type="button" class="refresh" id="prompt-ok">OK</button>
+    </div>
+  </div>
+</div>
+<script src="/common/ui/prompt.js?v=4"></script>

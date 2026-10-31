@@ -1,30 +1,42 @@
 ﻿/**
  * @file extended_j_menu.hpp
- * @brief Extended QSJ:nn / OSJ:nn — HE/UE (ConvertibleProtocol.pdf v3.05, стр. 24–27).
+ * @brief Extended J: ExtendedJItem и kExtendedJMenu из одного списка.
+ *
+ * ConvertibleProtocol.pdf v3.05, стр. 24–27. QSJ:nn / OSJ:nn, HE/UE.
+ * X(name, subcode)
  */
 
 #pragma once
 
-#include "catalog/command_ids.hpp"
-#include "catalog/menu_entry.hpp"
-
 #include <cstddef>
+#include <cstdint>
+
+#define CCAM_FOR_EACH_EXTENDED_J(X)                                                                \
+    X(Sdi3gHdrOutputSelect, 0x22)                                                                  \
+    X(MoniOutFormat, 0x23)                                                                         \
+    X(MoniOutHdrOutputSelect, 0x24)                                                                \
+    X(HdmiOutFormat, 0x25)                                                                         \
+    X(HdmiOutHdrOutputSelect, 0x26)                                                                \
+    X(ColorBarTone, 0x27)                                                                          \
+    X(SavePresetName, 0x35)                                                                        \
+    X(PresetCounterBitmap, 0x3C)                                                                   \
+    X(ZoomScale, 0x3D)                                                                             \
+    X(OperationLockStatus, 0x40)                                                                   \
+    X(PowerOnPosition, 0x45)                                                                       \
+    X(PowerOnPresetNumber, 0x46)
+
+#define CCAM_EXTJ_ENUM(name, code) name,
+#define CCAM_EXTJ_ROW(name, code) code,
 
 namespace ccam::catalog {
 
+enum class ExtendedJItem : uint8_t {
+    CCAM_FOR_EACH_EXTENDED_J(CCAM_EXTJ_ENUM)
+    Count
+};
+
 inline constexpr uint8_t kExtendedJMenu[] = {
-    0x22,  // 3G SDI Out HDR Output Select,
-    0x23,  // MONI Out Format,
-    0x24,  // MONI Out HDR Output Select,
-    0x25,  // HDMI Out Format,
-    0x26,  // HDMI Out HDR Output Select,
-    0x27,  // Color Bar Tone,
-    0x35,  // Save Preset Name (Single),
-    0x3C,  // Preset Name / Preset Thumbnail Counter,
-    0x3D,  // Zoom Scale,
-    0x40,  // Operation Lock Status,
-    0x45,  // Power On Position,
-    0x46,  // Power On Preset Number,
+    CCAM_FOR_EACH_EXTENDED_J(CCAM_EXTJ_ROW)
 };
 
 inline constexpr size_t kExtendedJMenuCount =
@@ -35,3 +47,7 @@ static_assert(
     "kExtendedJMenu vs ExtendedJItem");
 
 } // namespace ccam::catalog
+
+#undef CCAM_EXTJ_ENUM
+#undef CCAM_EXTJ_ROW
+#undef CCAM_FOR_EACH_EXTENDED_J

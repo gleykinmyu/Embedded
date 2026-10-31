@@ -8,7 +8,12 @@
 #include "eth_lan8720.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "catalog/osd_menu.hpp"
+#include "devices/cam_param_ranges.hpp"
+#include "devices/osd_params.hpp"
 #include "devices/integrated_ptz.hpp"
+#include "devices/models/he130.hpp"
+#include "ota_busy.h"
 #include "ph350_ctrl.h"
 #include "protocol/pt_types.hpp"
 
@@ -184,9 +189,9 @@ esp_err_t reply_cam(httpd_req_t *req, Ph350Ctrl &pt, ccam::Status st, const char
 
 } // namespace
 
-static const char kPage[] =
-#include "status.html.inc"
-;
+// pio_idf_embed_txt(generated/status.html) — PIO-safe IDF embed
+extern const char status_html_start[] asm("_binary_status_html_start");
+extern const char status_html_end[] asm("_binary_status_html_end");
 
 namespace {
 
@@ -219,7 +224,10 @@ HttpStatus &HttpStatus::self(httpd_req_t *req) {
 esp_err_t HttpStatus::on_root(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    return httpd_resp_send(req, kPage, HTTPD_RESP_USE_STRLEN);
+    // TEXT embed: null-terminated; end includes trailing NUL.
+    const size_t len = static_cast<size_t>(status_html_end - status_html_start);
+    const size_t send_len = (len > 0 && status_html_start[len - 1] == '\0') ? (len - 1) : len;
+    return httpd_resp_send(req, status_html_start, send_len);
 }
 
 esp_err_t HttpStatus::on_status(httpd_req_t *req) {
@@ -239,28 +247,49 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
     const ccam::devices::CamCaps cc = pt_.camCaps();
     const auto &hl = pt_.linkHealth();
     const unsigned pwr = hl.powerCode() == 0xFF ? 255u : static_cast<unsigned>(hl.powerCode());
-    char buf[1024];
+    const unsigned pt_err = hl.errorCode() == 0xFF ? 255u : static_cast<unsigned>(hl.errorCode());
+    char cam_qid[24] = {};
+    {
+        const char *src = hl.camId();
+        size_t j = 0;
+        for (size_t i = 0; src[i] != '\0' && j + 1 < sizeof(cam_qid); ++i) {
+            const char c = src[i];
+            if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) {
+                continue;
+            }
+            cam_qid[j++] = c;
+        }
+        cam_qid[j] = '\0';
+    }
+    char buf[1280];
     const int wrote = snprintf(
         buf, sizeof(buf),
         "{\"link\":%s,\"ip\":\"%s\",\"mask\":\"%s\",\"gw\":\"%s\",\"mac\":\"%s\","
         "\"uptime_s\":%lu,\"model\":\"%s\",\"cam\":\"%s\","
         "\"pt_id\":\"%s\",\"cam_id\":\"%s\",\"rate\":%u,"
-        "\"pt_alive\":%s,\"pt_power\":%u,\"pt_powered\":%s,\"pt_fail\":%u,"
+        "\"pt_alive\":%s,\"pt_power\":%u,\"pt_power_s\":\"%s\",\"pt_powered\":%s,"
+        "\"pt_optics\":%s,\"pt_optics_fail\":%u,"
+        "\"pt_fail\":%u,\"pt_error\":%u,"
+        "\"cam_tx\":%s,\"cam_alive\":%s,\"cam_qid\":\"%s\",\"cam_fail\":%u,"
         "\"inv_pan\":%s,\"inv_tilt\":%s,\"inv_zoom\":%s,\"inv_focus\":%s,"
         "\"pt_caps\":{\"abs_pt\":%s,\"abs_pt_speed\":%s,\"preset_map\":%s,"
         "\"limit_ctrl\":%s,\"limit_toggle\":%s,\"tally\":%s,\"fan\":%s,\"wiper\":%s,"
         "\"washer\":%s,\"wireless\":%s,\"option\":%s,\"tilt_range\":%s,"
         "\"heater\":%s,\"defroster\":%s,\"pos_disp\":%s,\"pt_pos\":%s,\"lens_q\":%s,"
-        "\"exposure_q\":%s,\"landing\":%s,\"software_ver\":%s},"
+        "\"exposure_q\":%s,\"landing\":%s,\"software_ver\":%s,\"power_cam_tx\":%s},"
         "\"cam_caps\":{\"hd_detail\":%s,\"neg_pos\":%s,\"field_frame\":%s,"
         "\"chroma\":%s,\"black_shade\":%s,\"synchro\":%s,\"abc\":%s,\"paint\":%s,"
         "\"genlock\":%s,\"gamma\":%s,\"agc_max\":%s,\"total_dtl\":%s,"
-        "\"monitor\":%s,\"lens_h\":%s}}",
+        "\"monitor\":%s,\"lens_h\":%s,\"menu_lr\":%s}}",
         eth_.link_up() ? "true" : "false", ip, mask, gw, mac,
         static_cast<unsigned long>(uptime_s), pt_.pt().modelLabel(), pt_.cam().modelLabel(),
         ccam::devices::ptModelKey(pt_.ptModel()), ccam::devices::camModelKey(pt_.camModel()),
         static_cast<unsigned>(pt_.defaultRate()), hl.alive() ? "true" : "false", pwr,
-        hl.powered() ? "true" : "false", static_cast<unsigned>(hl.failStreak()),
+        hl.powerLabel(), hl.powered() ? "true" : "false",
+        hl.opticsAlive() ? "true" : "false", static_cast<unsigned>(hl.opticsFailStreak()),
+        static_cast<unsigned>(hl.failStreak()), pt_err,
+        hl.camTxLikely() ? "true" : "false", hl.camAlive() ? "true" : "false", cam_qid,
+        static_cast<unsigned>(hl.camFailStreak()),
         inv.pan ? "true" : "false", inv.tilt ? "true" : "false", inv.zoom ? "true" : "false",
         inv.focus ? "true" : "false", pc.abs_pt ? "true" : "false",
         pc.abs_pt_speed ? "true" : "false", pc.preset_map ? "true" : "false",
@@ -272,20 +301,30 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         pc.pos_disp ? "true" : "false", pc.pt_pos ? "true" : "false",
         pc.lens_q ? "true" : "false", pc.exposure_q ? "true" : "false",
         pc.landing ? "true" : "false", pc.software_ver ? "true" : "false",
+        pc.power_cam_tx ? "true" : "false",
         cc.hd_detail ? "true" : "false", cc.neg_pos ? "true" : "false",
         cc.field_frame ? "true" : "false", cc.chroma ? "true" : "false",
         cc.black_shade ? "true" : "false", cc.synchro ? "true" : "false",
         cc.abc ? "true" : "false", cc.paint ? "true" : "false",
         cc.genlock ? "true" : "false", cc.gamma ? "true" : "false",
         cc.agc_max ? "true" : "false", cc.total_dtl ? "true" : "false",
-        cc.monitor ? "true" : "false", cc.lens_h ? "true" : "false");
+        cc.monitor ? "true" : "false", cc.lens_h ? "true" : "false",
+        cc.menu_lr ? "true" : "false");
     if (wrote < 0 || static_cast<size_t>(wrote) >= sizeof(buf)) {
         return reply_st(req, ccam::Status::Buffer);
     }
     return send_json(req, buf);
 }
 
+esp_err_t reply_ota_busy(httpd_req_t *req) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    return send_json(req, "{\"ok\":false,\"status\":\"ota\"}");
+}
+
 esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
+    if (otaIsBusy()) {
+        return reply_ota_busy(req);
+    }
     Q q;
     load_q(req, q);
     if (!q.cmd[0]) {
@@ -378,8 +417,8 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
     } else if (strcmp(q.cmd, "home") == 0) {
         st = head.goHome();
     } else if (strcmp(q.cmd, "boot") == 0) {
-        // #O2 → пауза → QID (камера через CamTX)
-        st = head.power(pt::PowerMode::OnWithCameraTx);
+        // Модельный power(On): PH → #O1; Integrated → #O1
+        st = head.power(pt::PowerMode::On);
         if (st == ccam::Status::Ok) {
             vTaskDelay(pdMS_TO_TICKS(900));
             char model[32] = {};
@@ -480,23 +519,27 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         st = head.setFocus(as_u16(q.v));
     } else if (strcmp(q.cmd, "set_iris") == 0) {
         st = head.setIris(as_u16(q.v));
-    } else if (strcmp(q.cmd, "req_zoom") == 0) {
+    } else if (strcmp(q.cmd, "req_zoom") == 0 || strcmp(q.cmd, "get_zoom") == 0
+               || strcmp(q.cmd, "da_zoom") == 0) {
+        // #GZ (не bare #AXZ — тот сбрасывает в 555h)
         uint16_t v = 0;
-        st = head.requestZoom(v);
+        st = head.getZoom(v);
         if (st == ccam::Status::Ok) {
             snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"zoom\":%u}", v);
             return send_json(req, buf);
         }
-    } else if (strcmp(q.cmd, "req_focus") == 0) {
+    } else if (strcmp(q.cmd, "req_focus") == 0 || strcmp(q.cmd, "get_focus") == 0
+               || strcmp(q.cmd, "da_focus") == 0) {
         uint16_t v = 0;
-        st = head.requestFocus(v);
+        st = head.getFocus(v);
         if (st == ccam::Status::Ok) {
             snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"focus\":%u}", v);
             return send_json(req, buf);
         }
-    } else if (strcmp(q.cmd, "req_iris") == 0) {
+    } else if (strcmp(q.cmd, "req_iris") == 0 || strcmp(q.cmd, "get_iris") == 0
+               || strcmp(q.cmd, "da_iris") == 0) {
         uint16_t v = 0;
-        st = head.requestIris(v);
+        st = head.getIris(v);
         if (st == ccam::Status::Ok) {
             snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"iris\":%u}", v);
             return send_json(req, buf);
@@ -574,7 +617,7 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             st = ipt->setLimitationControl(static_cast<ccam::LimitAxis>(ax),
                                            static_cast<ccam::Limitation>(act));
             if (st == ccam::Status::Ok) {
-                snprintf(buf, sizeof(buf),
+    snprintf(buf, sizeof(buf),
                          "{\"ok\":true,\"status\":\"ok\",\"axis\":%d,\"limit\":\"%s\",\"data\":\"#LC\"}",
                          ax, act ? "set" : "release");
                 return send_json(req, buf);
@@ -624,6 +667,9 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
 }
 
 esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
+    if (otaIsBusy()) {
+        return reply_ota_busy(req);
+    }
     Q q;
     load_q(req, q);
     Ph350Ctrl::DeviceLock dev(pt_);
@@ -635,6 +681,58 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
     ccam::Status st = ccam::Status::Param;
     char extra[96] = {};
 
+    if (strcmp(q.cmd, "ranges") == 0) {
+        // Каталог из ccam (не HTML). Без шины.
+        char json[4096];
+        const auto &cat = ccam::devices::camParamCatalog(pt_.camModel());
+        int n = snprintf(
+            json, sizeof(json),
+            "{\"ok\":true,\"status\":\"ok\",\"cam_id\":\"%s\",\"ranges\":{",
+            ccam::devices::camModelKey(pt_.camModel()));
+        if (n < 0 || static_cast<size_t>(n) >= sizeof(json)) {
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        const int m = ccam::devices::camParamCatalogToJson(
+            cat, json + n, sizeof(json) - static_cast<size_t>(n) - 2);
+        if (m < 0) {
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        n += m;
+        if (static_cast<size_t>(n) + 2 >= sizeof(json)) {
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        json[n++] = '}';
+        json[n++] = '}';
+        json[n] = '\0';
+        return send_json(req, json);
+    }
+    if (strcmp(q.cmd, "osd_ranges") == 0) {
+        char *json = static_cast<char *>(malloc(20480));
+        if (!json) {
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        int n = snprintf(json, 20480, "{\"ok\":true,\"status\":\"ok\",\"items\":");
+        if (n < 0 || n >= 20480) {
+            free(json);
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        const int m = ccam::devices::osdParamCatalogToJson(
+            pt_.camModel(), json + n, 20480 - static_cast<size_t>(n) - 2);
+        if (m < 0) {
+            free(json);
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        n += m;
+        if (static_cast<size_t>(n) + 2 >= 20480) {
+            free(json);
+            return reply_st(req, ccam::Status::Buffer);
+        }
+        json[n++] = '}';
+        json[n] = '\0';
+        const esp_err_t rc = send_json(req, json);
+        free(json);
+        return rc;
+    }
     if (strcmp(q.cmd, "model") == 0) {
         st = cam.requestModel(extra, sizeof(extra));
         return reply_cam(req, pt_, st, extra);
@@ -644,183 +742,354 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         return reply_cam(req, pt_, st, extra);
     }
     if (strcmp(q.cmd, "params") == 0) {
-        // Отдельные Qxx + пауза между ними (CamTX / half-duplex).
-        char json[1024];
-        size_t o = 0;
+        // NDJSON stream: одна строка JSON на поле, сразу после Qxx (UI заполняет на лету).
+        httpd_resp_set_type(req, "application/x-ndjson");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        httpd_resp_set_hdr(req, "X-Content-Type-Options", "nosniff");
+
         bool any_ok = false;
-        auto gap = []() { vTaskDelay(pdMS_TO_TICKS(45)); };
-        auto append = [&](const char *key, ccam::Status qs, const char *val) {
-            int n = 0;
-            if (o == 0) {
-                n = snprintf(json, sizeof(json), "{\"ok\":true,\"status\":\"ok\"");
-                if (n < 0) {
-                    return false;
-                }
-                o = static_cast<size_t>(n);
-            }
-            if (qs == ccam::Status::Ok) {
-                any_ok = true;
-                n = snprintf(json + o, sizeof(json) - o, ",\"%s\":%s", key, val);
-            } else {
-                n = snprintf(json + o, sizeof(json) - o, ",\"%s\":\"%s\"", key,
-                             Ph350Ctrl::statusText(qs));
-            }
-            if (n < 0 || static_cast<size_t>(n) >= sizeof(json) - o) {
+        auto gap = []() { vTaskDelay(pdMS_TO_TICKS(20)); };
+        auto emit = [&](const char *line) -> bool {
+            if (!line) {
                 return false;
             }
-            o += static_cast<size_t>(n);
-            return true;
+            const size_t n = strlen(line);
+            if (httpd_resp_send_chunk(req, line, n) != ESP_OK) {
+                return false;
+            }
+            return httpd_resp_send_chunk(req, "\n", 1) == ESP_OK;
         };
-        auto append_str = [&](const char *key, ccam::Status qs, const char *s) {
+        auto emit_raw = [&](const char *key, ccam::Status qs, const char *val) -> bool {
+            char line[160];
+            int n;
+            if (qs == ccam::Status::Ok) {
+                any_ok = true;
+                n = snprintf(line, sizeof(line), "{\"%s\":%s}", key, val);
+            } else {
+                n = snprintf(line, sizeof(line), "{\"%s\":\"%s\"}", key, Ph350Ctrl::statusText(qs));
+            }
+            if (n <= 0 || static_cast<size_t>(n) >= sizeof(line)) {
+                return false;
+            }
+            return emit(line);
+        };
+        auto emit_str = [&](const char *key, ccam::Status qs, const char *s) -> bool {
             char esc[64];
             char quoted[80];
             if (qs == ccam::Status::Ok) {
                 json_escape(s, esc, sizeof(esc));
                 snprintf(quoted, sizeof(quoted), "\"%s\"", esc);
-                return append(key, qs, quoted);
+                return emit_raw(key, qs, quoted);
             }
-            return append(key, qs, "");
+            return emit_raw(key, qs, "\"\"");
         };
-        auto append_u = [&](const char *key, ccam::Status qs, unsigned v) {
+        auto emit_u = [&](const char *key, ccam::Status qs, unsigned v) -> bool {
             char num[16];
             snprintf(num, sizeof(num), "%u", v);
-            return append(key, qs, num);
+            return emit_raw(key, qs, num);
         };
-        auto append_i = [&](const char *key, ccam::Status qs, int v) {
+        auto emit_i = [&](const char *key, ccam::Status qs, int v) -> bool {
             char num[16];
             snprintf(num, sizeof(num), "%d", v);
-            return append(key, qs, num);
+            return emit_raw(key, qs, num);
         };
 
-        char model[24] = {};
-        char version[24] = {};
-        ccam::Status qs = cam.requestModel(model, sizeof(model));
-        if (!append_str("model", qs, model)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit("{\"ok\":true,\"stream\":true,\"status\":\"ok\"}")) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
-        gap();
-        qs = cam.requestSoftwareVersion(version, sizeof(version));
-        if (!append_str("version", qs, version)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
-        }
-        gap();
 
+        /* Phase1: поля-зависимости UI → Phase2: только открытые/остальные. */
         uint8_t u8 = 0;
-        qs = cam.requestAwcMode(u8);
-        if (!append_u("awc", qs, u8)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        uint16_t u16 = 0;
+        ccam::Status qs;
+        const auto &cc = cam.capabilities();
+
+        auto emit_osd_wire = [&](const char *key, ccam::catalog::OsdItem item) -> bool {
+            char raw[40] = {};
+            qs = cam.requestOsd(item, raw, sizeof(raw));
+            const char *wire = raw;
+            for (const char *p = raw; *p; ++p) {
+                if (*p == ':') {
+                    wire = p + 1;
+                }
+            }
+            return emit_str(key, qs, (qs == ccam::Status::Ok) ? wire : "");
+        };
+
+        if (!emit("{\"phase\":1}")) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
-        gap();
 
         int gain_db = 0;
         bool gain_agc = false;
         qs = cam.requestGain(gain_db, gain_agc);
-        if (qs == ccam::Status::Ok && gain_agc) {
-            if (!append("gain", qs, "\"agc\"")) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (qs == ccam::Status::Ok) {
+            if (gain_agc) {
+                if (!emit_raw("gain_mode", qs, "\"agc\"") || !emit_raw("gain", qs, "\"agc\"")) {
+                    httpd_resp_send_chunk(req, nullptr, 0);
+                    return ESP_FAIL;
+                }
+            } else {
+                if (!emit_raw("gain_mode", qs, "\"manual\"") || !emit_i("gain_db", qs, gain_db)) {
+                    httpd_resp_send_chunk(req, nullptr, 0);
+                    return ESP_FAIL;
+                }
             }
-        } else if (!append_i("gain_db", qs, gain_db)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        } else if (!emit_str("gain_mode", qs, "")) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
-        qs = cam.requestShutter(u8);
-        if (!append_u("shutter", qs, u8)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        uint8_t shutter = 0;
+        qs = cam.requestShutter(shutter);
+        if (!emit_u("shutter", qs, shutter)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
         ccam::IrisAutoManual iris_am = ccam::IrisAutoManual::Manual;
         qs = cam.requestIrisAutoManual(iris_am);
-        if (!append_u("iris_am", qs, static_cast<unsigned>(iris_am))) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit_u("iris_am", qs, static_cast<unsigned>(iris_am))) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
-        uint16_t u16 = 0;
-        qs = cam.requestManualIris(u16);
-        if (!append_u("iris", qs, u16)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        uint8_t awc = 0;
+        qs = cam.requestAwcMode(awc);
+        if (!emit_u("awc", qs, awc)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        qs = cam.requestSceneFile(u8);
+        if (!emit_u("scene", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+
+        if (!emit("{\"phase\":2}")) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+
+        /* Зависимые: iris volume / dig_gain / agc_max / atw / R·B Gain */
+        if (iris_am == ccam::IrisAutoManual::Manual) {
+            qs = cam.requestManualIris(u16);
+            if (!emit_u("iris", qs, u16)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        if (!gain_agc) {
+            qs = cam.requestDigitalGainUp(u8);
+            if (!emit_u("dig_gain", qs, u8)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        if (gain_agc && cc.agc_max) {
+            if (!emit_osd_wire("agc_max", ccam::catalog::OsdItem::AgcMax)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        if (awc == 0) {
+            if (!emit_osd_wire("atw", ccam::catalog::OsdItem::AtwSpeed)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        const bool awc_mem = (awc == 1 || awc == 2 || awc == 3);
+        if (cc.paint && awc_mem) {
+            qs = cam.requestRGain(u16);
+            if (!emit_u("r_gain", qs, u16)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+            qs = cam.requestBGain(u16);
+            if (!emit_u("b_gain", qs, u16)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        qs = cam.requestLightPeakAvg(u8);
+        if (!emit_u("light_peak", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        qs = cam.requestLightArea(u8);
+        if (!emit_u("light_area", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        {
+            uint16_t tped = 0;
+            qs = cam.requestTPedestal(tped);
+            if (!emit_u("t_ped", qs, tped)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+
+        qs = cam.requestDnr3d(u8);
+        if (!emit_u("dnr3d", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        if (cc.gamma) {
+            if (!emit_osd_wire("gamma", ccam::catalog::OsdItem::Gamma)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        if (!emit_osd_wire("knee", ccam::catalog::OsdItem::KneePoint)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        if (!emit_osd_wire("cdnr", ccam::catalog::OsdItem::CleanDnr)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        {
+            char wclip[40] = {};
+            qs = cam.requestOsd(ccam::catalog::OsdItem::WhiteClip, wclip, sizeof(wclip));
+            const char *wire = wclip;
+            for (const char *p = wclip; *p; ++p) {
+                if (*p == ':') {
+                    wire = p + 1;
+                }
+            }
+            unsigned wv = 15;
+            if (qs == ccam::Status::Ok && wire && *wire) {
+                wv = static_cast<unsigned>(strtoul(wire, nullptr, 16));
+            }
+            if (!emit_u("wclip", qs, wv)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+        {
+            char air[40] = {};
+            qs = cam.requestOsd(ccam::catalog::OsdItem::AirisLevel, air, sizeof(air));
+            const char *wire = air;
+            for (const char *p = air; *p; ++p) {
+                if (*p == ':') {
+                    wire = p + 1;
+                }
+            }
+            unsigned av = 50;
+            if (qs == ccam::Status::Ok && wire && *wire) {
+                av = static_cast<unsigned>(strtoul(wire, nullptr, 16));
+            }
+            if (!emit_u("airis", qs, av)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            gap();
+        }
+
+        char model[24] = {};
+        char version[24] = {};
+        qs = cam.requestModel(model, sizeof(model));
+        if (!emit_str("model", qs, model)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
+        }
+        gap();
+        qs = cam.requestSoftwareVersion(version, sizeof(version));
+        if (!emit_str("version", qs, version)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
         qs = cam.requestDetail(u8);
-        if (!append_u("detail", qs, u8)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
-        }
-        gap();
-        qs = cam.requestSceneFile(u8);
-        if (!append_u("scene", qs, u8)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit_u("detail", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
-        ccam::Switch sw = ccam::Switch::Off;
-        qs = cam.requestColorBar(sw);
-        if (!append_u("colorbar", qs, static_cast<unsigned>(sw))) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        ccam::ColorBarMode cbar = ccam::ColorBarMode::Camera;
+        qs = cam.requestColorBar(cbar);
+        if (!emit_u("colorbar", qs, static_cast<unsigned>(cbar))) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
+        ccam::Switch sw = ccam::Switch::Off;
         qs = cam.requestMenuOnOff(sw);
-        if (!append_u("menu", qs, static_cast<unsigned>(sw))) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit_u("menu", qs, static_cast<unsigned>(sw))) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
         qs = cam.requestAutoFocus(sw);
-        if (!append_u("af", qs, static_cast<unsigned>(sw))) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit_u("af", qs, static_cast<unsigned>(sw))) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
         qs = cam.requestFilter(u8);
-        if (!append_u("filter", qs, u8)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        if (!emit_u("filter", qs, u8)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
         gap();
 
-        const auto &cc = cam.capabilities();
         if (cc.neg_pos) {
             qs = cam.requestNegPos(sw);
-            if (!append_u("negpos", qs, static_cast<unsigned>(sw))) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
+            if (!emit_u("negpos", qs, static_cast<unsigned>(sw))) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
             }
             gap();
         }
         if (cc.field_frame) {
             ccam::FieldFrameMode ff = ccam::FieldFrameMode::Field;
             qs = cam.requestFieldFrame(ff);
-            if (!append_u("fieldframe", qs, static_cast<unsigned>(ff))) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
+            if (!emit_u("fieldframe", qs, static_cast<unsigned>(ff))) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
             }
             gap();
         }
         if (cc.chroma) {
             qs = cam.requestChromaLevel(u8);
-            if (!append_u("chroma", qs, u8)) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
+            if (!emit_u("chroma", qs, u8)) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
             }
             gap();
-        }
-        if (cc.paint) {
-            qs = cam.requestRGain(u16);
-            if (!append_u("r_gain", qs, u16)) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
-            }
-            gap();
-            qs = cam.requestBGain(u16);
-            if (!append_u("b_gain", qs, u16)) {
-                return reply_cam(req, pt_, ccam::Status::Buffer);
-            }
         }
 
-        if (o + 2 >= sizeof(json)) {
-            return reply_cam(req, pt_, ccam::Status::Buffer);
+        char done[64];
+        snprintf(done, sizeof(done), "{\"done\":true,\"ok\":%s}", any_ok ? "true" : "false");
+        if (!emit(done)) {
+            httpd_resp_send_chunk(req, nullptr, 0);
+            return ESP_FAIL;
         }
-        json[o++] = '}';
-        json[o] = '\0';
-        if (!any_ok) {
-            return reply_cam(req, pt_, ccam::Status::Timeout);
-        }
-        return send_json(req, json);
+        return httpd_resp_send_chunk(req, nullptr, 0);
     }
     if (strcmp(q.cmd, "awc_start") == 0) {
         st = cam.awcStart();
@@ -855,7 +1124,10 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
     } else if (strcmp(q.cmd, "filter") == 0) {
         st = cam.setFilter(static_cast<uint8_t>(as_int(q.v)));
     } else if (strcmp(q.cmd, "colorbar") == 0) {
-        st = cam.setColorBar(static_cast<ccam::Switch>(as_int(q.v) & 1));
+        const int n = as_int(q.v);
+        if (n >= 0 && n <= static_cast<int>(ccam::ColorBarMode::ColorBar)) {
+            st = cam.setColorBar(static_cast<ccam::ColorBarMode>(n));
+        }
     } else if (strcmp(q.cmd, "menu") == 0) {
         st = cam.setMenuOnOff(static_cast<ccam::Switch>(as_int(q.v) & 1));
     } else if (strcmp(q.cmd, "menu_sw") == 0) {
@@ -866,12 +1138,22 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         st = cam.yesSw();
     } else if (strcmp(q.cmd, "no_sw") == 0) {
         st = cam.noSw();
+    } else if (strcmp(q.cmd, "left_sw") == 0 || strcmp(q.cmd, "right_sw") == 0) {
+        if (pt_.camModel() == ccam::devices::CameraModelId::He130) {
+            auto &he = static_cast<ccam::devices::He130Camera &>(cam);
+            st = (strcmp(q.cmd, "left_sw") == 0) ? he.leftSw() : he.rightSw();
+        } else {
+            st = ccam::Status::Param;
+        }
     } else if (strcmp(q.cmd, "af") == 0) {
         st = cam.setAutoFocus(static_cast<ccam::Switch>(as_int(q.v) & 1));
     } else if (strcmp(q.cmd, "negpos") == 0) {
         st = cam.setNegPos(as_int(q.v) != 0);
     } else if (strcmp(q.cmd, "fieldframe") == 0) {
-        st = cam.setFieldFrame(static_cast<ccam::FieldFrameMode>(as_int(q.v) & 1));
+        const int n = as_int(q.v);
+        if (n >= 0 && n <= 2) {
+            st = cam.setFieldFrame(static_cast<ccam::FieldFrameMode>(n));
+        }
     } else if (strcmp(q.cmd, "chroma") == 0) {
         // OCG: 00=-3 .. 03=0 .. 06=+3 (E650)
         const int n = as_int(q.v);
@@ -881,7 +1163,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
     } else if (strcmp(q.cmd, "black_shade") == 0) {
         st = cam.setBlackShadingCorrect(as_int(q.v) != 0);
     } else if (strcmp(q.cmd, "r_gain") == 0) {
-        // OGR: 00h=-30 .. 1Eh=0 .. 3Ch=+30
+        // ORG: 00h=-30 .. 1Eh=0 .. 3Ch=+30 (reply OGR)
         st = cam.setRGain(q.data[0] ? q.data : "1E");
     } else if (strcmp(q.cmd, "b_gain") == 0) {
         st = cam.setBGain(q.data[0] ? q.data : "1E");
@@ -890,6 +1172,22 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         st = cam.setRPedestal(q.data[0] ? q.data : "1E");
     } else if (strcmp(q.cmd, "b_ped") == 0) {
         st = cam.setBPedestal(q.data[0] ? q.data : "1E");
+    } else if (strcmp(q.cmd, "t_ped") == 0) {
+        st = cam.setTPedestal(q.data[0] ? q.data : "1E");
+    } else if (strcmp(q.cmd, "dig_gain") == 0) {
+        const int n = as_int(q.v);
+        if (n >= 0 && n <= 5) {
+            st = cam.setDigitalGainUp(static_cast<uint8_t>(n));
+        }
+    } else if (strcmp(q.cmd, "light_peak") == 0) {
+        st = cam.setLightPeakAvg(q.data[0] ? q.data : "32");
+    } else if (strcmp(q.cmd, "light_area") == 0) {
+        st = cam.setLightArea(static_cast<uint8_t>(as_int(q.v)));
+    } else if (strcmp(q.cmd, "dnr3d") == 0) {
+        const int n = as_int(q.v);
+        if (n >= 0 && n <= 2) {
+            st = cam.setDnr3d(static_cast<uint8_t>(n));
+        }
     } else if (strcmp(q.cmd, "gamma") == 0) {
         st = cam.setGamma(q.data[0] ? q.data : "0");
     } else if (strcmp(q.cmd, "agc_max") == 0) {
@@ -904,6 +1202,23 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         st = cam.lensContact(q.data[0] ? q.data : "00");
     } else if (strcmp(q.cmd, "scene_data") == 0) {
         st = cam.selectScene(q.data[0] ? q.data : "0");
+    } else if (strcmp(q.cmd, "raw") == 0 || strcmp(q.cmd, "raw_send") == 0) {
+        // data = cmd3 (OAW/QAW/OWS…), data2 = payload после ':' (пусто → trigger/query)
+        const char *cmd3 = q.data[0] ? q.data : "";
+        const char *payload = q.data2[0] ? q.data2 : nullptr;
+        if (strcmp(q.cmd, "raw_send") == 0) {
+            st = payload ? cam.sendRaw(cmd3, payload) : cam.triggerRaw(cmd3);
+        } else if (payload) {
+            st = cam.sendRaw(cmd3, payload);
+        } else {
+            st = cam.requestRaw(cmd3, extra, sizeof(extra));
+            return reply_cam(req, pt_, st, extra);
+        }
+    } else if (strcmp(q.cmd, "osd_get") == 0) {
+        st = ccam::devices::getOsdParam(cam, q.v, extra, sizeof(extra));
+        return reply_cam(req, pt_, st, extra);
+    } else if (strcmp(q.cmd, "osd_set") == 0) {
+        st = ccam::devices::setOsdParam(cam, q.v, q.data);
     }
 
     return reply_cam(req, pt_, st);

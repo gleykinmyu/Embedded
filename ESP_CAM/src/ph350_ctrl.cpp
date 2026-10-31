@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
+#include "ota_busy.h"
 #include "transport/types.hpp"
 
 #include <cstdio>
@@ -139,6 +140,7 @@ Ph350Ctrl::~Ph350Ctrl() {
 
 void Ph350Ctrl::destroyDevices() {
     health_.bind(nullptr);
+    health_.bindCam(nullptr);
     if (pt_) {
         pt_->~PtDeviceBase();
         pt_ = nullptr;
@@ -208,12 +210,13 @@ void Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::Cam
 
     pt_->setAxisInvert(invert_);
     health_.bind(pt_);
+    health_.bindCam(cam_);
 }
 
 void Ph350Ctrl::healthTask(void* arg) {
     auto* self = static_cast<Ph350Ctrl*>(arg);
     while (self->health_run_) {
-        {
+        if (!otaIsBusy()) {
             DeviceLock guard(*self);
             if (self->pt_ != nullptr) {
                 self->health_.tick(Ph350Ctrl::nowMs());

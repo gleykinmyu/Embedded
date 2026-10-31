@@ -4,6 +4,21 @@
 
 namespace ccam::devices {
 
+Status IntegratedPtzBase::power(pt::PowerMode mode)
+{
+    switch (mode) {
+    case pt::PowerMode::Off:
+        return sendDec1(catalog::PtCmd::Power, 0);
+    case pt::PowerMode::On:
+    case pt::PowerMode::OnWithCameraTx:
+        return sendDec1(catalog::PtCmd::Power, 1);
+    case pt::PowerMode::OnWithoutCameraTx:
+        return sendDec1(catalog::PtCmd::Power, 2);
+    default:
+        return Status::Param;
+    }
+}
+
 namespace {
 
 int hexNibble(char c)
