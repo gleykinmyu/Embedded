@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "eth_lan8720.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -13,6 +14,9 @@
 #include "devices/osd_params.hpp"
 #include "devices/integrated_ptz.hpp"
 #include "devices/models/he130.hpp"
+#include "http_auth.h"
+#include "lwip/inet.h"
+#include "lwip/ip_addr.h"
 #include "ota_busy.h"
 #include "ph350_ctrl.h"
 #include "protocol/pt_types.hpp"
@@ -31,10 +35,43 @@ struct Q {
     char v4[16]{};
     char data[48]{};
     char data2[24]{};
+    char user[40]{};
+    char pass[40]{};
 };
 
+void url_decode_inplace(char *s)
+{
+    if (!s) {
+        return;
+    }
+    char *w = s;
+    for (char *r = s; *r; ++r) {
+        if (*r == '+' ) {
+            *w++ = ' ';
+        } else if (*r == '%' && r[1] && r[2]) {
+            auto hex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            };
+            const int hi = hex(r[1]);
+            const int lo = hex(r[2]);
+            if (hi >= 0 && lo >= 0) {
+                *w++ = static_cast<char>((hi << 4) | lo);
+                r += 2;
+            } else {
+                *w++ = *r;
+            }
+        } else {
+            *w++ = *r;
+        }
+    }
+    *w = '\0';
+}
+
 void load_q(httpd_req_t *req, Q &q) {
-    char query[256] = {};
+    char query[320] = {};
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
         return;
     }
@@ -47,10 +84,28 @@ void load_q(httpd_req_t *req, Q &q) {
     (void)httpd_query_key_value(query, "v4", q.v4, sizeof(q.v4));
     (void)httpd_query_key_value(query, "data", q.data, sizeof(q.data));
     (void)httpd_query_key_value(query, "data2", q.data2, sizeof(q.data2));
+    (void)httpd_query_key_value(query, "user", q.user, sizeof(q.user));
+    (void)httpd_query_key_value(query, "pass", q.pass, sizeof(q.pass));
+    url_decode_inplace(q.user);
+    url_decode_inplace(q.pass);
+    url_decode_inplace(q.data);
+    url_decode_inplace(q.data2);
 }
 
 int as_int(const char *s, int def = 0) {
     return s && s[0] ? atoi(s) : def;
+}
+
+bool parse_ip4_str(const char *s, uint32_t *out) {
+    if (!s || !s[0] || !out) {
+        return false;
+    }
+    ip_addr_t a{};
+    if (!ipaddr_aton(s, &a) || !IP_IS_V4(&a)) {
+        return false;
+    }
+    *out = ip4_addr_get_u32(ip_2_ip4(&a));
+    return true;
 }
 
 uint16_t as_u16(const char *s, uint16_t def = 0) {
@@ -215,10 +270,23 @@ struct HttpMu {
 
 HttpStatus::HttpStatus(EthLan8720 &eth, Ph350Ctrl &pt) : eth_(eth), pt_(pt) {
     mu_ = xSemaphoreCreateMutex();
+    auth_.begin();
 }
 
 HttpStatus &HttpStatus::self(httpd_req_t *req) {
     return *static_cast<HttpStatus *>(req->user_ctx);
+}
+
+esp_err_t HttpStatus::require_auth(httpd_req_t *req, bool slide)
+{
+    if (auth_.authorized(req, slide)) {
+        return ESP_OK;
+    }
+    httpd_resp_set_status(req, "401 Unauthorized");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    (void)httpd_resp_send(req, "{\"ok\":false,\"status\":\"auth\"}", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL; /* ответ уже отправлен — хендлер дальше не идёт */
 }
 
 esp_err_t HttpStatus::on_root(httpd_req_t *req) {
@@ -230,7 +298,103 @@ esp_err_t HttpStatus::on_root(httpd_req_t *req) {
     return httpd_resp_send(req, status_html_start, send_len);
 }
 
+esp_err_t HttpStatus::on_auth(httpd_req_t *req)
+{
+    Q q{};
+    load_q(req, q);
+    char buf[384] = {};
+    char cookie[96] = {};
+
+    if (strcmp(q.cmd, "me") == 0) {
+        /* без slide — иначе poll/ensure продлевал бы idle */
+        const bool ok = auth_.authorized(req, false);
+        const bool sess = ok && auth_.sessionActive();
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":%s,\"status\":\"%s\",\"user\":\"%s\",\"session\":%s,"
+                 "\"sess_ttl_s\":%u,\"sess_left_s\":%u,\"sess_ttl_max_s\":%u,\"sess_ttl_min_s\":%u}",
+                 ok ? "true" : "false", ok ? "ok" : "auth",
+                 ok ? auth_.user() : "", sess ? "true" : "false",
+                 static_cast<unsigned>(auth_.sessionTtlSec()),
+                 static_cast<unsigned>(sess ? auth_.sessionRemainSec() : 0),
+                 static_cast<unsigned>(HttpAuth::kSessTtlMaxSec),
+                 static_cast<unsigned>(HttpAuth::kSessTtlMinSec));
+        return send_json(req, buf);
+    }
+    if (strcmp(q.cmd, "touch") == 0) {
+        /* явное продление idle от UI (клик/клавиша) */
+        if (!auth_.authorized(req, true) || !auth_.sessionActive()) {
+            (void)require_auth(req, false);
+            return ESP_OK;
+        }
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":true,\"status\":\"ok\",\"sess_ttl_s\":%u,\"sess_left_s\":%u}",
+                 static_cast<unsigned>(auth_.sessionTtlSec()),
+                 static_cast<unsigned>(auth_.sessionRemainSec()));
+        return send_json(req, buf);
+    }
+    if (strcmp(q.cmd, "login") == 0) {
+        char sess[HttpAuth::kSessLen + 1] = {};
+        if (!auth_.login(q.user, q.pass, sess, sizeof(sess))) {
+            httpd_resp_set_status(req, "401 Unauthorized");
+            return send_json(req, "{\"ok\":false,\"status\":\"auth\"}");
+        }
+        snprintf(cookie, sizeof(cookie),
+                 "esp_sess=%s; Path=/; HttpOnly; SameSite=Lax", sess);
+        httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":true,\"status\":\"ok\",\"user\":\"%s\",\"session\":true,\"sess_ttl_s\":%u}",
+                 auth_.user(), static_cast<unsigned>(auth_.sessionTtlSec()));
+        return send_json(req, buf);
+    }
+    if (strcmp(q.cmd, "logout") == 0) {
+        auth_.logout();
+        httpd_resp_set_hdr(req, "Set-Cookie", "esp_sess=; Path=/; Max-Age=0; HttpOnly");
+        return send_json(req, "{\"ok\":true,\"status\":\"ok\"}");
+    }
+    /* ниже — только для сессии UI (Bearer не меняет пароль/токен/TTL) */
+    if (!auth_.authorized(req) || !auth_.sessionActive()) {
+        (void)require_auth(req);
+        return ESP_OK;
+    }
+    if (strcmp(q.cmd, "set_pass") == 0) {
+        /* pass=текущий, data=новый */
+        if (!auth_.setPassword(q.pass, q.data)) {
+            return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+        }
+        return send_json(req, "{\"ok\":true,\"status\":\"ok\"}");
+    }
+    if (strcmp(q.cmd, "set_sess_ttl") == 0) {
+        /* v = секунды, 30…300 */
+        const int sec = as_int(q.v, -1);
+        if (sec < 0 || !auth_.setSessionTtlSec(static_cast<uint32_t>(sec))) {
+            return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+        }
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":true,\"status\":\"ok\",\"sess_ttl_s\":%u}",
+                 static_cast<unsigned>(auth_.sessionTtlSec()));
+        return send_json(req, buf);
+    }
+    if (strcmp(q.cmd, "token") == 0) {
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":true,\"status\":\"ok\",\"token\":\"%s\",\"user\":\"%s\",\"sess_ttl_s\":%u}",
+                 auth_.apiToken(), auth_.user(),
+                 static_cast<unsigned>(auth_.sessionTtlSec()));
+        return send_json(req, buf);
+    }
+    if (strcmp(q.cmd, "reissue_token") == 0) {
+        auth_.reissueToken();
+        snprintf(buf, sizeof(buf),
+                 "{\"ok\":true,\"status\":\"ok\",\"token\":\"%s\"}", auth_.apiToken());
+        return send_json(req, buf);
+    }
+    return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+}
+
 esp_err_t HttpStatus::on_status(httpd_req_t *req) {
+    /* Фоновый tick не продлевает cookie-сессию — только проверка. */
+    if (require_auth(req, false) != ESP_OK) {
+        return ESP_OK;
+    }
     Ph350Ctrl::DeviceLock dev(pt_);
     char ip[16] = {};
     char mask[16] = {};
@@ -272,7 +436,7 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         "\"pt_fail\":%u,\"pt_error\":%u,"
         "\"cam_tx\":%s,\"cam_alive\":%s,\"cam_qid\":\"%s\",\"cam_fail\":%u,"
         "\"inv_pan\":%s,\"inv_tilt\":%s,\"inv_zoom\":%s,\"inv_focus\":%s,"
-        "\"pt_caps\":{\"abs_pt\":%s,\"abs_pt_speed\":%s,\"preset_map\":%s,"
+        "\"pt_caps\":{\"abs_pt\":%s,\"abs_pt_speed\":%s,\"preset_map\":%s,\"preset_opts\":%s,"
         "\"limit_ctrl\":%s,\"limit_toggle\":%s,\"tally\":%s,\"fan\":%s,\"wiper\":%s,"
         "\"washer\":%s,\"wireless\":%s,\"option\":%s,\"tilt_range\":%s,"
         "\"heater\":%s,\"defroster\":%s,\"pos_disp\":%s,\"pt_pos\":%s,\"lens_q\":%s,"
@@ -293,6 +457,7 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         inv.pan ? "true" : "false", inv.tilt ? "true" : "false", inv.zoom ? "true" : "false",
         inv.focus ? "true" : "false", pc.abs_pt ? "true" : "false",
         pc.abs_pt_speed ? "true" : "false", pc.preset_map ? "true" : "false",
+        pc.preset_opts ? "true" : "false",
         pc.limit_ctrl ? "true" : "false", pc.limit_toggle ? "true" : "false",
         pc.tally ? "true" : "false", pc.fan ? "true" : "false", pc.wiper ? "true" : "false",
         pc.washer ? "true" : "false", pc.wireless ? "true" : "false",
@@ -322,6 +487,9 @@ esp_err_t reply_ota_busy(httpd_req_t *req) {
 }
 
 esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
+    if (require_auth(req) != ESP_OK) {
+        return ESP_OK;
+    }
     if (otaIsBusy()) {
         return reply_ota_busy(req);
     }
@@ -667,6 +835,9 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
 }
 
 esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
+    if (require_auth(req) != ESP_OK) {
+        return ESP_OK;
+    }
     if (otaIsBusy()) {
         return reply_ota_busy(req);
     }
@@ -1240,6 +1411,56 @@ esp_err_t HttpStatus::cam_get(httpd_req_t *req) {
     return self(req).on_cam(req);
 }
 
+esp_err_t HttpStatus::auth_get(httpd_req_t *req) {
+    return self(req).on_auth(req);
+}
+
+esp_err_t HttpStatus::on_net(httpd_req_t *req) {
+    if (require_auth(req) != ESP_OK) {
+        return ESP_OK;
+    }
+    Q q;
+    load_q(req, q);
+    if (strcmp(q.cmd, "set") != 0) {
+        return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+    }
+    uint32_t ip = 0;
+    uint32_t mask = 0;
+    uint32_t gw = 0;
+    if (!parse_ip4_str(q.v, &ip) || !parse_ip4_str(q.v2, &mask)) {
+        return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+    }
+    if (q.v3[0] && !parse_ip4_str(q.v3, &gw)) {
+        return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+    }
+    if (!eth_.configure(ip, mask, gw)) {
+        return send_json(req, "{\"ok\":false,\"status\":\"fail\"}");
+    }
+    char ip_s[16] = {};
+    char mask_s[16] = {};
+    char gw_s[16] = {};
+    eth_.cfg_ip_text(ip_s, sizeof(ip_s));
+    eth_.cfg_mask_text(mask_s, sizeof(mask_s));
+    eth_.cfg_gw_text(gw_s, sizeof(gw_s));
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"status\":\"ok\",\"reboot\":true,\"ip\":\"%s\",\"mask\":\"%s\",\"gw\":\"%s\"}",
+             ip_s, mask_s, gw_s);
+    const esp_err_t rc = send_json(req, buf);
+    /* Ответ ушёл — через паузу reboot, чтобы подхватить NVS. */
+    xTaskCreate(
+        [](void *) {
+            vTaskDelay(pdMS_TO_TICKS(800));
+            esp_restart();
+        },
+        "net_reboot", 2048, nullptr, 5, nullptr);
+    return rc;
+}
+
+esp_err_t HttpStatus::net_get(httpd_req_t *req) {
+    return self(req).on_net(req);
+}
+
 void HttpStatus::stop() {
     HttpMu guard(mu_);
     if (!srv_) {
@@ -1256,7 +1477,7 @@ void HttpStatus::start() {
     }
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 8;
+    cfg.max_uri_handlers = 12;
     cfg.stack_size = 10240;
     if (httpd_start(&srv_, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd start failed");
@@ -1282,9 +1503,21 @@ void HttpStatus::start() {
     cam.method = HTTP_GET;
     cam.handler = cam_get;
     cam.user_ctx = this;
+    httpd_uri_t auth = {};
+    auth.uri = "/api/auth";
+    auth.method = HTTP_GET;
+    auth.handler = auth_get;
+    auth.user_ctx = this;
+    httpd_uri_t net = {};
+    net.uri = "/api/net";
+    net.method = HTTP_GET;
+    net.handler = net_get;
+    net.user_ctx = this;
     httpd_register_uri_handler(srv_, &root);
     httpd_register_uri_handler(srv_, &status);
     httpd_register_uri_handler(srv_, &ptz);
     httpd_register_uri_handler(srv_, &cam);
+    httpd_register_uri_handler(srv_, &auth);
+    httpd_register_uri_handler(srv_, &net);
     ESP_LOGI(TAG, "HTTP listen :80");
 }

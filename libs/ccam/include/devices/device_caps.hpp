@@ -16,6 +16,7 @@ struct PtCaps {
     bool abs_pt = false;       ///< #APC
     bool abs_pt_speed = false; ///< #APS / #RPS
     bool preset_map = false;   ///< #PE
+    bool preset_opts = false;  ///< #PM/#PS/unit + lens w/ preset (не PH-голова)
     bool limit_ctrl = false;   ///< #LC Set/Release
     bool limit_toggle = false; ///< #L1..4 toggle
     bool tally = false;

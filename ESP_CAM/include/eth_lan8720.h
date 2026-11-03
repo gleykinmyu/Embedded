@@ -20,6 +20,11 @@ public:
     bool set_ip(uint32_t addr);
     bool set_mask(uint32_t mask);
     bool set_gw(uint32_t gw);
+    /** Только NVS (gw==0 → оставить). Live IP — после reboot / apply_now. */
+    bool configure(uint32_t ip, uint32_t mask, uint32_t gw);
+    void cfg_ip_text(char *buf, size_t len) const;
+    void cfg_mask_text(char *buf, size_t len) const;
+    void cfg_gw_text(char *buf, size_t len) const;
     void print() const;
     bool link_up() const { return link_up_; }
     bool has_ip() const { return got_ip_; }

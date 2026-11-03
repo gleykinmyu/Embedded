@@ -22,6 +22,11 @@ static constexpr int PIN_RS422_DE = 33; // 485_EN (DE/RE; optional for full-dupl
 static constexpr int RS422_UART_NUM = 2;
 static constexpr int RS422_BAUD = 9600;
 
+// Factory reset (только boot): кнопка на GND. GPIO2 — есть внутр. pull-up.
+// Strapping: при UART-прошивке не держать кнопку (GPIO2 должен быть LOW для download).
+// Во время работы не опрашиваем.
+static constexpr int PIN_FACTORY_RST = 2;
+
 /*
  * AW-PH350E / Panasonic P/T CONTROL — RJ45, RS-422A, прямой CAT-5.
  *
@@ -47,10 +52,11 @@ static constexpr int RS422_BAUD = 9600;
  *   GND -- pin 1
  */
 
-#define ETH01_IP4_ADDR  2, 0, 0, 12
-#define ETH01_GW4_ADDR  192, 168, 5, 1
-#define ETH01_MASK_ADDR 255, 0, 0, 0
-#define ETH01_DNS4_ADDR 192, 168, 5, 1
+/* Заводские / пустой NVS. Сброс GPIO39 → те же значения + admin/admin. */
+#define ETH01_IP4_ADDR  192, 168, 0, 254
+#define ETH01_MASK_ADDR 255, 255, 0, 0
+#define ETH01_GW4_ADDR  192, 168, 0, 1
+#define ETH01_DNS4_ADDR 192, 168, 0, 1
 
 // Пароль для PlatformIO espota (`upload_flags = --auth=...`). Пустая строка — без auth.
 #ifndef ESPOTA_PASSWORD

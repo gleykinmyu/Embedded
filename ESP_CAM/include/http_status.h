@@ -2,6 +2,7 @@
 
 #include "esp_http_server.h"
 #include "freertos/semphr.h"
+#include "http_auth.h"
 
 class EthLan8720;
 class Ph350Ctrl;
@@ -18,15 +19,22 @@ private:
     esp_err_t on_status(httpd_req_t *req);
     esp_err_t on_ptz(httpd_req_t *req);
     esp_err_t on_cam(httpd_req_t *req);
+    esp_err_t on_auth(httpd_req_t *req);
+    esp_err_t on_net(httpd_req_t *req);
+
+    esp_err_t require_auth(httpd_req_t *req, bool slide = true);
 
     static HttpStatus &self(httpd_req_t *req);
     static esp_err_t root_get(httpd_req_t *req);
     static esp_err_t status_get(httpd_req_t *req);
     static esp_err_t ptz_get(httpd_req_t *req);
     static esp_err_t cam_get(httpd_req_t *req);
+    static esp_err_t auth_get(httpd_req_t *req);
+    static esp_err_t net_get(httpd_req_t *req);
 
     EthLan8720 &eth_;
     Ph350Ctrl &pt_;
+    HttpAuth auth_{};
     httpd_handle_t srv_{};
     SemaphoreHandle_t mu_{};
 };

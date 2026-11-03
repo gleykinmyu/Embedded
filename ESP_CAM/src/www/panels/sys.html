@@ -37,27 +37,20 @@
   <div class="panel">
     <h2>Axis invert</h2>
     <p class="sub">UI ↔ физика головки (NVS, лимиты #L).</p>
-    <div class="chk-stack">
+    <div class="chk-grid">
       <label class="chk"><input id="inv_pan" type="checkbox"> Invert Pan</label>
-      <label class="chk"><input id="inv_tilt" type="checkbox"> Invert Tilt</label>
       <label class="chk"><input id="inv_zoom" type="checkbox"> Invert Zoom</label>
+      <label class="chk"><input id="inv_tilt" type="checkbox"> Invert Tilt</label>
       <label class="chk"><input id="inv_focus" type="checkbox"> Invert Focus</label>
     </div>
   </div>
 
   <div class="panel">
-    <h2>Limits / options</h2>
-    <p class="sub">PH: упор → Toggle #L1..4. #LC/#APC/#PE — Integrated PTZ.</p>
+    <h2>Options</h2>
+    <p class="sub">Периферия головки. Limit — кнопка Limit на вкладке Control.</p>
+    <input type="hidden" id="limax" value="1">
+    <input type="hidden" id="limact" value="1">
     <div class="fields">
-      <label class="field" data-cap="limit_toggle">axis
-        <select id="limax">
-          <option value="1">TiltUp #L1</option><option value="2">TiltDown #L2</option>
-          <option value="3">PanLeft #L3</option><option value="4">PanRight #L4</option>
-        </select>
-      </label>
-      <label class="field" data-cap="limit_ctrl">#LC
-        <select id="limact"><option value="1">Set</option><option value="0">Release</option></select>
-      </label>
       <label class="field" data-cap="tilt_range">Tilt range
         <select id="tiltr" data-send="tilt_range"><option value="0">190°</option><option value="1">300°</option></select>
       </label>
@@ -85,8 +78,6 @@
       </label>
     </div>
     <div class="btn-row wrap">
-      <button type="button" data-cmd="limit_toggle" data-cap="limit_toggle">Toggle #L</button>
-      <button type="button" data-cmd="limit_ctrl" data-cap="limit_ctrl">Apply #LC</button>
       <button type="button" data-cmd="fan2" data-cap="fan">Fan2</button>
     </div>
   </div>
@@ -119,16 +110,6 @@
   </div>
 
   <div class="panel">
-    <h2>User Menu (QSD)</h2>
-    <p class="sub">Прямой Set/Get OSD:nn — как CAMERA MENU OP на RP150. Не путать с вкладкой OSD (навигация DUS).</p>
-    <div class="btn-row">
-      <button type="button" id="osd_read_all">Read all</button>
-      <button type="button" id="osd_read_stop">Stop</button>
-    </div>
-    <div id="osd_list"></div>
-  </div>
-
-  <div class="panel">
     <h2>Camera query</h2>
     <p class="sub">Read params — поток Qxx. Model / Ver — QID / QSV.</p>
     <div class="btn-row wrap">
@@ -154,13 +135,26 @@
 
   <div class="panel">
     <h2>Raw PT</h2>
-    <div class="fields">
-      <label class="field">cmd <input id="rawcmd" value="O" maxlength="8"></label>
-      <label class="field">payload <input id="rawpay" value="1"></label>
+    <div class="fields fields-compact">
+      <label class="field">cmd <input id="rawcmd" value="O" maxlength="8" spellcheck="false"></label>
+      <label class="field">payload <input id="rawpay" value="1" spellcheck="false"></label>
     </div>
     <div class="btn-row wrap">
       <button type="button" data-cmd="raw">Transact</button>
       <button type="button" data-cmd="raw_send">Send</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Raw Cam</h2>
+    <p class="sub">Convertible Oxx/Qxx · без префикса PT.</p>
+    <div class="fields fields-compact">
+      <label class="field">cmd <input id="camrawcmd" value="QAW" maxlength="3" spellcheck="false"></label>
+      <label class="field">data <input id="camrawpay" value="" placeholder="1" spellcheck="false"></label>
+    </div>
+    <div class="btn-row wrap">
+      <button type="button" data-api="cam" data-cmd="raw">Transact</button>
+      <button type="button" data-api="cam" data-cmd="raw_send">Send</button>
     </div>
   </div>
 

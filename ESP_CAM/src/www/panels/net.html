@@ -1,0 +1,58 @@
+<section id="net" class="tab-panel" hidden>
+  <div class="panel">
+    <h2>Network</h2>
+    <p class="sub">Static IP / mask → NVS, then reboot (~1 s). Open the new address after. Boot reset: GPIO2→GND → 192.168.0.254 / 255.255.0.0, admin/admin.</p>
+    <div class="fields">
+      <label class="field">IP
+        <input id="net_ip" class="ip4" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="15" placeholder="192.168.0.254">
+      </label>
+      <label class="field">Mask
+        <input id="net_mask" class="ip4" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="15" placeholder="255.255.0.0">
+      </label>
+      <label class="field">Gateway
+        <input id="net_gw" class="ip4" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="15" placeholder="192.168.0.1">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="refresh" id="net_save">Save network</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Security</h2>
+    <p class="sub" id="auth_session_hint">login: —</p>
+    <div class="fields">
+      <label class="field">Current password
+        <input id="auth_pass_cur" type="password" autocomplete="current-password">
+      </label>
+      <label class="field">New password
+        <input id="auth_pass_new" type="password" autocomplete="new-password">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="refresh" id="auth_pass_save">Change password</button>
+    </div>
+    <h3 class="sec-h3">Session timeout</h3>
+    <p class="sub">Idle cookie session. Max 5 min (300 s). Bearer token does not expire.</p>
+    <div class="fields">
+      <label class="field">Seconds (30…300)
+        <input id="auth_sess_ttl" type="number" min="30" max="300" step="30" value="300">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="secondary" id="auth_sess_ttl_save">Save timeout</button>
+    </div>
+    <h3 class="sec-h3">API token</h3>
+    <p class="sub">For scripts and external clients: <code>Authorization: Bearer</code>.</p>
+    <div class="fields">
+      <label class="field">Bearer
+        <input id="auth_token" type="text" readonly spellcheck="false">
+      </label>
+    </div>
+    <p class="hint mono" id="auth_curl">—</p>
+    <div class="btn-row wrap">
+      <button type="button" class="secondary" id="auth_token_copy">Copy token</button>
+      <button type="button" class="secondary" id="auth_token_reissue">Reissue token</button>
+    </div>
+  </div>
+</section>

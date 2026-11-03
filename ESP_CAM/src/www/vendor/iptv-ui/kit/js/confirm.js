@@ -19,7 +19,8 @@
     }
   }
 
-  function ask(message, okLabel) {
+  function ask(message, okLabel, opts) {
+    opts = opts || {};
     var modal = el('confirm-modal');
     if (!modal) {
       return Promise.resolve(window.confirm(message));
@@ -27,19 +28,36 @@
     if (pending) close(false);
     el('confirm-text').textContent = message || '';
     var ok = el('confirm-ok');
+    var cancel = el('confirm-cancel');
+    var actions = modal.querySelector('.modal-actions');
     var label = okLabel || 'OK';
     ok.textContent = label;
-    /* destructive primary — красный; иначе accent */
+    /* destructive — красный; иначе accent. cancelPrimary: Отмена справа и основная */
     var danger = /удал|delete|remove|kill|сброс|reset/i.test(label);
-    ok.className = danger ? 'kill' : 'refresh';
+    var cancelPrimary = !!opts.cancelPrimary;
+    if (actions && ok && cancel) {
+      if (cancelPrimary) {
+        actions.appendChild(ok);
+        actions.appendChild(cancel);
+        ok.className = danger ? 'kill' : 'stop';
+        cancel.className = 'refresh';
+      } else {
+        actions.appendChild(cancel);
+        actions.appendChild(ok);
+        cancel.className = 'stop';
+        ok.className = danger ? 'kill' : 'refresh';
+      }
+    } else {
+      ok.className = danger ? 'kill' : 'refresh';
+    }
     if (global.IptvModal) IptvModal.open(modal);
     else {
       modal.classList.remove('hidden');
       document.body.classList.add('modal-open');
     }
     setTimeout(function () {
-      var ok = el('confirm-ok');
-      if (ok) ok.focus();
+      var focusEl = cancelPrimary ? el('confirm-cancel') : el('confirm-ok');
+      if (focusEl) focusEl.focus();
     }, 0);
     return new Promise(function (resolve) {
       pending = resolve;

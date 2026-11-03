@@ -57,11 +57,24 @@ function showBar(cmd,d){
   }
   if(cmd==='ptz/preset_map'&&d&&d.ok&&Array.isArray(d.presets)&&window.PresetUI)
     window.PresetUI.applyMap(d.presets);
+  if(cmd==='ptz/preset_latest'&&d&&d.ok&&d.preset!==undefined&&window.PresetUI&&PresetUI.markLatest)
+    PresetUI.markLatest(d.preset);
+}
+function authGateOrDefer(why){
+  if(window._ptHold>0){
+    window._authDeferredGate=true;
+    return;
+  }
+  if(window.AUTH) AUTH.showGate(true, why||'Сессия истекла');
 }
 async function call(api,cmd,extra){
   const q=new URLSearchParams(Object.assign({cmd},extra||{}));
   try{
-    const r=await fetch('/api/'+api+'?'+q,{cache:'no-store'});
+    const r=await fetch('/api/'+api+'?'+q,{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401 && window.AUTH){
+      authGateOrDefer('Сессия истекла');
+      return {ok:false,status:'auth'};
+    }
     const d=await r.json();
     showBar(api+'/'+cmd,d);
     return d;
@@ -335,6 +348,23 @@ document.addEventListener('pointerdown',e=>{
   if(hold && HOLD_LIMIT_AXIS[hold.dataset.hold]) return;
   setLimitArm(false);
 }, true);
+function beginPtHold(){
+  window._ptHold=(window._ptHold||0)+1;
+  if(window._ptHold!==1) return;
+  if(window.AUTH&&typeof AUTH.touchNow==='function') AUTH.touchNow();
+  window._ptHoldTimer=setInterval(()=>{
+    if(window.AUTH&&typeof AUTH.touchNow==='function') AUTH.touchNow();
+  }, 8000);
+}
+function endPtHold(){
+  window._ptHold=Math.max(0,(window._ptHold||0)-1);
+  if(window._ptHold>0) return;
+  if(window._ptHoldTimer){ clearInterval(window._ptHoldTimer); window._ptHoldTimer=null; }
+  if(window._authDeferredGate){
+    window._authDeferredGate=false;
+    if(window.AUTH) AUTH.showGate(true,'Сессия истекла');
+  }
+}
 function bindHold(el){
   const cmd=el.dataset.hold;
   let down=false;
@@ -350,13 +380,15 @@ function bindHold(el){
     try{ el.setPointerCapture(ev.pointerId); }catch(err){}
     if(down) return;
     down=true;
+    beginPtHold();
     ptz(cmd);
   };
-  const halt=ev=>{
+  const halt=async ev=>{
     if(!down) return;
     down=false;
     if(ev) ev.preventDefault();
-    ptz('stop');
+    try{ await ptz('stop'); }
+    finally{ endPtHold(); }
   };
   el.addEventListener('pointerdown',go);
   el.addEventListener('pointerup',halt);
@@ -366,11 +398,29 @@ function bindHold(el){
 document.querySelectorAll('[data-hold]').forEach(bindHold);
 const PresetUI=(()=>{
   const BANKS=10, SLOTS=10, MAX_PRESET=99;
+  const OCC_KEY='esp_cam_preset_occ';
   let bank=0, mode='recall', selected=1;
   const occ=new Array(100).fill(false);
   const banksEl=$('prbanks'), padEl=$('prquick'), info=$('prinfo');
   function absNum(slot){ return bank*SLOTS + slot + 1; }
   function armed(){ return mode==='save'||mode==='delete'; }
+  function saveOcc(){
+    try{
+      const bits=[];
+      for(let i=0;i<MAX_PRESET;i++) if(occ[i]) bits.push(i+1);
+      localStorage.setItem(OCC_KEY, JSON.stringify(bits));
+    }catch(e){}
+  }
+  function loadOcc(){
+    try{
+      const raw=localStorage.getItem(OCC_KEY);
+      if(!raw) return;
+      const list=JSON.parse(raw);
+      if(!Array.isArray(list)) return;
+      occ.fill(false);
+      list.forEach(n=>{ n=Number(n); if(n>=1&&n<=MAX_PRESET) occ[n-1]=true; });
+    }catch(e){}
+  }
   function syncInfo(){
     $('pr').value=String(selected);
     const m=mode==='recall'?'Recall':(mode==='save'?'Store…':'Delete…');
@@ -406,13 +456,31 @@ const PresetUI=(()=>{
       return IptvConfirm.ask(msg, 'Удалить');
     return window.confirm(msg);
   }
+  /** После Recall: Latest → зелёный если тот же индекс, иначе снять отметку. */
+  async function confirmViaLatest(n){
+    const d=await ptz('preset_latest');
+    if(!d||!d.ok||d.preset===undefined) return;
+    const got=Number(d.preset);
+    if(got===n){
+      occ[n-1]=true;
+    }else{
+      occ[n-1]=false;
+      if(got>=1&&got<=MAX_PRESET) occ[got-1]=true;
+    }
+    saveOcc();
+    paintPad();
+  }
   async function runSlot(n){
     if(n<1||n>MAX_PRESET) return;
     selected=n; $('pr').value=String(n); paintPad();
-    if(mode==='recall') return ptz('preset_recall');
+    if(mode==='recall'){
+      const d=await ptz('preset_recall');
+      if(d&&d.ok) await confirmViaLatest(n);
+      return d;
+    }
     if(mode==='save'){
       const d=await ptz('preset_save');
-      if(d&&d.ok) occ[n-1]=true;
+      if(d&&d.ok){ occ[n-1]=true; saveOcc(); }
       mode='recall';
       paintPad();
       return d;
@@ -422,7 +490,7 @@ const PresetUI=(()=>{
         mode='recall'; paintPad(); return;
       }
       const d=await ptz('preset_delete');
-      if(d&&d.ok) occ[n-1]=false;
+      if(d&&d.ok){ occ[n-1]=false; saveOcc(); }
       mode='recall';
       paintPad();
       return d;
@@ -431,6 +499,7 @@ const PresetUI=(()=>{
   function applyMap(list){
     occ.fill(false);
     (list||[]).forEach(n=>{ if(n>=1&&n<=MAX_PRESET) occ[n-1]=true; });
+    saveOcc();
     paintPad();
   }
   for(let i=0;i<BANKS;i++){
@@ -460,8 +529,19 @@ const PresetUI=(()=>{
     if(t.closest('#prmodes [data-pr-mode]')) return;
     clearArm();
   }, true);
+  function markLatest(n){
+    n=Number(n);
+    if(!(n>=1&&n<=MAX_PRESET)) return;
+    occ[n-1]=true;
+    selected=n;
+    const b=Math.floor((n-1)/SLOTS);
+    if(b!==bank) bank=Math.max(0,Math.min(BANKS-1,b));
+    saveOcc();
+    paintPad();
+  }
+  loadOcc();
   paintPad();
-  window.PresetUI={applyMap, paintPad, clearArm};
+  window.PresetUI={applyMap, paintPad, clearArm, markLatest};
 })();
 function applyInvertUi(d){
   if(!d) return;
@@ -529,7 +609,7 @@ function fillCamRanges(ranges){
 }
 async function loadCamRanges(){
   try{
-    const r=await fetch('/api/cam?cmd=ranges',{cache:'no-store'});
+    const r=await fetch('/api/cam?cmd=ranges',{cache:'no-store',credentials:'same-origin'});
     const d=await r.json();
     if(!d||!d.ok||!d.ranges) return;
     window._rangesCamId=d.cam_id||'';
@@ -538,18 +618,24 @@ async function loadCamRanges(){
   }catch(e){}
 }
 function setSel(id,v){ const el=$(id); if(el&&v!==undefined&&v!==null&&typeof v!=='string') el.value=String(v); else if(el&&typeof v==='string'&&v!=='timeout'&&v!=='io'&&v!=='nack'&&v!=='param') el.value=v; }
+function flashGotAll(where){
+  const msg=(where?where+' · ':'')+'все значения получены';
+  if(window.IptvNote) IptvNote.show(msg,'ok');
+  else showBar(where||'params',{ok:true,status:'ok'});
+}
 async function loadCamParams(quiet){
   if(window._camParamsBusy) return;
   window._camParamsBusy=true;
   const acc={ok:true,status:'ok'};
   try{
-    const r=await fetch('/api/cam?cmd=params',{cache:'no-store'});
+    const r=await fetch('/api/cam?cmd=params',{cache:'no-store',credentials:'same-origin'});
     if(!r.ok) throw new Error('http');
     /* NDJSON stream: поле за полем; fallback — один JSON (старая прошивка) */
     const ct=(r.headers.get('content-type')||'').toLowerCase();
     if(!r.body||!ct.includes('ndjson')){
       const d=await r.json();
-      if(quiet){ if(d&&d.ok) applyCamParams(d); }
+      if(d&&d.ok) applyCamParams(d);
+      if(quiet){ if(d&&d.ok) flashGotAll('Camera'); }
       else showBar('cam/params',d);
       return;
     }
@@ -577,7 +663,8 @@ async function loadCamParams(quiet){
       try{ Object.assign(acc, JSON.parse(buf.trim())); }catch(e){}
     }
     applyCamParams(acc);
-    if(!quiet) showBar('cam/params',acc);
+    if(quiet){ if(acc.ok) flashGotAll('Camera'); }
+    else showBar('cam/params',acc);
   }catch(e){
     if(!quiet) showBar('cam/params',{ok:false,status:'net'});
   }finally{
@@ -681,7 +768,8 @@ async function saveInvert(){
 });
 async function tick(){
   try{
-    const r=await fetch('/api/status',{cache:'no-store'});
+    const r=await fetch('/api/status',{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401 && window.AUTH){ authGateOrDefer('Сессия истекла'); return; }
     const d=await r.json();
     if($('link')) link.textContent=d.link?'up':'down';
     const ptOk=!!d.pt_alive;
@@ -714,6 +802,11 @@ async function tick(){
         +' · Cam '+(camOk?(d.cam_qid||'ok'):(camTx?'missing':'n/a'));
     }
     if($('ip')){ ip.textContent=d.ip;mask.textContent=d.mask;gw.textContent=d.gw;mac.textContent=d.mac; }
+    if($('net_ip') && document.activeElement!==$('net_ip') && !window._netLocal){
+      $('net_ip').value=d.ip||'';
+      if($('net_mask')) $('net_mask').value=d.mask||'';
+      if($('net_gw')) $('net_gw').value=d.gw||'';
+    }
     if($('ptm')){ ptm.textContent=d.model;camm.textContent=d.cam||'—'; }
     if($('ptlink')){
       const err=(d.pt_error!=null&&d.pt_error!==255)?(' · err 0x'+Number(d.pt_error).toString(16)):'';
@@ -742,7 +835,141 @@ async function tick(){
   }catch(e){showBar('status',{ok:false,status:'net'})}
 }
 if($('cam_read_params')) $('cam_read_params').onclick=()=>loadCamParams(false);
-loadCamRanges();
-/* params — только при входе на Camera (или Read params); на старте тормозит UI */
-tick();setInterval(tick,4000);
+function clampOctet(s){
+  s=String(s||'').replace(/\D/g,'').slice(0,3);
+  if(!s) return '';
+  while(s.length && parseInt(s,10)>255) s=s.slice(0,-1);
+  return s;
+}
+/** Собрать IP: схлопывает «...», без авто-точки (точку даём только по действию). */
+function normalizeIpv4(raw){
+  let v=String(raw||'').replace(/[^\d.]/g,'').replace(/\.+/g,'.');
+  if(v.startsWith('.')) v=v.slice(1);
+  const wantTrail=v.endsWith('.') && v.length>0;
+  if(wantTrail) v=v.replace(/\.+$/,'');
+  const parts=[];
+  for(const seg of (v?v.split('.'):[])){
+    if(parts.length>=4) break;
+    if(!seg) continue;
+    let s=seg.replace(/\D/g,'');
+    while(s.length && parts.length<4){
+      let chunk=s.slice(0,Math.min(3,s.length));
+      while(chunk.length>1 && parseInt(chunk,10)>255) chunk=chunk.slice(0,-1);
+      if(!chunk || parseInt(chunk,10)>255){ s=s.slice(1); continue; }
+      if(chunk.length===3 && s.length>3 && parts.length<3){
+        parts.push(chunk);
+        s=s.slice(3);
+        continue;
+      }
+      parts.push(chunk);
+      s=s.slice(chunk.length);
+    }
+  }
+  let out=parts.join('.');
+  if(wantTrail && parts.length>0 && parts.length<4) out+='.';
+  return out.slice(0,15);
+}
+function ipv4Parts(v){
+  const bare=normalizeIpv4(v).replace(/\.$/,'');
+  return bare?bare.split('.'):[];
+}
+function isIpv4(s){
+  const p=String(s||'').split('.');
+  if(p.length!==4) return false;
+  return p.every(x=>/^\d{1,3}$/.test(x)&&+x>=0&&+x<=255);
+}
+function setIpv4Value(el, v){
+  el.value=v.slice(0,15);
+  try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){}
+}
+function ipv4AddDot(el){
+  const bare=normalizeIpv4(el.value).replace(/\.$/,'');
+  const parts=bare?bare.split('.'):[];
+  if(parts.length===0 || parts.length>=4){ setIpv4Value(el, bare); return; }
+  setIpv4Value(el, bare+'.');
+}
+['net_ip','net_mask','net_gw'].forEach(id=>{
+  const el=$(id); if(!el) return;
+  el.addEventListener('keydown',e=>{
+    window._netLocal=true;
+    if(e.key==='Backspace'){
+      const v=el.value;
+      const a=el.selectionStart|0, b=el.selectionEnd|0;
+      if(a===b && a>0 && v[a-1]==='.'){
+        e.preventDefault();
+        setIpv4Value(el, normalizeIpv4(v.slice(0,a-1)+v.slice(b))); /* без хвостовой точки */
+        return;
+      }
+      return; /* обычный backspace — digit; input нормализует */
+    }
+    if(e.key==='.' || e.key==='Decimal'){
+      e.preventDefault();
+      ipv4AddDot(el);
+      return;
+    }
+    if(e.key==='Tab' && !e.shiftKey){
+      const parts=ipv4Parts(el.value);
+      if(parts.length>0 && parts.length<4){
+        e.preventDefault();
+        ipv4AddDot(el);
+        return;
+      }
+      /* 4 октета — уходим на следующее поле */
+      return;
+    }
+    if(/^\d$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey){
+      e.preventDefault();
+      const a=el.selectionStart|0, b=el.selectionEnd|0;
+      let v=el.value.slice(0,a)+e.key+el.value.slice(b);
+      v=normalizeIpv4(v).replace(/\.$/,'');
+      const parts=v?v.split('.'):[];
+      if(parts.length>0 && parts.length<4 && parts[parts.length-1].length===3) v+='.';
+      setIpv4Value(el, v);
+    }
+  });
+  el.addEventListener('input',()=>{
+    window._netLocal=true;
+    /* paste / автозаполнение / backspace цифры — только схлопнуть «...» */
+    const next=normalizeIpv4(el.value);
+    if(el.value!==next) setIpv4Value(el, next);
+  });
+  el.addEventListener('blur',()=>{
+    el.value=normalizeIpv4(el.value).replace(/\.$/,'');
+  });
+  el.addEventListener('paste',e=>{
+    e.preventDefault();
+    const t=(e.clipboardData||window.clipboardData).getData('text')||'';
+    setIpv4Value(el, normalizeIpv4(t).replace(/\.$/,''));
+    window._netLocal=true;
+  });
+});
+if($('net_save')) $('net_save').onclick=async()=>{
+  const ip=normalizeIpv4(($('net_ip')&&$('net_ip').value||'').trim()).replace(/\.$/,'');
+  const mask=normalizeIpv4(($('net_mask')&&$('net_mask').value||'').trim()).replace(/\.$/,'');
+  const gw=normalizeIpv4(($('net_gw')&&$('net_gw').value||'').trim()).replace(/\.$/,'');
+  if($('net_ip')) $('net_ip').value=ip;
+  if($('net_mask')) $('net_mask').value=mask;
+  if($('net_gw')) $('net_gw').value=gw;
+  if(!isIpv4(ip)||!isIpv4(mask)||(gw&&!isIpv4(gw))){ showBar('net/set',{ok:false,status:'param'}); return; }
+  const msg='Save network settings?\nIP '+ip+'\nMask '+mask+(gw?('\nGateway '+gw):'')+'\nDevice will reboot.';
+  const ok=window.IptvConfirm
+    ? await IptvConfirm.ask(msg,'Save & reboot',{cancelPrimary:true})
+    : window.confirm(msg);
+  if(!ok) return;
+  const q=new URLSearchParams({cmd:'set',v:ip,v2:mask});
+  if(gw) q.set('v3',gw);
+  try{
+    const r=await fetch('/api/net?'+q,{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401 && window.AUTH){ AUTH.showGate(true,'Сессия истекла'); return; }
+    const d=await r.json();
+    showBar('net/set',d);
+    if(d&&d.ok){
+      window._netLocal=false;
+      const next=location.protocol+'//'+(d.ip||location.hostname)+(location.port?(':'+location.port):'')+'/';
+      showBar('net/set',{ok:true,status:'reboot → '+next});
+      setTimeout(()=>{ try{ location.href=next; }catch(e){} }, 1500);
+    }
+  }catch(e){ showBar('net/set',{ok:false,status:'net'}); }
+};
+/* tick/ranges — после успешного входа (auth.js → AUTH.enterApp) */
 

@@ -9,17 +9,38 @@
 </style>
 </head>
 <body data-note-ttl="6000" data-note-el="note">
-<div class="wrap wrap-cam">
+<div id="login_gate" class="login-gate" hidden>
+  <div class="wrap wrap-login">
+    <div class="panel login-panel">
+      <h1>ESP_CAM</h1>
+      <p class="sub">Вход в панель управления</p>
+      <div id="login_err" class="note err hidden" role="alert"></div>
+      <form id="login_form" autocomplete="username">
+        <label class="field" for="login_user">
+          <span>Логин</span>
+          <input id="login_user" name="user" type="text" required autofocus autocomplete="username" value="admin">
+        </label>
+        <label class="field" for="login_pass">
+          <span>Пароль</span>
+          <input id="login_pass" name="password" type="password" required autocomplete="current-password">
+        </label>
+        <button class="primary" type="submit">Войти</button>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="wrap wrap-cam" id="app_wrap" hidden>
   <header class="top">
     <div class="top-row">
       <div class="top-brand">
         <h1 id="title">AW-PH350E · AW-E650E</h1>
         <p class="sub">Convertible Protocol · live control</p>
       </div>
-      <div class="pwr-bar" title="Питание головки">
-        <button type="button" class="start pwr-on" data-cmd="power_on">ON</button>
-        <button type="button" class="kill pwr-off" data-cmd="power_off">OFF</button>
+      <div class="pwr-bar" title="Питание / сессия">
+        <button type="button" class="start pwr-on" data-cmd="power_on">Вкл</button>
+        <button type="button" class="kill pwr-off" data-cmd="power_off">Выкл</button>
         <button type="button" class="start pwr-cam" data-cmd="power_on_cam" data-cap="power_cam_tx" title="On + CamTX">+Cam</button>
+        <button type="button" class="secondary" id="btn_logout" title="Выйти из панели">Выйти</button>
       </div>
     </div>
     <div class="badge-wrap" id="badges">
@@ -28,18 +49,21 @@
       <span class="badge muted" id="badge-cam">Cam —</span>
     </div>
     <p class="meta linkmini" id="linkmini">…</p>
+    <p class="meta" id="auth_who">вход: —</p>
   </header>
 
   <nav class="tabs" role="tablist">
     <button type="button" class="tab active" data-tab="ptz">Control</button>
     <button type="button" class="tab" data-tab="cam">Camera</button>
     <button type="button" class="tab" data-tab="osd">Menu</button>
+    <button type="button" class="tab" data-tab="net">Network</button>
     <button type="button" class="tab" data-tab="sys">System</button>
   </nav>
 
   <!-- INCLUDE panels/ptz.html -->
   <!-- INCLUDE panels/cam.html -->
   <!-- INCLUDE panels/osd.html -->
+  <!-- INCLUDE panels/net.html -->
   <!-- INCLUDE panels/sys.html -->
 </div>
 

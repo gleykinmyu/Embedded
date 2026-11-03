@@ -11,6 +11,7 @@ PtCaps capsIntegrated()
     c.abs_pt = true;
     c.abs_pt_speed = true;
     c.preset_map = true;
+    c.preset_opts = true;
     c.limit_ctrl = true;
     c.limit_toggle = true;
     c.tally = true;

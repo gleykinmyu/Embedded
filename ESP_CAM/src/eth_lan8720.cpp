@@ -159,6 +159,34 @@ bool EthLan8720::set_gw(uint32_t gw) {
     return true;
 }
 
+bool EthLan8720::configure(uint32_t ip, uint32_t mask, uint32_t gw) {
+    /* Не трогаем live netif/httpd здесь: stop() из HTTP-хендлера рвёт ответ
+     * и часто не доходит до NVS. Пишем конфиг, применение — reboot. */
+    if (ip == 0 || ip == 0xFFFFFFFFu || mask == 0) {
+        return false;
+    }
+    cfg_ip_ = ip;
+    cfg_mask_ = mask;
+    if (gw != 0) {
+        cfg_gw_ = gw;
+        cfg_dns_ = gw;
+    }
+    save();
+    return true;
+}
+
+void EthLan8720::cfg_ip_text(char *buf, size_t len) const {
+    fmt_ip4(buf, len, cfg_ip_);
+}
+
+void EthLan8720::cfg_mask_text(char *buf, size_t len) const {
+    fmt_ip4(buf, len, cfg_mask_);
+}
+
+void EthLan8720::cfg_gw_text(char *buf, size_t len) const {
+    fmt_ip4(buf, len, cfg_gw_);
+}
+
 void EthLan8720::print() const {
     char ip[16] = {};
     char mask[16] = {};

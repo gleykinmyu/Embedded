@@ -74,6 +74,44 @@
 #osd_on.is-on { outline: 2px solid var(--ok, #3dcc8a); }
 #osd_off.is-on { outline: 2px solid var(--muted); }
 
+.osd-qsd {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #2a3544);
+}
+.osd-qsd-sum {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-weight: 650;
+  font-size: 0.95rem;
+  user-select: none;
+}
+.osd-qsd-sum::-webkit-details-marker { display: none; }
+.osd-qsd-sum::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.osd-qsd[open] > .osd-qsd-sum::before {
+  transform: rotate(90deg);
+}
+.osd-qsd > .sub,
+.osd-qsd > .fields,
+.osd-qsd > .btn-row,
+.osd-qsd > #osd_list {
+  margin-top: 10px;
+}
+.osd-row.osd-flash {
+  outline: 2px solid var(--accent, #5b9fd4);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 .osd-grp {
   margin: 14px 0 2px;
   font-size: 11px;

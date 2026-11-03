@@ -28,6 +28,7 @@ idf_component_register(
         "main_eth01.cpp"
         "eth_lan8720.cpp"
         "http_status.cpp"
+        "http_auth.cpp"
         "cli_eth01.cpp"
         "rs422_uart.cpp"
         "ph350_ctrl.cpp"

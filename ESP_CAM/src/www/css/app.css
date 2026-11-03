@@ -27,6 +27,103 @@ body {
   padding-right: max(14px, env(safe-area-inset-right));
 }
 
+/* ---- login gate (как player-exib body.login) ---- */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+  overflow: auto;
+}
+.login-gate[hidden] { display: none !important; }
+.login-gate .wrap-login {
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.login-gate .login-panel {
+  width: min(400px, 92vw);
+  margin: 0;
+  padding: 28px 28px 24px;
+  box-sizing: border-box;
+}
+.login-gate .login-panel h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.login-gate .login-panel .sub {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.login-gate .note {
+  margin: 12px 0 0;
+}
+.login-gate form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 22px 0 0;
+}
+.login-gate .field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.88rem;
+  width: 100%;
+}
+.login-gate .field > span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.login-gate .field input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-family: inherit;
+}
+.login-gate .field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.login-gate button.primary {
+  width: 100%;
+  margin: 4px 0 0;
+  min-height: 42px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+}
+.sec-h3 {
+  margin: 16px 0 6px;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+.hint.mono,
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+#auth_token {
+  font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
 /* ---- header ---- */
 .top {
   display: flex;
@@ -37,16 +134,15 @@ body {
   z-index: 1;
 }
 .top-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: flex-start;
-  gap: 10px 12px;
+  column-gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .top-brand {
-  flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
 }
 .top h1 {
   margin: 0;
@@ -87,11 +183,11 @@ body {
 }
 .pwr-bar {
   display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   align-items: center;
-  margin-left: 20px; /* чуть правее от заголовка, не липнут */
+  justify-self: end;
+  grid-column: 2;
 }
 .pwr-bar .pwr-cam.cap-off {
   display: none !important;
@@ -100,11 +196,15 @@ body {
   min-height: var(--btn-action);
   height: var(--btn-action);
   min-width: 4.2em;
-  padding: 0 14px;
+  padding: 0 12px;
   font-size: 13px;
   font-weight: 650;
   box-sizing: border-box;
   width: auto;
+  flex: 0 0 auto;
+}
+.pwr-bar #btn_logout {
+  min-width: 4.8em;
 }
 .linkmini {
   margin: 0;
@@ -273,6 +373,16 @@ body {
 .chk-stack .chk {
   min-height: 40px;
   align-items: center;
+}
+.chk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.chk-grid .chk {
+  min-height: 40px;
+  align-items: center;
+  margin: 0;
 }
 
 /* legacy .row — тоже в колонку на узком */
@@ -562,7 +672,11 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-.presets button.occ { border-color: var(--ok); }
+.presets button.occ {
+  border-color: var(--ok);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 55%, transparent);
+  color: var(--ok);
+}
 
 .camparams {
   font-size: 11px;

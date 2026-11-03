@@ -127,9 +127,42 @@ async function osdExchange(row, kind){
   osdPaintRow(d,row);
   return d;
 }
+function osdFillPick(items){
+  const pick=$('osd_pick');
+  if(!pick) return;
+  const prev=pick.value;
+  pick.innerHTML='';
+  let group='';
+  let og=null;
+  items.forEach((p)=>{
+    if(p.group!==group){
+      group=p.group;
+      og=document.createElement('optgroup');
+      og.label=group||'Other';
+      pick.appendChild(og);
+    }
+    const o=document.createElement('option');
+    o.value=p.key;
+    o.textContent=p.code+' · '+p.name;
+    (og||pick).appendChild(o);
+  });
+  if(prev && [...pick.options].some(o=>o.value===prev)) pick.value=prev;
+  else if(pick.options.length) pick.selectedIndex=0;
+}
+function osdJumpTo(key){
+  const list=$('osd_list');
+  if(!list||!key) return;
+  const row=list.querySelector('.osd-row[data-key="'+key+'"]');
+  if(!row) return;
+  row.scrollIntoView({block:'nearest', behavior:'smooth'});
+  row.classList.add('osd-flash');
+  clearTimeout(row._flashT);
+  row._flashT=setTimeout(()=>row.classList.remove('osd-flash'),900);
+}
 function osdBuild(items){
   const list=$('osd_list');
   if(!list) return;
+  window._osdItems=items||[];
   list.innerHTML='';
   let group='';
   items.forEach(p=>{
@@ -160,12 +193,13 @@ function osdBuild(items){
     list.appendChild(row);
     osdShowLab(row);
   });
+  osdFillPick(window._osdItems);
 }
 async function loadOsdRanges(){
   const list=$('osd_list');
   if(!list) return;
   try{
-    const r=await fetch('/api/cam?cmd=osd_ranges',{cache:'no-store'});
+    const r=await fetch('/api/cam?cmd=osd_ranges',{cache:'no-store',credentials:'same-origin'});
     const d=await r.json();
     if(!d||!d.ok||!Array.isArray(d.items)){
       list.textContent='каталог OSD не пришёл';
@@ -180,6 +214,8 @@ async function loadOsdRanges(){
   const list=$('osd_list');
   if(!list) return;
   window._osdStop=false;
+  const pick=$('osd_pick');
+  if(pick) pick.addEventListener('change',()=>osdJumpTo(pick.value));
   list.addEventListener('click',e=>{
     const b=e.target.closest('[data-osd]');
     if(!b) return;
@@ -207,15 +243,20 @@ async function loadOsdRanges(){
     if(window._osdBusy) return;
     window._osdBusy=true;
     window._osdStop=false;
+    let finished=false;
     try{
-      for(const row of list.querySelectorAll('.osd-row')){
+      const rows=list.querySelectorAll('.osd-row');
+      for(const row of rows){
         if(window._osdStop) break;
         row.scrollIntoView({block:'nearest'});
         await osdExchange(row,'get');
       }
+      finished=!window._osdStop && rows.length>0;
     }finally{
       window._osdBusy=false;
     }
+    if(finished && typeof flashGotAll==='function') flashGotAll('User Menu');
+    else if(finished && window.IptvNote) IptvNote.show('User Menu · все значения получены','ok');
   };
   if($('osd_read_stop')) $('osd_read_stop').onclick=()=>{ window._osdStop=true; };
 })();

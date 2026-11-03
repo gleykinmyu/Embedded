@@ -74,6 +74,8 @@ def assemble() -> str:
         read(WWW / "js" / "app.js"),
         "/* === ESP_CAM osd.js === */",
         read(WWW / "js" / "osd.js"),
+        "/* === ESP_CAM auth.js === */",
+        read(WWW / "js" / "auth.js"),
     ]
 
     css = "\n".join(css_parts)

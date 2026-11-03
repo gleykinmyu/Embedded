@@ -23,5 +23,20 @@
         <button type="button" id="osd_menu" class="osd-btn" data-api="cam" data-cmd="menu_sw" data-osd-slot="menu" title="DPG">MENU</button>
       </div>
     </div>
+
+    <details class="osd-qsd">
+      <summary class="osd-qsd-sum">User Menu (QSD)</summary>
+      <p class="sub">Прямой Set/Get OSD:nn — как CAMERA MENU OP на RP150.</p>
+      <div class="fields">
+        <label class="field">Jump
+          <select id="osd_pick" title="Перейти к параметру"></select>
+        </label>
+      </div>
+      <div class="btn-row">
+        <button type="button" id="osd_read_all">Read all</button>
+        <button type="button" id="osd_read_stop">Stop</button>
+      </div>
+      <div id="osd_list"></div>
+    </details>
   </div>
 </section>
