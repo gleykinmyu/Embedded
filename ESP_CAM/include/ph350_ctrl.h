@@ -81,6 +81,15 @@ public:
     uint8_t defaultRate() const { return rate_; }
     void setDefaultRate(uint8_t rate_1_to_100, bool persist = true);
 
+    /**
+     * Latest preset (RAM): номер последнего #S/#R, и флаг «голова ещё на нём».
+     * Pan/Tilt/Zoom сбрасывают atLatest; номер остаётся.
+     */
+    uint8_t latestPreset() const { return latest_preset_; }
+    bool atLatest() const { return at_latest_ && latest_preset_ >= 1; }
+    void noteLatestPreset(uint8_t preset_1_to_99);
+    void clearAtLatest();
+
     /** Инверсии осей (NVS). */
     void setAxisInvert(const pt::AxisInvert& inv, bool persist = true);
     const pt::AxisInvert& axisInvert() const { return pt_->axisInvert(); }
@@ -143,6 +152,8 @@ private:
     ccam::devices::CameraModelId cam_id_{ccam::devices::CameraModelId::E650};
 
     uint8_t rate_{60};
+    uint8_t latest_preset_{0};
+    bool at_latest_{false};
     pt::AxisInvert invert_{};
 
     ccam::devices::PtLinkHealth health_{1000, 3};

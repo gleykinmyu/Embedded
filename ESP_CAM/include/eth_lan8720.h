@@ -20,7 +20,13 @@ public:
     bool set_ip(uint32_t addr);
     bool set_mask(uint32_t mask);
     bool set_gw(uint32_t gw);
-    /** Только NVS (gw==0 → оставить). Live IP — после reboot / apply_now. */
+    void readCfg(uint32_t *ip, uint32_t *mask, uint32_t *gw, uint32_t *dns) const;
+    /** Записать четыре поля в NVS. При ошибке RAM откатывается. */
+    bool commitCfg(uint32_t ip, uint32_t mask, uint32_t gw, uint32_t dns);
+    /**
+     * Только NVS. gw==0 оставляет текущий шлюз, если он в новой подсети.
+     * Live IP — после reboot. false: NVS не изменён.
+     */
     bool configure(uint32_t ip, uint32_t mask, uint32_t gw);
     void cfg_ip_text(char *buf, size_t len) const;
     void cfg_mask_text(char *buf, size_t len) const;
@@ -33,7 +39,7 @@ private:
     bool apply_static_ip();
     bool apply_now();
     void load();
-    void save();
+    bool save();
     void phy_power(bool on);
     void on_eth_event(int32_t event_id, void *event_data);
     void on_got_ip(const ip_event_got_ip_t *event);

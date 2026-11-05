@@ -1,4 +1,8 @@
 const $=id=>document.getElementById(id);
+/** Страница. Без этого заголовка API с cookie не принимается — голый URL молчит. */
+function apiFetch(url){
+  return fetch(url,{cache:'no-store',credentials:'same-origin',headers:{'X-Esp-Client':'ui'}});
+}
 /** Painting UI −150…+150 step5 → wire 00h…3Ch (E650/HE: Data×5). */
 function paintHex(n){
   let v=parseInt(n,10); if(isNaN(v)) v=0;
@@ -57,10 +61,12 @@ function showBar(cmd,d){
   }
   if(cmd==='ptz/preset_map'&&d&&d.ok&&Array.isArray(d.presets)&&window.PresetUI)
     window.PresetUI.applyMap(d.presets);
-  if(cmd==='ptz/preset_latest'&&d&&d.ok&&d.preset!==undefined&&window.PresetUI&&PresetUI.markLatest)
-    PresetUI.markLatest(d.preset);
+  if(window.PresetUI&&PresetUI.syncFromCtrl&&(d.latest_preset!==undefined||d.at_latest!==undefined||
+      (cmd==='ptz/preset_latest'&&d&&d.ok&&d.preset!==undefined)))
+    PresetUI.syncFromCtrl(d);
 }
 function authGateOrDefer(why){
+  if(window.AUTH && typeof AUTH.inGateGrace==='function' && AUTH.inGateGrace()) return;
   if(window._ptHold>0){
     window._authDeferredGate=true;
     return;
@@ -69,9 +75,31 @@ function authGateOrDefer(why){
 }
 async function call(api,cmd,extra){
   const q=new URLSearchParams(Object.assign({cmd},extra||{}));
+  const mark=window.AUTH?AUTH.mark():0;
   try{
-    const r=await fetch('/api/'+api+'?'+q,{cache:'no-store',credentials:'same-origin'});
+    const r=await apiFetch('/api/'+api+'?'+q);
+    if(window.AUTH&&AUTH.stale(mark)) return {ok:false,status:'auth'};
     if(r.status===401 && window.AUTH){
+      let body=null;
+      try{ body=await r.json(); }catch(e){}
+      if(body && typeof body.sess_left_s==='number' && body.sess_left_s>0){
+        try{
+          const t=await AUTH.api('touch');
+          if(AUTH.stale(mark) || (t&&t._stale)) return {ok:false,status:'auth'};
+          if(t&&t.ok){ AUTH.noteLeft(t); /* повторим смысл вызова после продления */ }
+          else { authGateOrDefer('Сессия истекла'); return {ok:false,status:'auth'}; }
+        }catch(e){
+          authGateOrDefer('Сессия истекла');
+          return {ok:false,status:'auth'};
+        }
+        /* touch ок — один ретрай исходного запроса */
+        const r2=await apiFetch('/api/'+api+'?'+q);
+        if(AUTH.stale(mark)) return {ok:false,status:'auth'};
+        if(r2.status===401){ authGateOrDefer('Сессия истекла'); return {ok:false,status:'auth'}; }
+        const d2=await r2.json();
+        showBar(api+'/'+cmd,d2);
+        return d2;
+      }
       authGateOrDefer('Сессия истекла');
       return {ok:false,status:'auth'};
     }
@@ -124,7 +152,10 @@ async function cam(cmd, el){
   if(cmd==='scene') p.v=$('scene').value;
   if(cmd==='shutter_mode') p.v=$('shut').value;
   if(cmd==='synchro'){
-    const n=Math.max(1,Math.min(255,parseInt($('sync').value,10)||1));
+    const el=$('sync');
+    const lo=parseInt(el&&el.min,10)||1;
+    const hi=parseInt(el&&el.max,10)||0x137;
+    const n=Math.max(lo,Math.min(hi,parseInt(el.value,10)||lo));
     p.data=n.toString(16).toUpperCase().padStart(3,'0');
   }
   if(cmd==='gain') p.v=$('cgain').value;
@@ -145,7 +176,10 @@ async function cam(cmd, el){
   if(cmd==='af') p.v=$('caf').value;
   if(cmd==='negpos') p.v=$('cneg').value;
   if(cmd==='fieldframe') p.v=$('cff').value;
-  if(cmd==='chroma') p.v=$('cchr').value;
+  if(cmd==='chroma'){
+    const s=Math.max(-3,Math.min(3,parseInt($('cchr').value,10)||0));
+    p.v=String(s);
+  }
   if(cmd==='black_shade') p.v=$('cbsh').value;
   if(cmd==='r_gain') p.data=paintHex($('crg').value);
   if(cmd==='b_gain') p.data=paintHex($('cbg').value);
@@ -189,12 +223,33 @@ async function cam(cmd, el){
     if(cmd==='gain_mode'||cmd==='agc'||cmd==='gain'){
       window._gainAgc=($('cgain_mode')&&$('cgain_mode').value==='agc');
     }
-    updateCamDeps();
+    updateCamDeps({fetchNew:!!(d&&d.ok)});
   }
   return d;
 }
-/** Условная видимость как в меню E650/HE870. */
-function updateCamDeps(){
+/** menu_deps из /api/cam?cmd=ranges — единая таблица с прошивкой. */
+function menuDeps(){ return window._menuDeps||[]; }
+function keysForGates(gates){
+  const g=new Set(gates||[]);
+  const keys=[];
+  menuDeps().forEach(e=>{
+    if(e&&e.gate&&g.has(e.gate)&&e.key&&keys.indexOf(e.key)<0) keys.push(e.key);
+  });
+  return keys;
+}
+function evalMenuGate(gate, st){
+  if(!gate) return true;
+  if(gate==='iris:manual') return st.irisAm==='0';
+  if(gate==='iris:auto') return st.irisAm==='1';
+  if(gate==='gain:manual') return !st.agc;
+  if(gate==='gain:agc') return !!st.agc;
+  if(gate==='shut:synchro') return st.shutSyn;
+  if(gate==='awc:atw') return st.awcAtw;
+  if(gate==='awc:mem') return st.awcMem;
+  if(gate==='awc:nopreset') return st.awcNopreset;
+  return false;
+}
+function camMenuPrimaryState(){
   const irisAm=$('ciris')?$('ciris').value:'0';
   const shut=$('shut')?$('shut').value:'';
   const agc=($('cgain_mode')&&$('cgain_mode').value==='agc')||!!window._gainAgc;
@@ -203,38 +258,94 @@ function updateCamDeps(){
   const camId=(window._rangesCamId||($('cammodel')&&$('cammodel').value)||'').toLowerCase();
   const synV=window._shutSynchroV;
   const shutSyn=synV!=null && synV!=='' && shut===String(synV);
-  /* E650 QAW: 0=ATW,2/3=A/B,4/5=3200/5600. HE: 0=ATW,1/2=A/B,3/4=3200/5600 */
   const awcHe=/^(he|ue)/.test(camId);
   const awcAtw=(awc==='0');
   const awcMem=awcHe?(awc==='1'||awc==='2'):(awc==='2'||awc==='3');
   const awcPreset=awcHe?(awc==='3'||awc==='4'):(awc==='4'||awc==='5');
+  return {irisAm,shut,agc,awc,camId,shutSyn,awcAtw,awcMem,awcNopreset:!awcPreset};
+}
+async function loadCamParamsScope(scope, gates, only){
+  if(window._camDepsBusy) return;
+  window._camDepsBusy=true;
+  const acc={ok:true,status:'ok'};
+  try{
+    let url='/api/cam?cmd=params';
+    if(scope) url+='&scope='+encodeURIComponent(scope);
+    if(gates&&gates.length) url+='&gates='+encodeURIComponent(gates.join(','));
+    if(only&&only.length) url+='&only='+encodeURIComponent(only.join(','));
+    const r=await apiFetch(url);
+    if(!r.ok) throw new Error('http');
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    if(!r.body||!ct.includes('ndjson')){
+      const d=await r.json();
+      if(d&&d.ok) applyCamParams(d);
+      return;
+    }
+    const reader=r.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      for(;;){
+        const i=buf.indexOf('\n');
+        if(i<0) break;
+        const line=buf.slice(0,i).trim();
+        buf=buf.slice(i+1);
+        if(!line) continue;
+        let obj;
+        try{ obj=JSON.parse(line); }catch(e){ continue; }
+        Object.assign(acc,obj);
+        if(obj.done) continue;
+        applyCamParams(acc);
+      }
+    }
+    if(buf.trim()){
+      try{ Object.assign(acc, JSON.parse(buf.trim())); }catch(e){}
+    }
+    applyCamParams(acc);
+  }catch(e){
+  }finally{
+    window._camDepsBusy=false;
+  }
+}
+/** Условная видимость + частичный params по таблице menu_deps. */
+function updateCamDeps(opts){
+  opts=opts||{};
+  const st=camMenuPrimaryState();
+  const prevGates=window._depGates||{};
+  const curGates={};
+  menuDeps().forEach(e=>{
+    if(e&&e.gate) curGates[e.gate]=evalMenuGate(e.gate, st);
+  });
+  /* gates без строк в таблице (iris:auto и т.п.) — только UI */
+  curGates['iris:auto']=evalMenuGate('iris:auto', st);
 
   const camOk=(el)=>{
     const raw=el.getAttribute('data-cam');
     if(!raw) return true;
     const list=raw.toLowerCase().split(/\s+/);
-    return list.includes(camId)||list.some(x=>camId.indexOf(x)===0);
-  };
-  const depOk=(el)=>{
-    const dep=el.getAttribute('data-dep');
-    if(!dep) return true;
-    if(dep==='iris:manual') return irisAm==='0';
-    if(dep==='iris:auto') return irisAm==='1';
-    if(dep==='gain:manual') return !agc;
-    if(dep==='gain:agc') return !!agc;
-    if(dep==='shut:synchro') return shutSyn;
-    if(dep==='awc:atw') return awcAtw;
-    if(dep==='awc:mem') return awcMem;
-    if(dep==='awc:nopreset') return !awcPreset;
-    return true;
+    return list.includes(st.camId)||list.some(x=>st.camId.indexOf(x)===0);
   };
   document.querySelectorAll('[data-dep],[data-cam]').forEach(el=>{
-    el.hidden=!(camOk(el)&&depOk(el));
+    const dep=el.getAttribute('data-dep');
+    const show=camOk(el)&&(dep?evalMenuGate(dep, st):true);
+    el.hidden=!show;
   });
-  if($('cmiris')) $('cmiris').disabled=(irisAm==='1');
-  if($('cgain')) $('cgain').disabled=agc;
+  window._depGates=curGates;
+  if($('cmiris')) $('cmiris').disabled=(st.irisAm==='1');
+  if($('cgain')) $('cgain').disabled=st.agc;
   const awcExec=$('awc_exec');
-  if(awcExec) awcExec.hidden=!awcMem;
+  if(awcExec) awcExec.hidden=!st.awcMem;
+  if(opts.fetchNew){
+    const newly=[];
+    Object.keys(curGates).forEach(g=>{
+      if(curGates[g] && !prevGates[g]) newly.push(g);
+    });
+    const keys=keysForGates(newly);
+    if(keys.length) loadCamParamsScope('deps', newly, keys);
+  }
 }
 function updateExposureUi(){ updateCamDeps(); }
 document.querySelectorAll('.tabs .tab').forEach(b=>{
@@ -244,6 +355,7 @@ document.querySelectorAll('.tabs .tab').forEach(b=>{
     b.classList.add('active');
     const pan=$(b.dataset.tab);
     if(pan) pan.hidden=false;
+    if(b.dataset.tab==='ptz' && window.PresetUI && PresetUI.refreshLatest) PresetUI.refreshLatest();
     if(b.dataset.tab==='cam') loadCamParams(true);
     if(b.dataset.tab==='osd') applyOsdLabels();
   };
@@ -266,12 +378,34 @@ function updateSlideLabel(el){
   if(id==='cgain'&&$('cgain_v')) $('cgain_v').textContent=v;
   if(id==='cmiris'&&$('cmiris_v')) $('cmiris_v').textContent=v;
   if(id==='cpeak'&&$('cpeak_v')) $('cpeak_v').textContent=String(parseInt(v,10)-50);
-  if(id==='airis'&&$('airis_v')) $('airis_v').textContent=v;
+  if(id==='airis'&&$('airis_v')) $('airis_v').textContent=String(parseInt(v,10)-50);
   if(id==='cwclip'&&$('cwclip_v')) $('cwclip_v').textContent=String(95+parseInt(v,10));
-  if(id==='cchr'){ /* chroma may be naked range in field */ }
+  if(id==='cchr'&&$('cchr_v')){
+    const s=Math.max(-3,Math.min(3,parseInt(v,10)||0));
+    $('cchr_v').textContent=(s>0?'+':'')+s;
+  }
   if(id==='sync'&&$('sync_v')){
-    const n=Math.max(1,Math.min(255,parseInt(v,10)||1));
-    $('sync_v').textContent=n.toString(16).toUpperCase().padStart(3,'0');
+    const lo=parseInt(el.min,10)||1;
+    const hi=parseInt(el.max,10)||0x137;
+    const n=Math.max(lo,Math.min(hi,parseInt(v,10)||lo));
+    const hex=n.toString(16).toUpperCase().padStart(3,'0');
+    const fLo=parseFloat(el.dataset.flo)||0;
+    const fHi=parseFloat(el.dataset.fhi)||0;
+    const u=$('sync_u');
+    if(fLo>0&&fHi>fLo&&hi>lo){
+      const hz=fLo*Math.pow(fHi/fLo,(n-lo)/(hi-lo));
+      if(hz>=1000){
+        $('sync_v').textContent=(hz/1000).toFixed(2);
+        if(u) u.textContent='kHz';
+      }else{
+        $('sync_v').textContent=hz.toFixed(hz>=100?1:2);
+        if(u) u.textContent='Hz';
+      }
+      el.title='OMS '+hex+' · '+fLo+'Hz…'+(fHi>=1000?(fHi/1000)+'kHz':fHi+'Hz');
+    }else{
+      $('sync_v').textContent=hex;
+      if(u) u.textContent='';
+    }
   }
   if((id==='crg'||id==='cbg'||id==='crp'||id==='cbp'||id==='ctped')&&$(id+'_v')) $(id+'_v').textContent=v;
   if(id.indexOf('cmx_')===0&&$(id+'_v')) $(id+'_v').textContent=String(parseInt(v,10)-31);
@@ -299,7 +433,7 @@ document.body.addEventListener('change',e=>{
     return;
   }
   sendFromEl(el);
-  if(el.id==='ciris'||el.id==='shut'||el.id==='awc'||el.id==='cgain_mode') updateCamDeps();
+  /* ciris/shut/awc/cgain_mode: updateCamDeps({fetchNew}) после успешного cam() */
 });
 document.body.addEventListener('input',e=>{
   const el=e.target;
@@ -314,6 +448,54 @@ document.body.addEventListener('input',e=>{
  'cmx_rg','cmx_rb','cmx_gr','cmx_gb','cmx_br','cmx_bg'].forEach(id=>{
   const el=$(id); if(el) updateSlideLabel(el);
 });
+/** Маленький сброс ползунков Camera → HTML default / data-def. */
+function camSlideDefault(el){
+  if(!el) return;
+  if(el.dataset.def!=null && el.dataset.def!=='') return el.dataset.def;
+  return el.defaultValue;
+}
+function resetCamSlide(el){
+  if(!el||el.disabled) return;
+  const def=camSlideDefault(el);
+  if(def==null||def==='') return;
+  el.value=String(def);
+  updateSlideLabel(el);
+  if(el.dataset.send) sendFromEl(el);
+}
+function initCamSlideResets(){
+  const root=$('cam'); if(!root) return;
+  root.querySelectorAll('input[type="range"]').forEach(el=>{
+    if(el.closest('.slide-rst')||el.dataset.noReset!=null) return;
+    const host=el.closest('.slide')||el.closest('.field-ctrl')||el.parentElement;
+    if(!host||host.querySelector(':scope > .slide-rst[data-for="'+el.id+'"]')) return;
+    if(!el.parentElement?.classList.contains('slide-val') && !host.querySelector(':scope > .slide-val')){
+      /* legacy: b[.unit] без обёртки — собрать в .slide-val для ровной сетки */
+      const b=host.querySelector(':scope > b');
+      if(b){
+        const wrap=document.createElement('span');
+        wrap.className='slide-val';
+        const unit=b.nextElementSibling;
+        host.insertBefore(wrap,b);
+        wrap.appendChild(b);
+        if(unit&&unit.classList&&unit.classList.contains('unit')) wrap.appendChild(unit);
+      }
+    }
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='slide-rst';
+    btn.dataset.for=el.id||'';
+    btn.title='Сброс';
+    btn.setAttribute('aria-label','Сброс');
+    btn.textContent='\u21BA'; /* ↺ */
+    btn.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      resetCamSlide(el);
+    });
+    host.appendChild(btn);
+  });
+}
+initCamSlideResets();
 updateExposureUi();
 setOsdUi(false);
 const HOLD_LIMIT_AXIS={tilt_up:1,tilt_down:2,pan_left:3,pan_right:4};
@@ -362,6 +544,7 @@ function endPtHold(){
   if(window._ptHoldTimer){ clearInterval(window._ptHoldTimer); window._ptHoldTimer=null; }
   if(window._authDeferredGate){
     window._authDeferredGate=false;
+    if(document.body.classList.contains('login')) return;
     if(window.AUTH) AUTH.showGate(true,'Сессия истекла');
   }
 }
@@ -381,6 +564,7 @@ function bindHold(el){
     if(down) return;
     down=true;
     beginPtHold();
+    if(window.PresetUI&&PresetUI.onHoldMove) PresetUI.onHoldMove(cmd);
     ptz(cmd);
   };
   const halt=async ev=>{
@@ -399,7 +583,15 @@ document.querySelectorAll('[data-hold]').forEach(bindHold);
 const PresetUI=(()=>{
   const BANKS=10, SLOTS=10, MAX_PRESET=99;
   const OCC_KEY='esp_cam_preset_occ';
+  /** Pan/Tilt/Zoom: UI сразу; источник правды — ESP (clearAtLatest). Focus — нет. */
+  const CLEAR_LATEST_HOLD={
+    pan_left:1, pan_right:1, tilt_up:1, tilt_down:1, zoom_tele:1, zoom_wide:1
+  };
   let bank=0, mode='recall', selected=1;
+  /** Подсветка «стоим на пресете» — только при at_latest с контроллера. */
+  let latest=0;
+  /** Номер последнего Latest (помнит ESP), даже после сброса at_latest. */
+  let remembered=0;
   const occ=new Array(100).fill(false);
   const banksEl=$('prbanks'), padEl=$('prquick'), info=$('prinfo');
   function absNum(slot){ return bank*SLOTS + slot + 1; }
@@ -424,7 +616,10 @@ const PresetUI=(()=>{
   function syncInfo(){
     $('pr').value=String(selected);
     const m=mode==='recall'?'Recall':(mode==='save'?'Store…':'Delete…');
-    info.textContent='P'+String(selected).padStart(2,'0')+' · '+m+' · bank '+(bank+1);
+    let lat='';
+    if(latest>=1) lat=' · Latest P'+String(latest).padStart(2,'0');
+    else if(remembered>=1) lat=' · was P'+String(remembered).padStart(2,'0');
+    info.textContent='P'+String(selected).padStart(2,'0')+' · '+m+' · bank '+(bank+1)+lat;
   }
   function paintPad(){
     padEl.querySelectorAll('button').forEach((b,i)=>{
@@ -433,7 +628,8 @@ const PresetUI=(()=>{
       b.dataset.n=String(n);
       b.textContent=String(n).padStart(2,'0');
       b.classList.toggle('sel', n===selected);
-      b.classList.toggle('occ', n<=MAX_PRESET && !!occ[n-1]);
+      b.classList.toggle('occ', n<=MAX_PRESET && !!occ[n-1] && n!==latest);
+      b.classList.toggle('latest', n===latest);
     });
     padEl.classList.toggle('await-slot', armed());
     banksEl.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active', i===bank));
@@ -451,36 +647,52 @@ const PresetUI=(()=>{
     paintPad();
   }
   function clearArm(){ if(armed()){ mode='recall'; paintPad(); } }
+  function clearLatest(){
+    if(!latest) return;
+    latest=0;
+    paintPad();
+  }
+  function onHoldMove(cmd){
+    if(CLEAR_LATEST_HOLD[cmd]) clearLatest();
+  }
+  /** Зеркало RAM контроллера: latest_preset + at_latest. */
+  function syncFromCtrl(d){
+    if(!d) return;
+    let n=d.latest_preset!==undefined?Number(d.latest_preset):NaN;
+    if(!(n>=1&&n<=MAX_PRESET) && d.preset!==undefined) n=Number(d.preset);
+    if(n>=1&&n<=MAX_PRESET) remembered=n;
+    else if(d.latest_preset===0) remembered=0;
+    const at=d.at_latest===true || (d.at_latest===undefined && d.preset!==undefined && d.ok);
+    if(at && remembered>=1) markLatest(remembered, false);
+    else clearLatest();
+  }
   async function askDelete(msg){
     if(window.IptvConfirm && typeof IptvConfirm.ask==='function')
       return IptvConfirm.ask(msg, 'Удалить');
     return window.confirm(msg);
   }
-  /** После Recall: Latest → зелёный если тот же индекс, иначе снять отметку. */
+  /** После Recall: #S → ESP noteLatest + UI. */
   async function confirmViaLatest(n){
     const d=await ptz('preset_latest');
-    if(!d||!d.ok||d.preset===undefined) return;
-    const got=Number(d.preset);
-    if(got===n){
-      occ[n-1]=true;
-    }else{
-      occ[n-1]=false;
-      if(got>=1&&got<=MAX_PRESET) occ[got-1]=true;
-    }
-    saveOcc();
-    paintPad();
+    if(!d||!d.ok) markLatest(n);
+  }
+  async function refreshLatest(){
+    await ptz('preset_latest');
   }
   async function runSlot(n){
     if(n<1||n>MAX_PRESET) return;
     selected=n; $('pr').value=String(n); paintPad();
     if(mode==='recall'){
       const d=await ptz('preset_recall');
-      if(d&&d.ok) await confirmViaLatest(n);
+      if(d&&d.ok){
+        markLatest(n);
+        await confirmViaLatest(n);
+      }
       return d;
     }
     if(mode==='save'){
       const d=await ptz('preset_save');
-      if(d&&d.ok){ occ[n-1]=true; saveOcc(); }
+      if(d&&d.ok){ occ[n-1]=true; markLatest(n); saveOcc(); }
       mode='recall';
       paintPad();
       return d;
@@ -490,7 +702,12 @@ const PresetUI=(()=>{
         mode='recall'; paintPad(); return;
       }
       const d=await ptz('preset_delete');
-      if(d&&d.ok){ occ[n-1]=false; saveOcc(); }
+      if(d&&d.ok){
+        occ[n-1]=false;
+        if(latest===n) latest=0;
+        if(remembered===n) remembered=0;
+        saveOcc();
+      }
       mode='recall';
       paintPad();
       return d;
@@ -529,19 +746,25 @@ const PresetUI=(()=>{
     if(t.closest('#prmodes [data-pr-mode]')) return;
     clearArm();
   }, true);
-  function markLatest(n){
+  function markLatest(n, switchBank){
     n=Number(n);
-    if(!(n>=1&&n<=MAX_PRESET)) return;
+    if(!(n>=1&&n<=MAX_PRESET)){ latest=0; paintPad(); return; }
+    latest=n;
+    remembered=n;
     occ[n-1]=true;
     selected=n;
-    const b=Math.floor((n-1)/SLOTS);
-    if(b!==bank) bank=Math.max(0,Math.min(BANKS-1,b));
+    if(switchBank!==false){
+      const b=Math.floor((n-1)/SLOTS);
+      if(b!==bank) bank=Math.max(0,Math.min(BANKS-1,b));
+    }
     saveOcc();
     paintPad();
   }
   loadOcc();
   paintPad();
-  window.PresetUI={applyMap, paintPad, clearArm, markLatest};
+  const api={applyMap, paintPad, clearArm, markLatest, clearLatest, onHoldMove, refreshLatest, syncFromCtrl};
+  window.PresetUI=api;
+  return api;
 })();
 function applyInvertUi(d){
   if(!d) return;
@@ -601,6 +824,18 @@ function fillCamRanges(ranges){
       el.min=String(spec.min); el.max=String(spec.max);
       const v=parseInt(el.value,10);
       if(isNaN(v)||v<spec.min||v>spec.max) el.value=String(spec.min);
+      if(key==='synchro'){
+        /* ConvertibleProtocol OMS endpoints (E/50Hz preferred for *E models). */
+        const cam=(window._rangesCamId||'').toLowerCase();
+        const hz={
+          e650:[50.24,15630], e600:[50.24,15630],
+          he870:[50.99,1478],
+          he130:[50.15,535.71], he120:[50.19,537.13],
+          he60:[50.16,542.42], he50:[50.16,542.42],
+          ue150:[50.00,570.12]
+        }[cam]||[50.24,15630];
+        el.dataset.flo=String(hz[0]); el.dataset.fhi=String(hz[1]);
+      }
       el.title='OMS '+Number(spec.min).toString(16).toUpperCase().padStart(spec.digits||3,'0')
         +'…'+Number(spec.max).toString(16).toUpperCase().padStart(spec.digits||3,'0');
       updateSlideLabel(el);
@@ -609,11 +844,13 @@ function fillCamRanges(ranges){
 }
 async function loadCamRanges(){
   try{
-    const r=await fetch('/api/cam?cmd=ranges',{cache:'no-store',credentials:'same-origin'});
+    const r=await apiFetch('/api/cam?cmd=ranges');
     const d=await r.json();
     if(!d||!d.ok||!d.ranges) return;
     window._rangesCamId=d.cam_id||'';
+    window._menuDeps=Array.isArray(d.menu_deps)?d.menu_deps:[];
     fillCamRanges(d.ranges);
+    updateCamDeps(); /* seed _depGates по таблице */
     loadOsdRanges();
   }catch(e){}
 }
@@ -628,7 +865,7 @@ async function loadCamParams(quiet){
   window._camParamsBusy=true;
   const acc={ok:true,status:'ok'};
   try{
-    const r=await fetch('/api/cam?cmd=params',{cache:'no-store',credentials:'same-origin'});
+    const r=await apiFetch('/api/cam?cmd=params');
     if(!r.ok) throw new Error('http');
     /* NDJSON stream: поле за полем; fallback — один JSON (старая прошивка) */
     const ct=(r.headers.get('content-type')||'').toLowerCase();
@@ -698,6 +935,9 @@ function applyCamParams(d){
   }
   if(d.gamma!==undefined) setSel('cgam',d.gamma);
   if(d.agc_max!==undefined) setSel('cagc',d.agc_max);
+  if(d.total_dtl!==undefined) setSel('cdtl',d.total_dtl);
+  if(d.genlock!==undefined) setSel('cgen',d.genlock);
+  if(d.hd_detail!==undefined) setSel('chdet',d.hd_detail);
   if(d.dig_gain!==undefined) setSel('cdig',d.dig_gain);
   if(d.light_area!==undefined) setSel('carea',d.light_area);
   if(d.knee!==undefined) setSel('cknee',d.knee);
@@ -708,13 +948,34 @@ function applyCamParams(d){
     $('cpeak').value=d.light_peak; if($('cpeak_v')) $('cpeak_v').textContent=d.light_peak-50;
   }
   if(d.airis!==undefined && $('airis')){
-    const a=(typeof d.airis==='number')?d.airis:parseInt(String(d.airis),16);
-    if(!isNaN(a)){ $('airis').value=a; if($('airis_v')) $('airis_v').textContent=a; }
+    /* wire 00…64h (0…100), UI −50…+50 как Peak/Avg */
+    let a=(typeof d.airis==='number')?d.airis:parseInt(String(d.airis),16);
+    if(!isNaN(a)){
+      if(a>=-50&&a<=50) a=a+50; /* на случай signed из API */
+      a=Math.max(0,Math.min(100,a));
+      $('airis').value=a; if($('airis_v')) $('airis_v').textContent=a-50;
+    }
   }
   if(typeof d.wclip==='number' && $('cwclip')){
     $('cwclip').value=d.wclip; if($('cwclip_v')) $('cwclip_v').textContent=95+d.wclip;
   }
-  if(typeof d.chroma==='number' && $('cchr')) $('cchr').value=d.chroma;
+  if(typeof d.chroma==='number' && $('cchr')){
+    let s=d.chroma;
+    if(s>=0&&s<=6) s=s-3; /* legacy wire 0…6 */
+    s=Math.max(-3,Math.min(3,s));
+    $('cchr').value=s;
+    if($('cchr_v')) $('cchr_v').textContent=(s>0?'+':'')+s;
+  }
+  if(d.synchro!==undefined && $('sync')){
+    let n=(typeof d.synchro==='number')?d.synchro:parseInt(String(d.synchro),16);
+    if(!isNaN(n)){
+      const lo=parseInt($('sync').min,10)||1;
+      const hi=parseInt($('sync').max,10)||0x137;
+      n=Math.max(lo,Math.min(hi,n));
+      $('sync').value=String(n);
+      updateSlideLabel($('sync'));
+    }
+  }
   // ORG/OGR: 0x1E=0 → UI=(code-30)*5 (−150…+150)
   const paintToSlider=(code,id,vid)=>{
     if(typeof code!=='number'||!$(id)) return;
@@ -766,11 +1027,33 @@ async function saveInvert(){
 ['inv_pan','inv_tilt','inv_zoom','inv_focus'].forEach(id=>{
   $(id).addEventListener('change',()=>saveInvert());
 });
+let _tickBusy=false;
 async function tick(){
+  if(document.body.classList.contains('login') || _tickBusy) return;
+  if(window.AUTH && typeof AUTH.inGateGrace==='function' && AUTH.inGateGrace()) return;
+  _tickBusy=true;
+  const mark=window.AUTH?AUTH.mark():0;
   try{
-    const r=await fetch('/api/status',{cache:'no-store',credentials:'same-origin'});
-    if(r.status===401 && window.AUTH){ authGateOrDefer('Сессия истекла'); return; }
+    const r=await apiFetch('/api/status');
+    if(window.AUTH&&AUTH.stale(mark)) return;
+    if(r.status===401 && window.AUTH){
+      let body=null;
+      try{ body=await r.json(); }catch(e){}
+      const A=window.AUTH;
+      if(A.inGateGrace && A.inGateGrace()) return;
+      /* Один раз проверить сессию через me (cookie/гонка), не открывать gate сразу. */
+      try{
+        const me=await A.api('me');
+        if(A.stale(mark) || (me&&me._stale)) return;
+        if(me&&me.ok){ A.noteLeft(me); return; }
+      }catch(e){}
+      if(A.stale(mark)) return;
+      const why=(body&&body.sess_live===true)?'Вход с другого места':'Сессия истекла';
+      authGateOrDefer(why);
+      return;
+    }
     const d=await r.json();
+    if(window.AUTH&&typeof window.AUTH.noteLeft==='function') window.AUTH.noteLeft(d);
     if($('link')) link.textContent=d.link?'up':'down';
     const ptOk=!!d.pt_alive;
     const pwr=d.pt_power_s||(d.pt_power===undefined?'?':String(d.pt_power));
@@ -832,7 +1115,9 @@ async function tick(){
     if(document.activeElement!==$('ptmodel') && document.activeElement!==$('cammodel'))
       applyModels(d);
     applyCaps(d);
+    if(window.PresetUI&&PresetUI.syncFromCtrl) PresetUI.syncFromCtrl(d);
   }catch(e){showBar('status',{ok:false,status:'net'})}
+  finally{ _tickBusy=false; }
 }
 if($('cam_read_params')) $('cam_read_params').onclick=()=>loadCamParams(false);
 function clampOctet(s){
@@ -959,8 +1244,16 @@ if($('net_save')) $('net_save').onclick=async()=>{
   const q=new URLSearchParams({cmd:'set',v:ip,v2:mask});
   if(gw) q.set('v3',gw);
   try{
-    const r=await fetch('/api/net?'+q,{cache:'no-store',credentials:'same-origin'});
-    if(r.status===401 && window.AUTH){ AUTH.showGate(true,'Сессия истекла'); return; }
+    const mark=window.AUTH?AUTH.mark():0;
+    const r=await apiFetch('/api/net?'+q);
+    if(window.AUTH&&AUTH.stale(mark)) return;
+    if(r.status===401 && window.AUTH){
+      let body=null;
+      try{ body=await r.json(); }catch(e){}
+      if(!(body && typeof body.sess_left_s==='number' && body.sess_left_s>0))
+        AUTH.showGate(true,'Сессия истекла');
+      return;
+    }
     const d=await r.json();
     showBar('net/set',d);
     if(d&&d.ok){

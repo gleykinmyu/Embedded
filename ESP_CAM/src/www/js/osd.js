@@ -199,7 +199,7 @@ async function loadOsdRanges(){
   const list=$('osd_list');
   if(!list) return;
   try{
-    const r=await fetch('/api/cam?cmd=osd_ranges',{cache:'no-store',credentials:'same-origin'});
+    const r=await apiFetch('/api/cam?cmd=osd_ranges');
     const d=await r.json();
     if(!d||!d.ok||!Array.isArray(d.items)){
       list.textContent='каталог OSD не пришёл';

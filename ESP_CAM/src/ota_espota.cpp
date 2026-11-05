@@ -17,6 +17,21 @@
 
 static const char *TAG = "ota";
 static volatile bool g_ota_busy = false;
+static void (*g_quiesce)(void *) = nullptr;
+static void *g_quiesce_ctx = nullptr;
+
+void otaBindQuiesce(void (*fn)(void *), void *ctx)
+{
+    g_quiesce = fn;
+    g_quiesce_ctx = ctx;
+}
+
+void otaWaitHealthQuiet()
+{
+    if (g_quiesce != nullptr) {
+        g_quiesce(g_quiesce_ctx);
+    }
+}
 
 namespace {
 
@@ -38,6 +53,7 @@ struct OtaFlashGuard {
         vTaskPrioritySet(self, kOtaFlashPriority);
         ESP_LOGI(TAG, "flash mode on (prio %u→%u)", static_cast<unsigned>(prev_prio),
                  static_cast<unsigned>(kOtaFlashPriority));
+        otaWaitHealthQuiet();
     }
 
     ~OtaFlashGuard() {
@@ -76,8 +92,6 @@ void udp_reply(int sock, const struct sockaddr_in *to, socklen_t tolen, const ch
 bool run_flash(const struct sockaddr_in *host, uint16_t host_port, uint32_t size,
                const char md5_hex_expect[33]) {
     OtaFlashGuard flash_guard;
-    // дать pt_health увидеть otaIsBusy() и выйти из tick
-    vTaskDelay(pdMS_TO_TICKS(300));
 
     const esp_partition_t *part = esp_ota_get_next_update_partition(nullptr);
     if (!part) {
@@ -290,9 +304,9 @@ void handle_invite(int sock, char *msg, const struct sockaddr_in *from, socklen_
         return;
     }
 
-    // Пауза health уже на auth — до erase/TCP.
+    /* Сначала запрет нового опроса, потом ждём текущий tick. */
     g_ota_busy = true;
-    vTaskDelay(pdMS_TO_TICKS(300));
+    otaWaitHealthQuiet();
 
     if (!auth_ok(sock, from, fromlen)) {
         g_ota_busy = false;

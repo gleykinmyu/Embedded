@@ -15,10 +15,9 @@ static constexpr int PIN_DEBUG_TX = 1; // TX0
 static constexpr int PIN_DEBUG_RX = 3; // RX0
 
 // UART2 на пинах TXD/RXD модуля (не путать с TXD0/RXD0!).
-// WT32-ETH01 / ESP32-ETH01: TXD=GPIO17, RXD=GPIO5. Опционально 485_EN=GPIO33.
+// WT32-ETH01 / ESP32-ETH01: TXD=GPIO17, RXD=GPIO5. RS-422 full-duplex.
 static constexpr int PIN_RS422_TX = 17; // TXD -> RS-422 driver TX
 static constexpr int PIN_RS422_RX = 5;  // RXD <- RS-422 receiver RX
-static constexpr int PIN_RS422_DE = 33; // 485_EN (DE/RE; optional for full-duplex RS-422)
 static constexpr int RS422_UART_NUM = 2;
 static constexpr int RS422_BAUD = 9600;
 
@@ -52,7 +51,7 @@ static constexpr int PIN_FACTORY_RST = 2;
  *   GND -- pin 1
  */
 
-/* Заводские / пустой NVS. Сброс GPIO39 → те же значения + admin/admin. */
+/* Заводские / пустой NVS. Сброс GPIO2 → те же значения + admin/admin. */
 #define ETH01_IP4_ADDR  192, 168, 0, 254
 #define ETH01_MASK_ADDR 255, 255, 0, 0
 #define ETH01_GW4_ADDR  192, 168, 0, 1

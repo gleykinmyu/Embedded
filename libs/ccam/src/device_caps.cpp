@@ -222,7 +222,7 @@ CamCaps camCapsFor(CameraModelId id)
         c.genlock = true;
         c.gamma = true;
         c.agc_max = true;
-        c.total_dtl = true;
+        /* Total DTL (OSA:30) — не пункт меню E650; в User Mode Detail OFF/Low/High. */
         c.monitor = true;
         c.lens_h = true;
         break;
@@ -236,7 +236,6 @@ CamCaps camCapsFor(CameraModelId id)
         c.genlock = true;
         c.gamma = true;
         c.agc_max = true;
-        c.total_dtl = true;
         c.monitor = true;
         c.lens_h = true;
         break;

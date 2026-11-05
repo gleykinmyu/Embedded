@@ -8,6 +8,8 @@ import json
 import urllib.parse
 import urllib.request
 
+from api_probe import DEFAULT_TOKEN
+
 # Confirmation / Get из PDF (стр. 30–32) + типичные запросы статуса для PH/HE.
 # payload=None → только cmd (как Query/Confirmation без данных).
 QUERIES: list[tuple[str, str | None, str]] = [
@@ -50,12 +52,16 @@ QUERIES: list[tuple[str, str | None, str]] = [
 ]
 
 
-def call(host: str, cmd: str, payload: str | None, timeout: float) -> dict:
+def call(host: str, cmd: str, payload: str | None, timeout: float, token: str) -> dict:
     q = {"cmd": "raw", "data": cmd}
     if payload is not None:
         q["data2"] = payload
     url = f"http://{host}/api/ptz?" + urllib.parse.urlencode(q)
-    with urllib.request.urlopen(url, timeout=timeout) as r:
+    headers = {"Cache-Control": "no-store"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
 
@@ -88,6 +94,7 @@ ROUND2: list[tuple[str, str | None, str]] = [
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="192.168.6.221")
+    ap.add_argument("--token", default=DEFAULT_TOKEN)
     ap.add_argument("--timeout", type=float, default=3.0)
     ap.add_argument("--round2", action="store_true")
     args = ap.parse_args()
@@ -99,7 +106,7 @@ def main() -> None:
     ok_n = fail_n = 0
     for cmd, pay, note in items:
         try:
-            d = call(args.host, cmd, pay, args.timeout)
+            d = call(args.host, cmd, pay, args.timeout, args.token)
         except Exception as e:
             print(f"#{cmd:<7} {pay or '':<6} ERR   net        {e}  [{note}]")
             fail_n += 1

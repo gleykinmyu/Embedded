@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "http_status.h"
+#include "lwip/inet.h"
 #include "nvs.h"
 
 static const char *TAG = "eth";
@@ -101,17 +102,61 @@ void EthLan8720::load() {
     nvs_close(h);
 }
 
-void EthLan8720::save() {
+namespace {
+
+bool mask_contiguous(uint32_t mask)
+{
+    const uint32_t m = ntohl(mask);
+    return m != 0 && (m | (m - 1u)) == 0xFFFFFFFFu;
+}
+
+bool same_subnet(uint32_t ip, uint32_t mask, uint32_t gw)
+{
+    return (ip & mask) == (gw & mask);
+}
+
+/** Адрес хоста, не адрес сети и не broadcast. */
+bool host_addr(uint32_t ip, uint32_t mask)
+{
+    const uint32_t ip_h = ntohl(ip);
+    const uint32_t m_h = ntohl(mask);
+    if (ip_h == 0 || ip_h == 0xFFFFFFFFu) {
+        return false;
+    }
+    if (m_h == 0xFFFFFFFFu) {
+        return true;
+    }
+    const uint32_t host = ip_h & ~m_h;
+    return host != 0 && host != (~m_h);
+}
+
+} // namespace
+
+bool EthLan8720::save() {
     nvs_handle_t h{};
     if (nvs_open(kNvsNs, NVS_READWRITE, &h) != ESP_OK) {
-        return;
+        ESP_LOGW(TAG, "nvs open fail");
+        return false;
     }
-    (void)nvs_set_u32(h, kKeyIp, cfg_ip_);
-    (void)nvs_set_u32(h, kKeyMask, cfg_mask_);
-    (void)nvs_set_u32(h, kKeyGw, cfg_gw_);
-    (void)nvs_set_u32(h, kKeyDns, cfg_dns_);
-    (void)nvs_commit(h);
+    esp_err_t err = nvs_set_u32(h, kKeyIp, cfg_ip_);
+    if (err == ESP_OK) {
+        err = nvs_set_u32(h, kKeyMask, cfg_mask_);
+    }
+    if (err == ESP_OK) {
+        err = nvs_set_u32(h, kKeyGw, cfg_gw_);
+    }
+    if (err == ESP_OK) {
+        err = nvs_set_u32(h, kKeyDns, cfg_dns_);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
     nvs_close(h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs save fail");
+        return false;
+    }
+    return true;
 }
 
 bool EthLan8720::set_ip(uint32_t addr) {
@@ -125,12 +170,16 @@ bool EthLan8720::set_ip(uint32_t addr) {
         (void)apply_now();
         return false;
     }
-    save();
-    return true;
+    if (save()) {
+        return true;
+    }
+    cfg_ip_ = prev;
+    (void)apply_now();
+    return false;
 }
 
 bool EthLan8720::set_mask(uint32_t mask) {
-    if (mask == 0) {
+    if (!mask_contiguous(mask)) {
         return false;
     }
     const uint32_t prev = cfg_mask_;
@@ -140,11 +189,18 @@ bool EthLan8720::set_mask(uint32_t mask) {
         (void)apply_now();
         return false;
     }
-    save();
-    return true;
+    if (save()) {
+        return true;
+    }
+    cfg_mask_ = prev;
+    (void)apply_now();
+    return false;
 }
 
 bool EthLan8720::set_gw(uint32_t gw) {
+    if (gw != 0 && !same_subnet(cfg_ip_, cfg_mask_, gw)) {
+        return false;
+    }
     const uint32_t prev_gw = cfg_gw_;
     const uint32_t prev_dns = cfg_dns_;
     cfg_gw_ = gw;
@@ -155,24 +211,69 @@ bool EthLan8720::set_gw(uint32_t gw) {
         (void)apply_now();
         return false;
     }
-    save();
-    return true;
+    if (save()) {
+        return true;
+    }
+    cfg_gw_ = prev_gw;
+    cfg_dns_ = prev_dns;
+    (void)apply_now();
+    return false;
+}
+
+void EthLan8720::readCfg(uint32_t *ip, uint32_t *mask, uint32_t *gw, uint32_t *dns) const
+{
+    if (ip) {
+        *ip = cfg_ip_;
+    }
+    if (mask) {
+        *mask = cfg_mask_;
+    }
+    if (gw) {
+        *gw = cfg_gw_;
+    }
+    if (dns) {
+        *dns = cfg_dns_;
+    }
+}
+
+bool EthLan8720::commitCfg(uint32_t ip, uint32_t mask, uint32_t gw, uint32_t dns)
+{
+    const uint32_t prev_ip = cfg_ip_;
+    const uint32_t prev_mask = cfg_mask_;
+    const uint32_t prev_gw = cfg_gw_;
+    const uint32_t prev_dns = cfg_dns_;
+    cfg_ip_ = ip;
+    cfg_mask_ = mask;
+    cfg_gw_ = gw;
+    cfg_dns_ = dns;
+    if (save()) {
+        return true;
+    }
+    cfg_ip_ = prev_ip;
+    cfg_mask_ = prev_mask;
+    cfg_gw_ = prev_gw;
+    cfg_dns_ = prev_dns;
+    return false;
 }
 
 bool EthLan8720::configure(uint32_t ip, uint32_t mask, uint32_t gw) {
     /* Не трогаем live netif/httpd здесь: stop() из HTTP-хендлера рвёт ответ
      * и часто не доходит до NVS. Пишем конфиг, применение — reboot. */
-    if (ip == 0 || ip == 0xFFFFFFFFu || mask == 0) {
+    if (ip == 0 || ip == 0xFFFFFFFFu || !mask_contiguous(mask) || !host_addr(ip, mask)) {
         return false;
     }
-    cfg_ip_ = ip;
-    cfg_mask_ = mask;
+    uint32_t new_gw = cfg_gw_;
+    uint32_t new_dns = cfg_dns_;
     if (gw != 0) {
-        cfg_gw_ = gw;
-        cfg_dns_ = gw;
+        if (!same_subnet(ip, mask, gw)) {
+            return false;
+        }
+        new_gw = gw;
+        new_dns = gw;
+    } else if (new_gw != 0 && !same_subnet(ip, mask, new_gw)) {
+        return false;
     }
-    save();
-    return true;
+    return commitCfg(ip, mask, new_gw, new_dns);
 }
 
 void EthLan8720::cfg_ip_text(char *buf, size_t len) const {

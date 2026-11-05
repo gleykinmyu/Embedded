@@ -737,6 +737,11 @@ Status CameraDeviceBase::requestDetail(uint8_t& mode)
     return requestDecU8(catalog::CameraCmd::Detail, mode);
 }
 
+Status CameraDeviceBase::requestHdDetail(uint8_t& mode)
+{
+    return requestDecU8(catalog::CameraCmd::HdDetail, mode);
+}
+
 Status CameraDeviceBase::requestSceneFile(uint8_t& scene)
 {
     return requestDecU8(catalog::CameraCmd::SceneFile, scene);
@@ -823,6 +828,34 @@ Status CameraDeviceBase::requestBGain(uint16_t& value)
     return parseHexU16(data, value);
 }
 
+Status CameraDeviceBase::requestRPedestal(uint16_t& value)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::RPedestal, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, value);
+}
+
+Status CameraDeviceBase::requestBPedestal(uint16_t& value)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::BPedestal, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, value);
+}
+
 Status CameraDeviceBase::requestTPedestal(uint16_t& value)
 {
     char raw[40] = {};
@@ -835,6 +868,20 @@ Status CameraDeviceBase::requestTPedestal(uint16_t& value)
         return Status::Io;
     }
     return parseHexU16(data, value);
+}
+
+Status CameraDeviceBase::requestSynchroScan(uint16_t& code)
+{
+    char raw[40] = {};
+    Status st = request(catalog::CameraCmd::SynchroScan, raw, sizeof(raw));
+    if (st != Status::Ok) {
+        return st;
+    }
+    const char* data = dataAfterColon(raw);
+    if (data == nullptr) {
+        return Status::Io;
+    }
+    return parseHexU16(data, code);
 }
 
 Status CameraDeviceBase::requestDigitalGainUp(uint8_t& code)

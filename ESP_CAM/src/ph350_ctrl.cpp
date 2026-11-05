@@ -119,7 +119,17 @@ Ph350Ctrl::Ph350Ctrl() : bus_(uart_, &Ph350Ctrl::nowMs, lock_) {
     constructDevices(pt_id_, cam_id_);
 }
 
+static void ota_quiesce(void *p)
+{
+    auto *self = static_cast<Ph350Ctrl *>(p);
+    if (self == nullptr) {
+        return;
+    }
+    Ph350Ctrl::DeviceLock lock(*self);
+}
+
 Ph350Ctrl::~Ph350Ctrl() {
+    otaBindQuiesce(nullptr, nullptr);
     health_run_ = false;
     for (int i = 0; i < 80 && health_alive_; ++i) {
         vTaskDelay(pdMS_TO_TICKS(25));
@@ -216,9 +226,9 @@ void Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::Cam
 void Ph350Ctrl::healthTask(void* arg) {
     auto* self = static_cast<Ph350Ctrl*>(arg);
     while (self->health_run_) {
-        if (!otaIsBusy()) {
+        {
             DeviceLock guard(*self);
-            if (self->pt_ != nullptr) {
+            if (!otaIsBusy() && self->pt_ != nullptr) {
                 self->health_.tick(Ph350Ctrl::nowMs());
             }
         }
@@ -255,6 +265,7 @@ bool Ph350Ctrl::begin() {
     }
     loadSettings();
     bus_.setTrace(&bus_trace);
+    otaBindQuiesce(&ota_quiesce, this);
     startHealthTask();
     ESP_LOGI(TAG, "ready pt=%s (%s) cam=%s (%s) rate=%u inv=p%u/t%u/z%u/f%u",
              pt_->modelLabel(), ccam::devices::ptModelKey(pt_id_), cam_->modelLabel(),
@@ -342,6 +353,20 @@ void Ph350Ctrl::setDefaultRate(uint8_t rate_1_to_100, bool persist) {
     if (persist) {
         saveSettings();
     }
+}
+
+void Ph350Ctrl::noteLatestPreset(uint8_t preset_1_to_99) {
+    if (preset_1_to_99 < 1 || preset_1_to_99 > 99) {
+        latest_preset_ = 0;
+        at_latest_ = false;
+        return;
+    }
+    latest_preset_ = preset_1_to_99;
+    at_latest_ = true;
+}
+
+void Ph350Ctrl::clearAtLatest() {
+    at_latest_ = false;
 }
 
 void Ph350Ctrl::setAxisInvert(const pt::AxisInvert& inv, bool persist) {

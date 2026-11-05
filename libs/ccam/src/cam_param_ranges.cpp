@@ -17,6 +17,7 @@ CCAM_FOR_EACH_HE_AWC(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_SCENE(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_UE_SCENE(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_STUDIO_SHUTTER(CCAM_ASSERT_DEC)
+CCAM_FOR_EACH_E650_SHUTTER(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_COLOR_BAR(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_ND(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_SC_COARSE(CCAM_ASSERT_DEC)
@@ -35,6 +36,7 @@ CCAM_FOR_EACH_WIPER(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_LANDING(CCAM_ASSERT_DEC)
 CCAM_FOR_EACH_GAMMA(CCAM_ASSERT_HEX)
 CCAM_FOR_EACH_AGC_STUDIO(CCAM_ASSERT_HEX)
+CCAM_FOR_EACH_AGC_E650(CCAM_ASSERT_HEX)
 CCAM_FOR_EACH_AGC_HE(CCAM_ASSERT_HEX)
 
 #undef CCAM_ASSERT_DEC
@@ -68,13 +70,19 @@ const CamChoice kHeAwc[] = {CCAM_FOR_EACH_HE_AWC(CCAM_CHOICE)};
 const CamChoice kStudioScene[] = {CCAM_FOR_EACH_SCENE(CCAM_CHOICE)};
 const CamChoice kUeScene[] = {CCAM_FOR_EACH_UE_SCENE(CCAM_CHOICE)};
 
-/** OSH: wire = decimal digit 0..15 → hex nibble (PDF: Ah=1/10000, Bh=Synchro, Ch=ELC). */
-const CamChoice kE650Shutter[] = {CCAM_FOR_EACH_STUDIO_SHUTTER(CCAM_CHOICE)};
+/** OSH полный PDF (E600 / fallback). */
+const CamChoice kStudioShutter[] = {CCAM_FOR_EACH_STUDIO_SHUTTER(CCAM_CHOICE)};
+
+/** AW-E650E UI: Off, 1/120…1/10000, Synchro, ELC. */
+const CamChoice kE650Shutter[] = {CCAM_FOR_EACH_E650_SHUTTER(CCAM_CHOICE)};
 
 /** OSD:00 — тот же список, что вкладка OSD. */
 const CamChoice kStudioGamma[] = {CCAM_FOR_EACH_GAMMA(CCAM_HEX_CHOICE)};
 
 const CamChoice kStudioAgcMax[] = {CCAM_FOR_EACH_AGC_STUDIO(CCAM_HEX_CHOICE)};
+
+/** AW-E650E: 6 / 12 / 18 dB (без Off). */
+const CamChoice kE650AgcMax[] = {CCAM_FOR_EACH_AGC_E650(CCAM_HEX_CHOICE)};
 
 const CamChoice kStudioTotalDtl[] = {
     {"70", "-16"},
@@ -96,8 +104,9 @@ CamParamCatalog makeStudio()
     CamParamCatalog c{};
     c.awc = choicesOf(kStudioAwc, sizeof(kStudioAwc) / sizeof(kStudioAwc[0]));
     c.scene = choicesOf(kStudioScene, sizeof(kStudioScene) / sizeof(kStudioScene[0]));
-    c.shutter = choicesOf(kE650Shutter, sizeof(kE650Shutter) / sizeof(kE650Shutter[0]));
-    // OMS: E/MC model 001h..137h (N: ..105h); берём верхнюю студийную границу.
+    c.shutter = choicesOf(kStudioShutter, sizeof(kStudioShutter) / sizeof(kStudioShutter[0]));
+    // OMS Synchro-Scan (ConvertibleProtocol): E/MC 001h=50.24Hz…137h=15.63kHz;
+    // N model 001h=60.34Hz…105h=15.75kHz. Для E650E берём E/MC.
     c.synchro = hexRangeOf(1, 0x137, 3);
     c.gamma = choicesOf(kStudioGamma, sizeof(kStudioGamma) / sizeof(kStudioGamma[0]));
     c.agc_max = choicesOf(kStudioAgcMax, sizeof(kStudioAgcMax) / sizeof(kStudioAgcMax[0]));
@@ -107,13 +116,22 @@ CamParamCatalog makeStudio()
     return c;
 }
 
+/** AW-E650E: shutter/AGC как в меню камеры. */
+CamParamCatalog makeE650()
+{
+    CamParamCatalog c = makeStudio();
+    c.shutter = choicesOf(kE650Shutter, sizeof(kE650Shutter) / sizeof(kE650Shutter[0]));
+    c.agc_max = choicesOf(kE650AgcMax, sizeof(kE650AgcMax) / sizeof(kE650AgcMax[0]));
+    return c;
+}
+
 /** Студийный AWC, HE-шкала AGC. HE120/HE60/HE50: своего короткого AWC в библиотеке нет. */
 CamParamCatalog makeHeOptics()
 {
     CamParamCatalog c = makeStudio();
     c.agc_max = choicesOf(kHeAgcMax, sizeof(kHeAgcMax) / sizeof(kHeAgcMax[0]));
-    // HE870 N Model OMS: 001h..109h (PDF).
-    c.synchro = hexRangeOf(1, 0x109, 3);
+    // HE50/HE60/HE120: OMS 001h…0FFh (≈50.16Hz…542Hz / 60.17Hz…644Hz).
+    c.synchro = hexRangeOf(1, 0x0FF, 3);
     return c;
 }
 
@@ -122,6 +140,16 @@ CamParamCatalog makeHeAwc()
 {
     CamParamCatalog c = makeHeOptics();
     c.awc = choicesOf(kHeAwc, sizeof(kHeAwc) / sizeof(kHeAwc[0]));
+    // HE130: OMS 001h…0FFh (как HE50/60/120).
+    return c;
+}
+
+/** AW-HE870: Synchro шире, чем у HE130. */
+CamParamCatalog makeHe870()
+{
+    CamParamCatalog c = makeHeAwc();
+    // HE870 N: 001h=61.19Hz…109h=1466Hz; E/MC: 001h=50.99Hz…10Dh=1478Hz.
+    c.synchro = hexRangeOf(1, 0x10D, 3);
     return c;
 }
 
@@ -139,6 +167,12 @@ const CamParamCatalog& studioCat()
     return cat;
 }
 
+const CamParamCatalog& e650Cat()
+{
+    static const CamParamCatalog cat = makeE650();
+    return cat;
+}
+
 const CamParamCatalog& heOpticsCat()
 {
     static const CamParamCatalog cat = makeHeOptics();
@@ -148,6 +182,12 @@ const CamParamCatalog& heOpticsCat()
 const CamParamCatalog& heAwcCat()
 {
     static const CamParamCatalog cat = makeHeAwc();
+    return cat;
+}
+
+const CamParamCatalog& he870Cat()
+{
+    static const CamParamCatalog cat = makeHe870();
     return cat;
 }
 
@@ -233,14 +273,16 @@ const CamParamCatalog& camParamCatalog(CameraModelId id)
     switch (id) {
     case CameraModelId::Ue150:
         return ueCat();
-    case CameraModelId::He130:
     case CameraModelId::He870:
+        return he870Cat();
+    case CameraModelId::He130:
         return heAwcCat();
     case CameraModelId::He120:
     case CameraModelId::He60:
     case CameraModelId::He50:
         return heOpticsCat();
     case CameraModelId::E650:
+        return e650Cat();
     case CameraModelId::E600:
     case CameraModelId::Generic:
     default:

@@ -152,6 +152,7 @@ public:
     /** ORV → публичная шкала 0..FFFF. */
     Status requestManualIris(uint16_t& norm);
     Status requestDetail(uint8_t& mode);
+    Status requestHdDetail(uint8_t& mode);
     Status requestSceneFile(uint8_t& scene);
     Status requestColorBar(ColorBarMode& mode);
     Status requestMenuOnOff(Switch& mode);
@@ -162,7 +163,11 @@ public:
     Status requestChromaLevel(uint8_t& level);
     Status requestRGain(uint16_t& value);
     Status requestBGain(uint16_t& value);
+    Status requestRPedestal(uint16_t& value);
+    Status requestBPedestal(uint16_t& value);
     Status requestTPedestal(uint16_t& value);
+    /** QMS → OMS:[Data] synchro-scan code (001h…). */
+    Status requestSynchroScan(uint16_t& code);
     Status requestDigitalGainUp(uint8_t& code);
     Status requestLightPeakAvg(uint8_t& code);
     Status requestLightArea(uint8_t& code);

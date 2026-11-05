@@ -158,7 +158,7 @@ inline constexpr bool studioAwcQueryToControl(uint8_t query, uint8_t& control)
     X(Scene3, 2, "2", "Scene 3")                                                                   \
     X(Scene4, 3, "3", "Scene 4")
 
-/** OSH. value = hex-ниббл, wire = десятичная строка ("10" → 0x0A). */
+/** OSH. value = hex-ниббл, wire = десятичная строка ("10" → 0x0A). Полный PDF-набор. */
 #define CCAM_FOR_EACH_STUDIO_SHUTTER(X)                                                            \
     X(Off, 0, "0", "Off")                                                                          \
     X(Shutter1_50, 1, "1", "1/50")                                                                 \
@@ -176,6 +176,19 @@ inline constexpr bool studioAwcQueryToControl(uint8_t query, uint8_t& control)
     X(Shutter1_24, 0x0D, "13", "1/24")                                                             \
     X(Shutter1_25, 0x0E, "14", "1/25")                                                             \
     X(Shutter1_30, 0x0F, "15", "1/30")
+
+/** AW-E650E меню: UI-подмножество OSH (wire-коды те же). */
+#define CCAM_FOR_EACH_E650_SHUTTER(X)                                                              \
+    X(Off, 0, "0", "Off")                                                                          \
+    X(Shutter1_120, 4, "4", "1/120")                                                               \
+    X(Shutter1_250, 5, "5", "1/250")                                                               \
+    X(Shutter1_500, 6, "6", "1/500")                                                               \
+    X(Shutter1_1000, 7, "7", "1/1000")                                                             \
+    X(Shutter1_2000, 8, "8", "1/2000")                                                             \
+    X(Shutter1_4000, 9, "9", "1/4000")                                                             \
+    X(Shutter1_10000, 0x0A, "10", "1/10000")                                                       \
+    X(SynchroScan, 0x0B, "11", "Synchro")                                                          \
+    X(Elc, 0x0C, "12", "ELC")
 
 /** OFT и #D2. */
 #define CCAM_FOR_EACH_ND(X)                                                                        \
@@ -308,9 +321,15 @@ inline constexpr bool studioAwcQueryToControl(uint8_t query, uint8_t& control)
     X(0x14, "14", "0.55")                                                                          \
     X(0xFF, "FF", "Dynamic")
 
-/** OSD:69, студия. */
+/** OSD:69, студия (общий PDF). */
 #define CCAM_FOR_EACH_AGC_STUDIO(X)                                                                \
     X(0x00, "00", "Off")                                                                           \
+    X(0x01, "01", "6 dB")                                                                          \
+    X(0x02, "02", "12 dB")                                                                         \
+    X(0x03, "03", "18 dB")
+
+/** OSD:69, AW-E650E меню — без Off. */
+#define CCAM_FOR_EACH_AGC_E650(X)                                                                  \
     X(0x01, "01", "6 dB")                                                                          \
     X(0x02, "02", "12 dB")                                                                         \
     X(0x03, "03", "18 dB")

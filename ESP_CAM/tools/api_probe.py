@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 DEFAULT_HOST = "192.168.6.221"
+# Bearer с вкладки Network. Кука сессии скрипту не нужна, токен не истекает.
+DEFAULT_TOKEN = "7KuSj0X7yFXdGbCLOkYYSlts7HB49Rtr"
 TIMEOUT_S = 15.0
 
 # cmd → ключ в pt_caps / cam_caps (None = всегда)
@@ -76,12 +78,48 @@ CAM_CAP: dict[str, Optional[str]] = {
 }
 
 
-def call(host: str, path: str, **params: Any) -> dict:
+def parse_body(raw: str) -> dict:
+    text = raw.strip()
+    if not text:
+        return {"ok": False, "status": "empty"}
+    try:
+        body = json.loads(text)
+    except json.JSONDecodeError as e:
+        # /api/cam?cmd=params — NDJSON, по объекту на строку.
+        if "Extra data" not in str(e):
+            return {"ok": False, "status": "json", "error": str(e)[:180]}
+        rows = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                rows.append({"ok": False, "status": "json", "error": line[:80]})
+        done = next((row for row in reversed(rows) if row.get("done") is not None), None)
+        ok = bool(done.get("ok")) if done else any(row.get("ok") for row in rows)
+        return {"ok": ok, "status": "ok" if ok else "fail", "stream": True, "lines": len(rows)}
+    if isinstance(body, dict):
+        return body
+    return {"ok": False, "status": "json", "error": "not an object"}
+
+
+def call(host: str, path: str, token: str = "", **params: Any) -> dict:
     q = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None and v != ""})
     url = f"http://{host}/api/{path}?{q}" if q else f"http://{host}/api/{path}"
-    req = urllib.request.Request(url, headers={"Cache-Control": "no-store"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
-        return json.loads(r.read().decode())
+    headers = {"Cache-Control": "no-store"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+            return parse_body(r.read().decode())
+    except urllib.error.HTTPError as e:
+        body = parse_body(e.read().decode(errors="replace"))
+        body.setdefault("ok", False)
+        body.setdefault("status", f"http{e.code}")
+        return body
 
 
 @dataclass
@@ -143,7 +181,6 @@ def all_cases(*, live: bool, safe: bool) -> list[Case]:
         Case("preset_recall", "ptz", {"cmd": "preset_recall", "preset": "1"}, "set"),
         Case("home", "ptz", {"cmd": "home"}, "set"),
         Case("stop", "ptz", {"cmd": "stop"}, "set"),
-        Case("boot", "ptz", {"cmd": "boot"}, "set"),
         Case("awc_mode", "cam", {"cmd": "awc_mode", "v": "0"}, "set"),
         Case("scene", "cam", {"cmd": "scene", "v": "0"}, "set"),
         Case("shutter_mode", "cam", {"cmd": "shutter_mode", "v": "0"}, "set"),
@@ -190,7 +227,7 @@ def all_cases(*, live: bool, safe: bool) -> list[Case]:
             Case("focus_near", "ptz", {"cmd": "focus_near", "rate": "15"}, "move"),
             Case("stop after focus2", "ptz", {"cmd": "stop"}, "move"),
             Case("limit_toggle", "ptz", {"cmd": "limit_toggle", "v": "1"}, "move"),
-            Case("power_on_cam", "ptz", {"cmd": "power_on_cam"}, "set"),
+            Case("power_on_cam", "ptz", {"cmd": "power_on_cam"}, "set", cap="power_cam_tx"),
         ]
 
     return c
@@ -238,14 +275,16 @@ def classify(case: Case, d: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=DEFAULT_HOST)
+    ap.add_argument("--token", default=DEFAULT_TOKEN, help="Bearer, пустая строка — без заголовка")
     ap.add_argument("--safe", action="store_true", help="только inquiry")
     ap.add_argument("--no-live", action="store_true", help="без move hold")
     args = ap.parse_args()
     host = args.host
+    token = args.token
     live = not args.no_live and not args.safe
 
     try:
-        status = call(host, "status")
+        status = call(host, "status", token)
     except Exception as e:  # noqa: BLE001
         print(f"status failed: {e}", file=sys.stderr)
         return 2
@@ -255,7 +294,8 @@ def main() -> int:
 
     counts = {"OK": 0, "N/A": 0, "FAIL": 0, "EXC": 0, "SKIP": skipped}
     print(
-        f"host={host} pt={status.get('pt_id')} cam={status.get('cam_id')} "
+        f"host={host} auth={'bearer' if token else 'none'} "
+        f"pt={status.get('pt_id')} cam={status.get('cam_id')} "
         f"cases={len(cases)} skipped_caps={skipped} live={live} safe={args.safe}\n"
     )
 
@@ -266,9 +306,9 @@ def main() -> int:
             prev_kind = case.kind
         try:
             if case.path == "status":
-                d = call(host, "status")
+                d = call(host, "status", token)
             else:
-                d = call(host, case.path, **case.params)
+                d = call(host, case.path, token, **case.params)
         except Exception as e:  # noqa: BLE001
             d = {"ok": False, "status": "exc", "error": str(e)}
 

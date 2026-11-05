@@ -42,6 +42,7 @@ idf_component_register(
         "${CCAM_DIR}/src/device_caps.cpp"
         "${CCAM_DIR}/src/pt_link_health.cpp"
         "${CCAM_DIR}/src/cam_param_ranges.cpp"
+        "${CCAM_DIR}/src/cam_menu_deps.cpp"
         "${CCAM_DIR}/src/osd_params.cpp"
     INCLUDE_DIRS
         "."
@@ -50,7 +51,7 @@ idf_component_register(
         "${BIF_DIR}"
     REQUIRES
         driver esp_eth esp_netif esp_event nvs_flash console esp_http_server lwip esp_timer
-        app_update
+        app_update mbedtls
 )
 
 if(CMAKE_BUILD_EARLY_EXPANSION)
