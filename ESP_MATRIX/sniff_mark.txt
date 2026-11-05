@@ -1,0 +1,12 @@
+логин
+смена монитора
+смена камеры
+pan left / влево
+pan right / вправо
+tilt up / вверх
+tilt down / вниз
+zoom / кручу зум
+menu on / захожу в меню камеры
+menu on / menu RETRY
+menu navigate / перемещаюсь по меню
+menu off / вышел из меню
