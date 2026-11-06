@@ -455,7 +455,10 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
     if (require_auth(req, false) != ESP_OK) {
         return ESP_OK;
     }
-    Ph350Ctrl::DeviceLock dev(pt_);
+    /* Только чтение кэша health_/caps. Не ждать params/power — иначе шапка
+     * залипает на «ETH —» пока Camera-опрос держит шину (особенно при Выкл). */
+    Ph350Ctrl::DeviceLock dev(pt_, 0);
+    (void)dev;
     char ip[16] = {};
     char mask[16] = {};
     char gw[16] = {};
@@ -1106,6 +1109,16 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
                             : "{\"ok\":true,\"stream\":true,\"status\":\"ok\"}")) {
             httpd_resp_send_chunk(req, nullptr, 0);
             return ESP_FAIL;
+        }
+
+        /* Без CamTX каждый Qxx/OSD уходит в таймаут → минуты под DeviceLock →
+         * UI status/power встают. Сразу закрываем поток. */
+        if (!pt_.linkHealth().camTxLikely()) {
+            if (!emit("{\"done\":true,\"ok\":false,\"status\":\"cam_off\"}")) {
+                httpd_resp_send_chunk(req, nullptr, 0);
+                return ESP_FAIL;
+            }
+            return httpd_resp_send_chunk(req, nullptr, 0);
         }
 
         uint8_t u8 = 0;

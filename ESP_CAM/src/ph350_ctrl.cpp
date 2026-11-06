@@ -97,15 +97,26 @@ bool model_supported(ccam::devices::PtModelId pt, ccam::devices::CameraModelId c
 
 } // namespace
 
-Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl) : ctrl_(ctrl) {
+void Ph350Ctrl::DeviceLock::take(uint32_t wait_ms) {
     if (ctrl_.dev_mu_ == nullptr) {
         return;
     }
     if (xSemaphoreGetMutexHolder(ctrl_.dev_mu_) == xTaskGetCurrentTaskHandle()) {
-        return;
+        return; /* уже держим — не брать повторно и не отдавать в деструкторе */
     }
-    xSemaphoreTake(ctrl_.dev_mu_, portMAX_DELAY);
-    held_ = true;
+    const TickType_t ticks =
+        (wait_ms == portMAX_DELAY) ? portMAX_DELAY : pdMS_TO_TICKS(wait_ms);
+    if (xSemaphoreTake(ctrl_.dev_mu_, ticks) == pdTRUE) {
+        held_ = true;
+    }
+}
+
+Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl) : ctrl_(ctrl) {
+    take(portMAX_DELAY);
+}
+
+Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl, uint32_t try_ms) : ctrl_(ctrl) {
+    take(try_ms);
 }
 
 Ph350Ctrl::DeviceLock::~DeviceLock() {

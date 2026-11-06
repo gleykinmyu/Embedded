@@ -103,11 +103,15 @@ public:
     class DeviceLock {
     public:
         explicit DeviceLock(Ph350Ctrl& ctrl);
+        /** try_ms==0 — сразу; иначе ждать до try_ms. Не взяли → held_=false. */
+        DeviceLock(Ph350Ctrl& ctrl, uint32_t try_ms);
         ~DeviceLock();
         DeviceLock(const DeviceLock&) = delete;
         DeviceLock& operator=(const DeviceLock&) = delete;
+        bool held() const { return held_; }
 
     private:
+        void take(uint32_t wait_ms);
         Ph350Ctrl& ctrl_;
         bool held_{false};
     };

@@ -3697,16 +3697,25 @@ function camMenuPrimaryState(){
   const awcPreset=awcHe?(awc==='3'||awc==='4'):(awc==='4'||awc==='5');
   return {irisAm,shut,agc,awc,camId,shutSyn,awcAtw,awcMem,awcNopreset:!awcPreset};
 }
+function abortCamParams(){
+  if(window._camParamsAbort){
+    try{ window._camParamsAbort.abort(); }catch(e){}
+    window._camParamsAbort=null;
+  }
+}
 async function loadCamParamsScope(scope, gates, only){
   if(window._camDepsBusy) return;
   window._camDepsBusy=true;
   const acc={ok:true,status:'ok'};
+  const ac=new AbortController();
+  window._camParamsAbort=ac;
   try{
     let url='/api/cam?cmd=params';
     if(scope) url+='&scope='+encodeURIComponent(scope);
     if(gates&&gates.length) url+='&gates='+encodeURIComponent(gates.join(','));
     if(only&&only.length) url+='&only='+encodeURIComponent(only.join(','));
-    const r=await apiFetch(url);
+    const r=await fetch(url,{cache:'no-store',credentials:'same-origin',
+      headers:{'X-Esp-Client':'ui'},signal:ac.signal});
     if(!r.ok) throw new Error('http');
     const ct=(r.headers.get('content-type')||'').toLowerCase();
     if(!r.body||!ct.includes('ndjson')){
@@ -3740,6 +3749,7 @@ async function loadCamParamsScope(scope, gates, only){
     applyCamParams(acc);
   }catch(e){
   }finally{
+    if(window._camParamsAbort===ac) window._camParamsAbort=null;
     window._camDepsBusy=false;
   }
 }
@@ -3797,7 +3807,9 @@ document.body.addEventListener('click',e=>{
   const b=e.target.closest('[data-cmd]');
   if(!b||b.hasAttribute('data-hold')) return;
   const api=b.dataset.api||'ptz';
-  if(api==='cam') cam(b.dataset.cmd); else ptz(b.dataset.cmd);
+  const cmd=b.dataset.cmd;
+  if(api==='ptz' && /^power_/.test(cmd||'')) abortCamParams();
+  if(api==='cam') cam(cmd); else ptz(cmd);
 });
 function sendFromEl(el){
   const cmd=el.dataset.send; if(!cmd) return;
@@ -4297,8 +4309,12 @@ async function loadCamParams(quiet){
   if(window._camParamsBusy) return;
   window._camParamsBusy=true;
   const acc={ok:true,status:'ok'};
+  abortCamParams();
+  const ac=new AbortController();
+  window._camParamsAbort=ac;
   try{
-    const r=await apiFetch('/api/cam?cmd=params');
+    const r=await fetch('/api/cam?cmd=params',{cache:'no-store',credentials:'same-origin',
+      headers:{'X-Esp-Client':'ui'},signal:ac.signal});
     if(!r.ok) throw new Error('http');
     /* NDJSON stream: поле за полем; fallback — один JSON (старая прошивка) */
     const ct=(r.headers.get('content-type')||'').toLowerCase();
@@ -4333,11 +4349,13 @@ async function loadCamParams(quiet){
       try{ Object.assign(acc, JSON.parse(buf.trim())); }catch(e){}
     }
     applyCamParams(acc);
-    if(quiet){ if(acc.ok) flashGotAll('Camera'); }
+    if(quiet){ if(acc.ok!==false) flashGotAll('Camera'); }
     else showBar('cam/params',acc);
   }catch(e){
+    if(e&&e.name==='AbortError') return;
     if(!quiet) showBar('cam/params',{ok:false,status:'net'});
   }finally{
+    if(window._camParamsAbort===ac) window._camParamsAbort=null;
     window._camParamsBusy=false;
   }
 }
@@ -4463,7 +4481,7 @@ async function saveInvert(){
 let _tickBusy=false;
 async function tick(){
   if(document.body.classList.contains('login') || _tickBusy) return;
-  if(window.AUTH && typeof AUTH.inGateGrace==='function' && AUTH.inGateGrace()) return;
+  /* grace только глушит открытие gate на 401 — бейджи всё равно обновляем */
   _tickBusy=true;
   const mark=window.AUTH?AUTH.mark():0;
   try{
