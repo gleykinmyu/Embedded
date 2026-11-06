@@ -27,9 +27,12 @@ struct IBuf {
     uint16_t size = 0;
 };
 
-class MultiByteClient;
 class Session;
 struct TxSlot;
+
+namespace session {
+
+class MultiByteClient;
 
 class MultiByte {
 public:
@@ -44,17 +47,19 @@ public:
         Tx,
     };
 
-    /** Причина @c Result::Fail (и detail в @c msg::Nack::Error::Body). */
+    /** Причина @c Result::Fail (и detail в @c Error::Body). */
     enum class Error : uint8_t {
-        None = 0,
+        First = 0,
+        None = First,
         NotArmed,
-        TagMismatch,
+        TagMismatch, /**< DataBegin tag|index ≠ opener. */
         Seq,
         Overflow,
         Crc,
         Unexpected,
         Abort,
         Timeout, /**< RX: ожидание DataBegin и межфреймовый gap. TX не сторожит. */
+        Last,    /**< Exclusive end. */
     };
 
     /** Итог внутренних onBegin/onData. */
@@ -72,6 +77,7 @@ public:
     [[nodiscard]] Mode mode() const noexcept { return _mode; }
     [[nodiscard]] Error error() const noexcept { return _error; }
     [[nodiscard]] uint8_t tag() const noexcept { return _tag; }
+    [[nodiscard]] uint8_t index() const noexcept { return _index; }
     [[nodiscard]] uint8_t txn() const noexcept { return _txn; }
     /** View: data + принятые байты (onSet / onReply). */
     [[nodiscard]] IBuf bufReceived() const noexcept
@@ -96,7 +102,8 @@ public:
      * DataBegin сразу переводит в Data.
      */
     [[nodiscard]] bool armRx(uint8_t tag, uint8_t txn_id, uint32_t now_ms,
-                             MultiByteClient* client, const IBuf& buf = {}) noexcept;
+                             MultiByteClient* client, const IBuf& buf = {},
+                             uint8_t index = kIndexAll) noexcept;
 
     /**
      * NeedBuf: привязать буфер (@a buf.size ≥ @a need). Фазу не меняет.
@@ -105,7 +112,8 @@ public:
 
     /** TX (@a txn_id ≠ 0, @a buf.size ≥ 1). Phase Begin: следующий кадр — DataBegin. */
     [[nodiscard]] bool armTx(uint8_t tag, const IBuf& buf, uint8_t txn_id,
-                             MultiByteClient* client) noexcept;
+                             MultiByteClient* client,
+                             uint8_t index = kIndexAll) noexcept;
 
     // --- TX stream (Session::send из tick) ---
 
@@ -144,12 +152,12 @@ private:
         Data,      /**< Куски тела. */
     };
 
-    [[nodiscard]] Result onBegin(const msg::DataBegin& begin, uint32_t now_ms) noexcept;
-    [[nodiscard]] Result onData(const msg::Data& chunk, uint32_t now_ms) noexcept;
+    [[nodiscard]] Result onBegin(const DataBegin& begin, uint32_t now_ms) noexcept;
+    [[nodiscard]] Result onData(const Data& chunk, uint32_t now_ms) noexcept;
     /** Буфер уже есть: принять заголовок и перейти в Data. */
-    [[nodiscard]] Result enterData(const msg::DataBegin& begin, uint32_t now_ms) noexcept;
-    [[nodiscard]] bool arm(uint8_t tag, const IBuf& buf, bool tx, uint8_t txn_id,
-                           uint32_t now_ms, MultiByteClient* client) noexcept;
+    [[nodiscard]] Result enterData(const DataBegin& begin, uint32_t now_ms) noexcept;
+    [[nodiscard]] bool arm(uint8_t tag, uint8_t index, const IBuf& buf, bool tx,
+                           uint8_t txn_id, uint32_t now_ms, MultiByteClient* client) noexcept;
     void notifyResult() noexcept;
     void fail(Error err) noexcept;
     void succeed() noexcept;
@@ -164,6 +172,7 @@ private:
     bool _finished = false;
     bool _tx_pend = false; /**< кадр тела в Session::_tx_ctrl */
     uint8_t _tag = 0;
+    uint8_t _index = 0;
     uint8_t _txn = 0;
     MultiByteClient* _client = nullptr;
     MISC::MsTimer _watch{};
@@ -172,7 +181,7 @@ private:
     struct {
         uint16_t size = 0;
         uint32_t crc = 0;
-        uint8_t seq = 0;
+        uint16_t seq = 0; /**< Абсолютный номер куска; u16 покрывает size/kInlineMax. */
         uint16_t offset = 0;
     } _xfer{};
 };
@@ -186,14 +195,17 @@ public:
     virtual ~MultiByteClient() = default;
 
     /** NeedBuf: заполнить @a buf (ёмкость ≥ @a size). false — отказ. */
-    [[nodiscard]] virtual bool onMbBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
-                                          IBuf& buf) noexcept = 0;
+    [[nodiscard]] virtual bool onMbBuffer(uint8_t tag, uint8_t index, uint8_t txn_id,
+                                          uint16_t size, IBuf& buf) noexcept = 0;
 
     /** RX Done/Fail (в т.ч. Timeout из tick). Клиент сам reset владельца. */
-    virtual void onMbResult(uint8_t tag, const IBuf& buf, MultiByte::Error err) noexcept = 0;
+    virtual void onMbResult(uint8_t tag, uint8_t index, const IBuf& buf,
+                            MultiByte::Error err) noexcept = 0;
 
     /** TX тело дописано (последний Data). Клиент сам reset / AwaitAck. */
     virtual void onMbTxDone() noexcept = 0;
 };
+
+} // namespace session
 
 } // namespace smcp

@@ -17,7 +17,7 @@ __attribute__((weak))
 void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) noexcept
 {
 #if !defined(SMCP_TRACE_HB)
-    if (pkt.msg.id == msg::Heartbeat::kId) {
+    if (pkt.msg.id == session::Heartbeat::kId) {
         return;
     }
 #endif
@@ -29,7 +29,7 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
         static_cast<unsigned>(pkt.src_id),
         static_cast<unsigned>(pkt.dst_id),
         static_cast<unsigned>(pkt.txn_id),
-        SMCP_PICK(msg::cstrS(pkt.msg.id), msg::cstr(pkt.msg.id)),
+        session::cstr(pkt.msg.id),
         static_cast<unsigned>(pkt.msg.dlc));
 }
 

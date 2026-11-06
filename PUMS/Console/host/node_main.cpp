@@ -215,7 +215,7 @@ void cmdStatus(Ctx& ctx)
     std::printf("bus=%s  id=%s  status=%s\n",
         busUp(ctx) ? "up" : "waiting",
         ctx.on_bus ? "set" : "none",
-        ctx.on_bus ? smcp::Node::cstr(ctx.node->getStatus()) : "Idle");
+        ctx.on_bus ? smcp::Node::cstr(ctx.node->getState()) : "Idle");
     if (!ctx.on_bus) {
         std::puts("  (assign: id 0x01)");
         return;
@@ -261,7 +261,7 @@ bool cmdId(Ctx& ctx, uint8_t neu)
     std::printf("ok: id=0x%02X name=\"%s\" status=%s — can open sessions\n",
         static_cast<unsigned>(neu),
         ctx.node->name(),
-        smcp::Node::cstr(ctx.node->getStatus()));
+        smcp::Node::cstr(ctx.node->getState()));
     return true;
 }
 
@@ -285,7 +285,7 @@ bool cmdOpen(Ctx& ctx, uint8_t peer)
     }
     if (!ctx.node->isReady()) {
         std::printf("error: not Ready (%s) — wait or clear\n",
-            smcp::Node::cstr(ctx.node->getStatus()));
+            smcp::Node::cstr(ctx.node->getState()));
         return false;
     }
     smcp::host::SimSession* s = ctx.node->startPeer(peer);
@@ -317,7 +317,7 @@ bool cmdClose(Ctx& ctx, uint8_t peer)
         std::printf("error: no session to 0x%02X\n", peer);
         return false;
     }
-    s->close(smcp::Node::Fault::None);
+    s->close(smcp::Node::Link::Down);
     pumpFor(ctx, 100);
     std::printf("ok: closed → 0x%02X\n", peer);
     return true;
@@ -341,7 +341,7 @@ bool cmdSet(Ctx& ctx, uint8_t peer, uint8_t tag, const std::vector<uint8_t>& dat
     smcp::IBuf ib{buf.data(), static_cast<uint16_t>(buf.size())};
     s->clearFlags();
     ctx.node->clearAckFlags();
-    if (!s->set(tag, ib)) {
+    if (s->set(tag, ib) != smcp::session::TaggedOps::Result::Ok) {
         std::puts("error: set() failed");
         return false;
     }
@@ -367,7 +367,7 @@ bool cmdGet(Ctx& ctx, uint8_t peer, uint8_t tag)
     uint8_t reply[smcp::host::kStoreCap]{};
     smcp::IBuf ib{reply, smcp::host::kStoreCap};
     s->clearFlags();
-    if (!s->get(tag, ib)) {
+    if (s->get(tag, ib) != smcp::session::TaggedOps::Result::Ok) {
         std::puts("error: get() failed");
         return false;
     }
@@ -409,19 +409,19 @@ bool cmdSend(Ctx& ctx, uint8_t dst, uint8_t msg_id, uint8_t txn,
 bool parseNackError(const std::string& s, uint8_t& out)
 {
     if (s == "NotSupported" || s == "nosupport" || s == "reject") {
-        out = static_cast<uint8_t>(smcp::msg::Nack::Error::NotSupported);
+        out = static_cast<uint8_t>(smcp::session::Error::NotSupported);
         return true;
     }
     if (s == "Busy" || s == "busy") {
-        out = static_cast<uint8_t>(smcp::msg::Nack::Error::Busy);
+        out = static_cast<uint8_t>(smcp::session::Error::Busy);
         return true;
     }
     if (s == "Body" || s == "body") {
-        out = static_cast<uint8_t>(smcp::msg::Nack::Error::Body);
+        out = static_cast<uint8_t>(smcp::session::Error::Body);
         return true;
     }
     if (s == "Timeout" || s == "timeout") {
-        out = smcp::msg::Nack::kTimeout;
+        out = static_cast<uint8_t>(smcp::session::Error::Timeout);
         return true;
     }
     unsigned long v = 0;
@@ -478,7 +478,7 @@ bool dispatch(Ctx& ctx, const std::vector<std::string>& t)
             return true;
         }
         ctx.node->clearError();
-        std::printf("ok: %s\n", smcp::Node::cstr(ctx.node->getStatus()));
+        std::printf("ok: %s\n", smcp::Node::cstr(ctx.node->getState()));
         return true;
     }
     if (cmd == "wait" && t.size() >= 2) {
@@ -658,7 +658,7 @@ bool dispatch(Ctx& ctx, const std::vector<std::string>& t)
             return true;
         }
         smcp::Message m{};
-        if (!smcp::msg::Ack{}.pack(m)) {
+        if (!smcp::session::Ack{}.pack(m)) {
             std::puts("error: pack");
             return true;
         }
@@ -683,7 +683,7 @@ bool dispatch(Ctx& ctx, const std::vector<std::string>& t)
             std::puts("error: bad txn");
             return true;
         }
-        uint32_t detail = smcp::msg::Nack::kDetailNone;
+        uint32_t detail = smcp::session::Nack::kDetailNone;
         if (t.size() >= 5) {
             try {
                 detail = static_cast<uint32_t>(std::stoul(t[4], nullptr, 0));
@@ -692,8 +692,8 @@ bool dispatch(Ctx& ctx, const std::vector<std::string>& t)
                 return true;
             }
         }
-        smcp::msg::Nack body{};
-        body.error = err;
+        smcp::session::Nack body{};
+        body.error = smcp::session::vError::from_raw(err);
         body.detail = detail;
         smcp::Message m{};
         if (!body.pack(m)) {
@@ -708,8 +708,8 @@ bool dispatch(Ctx& ctx, const std::vector<std::string>& t)
         if (!requireOnBus(ctx)) {
             return true;
         }
-        smcp::msg::Fault body{};
-        body.error = smcp::msg::Fault::kIdConflict;
+        smcp::session::Fault body{};
+        body.error = smcp::session::Fault::kIdConflict;
         if (t.size() >= 2) {
             body.setDetailStr(t[1].c_str());
         } else {

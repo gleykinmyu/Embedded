@@ -1,0 +1,9 @@
+{
+  "name": "mem",
+  "version": "1.0.0",
+  "description": "Slot store / range allocator (ISlot, Store, RangeAllocator)",
+  "build": {
+    "libArchive": false,
+    "includeDir": ".."
+  }
+}

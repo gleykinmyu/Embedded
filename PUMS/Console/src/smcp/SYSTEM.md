@@ -57,7 +57,7 @@ flowchart TB
 - **B3.** Цепь/трос: **одна консоль**; в прошивке **сервера** — два `Node` на один CAN (два logical `server_id` / seg). Пульт видит две peer-сессии. Jack→seg — на сервере при сборке inventory.
 - **B4.** **CanDemux** — спец-драйвер: один `ICAN` → два `Node`; RX demux по `dst`; TX в общий CAN. Не один Node на два ILink.
 - **E3.** Drive / motion — **внутри сервера**. Пульт шлёт SetTarget; как сервер двигает ось — его дело.
-- **E5.** Линк к платам/приводу (CAN2 / UART / …) — **только сервер**. Свой PDU привода, не расширение транспортного `message.hpp`; Select / Block / holder на CAN2 не тащить. `DriveMech` мапит плату на `IAxis`. Пульт видит «ось N на `server_id`».
+- **E5.** Линк к платам/приводу (CAN2 / UART / …) — **только сервер**. Свой PDU привода, не расширение транспортного `message.hpp`; Select / Block / holder на CAN2 не тащить. `ServerAxis` мапит плату на `IAxis`. Пульт видит «ось N на `server_id`».
 
 ---
 
@@ -116,7 +116,7 @@ flowchart LR
 ## 4. Адресация осей на пульте
 
 - **B1.** На пульте **нет** банков механизмов (`storage(server_id)` / ObjRegistry / `CMechBank`). Доступ к механизму — через **прокси на SERV**: `ServPool::segment(server_id)` / `mech(server_id, axis_id)` → прокси = `MechSlot` (+ `MechType` из MTYP) + live-состояние. Второй сегмент = ещё один `SegHdr` в SERV, отдельного банка нет. (На сервере свой `storage()` для приводов — отдельно.)
-- **B2.** Gaps `axis_id` **разрешены**, id не уплотняем. Нет в SERV → пустая клетка; бит на отсутствующий id → MechNotFound / вырезать при record.
+- **B2.** Gaps `axis_id` **разрешены**, id не уплотняем. Нет в SERV → пустая клетка; бит на отсутствующий id → AxisNotFound / вырезать при record.
 - **H2** — см. §3.
 
 ```mermaid
@@ -133,7 +133,7 @@ Telemetry принимается, только если сессия с этим
 
 ## 5. Каталог northbound сообщений
 
-PDU — `smcp/mech/message.hpp`; коды Nack — `ErrorCode` там же; Nack `detail` = `Selection.raw()`.
+PDU — `smcp/Server/message.hpp`; коды Nack — `smcp::segment::Error` там же; Nack `detail` = `Selection.raw()`.
 
 | Id | Msg | Класс | Кто → кому | Смысл |
 |----|-----|-------|------------|--------|
@@ -142,14 +142,14 @@ PDU — `smcp/mech/message.hpp`; коды Nack — `ErrorCode` там же; Nack
 | | **GetTelemetry** | A | Console → Server | Снимки осей по маске (без смены состояния) |
 | | **SetTarget** | A | Console → Server | Цель движения: единицы kind + Absolute \| Relative |
 | 0x22 | **ResetFault** | A | Console → Server | Пустая маска — globalFault (GPIO). Биты — Fault осей |
-| 0x23 | **ServiceUnlock** | A | Console → Server | `pin_hash:u32` LE на сессию: совпал → Ack, нет → Nack |
-| 0x31 | **Get** | A | *(транспорт Node)* | `tag:u8`. Ответ: Data ≤7 или DataBegin→Data*; клиент Ack/Nack |
-| 0x32 | **Set** | A | *(транспорт Node)* | `tag:u8` + ≤7 B inline; длиннее → DataBegin→Data*; server Ack/Nack |
-| 0x33 | **DataBegin** | E | *(транспорт Node)* | `tag\|size\|crc32` (DLC=7); конец по size |
-| 0x34 | **Data** | E | *(транспорт Node)* | кусок / короткий ответ Get: seq\|data≤7 |
+| 0x23 | **ServiceAccess** | A | Console → Server | DLC=0 lock; DLC=4 `pin_hash:u32` unlock (совпал → Ack). Без lock — авто через `kHoldMs` |
+| 0x31 | **Get** | A | *(транспорт Node)* | `tag:u8 \| index:u8`. Ответ: Data ≤6 или DataBegin→Data*; клиент Ack/Nack |
+| 0x32 | **Set** | A | *(транспорт Node)* | `tag \| index` + ≤6 B inline; длиннее → DataBegin→Data*; server Ack/Nack |
+| 0x33 | **DataBegin** | E | *(транспорт Node)* | `tag\|index\|size\|crc32` (DLC=8); конец по size |
+| 0x34 | **Data** | E | *(транспорт Node)* | кусок / короткий ответ Get: `seq u16`\|data≤6 |
 | | **Telemetry** | D | Server → broadcast | Снимок оси после **изменения** состояния / движения / GetTelemetry |
 
-`tag` — opaque `uint8_t`; значения — вместе с объектами. Select/Block/SetTarget/Telemetry/HB — без multi-byte. Dual-axis Telemetry — **не** в MVP.
+`tag` — вид объекта, opaque `uint8_t`; `index` — экземпляр (`0xFF` = весь объект, `0…31` = ось). Значения tag — вместе с объектами. Select/Block/SetTarget/Telemetry/HB — без multi-byte. Dual-axis Telemetry — **не** в MVP.
 
 ### Select → Ack + Telemetry
 
@@ -157,9 +157,9 @@ PDU — `smcp/mech/message.hpp`; коды Nack — `ErrorCode` там же; Nack
 Console:  Select(mask, action, txn_id=N)
 Server:   1) Проверка (без изменений): маска валидна / свободна или наша /
              Ready / не Blocked / `acceptSelect` — иначе Nack
-             (Busy / Safety / NotReady / SelectLimit / MechNotFound)
+             (Busy / Safety / NotReady / SelectLimit / AxisNotFound)
           2) Commit: take и drop в одном проходе, затем Ack + Telemetry по сменившимся
-             (бит ≥ `mechCapacity()` / нет оси → Nack MechNotFound)
+             (бит ≥ `axisCapacity()` / нет оси → Nack AxisNotFound)
 ```
 
 - Лимит Select на сегменте — leaf в `acceptSelect`: слияние (чужие Selected ∪ маска консоли) → **SelectLimit**.
@@ -168,7 +168,7 @@ Server:   1) Проверка (без изменений): маска валид
 - В Telemetry есть **`holder_id`** (кто держит Select). Смена `0 ↔ console` = изменение → Telemetry обязателен.
 - Повторный Select без изменений → **Ack**, Telemetry можно не слать.
 - Массовый Set на 32 оси с 32 изменениями → 1 Ack + 32 Telemetry (редко; ок для CAN).
-- Консоль по Nack с ненулевым `detail` (маска осей) запрашивает **GetTelemetry** по этим осям, кроме `MechNotFound` (осей нет).
+- Консоль по Nack с ненулевым `detail` (маска осей) запрашивает **GetTelemetry** по этим осям, кроме `AxisNotFound` (осей нет).
 
 Telemetry при **движении** — отдельно: по Δposition / rate-limit на стороне сервера (приводной слой). Базовый `IServer` шлёт снимок при смене select / block / SetTarget / GetTelemetry / HbLost, не при движении.
 
@@ -178,9 +178,9 @@ Telemetry при **движении** — отдельно: по Δposition / ra
 
 ```text
 Console:  GetTelemetry(mask, txn_id=N)
-Server:   1) Оси из mask существуют (иначе Nack MechNotFound)
-             Пустая mask = все оси inventory сегмента (`mechCapacity()`)
-             Бит ≥ capacity / нет оси → Nack MechNotFound
+Server:   1) Оси из mask существуют (иначе Nack AxisNotFound)
+             Пустая mask = все оси inventory сегмента (`axisCapacity()`)
+             Бит ≥ capacity / нет оси → Nack AxisNotFound
           2) Ack + Telemetry (D) по каждой запрошенной оси — снимок без commit
 ```
 
@@ -190,7 +190,7 @@ Server:   1) Оси из mask существуют (иначе Nack MechNotFound
 
 ```text
 Console:  Block(mask, action, txn_id=N)
-Server:   1) MechNotFound / `acceptBlock` — иначе Nack
+Server:   1) AxisNotFound / `acceptBlock` — иначе Nack
           2) Commit: Status::Blocked take/drop, снятие Select при block (IAxis::block)
              → Ack + Telemetry по сменившимся
 ```
@@ -204,7 +204,7 @@ Server:   1) MechNotFound / `acceptBlock` — иначе Nack
 ```text
 Console:  SetTarget(target [, axis_id], txn_id=N)
 Server:   1) Одна ось или все с Select этой консоли
-             MechNotFound / не наш Select → Busy / Blocked → Safety /
+             AxisNotFound / не наш Select → Busy / Blocked → Safety /
              не Ready → NotReady / `acceptSetTarget` (Limits) — иначе Nack
              (сначала проверка всех, потом commit)
           2) IAxis::setTarget → Ack + Telemetry по затронутым
@@ -224,7 +224,7 @@ DLC=8: одна ось, `axis_id` в конце.
 ```text
 Console:  ResetFault(mask, txn_id=N)
 Server:   mask пустая → resetGlobalFault (GPIO сегмента) → Ack
-          биты        → нет оси → Nack MechNotFound
+          биты        → нет оси → Nack AxisNotFound
                        иначе IAxis::resetFault → Ack + Telemetry этих осей
 ```
 
@@ -239,17 +239,19 @@ flowchart LR
   RF --> Srv[Сервер сброс fault]
 ```
 
-### Get / Set + ServiceUnlock
+### Get / Set + ServiceAccess
 
-Get/Set/DataBegin/Data — `libs/smcp` (`msg::Id` 0x31…0x34): `set(tag,IBuf)`/`get(tag,IBuf)` + `onSetBuffer`/`onSet`/`onReply` (tag отдельно от `IBuf`).  
-Default Get/Set → Nack `msg::Nack::Error::NotSupported`. Теги / PIN — фаза 7.  
-Порог inline = `kInlineMax` (7); blob/`DataBegin` size≥1. `ServiceUnlock` — northbound `smcp/mech/message.hpp`.  
-Nack: транспорт ≤`Max=0x0F`; прикладной `ErrorCode` с `0x10…`.
+Get/Set/DataBegin/Data — `libs/smcp` (`smcp::session::msgId` 0x31…0x34): `set(tag,IBuf,index)`/`get(tag,IBuf,index)` + `onSetBuffer`/`onSet`/`onReply` (адрес отдельно от `IBuf`).  
+`index = 0xFF` (`kIndexAll`) — весь объект; иначе экземпляр (ось `0…31`). Default Get/Set → Nack `smcp::session::Error::NotSupported`.  
+Теги `smcp::segment::ObjTag`: **AxisProfile** (`0x01`, `axis::Profile`; Get/Set только один `axis_id` + PIN на Set; `kIndexAll` → Nack), **AxisRegistered** (`0x02`, Get-only `Selection` u32 LE — биты inventory). Консоль: Get AxisRegistered → Get AxisProfile по битам в своём ритме. ServiceAccess / PIN — фаза 7.  
+Порог inline = `kInlineMax` (6); blob/`DataBegin` size≥1. `seq` куска — `uint16_t` (повтор кадра — позже, номер уже абсолютный). `ServiceAccess` — northbound `smcp/Server/message.hpp` (DLC=0 lock / DLC=4 unlock; авто-lock `kHoldMs`).  
+Nack: транспорт ≤`Max=0x0F`; прикладной `smcp::segment::Error` с `0x10…`.
 
 ```text
-Get(tag) → Nack | Data(seq=0, ≤7) | DataBegin…Data*   ; без Ack клиента
-Set(tag, ≤7) inline | Set + DataBegin…Data*           ; итог — Ack/Nack приёмника
-ServiceUnlock → Set(tag, …) → multi → Data(hash) broadcast
+Get(tag, index) → Nack | Data(seq=0, ≤6) | DataBegin…Data*   ; без Ack клиента
+Set(tag, index, ≤6) inline | Set + DataBegin…Data*           ; итог — Ack/Nack приёмника
+ServiceAccess(unlock) → Set(tag, …) → multi → Data(hash) broadcast
+ServiceAccess(lock) | timeout kHoldMs → снять сервис с сессии
 ```
 
 ---
@@ -282,7 +284,7 @@ sequenceDiagram
 - **Fio** в multi-byte не участвует: blob → RAM SERV, потом обычный Save.
 - **Смена на сервере online:** broadcast hash (Data / multi) → пульты как при mismatch (предложить / забрать bulk → обновить profile / UI).
 - **Commissioning (вариант C):** обычный режим только читает; `Set` длинного blob — сервис.
-- **WriteConfig (сервис):** PIN → `ServiceUnlock` → `Set(tag_blob)` → multi-byte Node → hash broadcast.
+- **WriteConfig (сервис):** PIN → `ServiceAccess`(unlock) → `Set(tag_blob)` → multi-byte Node → hash broadcast.
 
 **Совместимость пресетов после смены паспорта:**
 - home/scale — только сервис; штатному пульту всё равно (числа PRST = signed int от нуля).
@@ -295,7 +297,7 @@ sequenceDiagram
 
 | | До прода (MVP) | После прода |
 |--|----------------|-------------|
-| Set(blob-тег) | **PIN на сервере** (хэш в NVM) + `ServiceUnlock` на сессию | то же |
+| Set(blob-тег) | **PIN на сервере** (хэш в NVM) + `ServiceAccess` на сессию | то же |
 | Юзеры спектакля на пульте | **нет** — один оператор | уровни Operator/Editor/Admin + опц. PIN в NVM/SETT пульта |
 | Шифрование CAN | нет | если понадобится — отдельно |
 
@@ -391,7 +393,7 @@ sequenceDiagram
 - [ ] Open шоу без SERV запрещён (required)  
 - [x] W25 A/B скрыт от Fio; RAM — единственная рабочая копия  
 - [ ] Preset: все Select Ack → потом SetTarget; Absolute/Relative в target  
-- [ ] Set длинного blob только после ServiceUnlock (PIN на сервере)  
+- [ ] Set длинного blob только после ServiceAccess unlock (PIN на сервере)  
 - [ ] Привод и линк к платам не торчат в northbound  
 
 Расхождения: сначала в «Открытые вопросы» [`IMPLEMENTATION.md`](IMPLEMENTATION.md), после решения — здесь и в плане.

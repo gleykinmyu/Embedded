@@ -20,11 +20,11 @@ public:
     using MConsole::MConsole;
 
 protected:
-    void onMechChanged(uint8_t axis_id) noexcept override;
+    void onAxisChanged(uint8_t axis_id) noexcept override;
     void onConsoleChanged() noexcept override;
     void onGroupAck(uint8_t group_id) noexcept override;
     void onNack(smcp::Session* session, const smcp::TxSlot& req,
-                const smcp::msg::Nack& reply) noexcept override;
+                const smcp::session::Nack& reply) noexcept override;
 };
 
 /** HMI UI: страницы приложения + служебные клавиатуры keybdA/keybdB. */

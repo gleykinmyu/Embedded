@@ -21,7 +21,7 @@ public:
     void boot() noexcept;
     void update() noexcept override;
 
-    void onPageChange(const nex::msg::evPage& e) noexcept override;
+    void onPageChange(const nex::session::evPage& e) noexcept override;
 
 private:
     struct ConsolePage : nex::Page<1> {

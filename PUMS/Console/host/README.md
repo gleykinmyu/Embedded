@@ -79,6 +79,8 @@ n01> get 0x10 0xA1
 На другом окне достаточно `id 0x10` (slave откроется по HB).
 
 ```bash
-make -C host check      # in-process матрица ошибок
-./host/smoke_mesh.sh    # TCP: bus + 2 node
+make -C host check           # in-process матрица ошибок транспорта
+make -C host segment-check   # Console↔Server: AxisRegistered / AxisProfile
+make -C host pool-check      # mem::RangeAllocator
+./host/smoke_mesh.sh         # TCP: bus + 2 node
 ```

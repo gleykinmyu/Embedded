@@ -1,20 +1,17 @@
 /**
  * @file axis_proxy.cpp
- * @brief AxisProxy / AxisProxyTable: TX через IConsole, зеркало Telemetry.
+ * @brief AxisProxy / AxisProxyTable: TX через Console, зеркало Telemetry.
  */
 
 #include "smcp/show/axis_proxy.hpp"
 
-#include "smcp/mech/Console/console.hpp"
+#include "segment/console.hpp"
+#include "smcp/show/console.hpp"
 
 namespace smcp {
 namespace show {
 
-AxisProxy::AxisProxy() noexcept
-    : IAxis(0)
-{}
-
-void AxisProxy::bind(IConsole& console, AxisPool<>& show_patch, uint8_t slot_index) noexcept
+void AxisProxy::bind(segment::Console& console, Patch<>& show_patch, uint8_t slot_index) noexcept
 {
     _console = &console;
     _show = &show_patch;
@@ -24,13 +21,13 @@ void AxisProxy::bind(IConsole& console, AxisPool<>& show_patch, uint8_t slot_ind
 
 void AxisProxy::syncFromPatch() noexcept
 {
-    Patch* const p = patch();
-    if (p == nullptr || !p->isPatched()) {
-        setId(0);
+    PatchRec* const p = patch();
+    if (p == nullptr || !p->isRouted()) {
+        _axis_id = 0;
         _type = nullptr;
         return;
     }
-    setId(p->route.axis_id);
+    _axis_id = p->route.axis_id;
     _type = _show != nullptr ? _show->typeOf(*p) : nullptr;
 }
 
@@ -41,103 +38,118 @@ bool AxisProxy::isBound() const noexcept
 
 bool AxisProxy::isEmpty() const noexcept
 {
-    const Patch* p = patch();
+    const PatchRec* p = patch();
     return p == nullptr || p->isEmpty();
 }
 
-bool AxisProxy::isPatched() const noexcept
+bool AxisProxy::isRouted() const noexcept
 {
-    const Patch* p = patch();
-    return p != nullptr && p->isPatched();
+    const PatchRec* p = patch();
+    return p != nullptr && p->isRouted();
 }
 
-Patch* AxisProxy::patch() noexcept
+PatchRec* AxisProxy::patch() noexcept
 {
-    return _show != nullptr ? _show->patch.get(_slot) : nullptr;
+    return _show != nullptr ? _show->recs.get(_slot) : nullptr;
 }
 
-const Patch* AxisProxy::patch() const noexcept
+const PatchRec* AxisProxy::patch() const noexcept
 {
-    return _show != nullptr ? _show->patch.get(_slot) : nullptr;
+    return _show != nullptr ? _show->recs.get(_slot) : nullptr;
 }
 
 axis::Route AxisProxy::route() const noexcept
 {
-    const Patch* p = patch();
+    const PatchRec* p = patch();
     return p != nullptr ? p->route : axis::Route{};
 }
 
 uint16_t AxisProxy::showId() const noexcept
 {
-    const Patch* p = patch();
+    const PatchRec* p = patch();
     return p != nullptr ? p->id : kIdNone;
 }
 
 const char* AxisProxy::name() const noexcept
 {
-    const Patch* p = patch();
+    const PatchRec* p = patch();
     return p != nullptr ? p->name : "";
 }
 
-void AxisProxy::select(uint8_t console_id) noexcept
+bool AxisProxy::select(uint8_t console_id) noexcept
 {
-    if (!isPatched() || _console == nullptr) {
-        return;
+    if (!isRouted() || _console == nullptr) {
+        return false;
     }
     const axis::Route r = route();
-    Selection sel;
+    segment::Selection sel;
     sel.add(r.axis_id);
-    ServerSession* const s = _console->server(r.server_id);
+    segment::console::Session* const s = _console->session(r.server_id);
     if (s == nullptr) {
-        return;
+        return false;
     }
-    s->select(console_id == kHolderNone ? msg::Action::Remove : msg::Action::Add, sel);
+    return s->select(console_id == kHolderNone ? segment::Action::Remove
+                                               : segment::Action::Add,
+                     sel);
 }
 
-void AxisProxy::block(bool blocked) noexcept
+bool AxisProxy::block(bool blocked) noexcept
 {
-    if (!isPatched() || _console == nullptr) {
-        return;
+    if (!isRouted() || _console == nullptr) {
+        return false;
     }
     const axis::Route r = route();
-    Selection sel;
+    segment::Selection sel;
     sel.add(r.axis_id);
-    ServerSession* const s = _console->server(r.server_id);
+    segment::console::Session* const s = _console->session(r.server_id);
     if (s == nullptr) {
-        return;
+        return false;
     }
-    s->block(blocked ? msg::Action::Add : msg::Action::Remove, sel);
+    return s->block(blocked ? segment::Action::Add : segment::Action::Remove, sel);
 }
 
-void AxisProxy::setTarget(const MotionTarget& target) noexcept
+bool AxisProxy::setTarget(const axis::MotionTarget& target) noexcept
 {
-    if (!isPatched() || _console == nullptr) {
-        return;
+    if (!isRouted() || _console == nullptr) {
+        return false;
     }
     const axis::Route r = route();
-    ServerSession* const s = _console->server(r.server_id);
+    segment::console::Session* const s = _console->session(r.server_id);
     if (s == nullptr) {
-        return;
+        return false;
     }
-    s->setTarget(r.axis_id, target);
+    return s->setTarget(r.axis_id, target);
 }
 
-void AxisProxy::resetFault() noexcept
+bool AxisProxy::resetFault() noexcept
 {
-    if (!isPatched() || _console == nullptr) {
-        return;
+    if (!isRouted() || _console == nullptr) {
+        return false;
     }
     const axis::Route r = route();
-    ServerSession* const s = _console->server(r.server_id);
+    segment::console::Session* const s = _console->session(r.server_id);
     if (s == nullptr) {
-        return;
+        return false;
     }
-    s->resetFault(Selection::of(r.axis_id));
+    return s->resetFault(segment::Selection::of(r.axis_id));
 }
 
-void AxisProxy::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
+const axis::Profile* AxisProxy::profile() const noexcept
 {
-    if (!isPatched()) {
+    if (!isRouted() || _console == nullptr) {
+        return nullptr;
+    }
+    const axis::Route r = route();
+    auto* const s = static_cast<Session*>(_console->session(r.server_id));
+    if (s == nullptr) {
+        return nullptr;
+    }
+    return s->profile(r.axis_id);
+}
+
+void AxisProxy::onTelemetry(uint8_t src_id, const segment::Telemetry& telemetry) noexcept
+{
+    if (!isRouted()) {
         return;
     }
     const axis::Route r = route();
@@ -154,10 +166,9 @@ void AxisProxy::clearLive() noexcept
     _holder = kHolderNone;
     _position = 0;
     _status = {};
-    _profile = nullptr;
 }
 
-AxisProxyTable::AxisProxyTable(AxisPool<>& show_patch, IConsole& console) noexcept
+AxisProxyTable::AxisProxyTable(Patch<>& show_patch, segment::Console& console) noexcept
     : _show(&show_patch)
     , _console(&console)
 {
@@ -185,19 +196,19 @@ const AxisProxy& AxisProxyTable::operator[](uint8_t i) const noexcept
 
 AxisProxy* AxisProxyTable::byId(uint16_t id) noexcept
 {
-    Patch* p = _show->patch.byId(id);
+    PatchRec* p = _show->recs.byId(id);
     if (p == nullptr) {
         return nullptr;
     }
     for (uint8_t i = 0; i < kCount; ++i) {
-        if (_show->patch.get(i) == p) {
+        if (_show->recs.get(i) == p) {
             return &_axes[i];
         }
     }
     return nullptr;
 }
 
-void AxisProxyTable::onTelemetry(uint8_t src_id, const msg::Telemetry& telemetry) noexcept
+void AxisProxyTable::onTelemetry(uint8_t src_id, const segment::Telemetry& telemetry) noexcept
 {
     for (uint8_t i = 0; i < kCount; ++i) {
         _axes[i].onTelemetry(src_id, telemetry);
@@ -213,11 +224,7 @@ void AxisProxyTable::clearLive() noexcept
 
 void AxisProxyTable::clearProfiles(uint8_t server_id) noexcept
 {
-    for (uint8_t i = 0; i < kCount; ++i) {
-        if (_axes[i].route().server_id == server_id) {
-            _axes[i].setProfile(nullptr);
-        }
-    }
+    (void)server_id;
 }
 
 } // namespace show

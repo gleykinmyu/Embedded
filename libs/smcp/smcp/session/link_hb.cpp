@@ -7,7 +7,7 @@
 #include "smcp/debug.hpp"
 #include "smcp/session.hpp"
 
-namespace smcp {
+namespace smcp::session {
 
 LinkHb::LinkHb(Session& session) noexcept
     : _s(session)
@@ -35,8 +35,12 @@ void LinkHb::connect() noexcept
     setStatus(Status::Connecting);
 }
 
-void LinkHb::idle() noexcept
+void LinkHb::idle(Node::Link link) noexcept
 {
+    if (link == Node::Link::Up) {
+        link = Node::Link::Down;
+    }
+    _down = link;
     _hb.clear();
     setStatus(Status::Idle);
 }
@@ -46,29 +50,33 @@ void LinkHb::setStatus(Status status) noexcept
     if (status == _status) {
         return;
     }
+    const bool was_idle = (_status == Status::Idle);
     const bool was_open = (_status == Status::Open);
     SMCP_LOG(SMCP_SESS,
-        "S%u %s>%s p=%u\n",
-        "[SMCP] Session[%u] status %s -> %s peer=%u\n",
-        static_cast<unsigned>(_s.id()),
+        "S %s>%s p=%u\n",
+        "[SMCP] Session status %s -> %s peer=%u\n",
         cstr(_status),
         cstr(status),
         static_cast<unsigned>(_s.peerId()));
     _status = status;
+    const bool now_idle = (_status == Status::Idle);
     const bool now_open = (_status == Status::Open);
-    if (was_open != now_open) {
-        _s.node.onLink(&_s, now_open);
+    if (now_open && !was_open) {
+        _s.node.onLink(&_s, Node::Link::Up);
+    } else if (now_idle && !was_idle) {
+        _s.node.onLink(&_s, _down);
+        _down = Node::Link::Down;
     }
 }
 
 void LinkHb::ping(uint32_t now_ms) noexcept
 {
     Message m{};
-    m.id = msg::Heartbeat::kId;
+    m.id = Heartbeat::kId;
     if (!_s.send(m)) {
         return;
     }
-    _hb.start(now_ms, msg::Heartbeat::kTimeoutMs);
+    _hb.start(now_ms, Heartbeat::kTimeoutMs);
     if (_status != Status::Open) {
         setStatus(Status::Awaiting);
     }
@@ -77,13 +85,13 @@ void LinkHb::ping(uint32_t now_ms) noexcept
 void LinkHb::pong() noexcept
 {
     Message m{};
-    m.id = msg::Heartbeat::kId;
+    m.id = Heartbeat::kId;
     _s.send(m);
 }
 
 bool LinkHb::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
 {
-    if (pkt.msg.id != msg::Heartbeat::kId) {
+    if (pkt.msg.id != Heartbeat::kId) {
         return false;
     }
     const uint8_t src_id = pkt.src_id;
@@ -101,7 +109,7 @@ bool LinkHb::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
         pong();
     }
     _hb.clear();
-    _hb.start(now_ms, msg::Heartbeat::kTimeoutMs, false);
+    _hb.start(now_ms, Heartbeat::kTimeoutMs, false);
     setStatus(Status::Open);
     return true;
 }
@@ -118,7 +126,7 @@ void LinkHb::tick(uint32_t now_ms) noexcept
 
     if (_s.isMaster()) {
         if (_hb.isWaiting() && _hb.isReplyLimit()) {
-            _s.close(Session::Fault::HbLost);
+            _s.close(Session::Link::HbLost);
             return;
         }
         ping(now_ms);
@@ -126,10 +134,10 @@ void LinkHb::tick(uint32_t now_ms) noexcept
     }
 
     if (_hb.isReplyLimit()) {
-        _s.close(Session::Fault::HbLost);
+        _s.close(Session::Link::HbLost);
         return;
     }
-    _hb.start(now_ms, msg::Heartbeat::kTimeoutMs, false);
+    _hb.start(now_ms, Heartbeat::kTimeoutMs, false);
 }
 
-} // namespace smcp
+} // namespace smcp::session

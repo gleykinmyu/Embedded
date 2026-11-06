@@ -82,7 +82,7 @@ struct Mesh {
             const uint32_t d = left < step_ms ? left : step_ms;
             g_now += d;
             for (auto& a : agents) {
-                if (a->node.getStatus() != smcp::Node::Status::Idle) {
+                if (a->node.getState() != smcp::Node::State::Idle) {
                     a->node.update();
                 }
             }
@@ -96,7 +96,7 @@ struct Mesh {
         char name[8]{};
         std::snprintf(name, sizeof(name), "n%02X", static_cast<unsigned>(id));
         a.node.setName(name);
-        pump(smcp::msg::Heartbeat::kTimeoutMs + 20u);
+        pump(smcp::session::Heartbeat::kTimeoutMs + 20u);
     }
 
     bool openLink(Agent& master, Agent& slave)
@@ -135,15 +135,15 @@ void case_begin_invalid()
     Mesh m;
     Agent& a = m.add();
     a.node.begin(0);
-    CHECK(a.node.getStatus() == smcp::Node::Status::Idle);
+    CHECK(a.node.getState() == smcp::Node::State::Idle);
     a.node.begin(smcp::Packet::kBroadcastId);
-    CHECK(a.node.getStatus() == smcp::Node::Status::Idle);
+    CHECK(a.node.getState() == smcp::Node::State::Idle);
     a.node.begin(1);
-    CHECK(a.node.getStatus() == smcp::Node::Status::Listen);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs + 20u);
+    CHECK(a.node.getState() == smcp::Node::State::Listen);
+    m.pump(smcp::session::Heartbeat::kTimeoutMs + 20u);
     CHECK(a.node.isReady());
     a.node.end();
-    CHECK(a.node.getStatus() == smcp::Node::Status::Idle);
+    CHECK(a.node.getState() == smcp::Node::State::Idle);
 }
 
 void case_session_open_close()
@@ -156,7 +156,7 @@ void case_session_open_close()
     m.ready(b, 2);
     CHECK(m.openLink(a, b));
     m.log.clear();
-    a.node.peer(2)->close(smcp::Node::Fault::None);
+    a.node.peer(2)->close(smcp::Node::Link::Down);
     m.pump(50u);
     CHECK(a.node.peer(2) == nullptr
         || a.node.peer(2)->getStatus() == smcp::Session::Status::Idle);
@@ -191,34 +191,34 @@ void case_set_get_inline_multi()
     uint8_t reply[64]{};
     smcp::IBuf rb{reply, sizeof(reply)};
 
-    uint8_t exact[smcp::msg::kInlineMax]{};
-    for (uint8_t i = 0; i < smcp::msg::kInlineMax; ++i) {
+    uint8_t exact[smcp::session::kInlineMax]{};
+    for (uint8_t i = 0; i < smcp::session::kInlineMax; ++i) {
         exact[i] = static_cast<uint8_t>(0x10u + i);
     }
-    smcp::IBuf ib{exact, smcp::msg::kInlineMax};
+    smcp::IBuf ib{exact, smcp::session::kInlineMax};
     s->clearFlags();
-    CHECK(s->set(smcp::host::kTagEcho, ib));
+    CHECK(s->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
-    CHECK(peer->storeLen() == smcp::msg::kInlineMax);
+    CHECK(peer->storeLen() == smcp::session::kInlineMax);
     s->clearFlags();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(300u);
     CHECK(s->lastReplyOk());
-    CHECK(s->lastReplyLen() == smcp::msg::kInlineMax);
-    CHECK(std::memcmp(s->lastReply(), exact, smcp::msg::kInlineMax) == 0);
+    CHECK(s->lastReplyLen() == smcp::session::kInlineMax);
+    CHECK(std::memcmp(s->lastReply(), exact, smcp::session::kInlineMax) == 0);
 
-    constexpr uint16_t kMulti = static_cast<uint16_t>(smcp::msg::kInlineMax + 1u);
+    constexpr uint16_t kMulti = static_cast<uint16_t>(smcp::session::kInlineMax + 1u);
     uint8_t big[16]{};
     for (uint8_t i = 0; i < kMulti; ++i) {
         big[i] = static_cast<uint8_t>(0xA0u + i);
     }
     smcp::IBuf mb{big, kMulti};
     s->clearFlags();
-    CHECK(s->set(smcp::host::kTagEcho, mb));
+    CHECK(s->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(400u);
     CHECK(peer->storeLen() == kMulti);
     s->clearFlags();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(400u);
     CHECK(s->lastReplyOk());
     CHECK(s->lastReplyLen() == kMulti);
@@ -237,25 +237,26 @@ void case_set_get_api_edges()
     smcp::IBuf ib{raw, 4};
     uint8_t reply[32]{};
     smcp::IBuf rb{reply, sizeof(reply)};
-    CHECK(!a.node.sess().set(smcp::host::kTagEcho, ib)); /* !open */
+    CHECK(a.node.sess().set(smcp::host::kTagEcho, ib)
+          != smcp::session::TaggedOps::Result::Ok); /* !open */
     CHECK(m.openLink(a, b));
     auto* s = a.node.peer(2);
     smcp::IBuf empty{raw, 0};
-    CHECK(!s->set(smcp::host::kTagEcho, empty)); /* size=0 */
-    CHECK(!s->get(smcp::host::kTagEcho, empty)); /* size=0 */
+    CHECK(s->set(smcp::host::kTagEcho, empty) != smcp::session::TaggedOps::Result::Ok); /* size=0 */
+    CHECK(s->get(smcp::host::kTagEcho, empty) != smcp::session::TaggedOps::Result::Ok); /* size=0 */
 
-    CHECK(s->set(smcp::host::kTagEcho, ib));
-    CHECK(!s->set(smcp::host::kTagEcho, ib)); /* SetOut* → busy */
-    CHECK(!s->get(smcp::host::kTagEcho, rb)); /* один job */
+    CHECK(s->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
+    CHECK(s->set(smcp::host::kTagEcho, ib) != smcp::session::TaggedOps::Result::Ok); /* SetOut* → busy */
+    CHECK(s->get(smcp::host::kTagEcho, rb) != smcp::session::TaggedOps::Result::Ok); /* один job */
     m.pump(200u);
 
     /* seed + GetAsk → set/get локально false */
-    CHECK(s->set(smcp::host::kTagEcho, ib));
+    CHECK(s->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
     s->clearFlags();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
-    CHECK(!s->get(smcp::host::kTagEcho, rb));
-    CHECK(!s->set(smcp::host::kTagEcho, ib));
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
+    CHECK(s->get(smcp::host::kTagEcho, rb) != smcp::session::TaggedOps::Result::Ok);
+    CHECK(s->set(smcp::host::kTagEcho, ib) != smcp::session::TaggedOps::Result::Ok);
     m.pump(300u);
     CHECK(s->lastReplyOk());
 }
@@ -274,22 +275,22 @@ void case_nack_not_supported()
     uint8_t reply[32]{};
     smcp::IBuf rb{reply, sizeof(reply)};
     m.log.clear();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(300u);
     CHECK(m.log.has(1, "Nack", "NotSupported"));
     CHECK(!s->lastReplyOk());
-    CHECK(s->lastReplyErr() == smcp::MultiByte::Error::Abort);
+    CHECK(s->lastReplyErr() == smcp::session::MultiByte::Error::Abort);
 
     m.log.clear();
     uint8_t raw[3] = {1, 2, 3};
     smcp::IBuf ib{raw, 3};
-    CHECK(s->set(0x22, ib));
+    CHECK(s->set(0x22, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
     CHECK(m.log.has(1, "Nack", "NotSupported"));
 
     b.node.setRxPolicy(smcp::host::RxPolicy::Reject);
     m.log.clear();
-    CHECK(s->set(smcp::host::kTagEcho, ib));
+    CHECK(s->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
     CHECK(m.log.has(1, "Nack", "NotSupported"));
 }
@@ -307,7 +308,7 @@ void case_nack_busy_policy()
     uint8_t reply[8]{};
     smcp::IBuf rb{reply, sizeof(reply)};
     m.log.clear();
-    CHECK(a.node.peer(2)->get(smcp::host::kTagEcho, rb));
+    CHECK(a.node.peer(2)->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(300u);
     CHECK(m.log.has(1, "Nack", "Busy"));
     CHECK(!a.node.peer(2)->lastReplyOk());
@@ -326,12 +327,12 @@ void case_fsm_busy_wire()
 
     uint8_t seed[4] = {1, 2, 3, 4};
     smcp::IBuf ib{seed, 4};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
 
     uint8_t reply[32]{};
     smcp::IBuf rb{reply, sizeof(reply)};
-    CHECK(a.node.peer(2)->get(smcp::host::kTagEcho, rb)); /* A: GetAsk + MB Rx */
+    CHECK(a.node.peer(2)->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok); /* A: GetAsk + MB Rx */
 
     uint8_t big[24]{};
     for (uint8_t i = 0; i < 24u; ++i) {
@@ -339,7 +340,7 @@ void case_fsm_busy_wire()
     }
     smcp::IBuf mb{big, 24};
     m.log.clear();
-    CHECK(b.node.peer(1)->set(smcp::host::kTagEcho, mb)); /* B Set → A busy */
+    CHECK(b.node.peer(1)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok); /* B Set → A busy */
     m.pump(500u);
     CHECK(m.log.has(2, "Nack", "Busy"));
 }
@@ -364,8 +365,8 @@ void case_mb_half_duplex()
     smcp::IBuf ia{pa, 20};
     smcp::IBuf ibuf{pb, 20};
     m.log.clear();
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ia));
-    CHECK(b.node.peer(1)->set(smcp::host::kTagEcho, ibuf));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ia) == smcp::session::TaggedOps::Result::Ok);
+    CHECK(b.node.peer(1)->set(smcp::host::kTagEcho, ibuf) == smcp::session::TaggedOps::Result::Ok);
     m.pump(600u);
     const bool busy =
         m.log.has(1, "Nack", "Busy") || m.log.has(2, "Nack", "Busy");
@@ -385,7 +386,7 @@ void case_mb_rx_timeout()
 
     uint8_t seed[4] = {1, 2, 3, 4};
     smcp::IBuf ib{seed, 4};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
     m.pump(200u);
 
     b.can.setMute(true, false); /* B слышит Get, тело не отдаёт */
@@ -393,10 +394,10 @@ void case_mb_rx_timeout()
     smcp::IBuf rb{reply, sizeof(reply)};
     auto* s = a.node.peer(2);
     s->clearFlags();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
-    m.pump(smcp::msg::DataBegin::kTimeoutMs * 3u);
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
+    m.pump(smcp::session::DataBegin::kTimeoutMs * 3u);
     CHECK(!s->lastReplyOk());
-    CHECK(s->lastReplyErr() == smcp::MultiByte::Error::Timeout);
+    CHECK(s->lastReplyErr() == smcp::session::MultiByte::Error::Timeout);
 }
 
 void case_mb_get_overflow()
@@ -415,17 +416,17 @@ void case_mb_get_overflow()
         big[i] = static_cast<uint8_t>(0x40u + i);
     }
     smcp::IBuf mb{big, 16};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(400u);
 
     uint8_t tiny[8]{};
     smcp::IBuf rb{tiny, sizeof(tiny)};
     auto* s = a.node.peer(2);
     s->clearFlags();
-    CHECK(s->get(smcp::host::kTagEcho, rb));
+    CHECK(s->get(smcp::host::kTagEcho, rb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(400u);
     CHECK(!s->lastReplyOk());
-    CHECK(s->lastReplyErr() == smcp::MultiByte::Error::Overflow);
+    CHECK(s->lastReplyErr() == smcp::session::MultiByte::Error::Overflow);
 }
 
 void case_close_mid_set_abort()
@@ -444,14 +445,14 @@ void case_close_mid_set_abort()
 
     uint8_t big[32]{};
     smcp::IBuf mb{big, 32};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(20u); /* A SetOut, B SetIn */
 
     auto* bs = b.node.peer(1);
     bs->clearFlags();
-    bs->close(smcp::Node::Fault::None);
+    bs->close(smcp::Node::Link::Down);
     m.pump(30u);
-    CHECK(bs->lastSetErr() == smcp::MultiByte::Error::Abort);
+    CHECK(bs->lastSetErr() == smcp::session::MultiByte::Error::Abort);
     CHECK(!bs->isOpen());
 }
 
@@ -467,10 +468,10 @@ void case_close_setout_nack()
 
     uint8_t big[32]{};
     smcp::IBuf mb{big, 32};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(20u);
     m.log.clear();
-    a.node.peer(2)->close(smcp::Node::Fault::None);
+    a.node.peer(2)->close(smcp::Node::Link::Down);
     m.pump(30u);
     CHECK(m.log.has(1, "Nack", "Body"));
 }
@@ -486,7 +487,7 @@ void case_hblost_mute_tx()
     CHECK(m.openLink(a, b));
     m.log.clear();
     b.can.setMute(true, false);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs * (smcp::msg::Heartbeat::kMissMax + 3u));
+    m.pump(smcp::session::Heartbeat::kTimeoutMs * (smcp::session::Heartbeat::kMissMax + 3u));
     CHECK(m.log.has(1, "SessionFault", "HbLost"));
     CHECK(a.node.isReady());
     b.can.setMute(false, false);
@@ -504,7 +505,7 @@ void case_hblost_mute_rx()
     CHECK(m.openLink(a, b));
     m.log.clear();
     a.can.setMute(false, true);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs * (smcp::msg::Heartbeat::kMissMax + 3u));
+    m.pump(smcp::session::Heartbeat::kTimeoutMs * (smcp::session::Heartbeat::kMissMax + 3u));
     CHECK(m.log.has(1, "SessionFault", "HbLost"));
 }
 
@@ -522,8 +523,9 @@ void case_id_conflict_newcomer()
     Agent& dup = m.add();
     dup.node.begin(1);
     dup.node.setName("dup");
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs + 40u);
-    CHECK(dup.node.getStatus() == smcp::Node::Status::IdConflict);
+    m.pump(smcp::session::Heartbeat::kTimeoutMs + 40u);
+    CHECK(dup.node.getState() == smcp::Node::State::Idle);
+    CHECK(dup.node.error() == smcp::Node::Error::IdConflict);
     CHECK(a.node.isReady());
     CHECK(a.node.peer(2) != nullptr && a.node.peer(2)->isOpen());
     CHECK(b.node.isReady());
@@ -544,8 +546,8 @@ void case_id_conflict_silent_twins()
     CHECK(a.node.startPeer(3) != nullptr);
     m.pump(400u);
     const bool one_dead =
-        a.node.getStatus() == smcp::Node::Status::IdConflict
-        || twin.node.getStatus() == smcp::Node::Status::IdConflict;
+        (a.node.getState() == smcp::Node::State::Idle && a.node.error() == smcp::Node::Error::IdConflict)
+        || (twin.node.getState() == smcp::Node::State::Idle && twin.node.error() == smcp::Node::Error::IdConflict);
     CHECK(one_dead);
 }
 
@@ -559,8 +561,8 @@ void case_fault_does_not_kill_incumbent()
     m.ready(b, 2);
     CHECK(m.openLink(a, b));
 
-    smcp::msg::Fault body{};
-    body.error = smcp::msg::Fault::kIdConflict;
+    smcp::session::Fault body{};
+    body.error = smcp::session::Fault::kIdConflict;
     body.setDetailStr("ghost");
     smcp::Message msg{};
     CHECK(body.pack(msg));
@@ -585,10 +587,11 @@ void case_id_conflict_clear_retry()
     CHECK(m.openLink(a, b));
     Agent& dup = m.add();
     dup.node.begin(1);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs + 40u);
-    CHECK(dup.node.getStatus() == smcp::Node::Status::IdConflict);
+    m.pump(smcp::session::Heartbeat::kTimeoutMs + 40u);
+    CHECK(dup.node.getState() == smcp::Node::State::Idle);
+    CHECK(dup.node.error() == smcp::Node::Error::IdConflict);
     dup.node.begin(4);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs + 20u);
+    m.pump(smcp::session::Heartbeat::kTimeoutMs + 20u);
     CHECK(dup.node.isReady());
     CHECK(dup.node.id() == 4u);
 }
@@ -621,9 +624,9 @@ void case_ack_timeout()
     uint8_t raw[3] = {9, 8, 7};
     smcp::IBuf ib{raw, 3};
     m.log.clear();
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib));
-    m.pump(static_cast<uint32_t>(smcp::msg::Ack::kTimeoutMs)
-        * (smcp::msg::Ack::kRetry + 2u));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, ib) == smcp::session::TaggedOps::Result::Ok);
+    m.pump(static_cast<uint32_t>(smcp::session::Ack::kTimeoutMs)
+        * (smcp::session::Ack::kRetry + 2u));
     CHECK(m.log.has(1, "Nack", "Timeout"));
 }
 
@@ -636,7 +639,7 @@ void case_awaiting_hblost()
     m.ready(a, 1);
     m.log.clear();
     CHECK(a.node.startPeer(0x50) != nullptr);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs * (smcp::msg::Heartbeat::kMissMax + 3u));
+    m.pump(smcp::session::Heartbeat::kTimeoutMs * (smcp::session::Heartbeat::kMissMax + 3u));
     CHECK(m.log.has(1, "SessionFault", "HbLost"));
     CHECK(a.node.isReady());
 }
@@ -653,10 +656,10 @@ void case_body_bad_seq()
 
     uint8_t big[16]{};
     smcp::IBuf mb{big, 16};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(30u); /* Set opener + DataBegin на шине */
 
-    smcp::msg::Data chunk{};
+    smcp::session::Data chunk{};
     chunk.seq = 9;
     chunk.len = 3;
     chunk.data[0] = 1;
@@ -692,13 +695,13 @@ void case_body_bad_crc()
         payload[i] = static_cast<uint8_t>(i + 1u);
     }
     smcp::IBuf mb{payload, 8};
-    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb));
+    CHECK(a.node.peer(2)->set(smcp::host::kTagEcho, mb) == smcp::session::TaggedOps::Result::Ok);
     m.pump(10u); /* Set opener → B SetIn */
     a.can.setMute(true, false); /* глушим настоящий DataBegin/Data */
 
     const uint8_t txn = a.node.peer(2)->txnId();
     smcp::Message begin_msg{};
-    CHECK(smcp::msg::DataBegin::make(smcp::host::kTagEcho, 8, 0xDEADBEEFu)
+    CHECK(smcp::session::DataBegin::make(smcp::host::kTagEcho, 8, 0xDEADBEEFu)
               .pack(begin_msg));
     smcp::Packet begin_pkt{};
     begin_pkt.src_id = 1;
@@ -708,7 +711,7 @@ void case_body_bad_crc()
     m.sendAs(a, begin_pkt);
 
     smcp::Message d0{};
-    CHECK(smcp::msg::Data::make(0, payload, 7).pack(d0));
+    CHECK(smcp::session::Data::make(0, payload, 7).pack(d0));
     smcp::Packet p0{};
     p0.src_id = 1;
     p0.dst_id = 2;
@@ -717,7 +720,7 @@ void case_body_bad_crc()
     m.sendAs(a, p0);
 
     smcp::Message d1{};
-    CHECK(smcp::msg::Data::make(1, payload + 7, 1).pack(d1));
+    CHECK(smcp::session::Data::make(1, payload + 7, 1).pack(d1));
     smcp::Packet p1{};
     p1.src_id = 1;
     p1.dst_id = 2;
@@ -742,14 +745,14 @@ void case_own_src_id_conflict()
     CHECK(m.openLink(a, b));
 
     smcp::Message hb{};
-    hb.id = smcp::msg::Heartbeat::kId;
+    hb.id = smcp::session::Heartbeat::kId;
     smcp::Packet pkt{};
     pkt.src_id = 1;
     pkt.dst_id = 2;
     pkt.msg = hb;
     m.inject(pkt);
     m.pump(40u);
-    CHECK(a.node.getStatus() == smcp::Node::Status::IdConflict);
+    CHECK((a.node.getState() == smcp::Node::State::Idle && a.node.error() == smcp::Node::Error::IdConflict));
 }
 
 void case_ghost_hb_bind()
@@ -760,7 +763,7 @@ void case_ghost_hb_bind()
     m.ready(a, 1);
 
     smcp::Message hb{};
-    hb.id = smcp::msg::Heartbeat::kId;
+    hb.id = smcp::session::Heartbeat::kId;
     smcp::Packet bc{};
     bc.src_id = 0x40;
     bc.dst_id = smcp::Packet::kBroadcastId;
@@ -794,7 +797,7 @@ void case_three_node_mesh()
     CHECK(m.openLink(a, b));
     CHECK(m.openLink(a, c));
     b.can.setMute(true, false);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs * (smcp::msg::Heartbeat::kMissMax + 3u));
+    m.pump(smcp::session::Heartbeat::kTimeoutMs * (smcp::session::Heartbeat::kMissMax + 3u));
     CHECK(m.log.has(1, "SessionFault", "peer=0x02"));
     CHECK(a.node.peer(3) != nullptr && a.node.peer(3)->isOpen());
     CHECK(c.node.isReady());
@@ -810,7 +813,7 @@ void case_begin_resets_sessions()
     m.ready(b, 2);
     CHECK(m.openLink(a, b));
     a.node.begin(5);
-    m.pump(smcp::msg::Heartbeat::kTimeoutMs + 20u);
+    m.pump(smcp::session::Heartbeat::kTimeoutMs + 20u);
     CHECK(a.node.isReady());
     CHECK(a.node.id() == 5u);
     CHECK(a.node.sessionByPeer(2) == nullptr

@@ -6,7 +6,7 @@
 
 #include "smcp/session.hpp"
 
-namespace smcp {
+namespace smcp::session {
 
 ReplyWnd::ReplyWnd(Session& session) noexcept
     : _s(session)
@@ -25,7 +25,7 @@ void ReplyWnd::abort(bool notify) noexcept
 {
     if (notify && _ack.isWaiting()) {
         if (const TxSlot* h = _q.peek()) {
-            _s.nack(*h, msg::Nack::Error::Body,
+            _s.nack(*h, Error::Body,
                     static_cast<uint32_t>(MultiByte::Error::Abort));
         }
     }
@@ -45,12 +45,12 @@ const TxSlot* ReplyWnd::peek(uint32_t now_ms) noexcept
 
 void ReplyWnd::startAck(uint32_t now_ms) noexcept
 {
-    _ack.start(now_ms, msg::Ack::kTimeoutMs);
+    _ack.start(now_ms, Ack::kTimeoutMs);
 }
 
 bool ReplyWnd::onPacket(const Packet& pkt) noexcept
 {
-    if (pkt.msg.id != msg::Ack::kId && pkt.msg.id != msg::Nack::kId) {
+    if (pkt.msg.id != Ack::kId && pkt.msg.id != Nack::kId) {
         return false;
     }
     if (!_ack.isWaiting()) {
@@ -61,12 +61,12 @@ bool ReplyWnd::onPacket(const Packet& pkt) noexcept
         return false;
     }
 
-    SMCP_IF_MSG(msg::Nack) {
+    SMCP_IF_MSG(Nack) {
         _s.nack(*h, body);
         _ack.clear();
         _q.drop();
         return true;
-    } else SMCP_IF_MSG(msg::Ack) {
+    } else SMCP_IF_MSG(Ack) {
         _s.ack(*h, body);
         _ack.clear();
         _q.drop();
@@ -86,8 +86,8 @@ void ReplyWnd::tick(uint32_t now_ms) noexcept
     if (h == nullptr) {
         return;
     }
-    _s.nack(*h, msg::Nack::kTimeout);
+    _s.nack(*h, Error::Timeout);
     _q.drop();
 }
 
-} // namespace smcp
+} // namespace smcp::session

@@ -8,7 +8,7 @@
 
 #include <cstring>
 
-namespace smcp {
+namespace smcp::session {
 
 TaggedOps::TaggedOps(Session& session, MultiByte& mb) noexcept
     : _s(session)
@@ -29,7 +29,7 @@ void TaggedOps::beginAck(uint8_t txn, uint8_t msg_id, uint32_t now_ms) noexcept
     _pend.txn_id = txn;
     _pend.msg.id = msg_id;
     _pend.dst_id = _s.peerId();
-    _ack.start(now_ms, msg::Ack::kTimeoutMs);
+    _ack.start(now_ms, Ack::kTimeoutMs);
 }
 
 void TaggedOps::reset() noexcept
@@ -45,147 +45,179 @@ void TaggedOps::abort(bool notify) noexcept
     _mb.abort();
     if (notify) {
         if (_state == State::GetAsk) {
-            _s.onReply(getTag(), _mb.bufReceived(), MultiByte::Error::Abort);
+            uint8_t tag = 0;
+            uint8_t index = 0;
+            readOpener(tag, index);
+            _s.onReply(tag, index, _mb.bufReceived(), MultiByte::Error::Abort);
         } else if (_state == State::SetIn) {
             /* Wire Nack(Abort): писатель в SetOutAwaitAck / mid-TX узнает сразу. */
-            finishSetIn(_mb.tag(), _mb.bufReceived(), MultiByte::Error::Abort, _mb.txn());
+            finishSetIn(_mb.tag(), _mb.index(), _mb.bufReceived(),
+                        MultiByte::Error::Abort, _mb.txn());
         } else if (isSetOut()) {
-            _s.nack(_pend, msg::Nack::Error::Body,
+            _s.nack(_pend, Error::Body,
                     static_cast<uint32_t>(MultiByte::Error::Abort));
         }
     }
     reset();
 }
 
-bool TaggedOps::takeSetBuf(uint8_t tag, uint8_t txn_id, uint16_t size,
-                           IBuf& buf) noexcept
+bool TaggedOps::takeSetBuf(uint8_t tag, uint8_t index, uint8_t txn_id,
+                           uint16_t size, IBuf& buf) noexcept
 {
-    return _s.onSetBuffer(tag, txn_id, size, buf)
+    return _s.onSetBuffer(tag, index, txn_id, size, buf)
         && buf.size >= size
         && (size == 0u || buf.data != nullptr);
 }
 
-void TaggedOps::finishSetIn(uint8_t tag, const IBuf& buf, MultiByte::Error err,
-                            uint8_t txn) noexcept
+void TaggedOps::finishSetIn(uint8_t tag, uint8_t index, const IBuf& buf,
+                            MultiByte::Error err, uint8_t txn) noexcept
 {
-    _s.onSet(tag, buf, err);
+    if (err != MultiByte::Error::None) {
+        if (txn != 0u) {
+            _s.sendNack(txn, Error::Body, static_cast<uint32_t>(err));
+        }
+        return;
+    }
+    const vError code = _s.onSet(tag, index, buf);
     if (txn == 0u) {
         return;
     }
-    if (err == MultiByte::Error::None) {
+    if (code == Error::None) {
         _s.sendAck(txn);
     } else {
-        _s.sendNack(txn, msg::Nack::Error::Body, static_cast<uint32_t>(err));
+        _s.sendNack(txn, code);
     }
 }
 
-bool TaggedOps::sendBody(uint8_t tag, const IBuf& buf, uint8_t txn_id) noexcept
+bool TaggedOps::sendBody(uint8_t tag, const IBuf& buf, uint8_t txn_id,
+                         uint8_t index) noexcept
 {
     if (!_s.isOpen() || txn_id == 0u || buf.size == 0u || buf.data == nullptr) {
         return false;
     }
     /* Короткий Get reply — на wire (не трогает state / MB). */
-    if (buf.size <= msg::kInlineMax) {
-        return _s.send(msg::Data::make(buf.data, static_cast<uint8_t>(buf.size)),
+    if (buf.size <= kInlineMax) {
+        return _s.send(Data::make(buf.data, static_cast<uint8_t>(buf.size)),
                        txn_id);
     }
     /* Длинный — нужен MB; нельзя поверх чужого job. */
     if (isBusy()) {
         return false;
     }
-    if (!_mb.armTx(tag, buf, txn_id, this)) {
+    if (!_mb.armTx(tag, buf, txn_id, this, index)) {
         return false;
     }
     _state = State::GetReply;
     return true;
 }
 
-bool TaggedOps::set(uint8_t tag, const IBuf& buf) noexcept
+const char* TaggedOps::cstr(Result s) noexcept
 {
-    if (!_s.isOpen() || buf.size == 0u || buf.data == nullptr || isBusy()) {
-        return false;
+    switch (s) {
+    case Result::Ok: return "Ok";
+    case Result::Busy: return "Busy";
+    case Result::Fail: return "Fail";
+    }
+    return "?";
+}
+
+TaggedOps::Result TaggedOps::set(uint8_t tag, const IBuf& buf, uint8_t index) noexcept
+{
+    if (!_s.isOpen() || buf.size == 0u || buf.data == nullptr) {
+        return Result::Fail;
+    }
+    if (isBusy()) {
+        return Result::Busy;
     }
     const uint8_t txn = _s.allocTxn();
     if (txn == 0u) {
-        return false;
+        return Result::Fail;
     }
 
     /* Короткий Set — на wire. */
-    if (buf.size <= msg::kInlineMax) {
-        const msg::Set body = msg::Set::make(tag, buf.data,
-                                            static_cast<uint8_t>(buf.size));
+    if (buf.size <= kInlineMax) {
+        const Set body = Set::make(tag, buf.data,
+                                            static_cast<uint8_t>(buf.size), index);
         Message m{};
         if (!_s.send(body, m, txn)) {
-            return false;
+            return Result::Fail;
         }
         armPend(m, txn);
         _state = State::SetOutInline;
-        return true;
+        return Result::Ok;
     }
 
     /* Длинный Set — на MB. */
-    if (!_mb.armTx(tag, buf, txn, this)) {
-        return false;
+    if (!_mb.armTx(tag, buf, txn, this, index)) {
+        return Result::Fail;
     }
-    const msg::Set body = msg::Set::make(tag);
+    const Set body = Set::make(tag, index);
     Message m{};
     if (!_s.send(body, m, txn)) {
         reset();
-        return false;
+        return Result::Fail;
     }
     armPend(m, txn);
     _state = State::SetOut; /* тело → onMbTxDone → SetOutAwaitAck */
-    return true;
+    return Result::Ok;
 }
 
-bool TaggedOps::get(uint8_t tag, IBuf& buf) noexcept
+TaggedOps::Result TaggedOps::get(uint8_t tag, IBuf& buf, uint8_t index) noexcept
 {
-    if (!_s.isOpen() || buf.data == nullptr || buf.size == 0u || isBusy()) {
-        return false;
+    if (!_s.isOpen() || buf.data == nullptr || buf.size == 0u) {
+        return Result::Fail;
+    }
+    if (isBusy()) {
+        return Result::Busy;
     }
     const uint8_t txn = _s.allocTxn();
     if (txn == 0u) {
-        return false;
+        return Result::Fail;
     }
     /* Приём тела сразу. DataBegin забирает MB; короткий Data — finishShortData. */
-    if (!_mb.armRx(tag, txn, _s.node.clockMs(), this, buf)) {
-        return false;
+    if (!_mb.armRx(tag, txn, _s.node.clockMs(), this, buf, index)) {
+        return Result::Fail;
     }
     _state = State::GetAsk;
-    const msg::Get body = msg::Get::make(tag);
+    const Get body = Get::make(tag, index);
     Message m{};
     if (!_s.send(body, m, txn)) {
         reset();
-        return false;
+        return Result::Fail;
     }
     armPend(m, txn);
-    return true;
+    return Result::Ok;
 }
 
-uint8_t TaggedOps::getTag() const noexcept
+void TaggedOps::readOpener(uint8_t& tag, uint8_t& index) const noexcept
 {
-    msg::Get body{};
+    Get body{};
     if (!body.unpack(_pend.msg)) {
-        return 0;
+        tag = 0;
+        index = 0;
+        return;
     }
-    return body.tag;
+    tag = body.tag;
+    index = body.index;
 }
 
 void TaggedOps::failGet(MultiByte::Error err) noexcept
 {
-    const uint8_t tag = getTag();
+    uint8_t tag = 0;
+    uint8_t index = 0;
+    readOpener(tag, index);
     const IBuf got = _mb.bufReceived();
-    _s.onReply(tag, got, err);
+    _s.onReply(tag, index, got, err);
     reset();
 }
 
-void TaggedOps::finishShortData(const msg::Data& chunk) noexcept
+void TaggedOps::finishShortData(const Data& chunk) noexcept
 {
     if (chunk.seq != 0u) {
         failGet(MultiByte::Error::Seq);
         return;
     }
-    if (chunk.len > msg::kInlineMax) {
+    if (chunk.len > kInlineMax) {
         failGet(MultiByte::Error::Unexpected);
         return;
     }
@@ -198,15 +230,18 @@ void TaggedOps::finishShortData(const msg::Data& chunk) noexcept
         std::memcpy(dst.data, chunk.data, chunk.len);
     }
     const IBuf got{dst.data, chunk.len};
-    _s.onReply(getTag(), got, MultiByte::Error::None);
+    uint8_t tag = 0;
+    uint8_t index = 0;
+    readOpener(tag, index);
+    _s.onReply(tag, index, got, MultiByte::Error::None);
     reset();
 }
 
 void TaggedOps::onTxResult(const TxSlot& slot) noexcept
 {
     if (_state == State::SetOutInline && slot.txn_id == _pend.txn_id
-        && slot.msg.id == msg::Set::kId) {
-        beginAck(slot.txn_id, msg::Set::kId, _s.node.clockMs());
+        && slot.msg.id == Set::kId) {
+        beginAck(slot.txn_id, Set::kId, _s.node.clockMs());
     }
 }
 
@@ -216,7 +251,7 @@ void TaggedOps::onMbTxDone() noexcept
     if (_state == State::SetOut) {
         const uint8_t txn = _pend.txn_id;
         _mb.resetXfer();
-        beginAck(txn, msg::Set::kId, _s.node.clockMs());
+        beginAck(txn, Set::kId, _s.node.clockMs());
         return;
     }
     reset();
@@ -226,33 +261,33 @@ void TaggedOps::tick(uint32_t now_ms) noexcept
 {
     if (_state == State::SetOutAwaitAck && _ack.timedOut(now_ms)) {
         if (_ack.isReplyLimit()) {
-            _s.nack(_pend, msg::Nack::kTimeout);
+            _s.nack(_pend, Error::Timeout);
             reset();
         } else {
             /* Miss: только перезапуск таймера. Re-TX opener/тела нет (у окна A — есть). */
-            _ack.start(now_ms, msg::Ack::kTimeoutMs);
+            _ack.start(now_ms, Ack::kTimeoutMs);
         }
     }
 }
 
-bool TaggedOps::onMbBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
-                           IBuf& buf) noexcept
+bool TaggedOps::onMbBuffer(uint8_t tag, uint8_t index, uint8_t txn_id,
+                           uint16_t size, IBuf& buf) noexcept
 {
-    if (!takeSetBuf(tag, txn_id, size, buf)) {
-        _s.sendNack(txn_id, msg::Nack::Error::NotSupported);
+    if (!takeSetBuf(tag, index, txn_id, size, buf)) {
+        _s.sendNack(txn_id, Error::NotSupported);
         reset();
         return false;
     }
     return true;
 }
 
-void TaggedOps::onMbResult(uint8_t tag, const IBuf& buf,
+void TaggedOps::onMbResult(uint8_t tag, uint8_t index, const IBuf& buf,
                            MultiByte::Error err) noexcept
 {
     if (_state == State::GetAsk) {
-        _s.onReply(tag, buf, err);
+        _s.onReply(tag, index, buf, err);
     } else if (_state == State::SetIn) {
-        finishSetIn(tag, buf, err, _mb.txn());
+        finishSetIn(tag, index, buf, err, _mb.txn());
     }
     reset();
 }
@@ -265,21 +300,24 @@ bool TaggedOps::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
 
     const uint8_t txn = pkt.txn_id;
 
-    SMCP_IF_MSG(msg::Ack) {
+    SMCP_IF_MSG(Ack) {
         if (_state != State::SetOutAwaitAck || txn != _pend.txn_id) {
             return false;
         }
-        _s.ack(_pend, body);
+        /* reset до ack: onAck может стартовать новый Get/Set (напр. AxisRegistered). */
+        const TxSlot pend = _pend;
         reset();
+        _s.ack(pend, body);
         return true;
     }
-    SMCP_IF_MSG(msg::Nack) {
+    SMCP_IF_MSG(Nack) {
         if (txn != _pend.txn_id) {
             return false;
         }
         if (isSetOut()) {
-            _s.nack(_pend, body);
+            const TxSlot pend = _pend;
             reset();
+            _s.nack(pend, body);
             return true;
         }
         if (_state == State::GetAsk) {
@@ -289,7 +327,7 @@ bool TaggedOps::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
         }
         return false;
     }
-    SMCP_IF_MSG(msg::Data) {
+    SMCP_IF_MSG(Data) {
         /* Пока фаза Begin — это короткий ответ. Куски тела (isData) забирает MB. */
         if (_state != State::GetAsk || txn != _pend.txn_id || _mb.isData()) {
             return false;
@@ -297,19 +335,19 @@ bool TaggedOps::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
         finishShortData(body);
         return true;
     }
-    SMCP_IF_MSG(msg::Get) {
+    SMCP_IF_MSG(Get) {
         /* Busy не здесь: short sendBody ок при job; long режет sendBody → Nack из onGet. */
         _s.onGet(body, txn);
         return true;
     }
-    SMCP_IF_MSG(msg::Set) {
+    SMCP_IF_MSG(Set) {
         if (isBusy()) {
-            _s.sendNack(txn, msg::Nack::Error::Busy);
+            _s.sendNack(txn, Error::Busy);
             return true;
         }
         if (body.len == 0u) {
-            if (!_mb.armRx(body.tag, txn, now_ms, this)) {
-                _s.sendNack(txn, msg::Nack::Error::Body,
+            if (!_mb.armRx(body.tag, txn, now_ms, this, {}, body.index)) {
+                _s.sendNack(txn, Error::Body,
                             static_cast<uint32_t>(MultiByte::Error::NotArmed));
                 return true;
             }
@@ -318,16 +356,16 @@ bool TaggedOps::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
         }
         //Inline SETIN
         IBuf buf{};
-        if (!takeSetBuf(body.tag, txn, body.len, buf)) {
-            _s.sendNack(txn, msg::Nack::Error::NotSupported);
+        if (!takeSetBuf(body.tag, body.index, txn, body.len, buf)) {
+            _s.sendNack(txn, Error::NotSupported);
             return true;
         }
         std::memcpy(buf.data, body.data, body.len);
         buf.size = body.len;
-        finishSetIn(body.tag, buf, MultiByte::Error::None, txn);
+        finishSetIn(body.tag, body.index, buf, MultiByte::Error::None, txn);
         return true;
     }
     return false;
 }
 
-} // namespace smcp
+} // namespace smcp::session

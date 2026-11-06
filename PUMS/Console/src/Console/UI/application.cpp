@@ -11,20 +11,25 @@ namespace server {
 
 namespace {
 
-[[nodiscard]] const char* nackText(smcp::msg::ErrorCode code) noexcept
+[[nodiscard]] const char* nackText(uint8_t err) noexcept
 {
-    switch (code) {
-    case smcp::msg::ErrorCode::Busy: return uiMsg::kSmcpBusy;
-    case smcp::msg::ErrorCode::Limits: return uiMsg::kSmcpLimits;
-    case smcp::msg::ErrorCode::Crc: return uiMsg::kSmcpCrc;
-    case smcp::msg::ErrorCode::MechNotFound: return uiMsg::kSmcpMechNotFound;
-    case smcp::msg::ErrorCode::Safety: return uiMsg::kSmcpSafety;
-    case smcp::msg::ErrorCode::NotReady: return uiMsg::kSmcpNotReady;
-    case smcp::msg::ErrorCode::SelectLimit: return uiMsg::kSmcpSelectLimit;
-    case smcp::msg::ErrorCode::Timeout: return uiMsg::kSmcpTimeout;
-    case smcp::msg::ErrorCode::Ok:
-    default: return uiMsg::kSmcpError;
+    if (err == static_cast<uint8_t>(smcp::session::Error::Timeout)) {
+        return uiMsg::kSmcpTimeout;
     }
+    if (err == static_cast<uint8_t>(smcp::session::Error::None)) {
+        return uiMsg::kSmcpError;
+    }
+    switch (static_cast<smcp::segment::Error>(err)) {
+    case smcp::segment::Error::Busy: return uiMsg::kSmcpBusy;
+    case smcp::segment::Error::Limits: return uiMsg::kSmcpLimits;
+    case smcp::segment::Error::Crc: return uiMsg::kSmcpCrc;
+    case smcp::segment::Error::AxisNotFound: return uiMsg::kSmcpAxisNotFound;
+    case smcp::segment::Error::Safety: return uiMsg::kSmcpSafety;
+    case smcp::segment::Error::NotReady: return uiMsg::kSmcpNotReady;
+    case smcp::segment::Error::SelectLimit: return uiMsg::kSmcpSelectLimit;
+    case smcp::segment::Error::Last: break;
+    }
+    return uiMsg::kSmcpError;
 }
 
 [[nodiscard]] const char* fileSystemText(sf::Status st) noexcept
@@ -83,7 +88,7 @@ namespace {
 
 } // namespace
 
-void UiConsole::onMechChanged(uint8_t axis_id) noexcept
+void UiConsole::onAxisChanged(uint8_t axis_id) noexcept
 {
     app.work.onMechTelemetry(axis_id);
 }
@@ -100,7 +105,7 @@ void UiConsole::onGroupAck(uint8_t /*group_id*/) noexcept
 }
 
 void UiConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
-                       const smcp::msg::Nack& reply) noexcept
+                       const smcp::session::Nack& reply) noexcept
 {
     MConsole::onNack(session, req, reply);
     app.showSmcpNack();
@@ -232,7 +237,7 @@ void Application::showSmcpNack(uint8_t tag) noexcept
 {
     showUtf8Msg(uiMsg::kTitleSmcp, nex::ovl::MsgBox::Preset::OK, tag,
         nex::ovl::MsgBox::Action::Ok,
-        nackText(static_cast<smcp::msg::ErrorCode>(console.lastNack().error)));
+        nackText(static_cast<uint8_t>(console.lastNack().error)));
 }
 
 void Application::syncStatusBarFile() noexcept
@@ -248,7 +253,7 @@ void Application::syncStatusBarLink() noexcept
         static_cast<unsigned>((memstat::freeMinBytes() + 512u) / 1024u);
     std::snprintf(buf, sizeof(buf), "%s %s (%uk)",
         (board.SD.status() & STA_NODISK) != 0 ? "--" : "SD",
-        smcp::Node::cstr(console.getStatus()), freeKb);
+        smcp::Node::cstr(console.getState()), freeKb);
     statusBar.setStatus(buf);
     memstat::resetFreeMin();
 }

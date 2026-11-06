@@ -20,7 +20,7 @@
 #include "impl/w25q.hpp"
 #include "iFileSystem.hpp"
 #include "showFile.hpp"
-#include "smcp/show/axis_pool.hpp"
+#include "smcp/show/patch.hpp"
 #include "smcp/show/group.hpp"
 
 namespace smcp {
@@ -60,9 +60,9 @@ public:
 
     static_assert(sizeof(sf::Header) + 4u * sizeof(sf::SectionDesc)
                           + 8u /* SETT */
-                          + smcp::show::kShowTypeCount * sizeof(smcp::show::ShowType)
-                          + smcp::show::kPatchCount * sizeof(smcp::show::Patch)
-                          + smcp::kGroupMaxCount * sizeof(smcp::Group)
+                          + smcp::show::kAxisTypeCount * sizeof(smcp::show::AxisType)
+                          + smcp::show::kPatchCount * sizeof(smcp::show::PatchRec)
+                          + smcp::show::kGroupMaxCount * sizeof(smcp::show::Group)
                       <= kPayloadMax,
                   "SMCP show must fit in W25Q A/B slot payload");
 

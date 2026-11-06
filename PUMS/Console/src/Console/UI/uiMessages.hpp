@@ -87,7 +87,7 @@ inline constexpr const char* kSmcpLimits =
     "Цель вне допустимых пределов.";
 inline constexpr const char* kSmcpCrc =
     "Ошибка целостности данных.";
-inline constexpr const char* kSmcpMechNotFound =
+inline constexpr const char* kSmcpAxisNotFound =
     "Лебёдка не найдена на сервере.";
 inline constexpr const char* kSmcpSafety =
     "Операция запрещена (безопасность / блок).";

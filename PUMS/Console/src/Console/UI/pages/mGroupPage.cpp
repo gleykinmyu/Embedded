@@ -98,7 +98,7 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
 
     switch (action) {
     case Action::Record: {
-        const smcp::Selection sel = console.selectionFromMechs();
+        const smcp::segment::Selection sel = console.selectionFromMechs();
         if (sel.empty()) {
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
@@ -106,17 +106,17 @@ void MGroupPage::handleAction(uint8_t group_id) noexcept
         auto grp = console.show.group[group_id];
         const char* name = grp.isEmpty() ? "Group" : nullptr;
         switch (grp.record(sel, name, false)) {
-        case smcp::CGroup::Result::Ok:
+        case smcp::show::CGroup::Result::Ok:
             console.clearActiveGroup();
             finishToWork(true);
             break;
-        case smcp::CGroup::Result::Occupied:
+        case smcp::show::CGroup::Result::Occupied:
             ui().showGroupYesNo(kTagOverwrite, uiMsg::kConfirmOverwriteGroup);
             break;
-        case smcp::CGroup::Result::OverlapsBlocked:
+        case smcp::show::CGroup::Result::OverlapsBlocked:
             ui().showGroupMsg(0u, uiMsg::kGroupOverlapsBlocked);
             break;
-        case smcp::CGroup::Result::Empty:
+        case smcp::show::CGroup::Result::Empty:
         default:
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             break;
@@ -188,7 +188,7 @@ void MGroupPage::onMsgBox(const nex::msg::evMsgBox& e)
     }
 
     if (e.tag == kTagOverwrite) {
-        const smcp::Selection sel = console.selectionFromMechs();
+        const smcp::segment::Selection sel = console.selectionFromMechs();
         if (sel.empty()) {
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;
@@ -196,14 +196,14 @@ void MGroupPage::onMsgBox(const nex::msg::evMsgBox& e)
         auto grp = console.show.group[group_id];
         const char* name = grp.isEmpty() ? "Group" : nullptr;
         switch (grp.record(sel, name, true)) {
-        case smcp::CGroup::Result::Ok:
+        case smcp::show::CGroup::Result::Ok:
             console.clearActiveGroup();
             break;
-        case smcp::CGroup::Result::OverlapsBlocked:
+        case smcp::show::CGroup::Result::OverlapsBlocked:
             ui().showGroupMsg(0u, uiMsg::kGroupOverlapsBlocked);
             return;
-        case smcp::CGroup::Result::Empty:
-        case smcp::CGroup::Result::Occupied:
+        case smcp::show::CGroup::Result::Empty:
+        case smcp::show::CGroup::Result::Occupied:
         default:
             ui().showGroupMsg(0u, uiMsg::kConsoleNoSelection);
             return;

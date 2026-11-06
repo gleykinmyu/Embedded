@@ -8,7 +8,7 @@
  * Слои (можно включать по отдельности без SMCP_DEBUG):
  *   `-DSMCP_DBG_NODE`    — Node hooks: status, Ack/Nack, TxFull, SessionFull, …
  *   `-DSMCP_DBG_SESSION` — Session: setStatus, open reject, sendNack
- *   `-DSMCP_DBG_CONSOLE` — IConsole / MConsole (если включён слой)
+ *   `-DSMCP_DBG_CONSOLE` — Console / MConsole (если включён слой)
  *
  * Wire dump:
  *   `-DSMCP_TRACE_LINK`  — TX/RX на ILink (без Heartbeat)
@@ -56,9 +56,10 @@
 
 /** Две строки формата, один набор аргументов. `SMCP_TRACE_SHORT` — первая, иначе вторая.
  *  Невыбранная строка в код не попадает. chan — `SMCP_NODE` / `SMCP_SESS` / `SMCP_CONS`.
- *  `SMCP_PICK` — то же для одного выражения, если аргумент тоже разный (`cstrS` / `cstr`).
  *
- *  SMCP_LOG(SMCP_SESS, "S%u\n", "[SMCP] Session[%u]\n", id);
+ *  SMCP_LOG(SMCP_SESS, "S p=%u\n", "[SMCP] Session peer=%u\n", peer);
+ *
+ *  `SMCP_PICK(short, long)` — один литерал (короткий / полный).
  */
 #if defined(SMCP_TRACE_SHORT)
 #  define SMCP_LOG(chan, sfmt, lfmt, ...) chan(sfmt, ##__VA_ARGS__)

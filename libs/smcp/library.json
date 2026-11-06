@@ -1,9 +1,9 @@
 {
   "name": "smcp",
   "version": "1.0.0",
-  "description": "SMCP transport: Message/Packet, ILink/CanLink, Node, Session",
+  "description": "SMCP transport + segment (console/server northbound)",
   "build": {
     "libArchive": false,
-    "srcFilter": "+<smcp/*.cpp> +<smcp/session/*.cpp>"
+    "srcFilter": "+<smcp/*.cpp> +<smcp/session/*.cpp> +<segment/*.cpp>"
   }
 }

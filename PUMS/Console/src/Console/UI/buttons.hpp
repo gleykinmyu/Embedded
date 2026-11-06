@@ -83,7 +83,7 @@ public:
     {}
 
     /** @a grp == nullptr — слот за краем страницы. */
-    void sync(const smcp::CGroup* grp, bool selected, bool texts) noexcept
+    void sync(const smcp::show::CGroup* grp, bool selected, bool texts) noexcept
     {
         if (grp == nullptr) {
             if (texts) {
@@ -122,7 +122,7 @@ public:
     using GlobalBtn::GlobalBtn;
 
     /** @a grp == nullptr — слот за краем страницы. */
-    void sync(const smcp::CGroup* grp, bool selected, bool enabled, bool hasSelection) noexcept
+    void sync(const smcp::show::CGroup* grp, bool selected, bool enabled, bool hasSelection) noexcept
     {
         if (grp == nullptr || !enabled) {
             setState(State::Disabled);
@@ -273,7 +273,7 @@ public:
             setState(State::Disabled);
             return;
         }
-        const bool ready = mech.status().any(smcp::IAxis::Status::Ready);
+        const bool ready = mech.status().any(smcp::axis::Status::Ready);
         if (ready && mech.isSelectedBy(con.consoleId())) {
             setState(State::Selected);
         } else if (ready) {

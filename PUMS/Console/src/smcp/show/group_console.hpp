@@ -1,26 +1,25 @@
 /**
  * @file group_console.hpp
- * @brief IGroupConsole + GroupConsole<N>: IConsole + queued recall.
+ * @brief GroupConsole + CGroup: show::Console + queued recall.
  *
- * IGroupConsole — билет Select после CGroup::recall (Ack → onGroupAck).
+ * Билет Select после CGroup::recall (Ack → onGroupAck).
  * shownGroup — только active (после Ack), не queued.
- * Session::onFault(HbLost / IdConflict) — сброс queued+active (без Select).
- * close(None): сброс по onLink(false) / Status Idle·Listen·IdConflict·RegisterFailed.
- * GroupConsole<N> — registry MaxSessions слотов (как Console<N>).
- * SessionBank, банк осей и CMechBank — у leaf (MConsole).
+ * onLink(Down/Lost) — сброс queued+active (без Select).
+ * onState(не Ready) — тоже сброс (Idle/Listen).
+ * SessionBank и банк осей (CGMech / show::Axis) — у leaf (MConsole).
  */
 
 #pragma once
 
 #include <cstdint>
 
-#include "smcp/mech/Console/console.hpp"
 #include "smcp/show/group.hpp"
+#include "smcp/show/console.hpp"
 
-namespace smcp {
+namespace smcp::show {
 
 class IGroupBank;
-class IGroupConsole;
+class GroupConsole;
 
 /**
  * Вид на слот GRUP. Копия — указатель; запись остаётся в секции.
@@ -29,12 +28,12 @@ class CGroup {
 public:
     CGroup() = default;
 
-    CGroup(Group& rec, IGroupBank& bank, IGroupConsole& console) noexcept;
+    CGroup(Group& rec, IGroupBank& bank, GroupConsole& console) noexcept;
 
     [[nodiscard]] explicit operator bool() const noexcept { return _rec != nullptr; }
 
     [[nodiscard]] uint8_t id() const noexcept;
-    [[nodiscard]] const Selection& sel() const noexcept;
+    [[nodiscard]] const segment::Selection& sel() const noexcept;
     [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept;
     [[nodiscard]] const char* name() const noexcept;
 
@@ -63,7 +62,7 @@ public:
      * Записать выделение в слот.
      * Occupied снимается @a confirmed; OverlapsBlocked — нет.
      */
-    [[nodiscard]] Result record(Selection selection, const char* name = nullptr,
+    [[nodiscard]] Result record(segment::Selection selection, const char* name = nullptr,
                                 bool confirmed = false) noexcept;
     /** Переименовать непустую группу. */
     [[nodiscard]] bool rename(const char* name) noexcept;
@@ -76,11 +75,11 @@ public:
 private:
     Group* _rec = nullptr;
     IGroupBank* _bank = nullptr;
-    IGroupConsole* _console = nullptr;
+    GroupConsole* _console = nullptr;
 };
 
-/** IConsole + очередь recall группы (слот GRUP до Ack/Nack Select). */
-class IGroupConsole : public IConsole {
+/** show::Console + очередь recall группы (слот GRUP до Ack/Nack Select). */
+class GroupConsole : public Console {
 public:
     static constexpr uint8_t kNoQueuedGroup = 0xFFu;
     static constexpr uint8_t kNoActiveGroup = kNoQueuedGroup;
@@ -101,17 +100,16 @@ public:
     void clearActiveGroup() noexcept;
 
 protected:
-    explicit IGroupConsole(ILink& link, ClockFn clock) noexcept
-        : IConsole(link, clock)
+    explicit GroupConsole(ILink& link, ClockFn clock, const IPatch* patch = nullptr) noexcept
+        : Console(link, clock, patch)
     {}
 
     /** Ack Select после CGroup::recall(); @a id — слот GRUP. */
     virtual void onGroupAck(uint8_t group_id) noexcept { (void)group_id; }
-    void onFault(Session* session, Fault reason) noexcept override;
-    void onLink(Session* session, bool up) noexcept override;
-    void onStatus(Status status) noexcept override;
-    void onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept override;
-    void onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept override;
+    void onLink(::smcp::Session* session, Link link) noexcept override;
+    void onState(State state) noexcept override;
+    void onAck(::smcp::Session* session, const TxSlot& req, const session::Ack& reply) noexcept override;
+    void onNack(::smcp::Session* session, const TxSlot& req, const session::Nack& reply) noexcept override;
 
     void clearQueuedGroup() noexcept
     {
@@ -122,7 +120,7 @@ protected:
 private:
     friend class CGroup;
     /** @a group — вид на запись секции. pkt — кадр, который только что встал в очередь. */
-    void setQueuedGroup(CGroup group, ServerSession& session) noexcept;
+    void setQueuedGroup(CGroup group, Session& session) noexcept;
 
     CGroup _queued{};
     CGroup _active{};
@@ -132,28 +130,10 @@ private:
 /**
  * INVALID — не использовать.
  * Раньше override select гасил queued recall; виртуальный select убран.
- * Слот SessionBank — `ServerSession`.
+ * Слот SessionBank — `show::Session`.
  */
 class GServerSession final {
     GServerSession() = delete;
 };
 
-/** GroupConsole<N>: registry сессий MaxSessions. Банк осей — storage() у leaf. */
-template <uint8_t MaxMechs, uint8_t MaxSessions = 1u>
-class GroupConsole : public IGroupConsole {
-public:
-    static constexpr uint8_t kMechCount = MaxMechs;
-    static constexpr uint8_t kSessionCount = MaxSessions;
-
-    explicit GroupConsole(ILink& link, ClockFn clock) noexcept
-        : IGroupConsole(link, clock)
-    {}
-
-protected:
-    [[nodiscard]] SessionReg& sessions() noexcept override { return _sessions; }
-
-private:
-    SessionStore<kSessionCount> _sessions;
-};
-
-} // namespace smcp
+} // namespace smcp::show

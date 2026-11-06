@@ -3,12 +3,12 @@
  * @brief Ось SMCP: Profile / Route + IAxis (runtime).
  *
  * smcp::axis — POD железа (Profile) и адрес (Route).
- * Шоу (ShowType / Patch) — smcp/show/show_axis.hpp.
- * smcp::IAxis — live + holder + phys axis_id + TX.
+ * Шоу (show::AxisType / PatchRec / Patch) + show::Axis — show/patch.hpp, show/console.hpp.
+ * smcp::IAxis — pure interface; состояние у segment::server::Axis / segment::console::Axis.
  *
  * База единиц (как в SI для длины; угол — градус, не радиан):
  *   Linear → метр, Rotary → градус.
- * Шкала — UnitScale (E0…E4 + Count → MISC::EnumValue); значение = степень p,
+ * Шкала — UnitScale (E0…E4, First/Last → MISC::EnumValue); значение = степень p,
  *   base = value / 10^p. Пример: value=1500, E3 → 1.5 м / 1.5°.
  * Скорость / ускорение — та же шкала /s, /s².
  * На сервер: value_srv = value_console × 10^(p_server − p_console).
@@ -31,8 +31,10 @@ namespace axis {
 inline constexpr std::size_t kNameSize = 16u;
 inline constexpr uint8_t kServerIdNone = 0u;
 
-/** axis_id на одном server_id: 0…kAxisIdMax. */
-inline constexpr uint8_t kAxisIdMax = 31u;
+/** Число осей на одном server_id; axis_id ∈ [0, kAxisCount). */
+inline constexpr uint8_t kAxisCount = 32u;
+/** Последний допустимый axis_id (= kAxisCount - 1). */
+inline constexpr uint8_t kAxisIdMax = static_cast<uint8_t>(kAxisCount - 1u);
 
 /** Адрес одной оси на шине: сегмент + axis_id. */
 struct Route {
@@ -41,10 +43,10 @@ struct Route {
 
     [[nodiscard]] constexpr bool empty() const noexcept { return server_id == kServerIdNone; }
 
-    /** Пустой route ок; иначе axis_id в 0…kAxisIdMax. */
+    /** Пустой: axis_id == 0; иначе axis_id в 0…kAxisIdMax. */
     [[nodiscard]] constexpr bool isValid() const noexcept
     {
-        return empty() || axis_id <= kAxisIdMax;
+        return empty() ? (axis_id == 0u) : (axis_id <= kAxisIdMax);
     }
 };
 
@@ -67,25 +69,27 @@ inline void copyName(char (&dst)[kNameSize], const char* src) noexcept
 
 /**
  * Тип оси. FlightObject — не kind, а объект над осями (отдельно).
- * Плотный 0…Count-1 → MISC::EnumValue; isValid() через обёртку.
+ * First…Last → MISC::EnumValue; isValid() через обёртку.
  */
 enum class Kind : uint8_t {
-    Linear = 0, /**< База СИ — метр. */
-    Rotary = 1, /**< База — градус (не радиан; удобнее для сцены). */
-    Count,
+    First = 0,
+    Linear = First, /**< База СИ — метр. */
+    Rotary,         /**< База — градус (не радиан; удобнее для сцены). */
+    Last,           /**< Exclusive end. */
 };
 
 /**
  * Шкала хранения относительно базы (м / °). Значение = степень p; base = value / 10^p.
- * Плотный 0…Count-1 → MISC::EnumValue. UI: E0 → м/°, E1 → дм, E2 → см, E3 → мм, E4 → 0.1 мм.
+ * [First, Last) → MISC::EnumValue. UI: E0 → м/°, … E4 → 0.1 мм.
  */
 enum class UnitScale : uint8_t {
-    E0 = 0, /**< / 10^0. */
-    E1,     /**< / 10^1. */
-    E2,     /**< / 10^2. */
-    E3,     /**< / 10^3 (дефолт). */
-    E4,     /**< / 10^4. */
-    Count,
+    First = 0,
+    E0 = First, /**< / 10^0. */
+    E1,         /**< / 10^1. */
+    E2,         /**< / 10^2. */
+    E3,         /**< / 10^3 (дефолт). */
+    E4,         /**< / 10^4. */
+    Last,       /**< Exclusive end. */
 };
 
 [[nodiscard]] constexpr uint8_t scalePow(UnitScale s) noexcept
@@ -123,15 +127,15 @@ static_assert(std::is_standard_layout_v<Range<int32_t>>);
 static_assert(std::is_standard_layout_v<RangeMax<uint16_t>>);
 
 /**
- * Profile одной физической оси сегмента (axis_id 0…31).
+ * Profile одной физической оси сегмента.
  * scale / home энкодера / raw load — внутри привода, сюда не входят.
- * Invert шоу — в show::Patch, не здесь.
+ * Invert шоу — в show::PatchRec, не здесь.
  */
 struct alignas(uint32_t) Profile {
-    uint8_t axis_id = 0; /**< axis_id на сервере. */
     MISC::EnumValue<Kind> kind{Kind::Linear};
     MISC::EnumValue<UnitScale> scale{UnitScale::E3}; /**< Шкала сервера. */
     REG::BitMask<Flag> flag{};
+    uint8_t axis_id = 0xFFu; /**< Phys id в сегменте; 0xFF — пусто / ещё не задан. */
 
     /** Жёсткие пределы железа (ед. сервера). */
     struct {
@@ -141,17 +145,33 @@ struct alignas(uint32_t) Profile {
         RangeMax<uint16_t> decel{}; /**< Торможение (ед./s²). */
     } limits{};
 
-    uint8_t reserved_0[4]{};
+    uint8_t reserved_1[4]{};
 
     char name[kNameSize]{}; /**< Имя железа («Штанкет 12»). */
 
     void setName(const char* axis_name) noexcept { detail::copyName(name, axis_name); }
 
-    void clear() noexcept
+    void clear() noexcept { *this = Profile{}; }
+
+    /**
+     * Пометить «нужен Get»: clear + @a id + kind/scale = Last → !isValid().
+     * clear() одних дефолтов (Linear/E3) для pending мало — они валидны.
+     */
+    void markDirty(uint8_t id) noexcept
     {
-        const uint8_t keep_id = axis_id;
-        *this = Profile{};
-        axis_id = keep_id;
+        clear();
+        axis_id = id;
+        kind = Kind::Last;
+        scale = UnitScale::Last;
+    }
+
+    /**
+     * Паспорт пригоден: kind + scale в диапазоне.
+     * До Get консоль держит Last (!isValid); clear() — валидные дефолты.
+     */
+    [[nodiscard]] constexpr bool isValid() const noexcept
+    {
+        return kind.isValid() && scale.isValid();
     }
 };
 
@@ -159,19 +179,32 @@ static_assert(sizeof(Profile) == 40u, "axis::Profile wire size");
 static_assert(alignof(Profile) == alignof(uint32_t));
 static_assert(std::is_standard_layout_v<Profile>);
 
-} // namespace axis
+/**
+ * Маска live-состояния оси.
+ * Ready/Moving — фаза движения; остальные биты — параллельные условия.
+ * Idle — ни Ready, ни Moving не установлены.
+ */
+enum class Status : uint8_t {
+    Ready   = 1u << 0, /**< Привод готов к пуску. */
+    Blocked = 1u << 2, /**< Сегментный запрет (сервер); зеркало на пульте из Telemetry. */
+    Moving  = 1u << 3, /**< Выполняется подвод к цели. */
+    Limit1  = 1u << 5, /**< Активен концевик / датчик границы 1. */
+    Limit2  = 1u << 6, /**< Активен концевик / датчик границы 2. */
+    Fault   = 1u << 7, /**< Авария: движение запрещено до сброса. */
+    All = Ready | Blocked | Moving | Limit1 | Limit2 | Fault,
+};
 
-/** Ось не выделена ни одной консолью. */
-inline constexpr uint8_t kHolderNone = 0u;
+REG_BITMASK_ENUM_OPS(Status)
 
 /**
  * Тип хода SetTarget / слота пресета.
  * Единицы — те, что объявил kind оси, не миллиметры.
  */
 enum class MoveMode : uint8_t {
-    Absolute = 0, /**< Цель — абсолютная позиция. */
-    Relative = 1, /**< Цель — дельта от текущей позиции. */
-    Count,
+    First = 0,
+    Absolute = First, /**< Цель — абсолютная позиция. */
+    Relative,         /**< Цель — дельта от текущей позиции. */
+    Last,             /**< Exclusive end. */
 };
 
 [[nodiscard]] inline const char* cstr(MoveMode mode) noexcept
@@ -179,7 +212,7 @@ enum class MoveMode : uint8_t {
     switch (mode) {
     case MoveMode::Absolute: return "Absolute";
     case MoveMode::Relative: return "Relative";
-    case MoveMode::Count: break;
+    case MoveMode::Last: break;
     }
     return "?";
 }
@@ -198,88 +231,74 @@ struct MotionTarget {
 static_assert(sizeof(MotionTarget) == 8u);
 static_assert(alignof(MotionTarget) == alignof(int32_t));
 
+} // namespace axis
+
+/** Ось не выделена ни одной консолью. */
+inline constexpr uint8_t kHolderNone = 0u;
+
+
 /**
- * Live + Select/TX + phys axis_id (0…31).
- * Inventory ObjRegistry / Selection — здесь. CMech, DriveMech, show::AxisProxy.
+ * Чистый интерфейс оси: live-снимок + Select/Block/SetTarget/ResetFault.
+ * Состояние и id — у segment::*::Axis / show::AxisProxy.
  */
 class IAxis {
 public:
-    /**
-     * Маска состояния.
-     * Ready/Moving — фаза движения; остальные биты — параллельные условия.
-     * Idle — ни Ready, ни Moving не установлены.
-     */
-    enum class Status : uint8_t {
-        Ready   = 1u << 0, /**< Привод готов к пуску. */
-        Blocked = 1u << 2, /**< Сегментный запрет (сервер); зеркало на пульте из Telemetry. */
-        Moving  = 1u << 3, /**< Выполняется подвод к цели. */
-        Limit1  = 1u << 5, /**< Активен концевик / датчик границы 1. */
-        Limit2  = 1u << 6, /**< Активен концевик / датчик границы 2. */
-        Fault   = 1u << 7, /**< Авария: движение запрещено до сброса. */
-        All = Ready | Blocked | Moving | Limit1 | Limit2 | Fault,
-    };
-
-    explicit IAxis(uint8_t id) noexcept;
-    virtual ~IAxis();
-
-    /** ID оси в сегменте server ID (axis_id, 0…31). */
-    [[nodiscard]] uint8_t id() const noexcept;
+    virtual ~IAxis() = default;
 
     /** Текущая позиция в единицах kind оси. */
-    [[nodiscard]] int32_t position() const noexcept;
+    [[nodiscard]] virtual int32_t position() const noexcept = 0;
 
     /** Маска состояния (ready, moving, limit, fault и т.д.). */
-    [[nodiscard]] REG::BitMask<Status> status() const noexcept;
-
-    [[nodiscard]] bool isIdle() const noexcept;
+    [[nodiscard]] virtual REG::BitMask<axis::Status> status() const noexcept = 0;
 
     /**
      * ID консоли, держащей Select.
      * @return 0 — ось свободна.
      */
-    [[nodiscard]] uint8_t holder() const noexcept;
+    [[nodiscard]] virtual uint8_t holder() const noexcept = 0;
 
-    [[nodiscard]] bool isSelected() const noexcept;
+    [[nodiscard]] bool isIdle() const noexcept
+    {
+        return !status().any(axis::Status::Ready | axis::Status::Moving);
+    }
 
-    [[nodiscard]] bool isSelectedBy(uint8_t console_id) const noexcept;
+    [[nodiscard]] bool isSelected() const noexcept { return holder() != kHolderNone; }
 
-    [[nodiscard]] bool isBlocked() const noexcept;
+    [[nodiscard]] bool isSelectedBy(uint8_t console_id) const noexcept
+    {
+        return console_id != kHolderNone && holder() == console_id;
+    }
+
+    [[nodiscard]] bool isBlocked() const noexcept
+    {
+        return status().any(axis::Status::Blocked);
+    }
 
     /**
      * Заблокировать ось (Blocked) или снять блокировку.
-     * Отказ — no-op (проверки снаружи / политика сервера).
+     * @return false — отказ (нет route/сессии; политика — до вызова на сервере).
      */
-    virtual void block(bool blocked) noexcept = 0;
+    [[nodiscard]] virtual bool block(bool blocked) noexcept = 0;
 
     /**
      * Выделить ось консолью (Select) или снять выделение (Deselect).
      * @param console_id ID консоли (SRC_ID); 0 — сброс выделения.
-     * Политика отказа — до вызова (`acceptSelect` / mechGuard), здесь commit.
+     * Политика отказа на сервере — до вызова (`acceptSelect` / mechGuard), здесь commit.
+     * @return false — отказ (нет route/сессии / TX не встал).
      */
-    virtual void select(uint8_t console_id) noexcept = 0;
+    [[nodiscard]] virtual bool select(uint8_t console_id) noexcept = 0;
 
-    /** Задать целевую позицию. Отказ — no-op (проверки снаружи / политика сервера). */
-    virtual void setTarget(const MotionTarget& target) noexcept = 0;
+    /**
+     * Задать целевую позицию.
+     * @return false — отказ (нет route/сессии / TX не встал).
+     */
+    [[nodiscard]] virtual bool setTarget(const axis::MotionTarget& target) noexcept = 0;
 
-    /** Сбросить локальный бит Fault. Отказ — no-op. */
-    virtual void resetFault() noexcept = 0;
-
-protected:
-    void setId(uint8_t id) noexcept { _id = id; }
-
-    uint8_t _id = 0;
-    uint8_t _holder = kHolderNone;
-    int32_t _position = 0;
-    REG::BitMask<Status> _status{};
-
-private:
-    template <typename, typename>
-    friend class MISC::ObjRegistry;
-
-    /** Только из ObjRegistry при registerAt / registerAuto. */
-    void set_id(uint8_t id) noexcept { setId(id); }
+    /**
+     * Сбросить локальный бит Fault.
+     * @return false — отказ (нет route/сессии / TX не встал).
+     */
+    [[nodiscard]] virtual bool resetFault() noexcept = 0;
 };
-
-REG_BITMASK_ENUM_OPS(IAxis::Status)
 
 } // namespace smcp

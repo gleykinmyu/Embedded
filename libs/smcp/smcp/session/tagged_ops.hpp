@@ -20,6 +20,8 @@ namespace smcp {
 
 class Session;
 
+namespace session {
+
 class TaggedOps : public MultiByteClient {
 public:
     enum class State : uint8_t {
@@ -32,17 +34,34 @@ public:
         SetOutAwaitAck, ///< свой Set: ждём Ack|Nack
     };
 
+    /** Итог постановки своего Get/Set в окно (ещё не wire-ответ). */
+    enum class Result : uint8_t {
+        Ok = 0, /**< В полёте (GetAsk / SetOut*). */
+        Busy,   /**< Окно занято — имеет смысл повторить. */
+        Fail,   /**< NotOpen / bad buf / txn / arm / send / rejected. */
+    };
+
+    [[nodiscard]] static const char* cstr(Result s) noexcept;
+    [[nodiscard]] static constexpr bool ok(Result s) noexcept
+    {
+        return s == Result::Ok;
+    }
+
     TaggedOps(Session& session, MultiByte& mb) noexcept;
 
     [[nodiscard]] bool isBusy() const noexcept { return _state != State::Idle; }
 
-    [[nodiscard]] bool set(uint8_t tag, const IBuf& buf) noexcept;
-    [[nodiscard]] bool get(uint8_t tag, IBuf& buf) noexcept;
+    [[nodiscard]] Result set(uint8_t tag, const IBuf& buf,
+                             uint8_t index = kIndexAll) noexcept;
+    [[nodiscard]] Result get(uint8_t tag, IBuf& buf,
+                             uint8_t index = kIndexAll) noexcept;
 
     /**
      * Тело ответа на Get (сервер): short Data или DataBegin→Data*, echo @a txn_id.
+     * @a index — тот же, что в opener Get (DataBegin сверяет адрес).
      */
-    [[nodiscard]] bool sendBody(uint8_t tag, const IBuf& buf, uint8_t txn_id) noexcept;
+    [[nodiscard]] bool sendBody(uint8_t tag, const IBuf& buf, uint8_t txn_id,
+                                uint8_t index = kIndexAll) noexcept;
 
     /** Get / Set / Ack|Nack / короткий Data своего Get. DataBegin и Data* тела — Session → MultiByte. */
     [[nodiscard]] bool onPacket(const Packet& pkt, uint32_t now_ms) noexcept;
@@ -57,10 +76,11 @@ public:
     void reset() noexcept;
 
     /** MultiByteClient: NeedBuf входящего Set → onSetBuffer. */
-    [[nodiscard]] bool onMbBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
-                                  IBuf& buf) noexcept override;
+    [[nodiscard]] bool onMbBuffer(uint8_t tag, uint8_t index, uint8_t txn_id,
+                                  uint16_t size, IBuf& buf) noexcept override;
     /** MultiByteClient: RX Done/Fail / Timeout. */
-    void onMbResult(uint8_t tag, const IBuf& buf, MultiByte::Error err) noexcept override;
+    void onMbResult(uint8_t tag, uint8_t index, const IBuf& buf,
+                    MultiByte::Error err) noexcept override;
     /** MultiByteClient: TX тело Done → GetReply reset / SetOut: resetXfer + AwaitAck. */
     void onMbTxDone() noexcept override;
 
@@ -71,16 +91,19 @@ private:
             || _state == State::SetOutAwaitAck;
     }
 
-    /** Тег своего Get из opener в `_pend`. */
-    [[nodiscard]] uint8_t getTag() const noexcept;
+    /** Адрес своего Get из opener в `_pend`. */
+    void readOpener(uint8_t& tag, uint8_t& index) const noexcept;
     void failGet(MultiByte::Error err) noexcept;
-    void finishShortData(const msg::Data& chunk) noexcept;
+    void finishShortData(const Data& chunk) noexcept;
 
-    [[nodiscard]] bool takeSetBuf(uint8_t tag, uint8_t txn_id, uint16_t size,
-                                  IBuf& buf) noexcept;
-    /** onSet + Ack|Nack(Body). @a txn==0 — только onSet (без wire). */
-    void finishSetIn(uint8_t tag, const IBuf& buf, MultiByte::Error err,
-                     uint8_t txn) noexcept;
+    [[nodiscard]] bool takeSetBuf(uint8_t tag, uint8_t index, uint8_t txn_id,
+                                  uint16_t size, IBuf& buf) noexcept;
+    /**
+     * Транспорт Ok → onSet → Ack|Nack(code). Сбой тела → Nack Body (onSet нет).
+     * @a txn==0 — без wire (onSet только при Ok).
+     */
+    void finishSetIn(uint8_t tag, uint8_t index, const IBuf& buf,
+                     MultiByte::Error err, uint8_t txn) noexcept;
     void armPend(const Message& m, uint8_t txn) noexcept;
     void beginAck(uint8_t txn, uint8_t msg_id, uint32_t now_ms) noexcept;
 
@@ -89,7 +112,9 @@ private:
     State _state = State::Idle;
     TxSlot _pend{};
     /** SetOutAwaitAck: окно Ack с retry. */
-    MISC::ReplyTimer _ack{msg::Ack::kRetry};
+    MISC::ReplyTimer _ack{Ack::kRetry};
 };
+
+} // namespace session
 
 } // namespace smcp

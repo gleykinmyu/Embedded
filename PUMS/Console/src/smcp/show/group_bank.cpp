@@ -5,23 +5,10 @@
 
 #include "smcp/show/group_bank.hpp"
 
-namespace smcp {
+namespace smcp::show {
 
-CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept
-    : CGMech(console, groups, axis::Route{msg::kServerIdMin, id}, id)
-{}
-
-CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept
-    : CGMech(console, groups, axis::Route{server_id, id}, id)
-{}
-
-CGMech::CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t axis_id,
-               uint8_t local_id) noexcept
-    : CGMech(console, groups, axis::Route{server_id, axis_id}, local_id)
-{}
-
-CGMech::CGMech(IConsole& console, IGroupBank& groups, axis::Route route, uint8_t local_id) noexcept
-    : CMech(console, route, local_id)
+CGMech::CGMech(segment::Console& console, IGroupBank& groups) noexcept
+    : Axis(console)
     , _groups(groups)
 {}
 
@@ -31,8 +18,12 @@ CGroup::Result CGMech::trySelect(uint8_t console_id) noexcept
         if (isBlocked()) {
             return CGroup::Result::Blocked;
         }
-        Selection one;
-        one.add(id());
+        const axis::Route r = route();
+        if (r.empty()) {
+            return CGroup::Result::NotSent;
+        }
+        segment::Selection one;
+        one.add(r.axis_id);
         if (_groups.fillBlockedOverlap(IGroupBank::kNoExcept, one)) {
             return CGroup::Result::OverlapsBlocked;
         }
@@ -41,15 +32,10 @@ CGroup::Result CGMech::trySelect(uint8_t console_id) noexcept
         }
     }
 
-    Selection one;
-    one.add(id());
-    const msg::Action action =
-        (console_id == kHolderNone) ? msg::Action::Remove : msg::Action::Add;
-    ServerSession* const s = console().server(serverId());
-    if (s == nullptr || !s->select(action, one)) {
+    if (!select(console_id)) {
         return CGroup::Result::NotSent;
     }
     return CGroup::Result::Ok;
 }
 
-} // namespace smcp
+} // namespace smcp::show

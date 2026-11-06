@@ -18,6 +18,8 @@ namespace smcp {
 
 class Session;
 
+namespace session {
+
 /**
  * ReplyWindow: команда → Ack|Nack (голова очереди, окно 1).
  * Только short RPC (Select…). Get/Set — TaggedOps.
@@ -54,7 +56,9 @@ private:
     Session& _s;
     TxQueue<SMCP_SESSION_TX_CAPACITY> _q;
     /* Окно Ack = 1 (один таймер). Шире → несколько in-flight + abort/nack по всем. */
-    MISC::ReplyTimer _ack{msg::Ack::kRetry};
+    MISC::ReplyTimer _ack{Ack::kRetry};
 };
+
+} // namespace session
 
 } // namespace smcp

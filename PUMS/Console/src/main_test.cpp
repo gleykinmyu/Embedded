@@ -31,7 +31,7 @@ smcp::file::W25qShowFile flashShow(board.flash);
 smcp::MockCan canConsole;
 smcp::MockCan canServer;
 smcp::CanLink linkConsole(canConsole, 1u);
-smcp::CanLink linkServer(canServer, smcp::msg::kServerIdMin);
+smcp::CanLink linkServer(canServer, smcp::segment::kServerIdMin);
 server::UiConsole console(sdVolume, showDir, showFile, flashShow, linkConsole, boardClockMs);
 MServer mServer(linkServer, boardClockMs);
 
@@ -132,8 +132,8 @@ int main(void)
     (void)canServer.open(1'000'000);
     canConsole.connect(canServer);
 
-    mServer.begin(smcp::msg::kServerIdMin);
-    console.begin(smcp::msg::kConsoleIdMin);
+    mServer.begin(smcp::segment::kServerIdMin);
+    console.begin(smcp::segment::kConsoleIdMin);
 
     board.watchdog.kick();
     app.boot();

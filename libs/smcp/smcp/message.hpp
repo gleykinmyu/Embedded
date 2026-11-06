@@ -16,7 +16,12 @@
 #include <cstdint>
 #include <cstring>
 
+#include "debug.hpp"
+#include "enum_value.hpp"
 #include "ican.hpp"
+
+/** Короткое или полное имя PDU (`SMCP_TRACE_SHORT` → первый аргумент). */
+#define SMCP_NAME(s, l) static constexpr const char* name = SMCP_PICK(s, l);
 
 namespace smcp {
 
@@ -75,84 +80,108 @@ struct Packet {
     [[nodiscard]] bool unpack(const BIF::CAN::Frame& frame) noexcept;
 };
 
-namespace msg {
+/**
+ * Имя PDU (`Type::name`).
+ * `cstr<Select>()` — по типу. `cstr<Select, Block>(id)` — по байту; нет совпадения → nullptr.
+ */
+template<typename T>
+[[nodiscard]] constexpr const char* cstr() noexcept
+{
+    return T::name;
+}
+
+template<typename T, typename... Ts>
+[[nodiscard]] inline const char* cstr(uint8_t id) noexcept
+{
+    if (id == T::kId) {
+        return T::name;
+    }
+    if constexpr (sizeof...(Ts) > 0) {
+        return cstr<Ts...>(id);
+    } else {
+        return nullptr;
+    }
+}
+
+namespace session {
 
 /**
  * Служебные / config Id.
  * Link: 0x01…0x03, HB 0x30. Config: Get/Set + DataBegin/Data (0x31…0x34).
  * Прикладные northbound — в своих заголовках (0x10… / 0x40…).
  *
- * Inline vs multi: один порог @c kInlineMax (7 B) —
- * Set: payload в кадре Set; короткий ответ Get: один Data (seq|≤7).
+ * Inline vs multi: один порог @c kInlineMax.
+ * Адрес (tag|index) и seq u16 занимают 2 байта кадра → payload ≤ 6.
+ * Set: DLC=2 (len=0) → multi; DLC=3…8 → inline. Короткий ответ Get: один Data.
  * Длиннее → DataBegin → Data* (size≥1; итог Set — Ack/Nack приёмника).
  * Get: ответ = Nack или тело; клиент после тела на wire не Ack'ает.
+ *
+ * index — экземпляр внутри tag (ось и т.п.). @c kIndexAll — весь объект, не один слот.
  */
-inline constexpr uint8_t kInlineMax = 7u;
+inline constexpr uint8_t kIndexAll = 0xFFu;
+/** 8 − (tag|index) или 8 − (seq u16). Один порог на Set inline и кусок Data. */
+inline constexpr uint8_t kInlineMax = Message::kMaxDlc - 2u;
 
-enum class Id : uint8_t {
+enum class msgId : uint8_t {
     Ack         = 0x01,
     Nack        = 0x02,
     Fault       = 0x03, /**< Broadcast: узел снимает себя (сейчас IdConflict). */
     Heartbeat   = 0x30, /**< Ниже команд: keep-alive не забивает Select/SetTarget. */
-    Get         = 0x31, /**< Открывает txn: чтение по tag. */
-    Set         = 0x32, /**< Открывает txn: запись tag + ≤kInlineMax / длинное тело. */
-    DataBegin   = 0x33, /**< Старт multi-тела: tag|size|crc32. */
-    Data        = 0x34, /**< Кусок / короткий ответ Get: seq + ≤kInlineMax. */
+    Get         = 0x31, /**< Открывает txn: чтение tag|index. */
+    Set         = 0x32, /**< Открывает txn: запись tag|index + ≤kInlineMax / длинное тело. */
+    DataBegin   = 0x33, /**< Старт multi-тела: tag|index|size|crc32. */
+    Data        = 0x34, /**< Кусок / короткий ответ Get: seq u16 + ≤kInlineMax. */
 };
 
-
-[[nodiscard]] inline const char* cstr(Id id) noexcept
-{
-    switch (id) {
-    case Id::Ack: return "Ack";
-    case Id::Nack: return "Nack";
-    case Id::Fault: return "Fault";
-    case Id::Heartbeat: return "Heartbeat";
-    case Id::Get: return "Get";
-    case Id::Set: return "Set";
-    case Id::DataBegin: return "DataBegin";
-    case Id::Data: return "Data";
-    }
-    return "?";
-}
-
-[[nodiscard]] inline const char* cstr(uint8_t id) noexcept
-{
-    return cstr(static_cast<Id>(id));
-}
-
-#if defined(SMCP_TRACE_SHORT)
-[[nodiscard]] inline const char* cstrS(Id id) noexcept
-{
-    switch (id) {
-    case Id::Ack: return "Ack";
-    case Id::Nack: return "Nk";
-    case Id::Fault: return "Ft";
-    case Id::Heartbeat: return "HB";
-    case Id::Get: return "Get";
-    case Id::Set: return "Set";
-    case Id::DataBegin: return "DBg";
-    case Id::Data: return "Dat";
-    }
-    return "?";
-}
-
-[[nodiscard]] inline const char* cstrS(uint8_t id) noexcept
-{
-    return cstrS(static_cast<Id>(id));
-}
-#endif
 
 /**
  * Ack — DLC=0 (txn_id запроса в CAN ID).
  */
 struct Ack {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Ack);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Ack);
+    SMCP_NAME("Ack", "Ack")
     static constexpr uint16_t kTimeoutMs = 100u;
     static constexpr uint8_t kRetry = 3u;
 
     [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
+};
+
+/**
+ * Транспортный Nack-код [First, Last): Last — exclusive sentinel (= старт app-слоя).
+ * None…Body — wire; Timeout — локальный abort; до Last — резерв.
+ * @c Body: причина в @c detail (= @c MultiByte::Error).
+ */
+enum class Error : uint8_t {
+    First = 0,
+    None = First,
+    NotSupported, /**< Get/Set / onSetBuffer отказ. */
+    Busy,         /**< Уже идёт MultiByte xfer. */
+    Body,         /**< Сбой тела; detail = MultiByte::Error. */
+    Timeout,      /**< Локальный abort Ack (не с шины). */
+    Last = 0x10u, /**< Exclusive end; резерв до 0x0F. */
+};
+
+/** Обёртка Error; isOwn — транспортный [First, Last). */
+class vError : public MISC::EnumValue<Error, vError> {
+    using Base = MISC::EnumValue<Error, vError>;
+
+public:
+    constexpr vError() noexcept = default;
+    constexpr vError(Error e) noexcept : Base(e) {}
+
+    [[nodiscard]] const char* cstr() const noexcept
+    {
+        switch (static_cast<Error>(*this)) {
+        case Error::None: return "Ok";
+        case Error::NotSupported: return SMCP_PICK("NSup", "NotSupported");
+        case Error::Busy: return SMCP_PICK("TBusy", "Busy");
+        case Error::Body: return "Body";
+        case Error::Timeout: return SMCP_PICK("Tmo", "Timeout");
+        case Error::Last: break;
+        }
+        return "?";
+    }
 };
 
 /**
@@ -164,29 +193,17 @@ struct Ack {
  *
  * @a error — код отказа (вышестоящий протокол). @a detail — непрозрачный;
  * northbound: Selection.raw() (биты осей). @c kDetailNone = пустая маска.
- * @c kTimeout — локальный abort Ack (не с шины).
+ * @c Error::Timeout — локальный abort Ack (не с шины).
  */
 struct Nack {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Nack);
-    static constexpr uint8_t kTimeout = 0x08u;
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Nack);
+    SMCP_NAME("Nk", "Nack")
     static constexpr uint32_t kDetailNone = 0u;
 
-    /**
-     * Транспортный @c error (1…Max). Выше Max — прикладной код.
-     * @c Body: причина в @c detail (= @c MultiByte::Error).
-     */
-    enum class Error : uint8_t {
-        None = 0,
-        NotSupported = 1, /**< Get/Set / onSetBuffer отказ. */
-        Busy = 2,         /**< Уже идёт MultiByte xfer. */
-        Body = 3,         /**< Сбой тела; detail = MultiByte::Error. */
-        Max = 0x0Fu,      /**< Верхняя граница транспортных кодов. */
-    };
-
-    uint8_t error = 0;
+    vError error{};
     uint32_t detail = kDetailNone;
 
-    [[nodiscard]] static Nack make(uint8_t error,
+    [[nodiscard]] static Nack make(vError error,
                                    uint32_t detail = kDetailNone) noexcept
     {
         Nack n{};
@@ -195,32 +212,8 @@ struct Nack {
         return n;
     }
 
-    [[nodiscard]] static Nack make(Error error,
-                                   uint32_t detail = kDetailNone) noexcept
-    {
-        return make(static_cast<uint8_t>(error), detail);
-    }
-
     [[nodiscard]] bool pack(Message& m) const noexcept;
     [[nodiscard]] bool unpack(const Message& m) noexcept;
-
-    [[nodiscard]] static constexpr bool isTransport(uint8_t err) noexcept
-    {
-        return err >= static_cast<uint8_t>(Error::NotSupported)
-            && err <= static_cast<uint8_t>(Error::Max);
-    }
-
-    [[nodiscard]] static const char* cstr(Error err) noexcept
-    {
-        switch (err) {
-        case Error::None: return "Ok";
-        case Error::NotSupported: return "NotSupported";
-        case Error::Busy: return "Busy";
-        case Error::Body: return "Body";
-        case Error::Max: return "Max";
-        }
-        return "?";
-    }
 };
 
 /**
@@ -229,7 +222,8 @@ struct Nack {
  * @c kIdConflict — дубль src на шине; detail = короткое имя узла (ASCII, ≤7).
  */
 struct Fault {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Fault);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Fault);
+    SMCP_NAME("Ft", "Fault")
     static constexpr uint8_t kIdConflict = 0x01u;
     /** Макс. байт detail (Message::kMaxDlc − 1). */
     static constexpr uint8_t kDetailMax = Message::kMaxDlc - 1u;
@@ -254,7 +248,8 @@ struct Fault {
  * Heartbeat — DLC=0 (только ID, txn_id=0).
  */
 struct Heartbeat {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Heartbeat);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Heartbeat);
+    SMCP_NAME("HB", "Heartbeat")
     static constexpr uint16_t kTimeoutMs = 200u;
     /** Сколько интервалов T без RX HB до down. */
     static constexpr uint8_t kMissMax = 3u;
@@ -264,21 +259,25 @@ struct Heartbeat {
 };
 
 /**
- * Get — DLC=1. TaggedOps (не ReplyWnd): Nack **или** тело.
- *   +-----+
- *   | tag |
- *   +-----+
+ * Get — DLC=2. TaggedOps (не ReplyWnd): Nack **или** тело.
+ *   +-----+-------+
+ *   | tag | index |
+ *   +-----+-------+
  * Клиент после тела Ack на wire не шлёт.
+ * index = @c kIndexAll — весь объект.
  */
 struct Get {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Get);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Get);
+    SMCP_NAME("Get", "Get")
 
     uint8_t tag = 0;
+    uint8_t index = kIndexAll;
 
-    [[nodiscard]] static Get make(uint8_t tag) noexcept
+    [[nodiscard]] static Get make(uint8_t tag, uint8_t index = kIndexAll) noexcept
     {
         Get g{};
         g.tag = tag;
+        g.index = index;
         return g;
     }
 
@@ -287,27 +286,34 @@ struct Get {
 };
 
 /**
- * Set — DLC=1…8 (TaggedOps, не ReplyWnd):
- *   DLC=1, len=0 → multi; DLC=2…8 → inline. Итог — Ack|Nack приёмника.
+ * Set — DLC=2…8 (TaggedOps, не ReplyWnd):
+ *   +-----+-------+------------------+
+ *   | tag | index | data ≤kInlineMax |
+ *   +-----+-------+------------------+
+ *   DLC=2, len=0 → multi; DLC=3…8 → inline. Итог — Ack|Nack приёмника.
  */
 struct Set {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Set);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Set);
+    SMCP_NAME("Set", "Set")
     uint8_t tag = 0;
+    uint8_t index = kIndexAll;
     uint8_t len = 0;
     uint8_t data[kInlineMax]{};
 
-    /** Длинный opener: DLC=1, тело пойдёт DataBegin→Data*. */
-    [[nodiscard]] static Set make(uint8_t tag) noexcept
+    /** Длинный opener: DLC=2, тело пойдёт DataBegin→Data*. */
+    [[nodiscard]] static Set make(uint8_t tag, uint8_t index = kIndexAll) noexcept
     {
         Set s{};
         s.tag = tag;
+        s.index = index;
         return s;
     }
 
     /** Короткий: payload в кадре Set (len 1…kInlineMax). */
-    [[nodiscard]] static Set make(uint8_t tag, const uint8_t* src, uint8_t n) noexcept
+    [[nodiscard]] static Set make(uint8_t tag, const uint8_t* src, uint8_t n,
+                                  uint8_t index = kIndexAll) noexcept
     {
-        Set s = make(tag);
+        Set s = make(tag, index);
         if (src == nullptr || n == 0u) {
             return s;
         }
@@ -322,27 +328,31 @@ struct Set {
 
 /**
  * DataBegin — старт multi-тела; корреляция — Packet.txn_id.
- * DLC=7:
- *   +-----+----------+------------+
- *   | tag | size LE  | crc32 LE   |
- *   +-----+----------+------------+
+ * DLC=8:
+ *   +-----+-------+----------+------------+
+ *   | tag | index | size LE  | crc32 LE   |
+ *   +-----+-------+----------+------------+
  * @c size ≥ 1 (пустой blob запрещён). Конец — по size + CRC у RX.
- * Итог Set-txn — Ack/Nack приёмника; Get-тело — без финального Ack клиента.
+ * tag|index должны совпасть с opener. Итог Set-txn — Ack/Nack приёмника;
+ * Get-тело — без финального Ack клиента.
  */
 struct DataBegin {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::DataBegin);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::DataBegin);
+    SMCP_NAME("DBg", "DataBegin")
     /** Межфреймовый gap MultiByte (RX/TX progress); локальный abort. */
     static constexpr uint16_t kTimeoutMs = 100u;
 
     uint8_t tag = 0;
+    uint8_t index = kIndexAll;
     uint16_t size = 0;
     uint32_t crc32 = 0;
 
-    [[nodiscard]] static DataBegin make(uint8_t tag, uint16_t size,
-                                        uint32_t crc32) noexcept
+    [[nodiscard]] static DataBegin make(uint8_t tag, uint16_t size, uint32_t crc32,
+                                        uint8_t index = kIndexAll) noexcept
     {
         DataBegin b{};
         b.tag = tag;
+        b.index = index;
         b.size = size;
         b.crc32 = crc32;
         return b;
@@ -353,18 +363,21 @@ struct DataBegin {
 };
 
 /**
- * Data — DLC=1…8: кусок тела или короткий ответ Get (≤kInlineMax payload).
- *   +-----+---------------------+
- *   | seq | data ≤kInlineMax    |
- *   +-----+---------------------+
- * После DataBegin: seq с 0. Короткий Get: один кадр seq=0, без Begin.
- * Корреляция — Packet.txn_id.
+ * Data — DLC=2…8: кусок тела или короткий ответ Get (≤kInlineMax payload).
+ *   +----------+------------------+
+ *   | seq u16  | data ≤kInlineMax |
+ *   +----------+------------------+
+ *    LE
+ * После DataBegin: seq с 0, без обёртки (u16 покрывает size/kInlineMax).
+ * Короткий Get: один кадр seq=0, без Begin.
+ * Корреляция — Packet.txn_id. Адрес в куске не повторяется.
  */
 struct Data {
-    static constexpr uint8_t kId = static_cast<uint8_t>(Id::Data);
+    static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Data);
+    SMCP_NAME("Dat", "Data")
     static constexpr uint8_t kMaxPayload = kInlineMax;
 
-    uint8_t seq = 0;
+    uint16_t seq = 0;
     uint8_t len = 0;
     uint8_t data[kMaxPayload]{};
 
@@ -375,7 +388,7 @@ struct Data {
     }
 
     /** Кусок multi-тела (seq с 0 после DataBegin). */
-    [[nodiscard]] static Data make(uint8_t seq, const uint8_t* src, uint8_t n) noexcept
+    [[nodiscard]] static Data make(uint16_t seq, const uint8_t* src, uint8_t n) noexcept
     {
         Data d{};
         d.seq = seq;
@@ -391,12 +404,21 @@ struct Data {
     [[nodiscard]] bool unpack(const Message& m) noexcept;
 };
 
+/** Имя транспортного PDU по байту id. Чужой id — "?". */
+[[nodiscard]] inline const char* cstr(uint8_t id) noexcept
+{
+    if (const char* n = ::smcp::cstr<Ack, Nack, Fault, Heartbeat, Get, Set, DataBegin, Data>(id)) {
+        return n;
+    }
+    return "?";
+}
+
 [[nodiscard]] constexpr bool isBroadcastId(uint8_t id) noexcept
 {
     return id == Packet::kBroadcastId;
 }
 
-} // namespace msg
+} // namespace session
 
 } // namespace smcp
 
@@ -404,9 +426,9 @@ struct Data {
  * Demux PDU в `onPacket(const Packet& pkt)`: id совпал и unpack удался — `body` в блоке.
  * Цепочка: `else SMCP_IF_MSG` (макрос сам `if`). Ждёт имя `pkt` в скоупе.
  *
- *   SMCP_IF_MSG(msg::Select) {
+ *   SMCP_IF_MSG(smcp::segment::Select) {
  *       onSelect(body, pkt.txn_id);
- *   } else SMCP_IF_MSG(msg::SetTarget) {
+ *   } else SMCP_IF_MSG(smcp::segment::SetTarget) {
  *       onSetTarget(body, pkt.txn_id);
  *   } else {
  *       return false;

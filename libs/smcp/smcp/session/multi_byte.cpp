@@ -10,7 +10,7 @@
 
 #include <cstring>
 
-namespace smcp {
+namespace smcp::session {
 
 MultiByte::MultiByte(Session& session) noexcept
     : _s(session)
@@ -30,6 +30,7 @@ const char* MultiByte::cstr(Error err) noexcept
     case Error::Unexpected: return "Unexpected";
     case Error::Abort: return "Abort";
     case Error::Timeout: return "Timeout";
+    case Error::Last: break;
     }
     return "?";
 }
@@ -37,19 +38,20 @@ const char* MultiByte::cstr(Error err) noexcept
 // --- arm ---
 
 bool MultiByte::armRx(uint8_t tag, uint8_t txn_id, uint32_t now_ms,
-                      MultiByteClient* client, const IBuf& buf) noexcept
+                      MultiByteClient* client, const IBuf& buf,
+                      uint8_t index) noexcept
 {
-    return arm(tag, buf, false, txn_id, now_ms, client);
+    return arm(tag, index, buf, false, txn_id, now_ms, client);
 }
 
 bool MultiByte::armTx(uint8_t tag, const IBuf& buf, uint8_t txn_id,
-                      MultiByteClient* client) noexcept
+                      MultiByteClient* client, uint8_t index) noexcept
 {
-    return arm(tag, buf, true, txn_id, 0u, client);
+    return arm(tag, index, buf, true, txn_id, 0u, client);
 }
 
-bool MultiByte::arm(uint8_t tag, const IBuf& buf, bool tx, uint8_t txn_id,
-                    uint32_t now_ms, MultiByteClient* client) noexcept
+bool MultiByte::arm(uint8_t tag, uint8_t index, const IBuf& buf, bool tx,
+                    uint8_t txn_id, uint32_t now_ms, MultiByteClient* client) noexcept
 {
     if (isBusy() || txn_id == 0u || client == nullptr) {
         return false;
@@ -67,6 +69,7 @@ bool MultiByte::arm(uint8_t tag, const IBuf& buf, bool tx, uint8_t txn_id,
     _error = Error::None;
     _finished = false;
     _tag = tag;
+    _index = index;
     _txn = txn_id;
     _client = client;
     _buf = buf;
@@ -75,7 +78,7 @@ bool MultiByte::arm(uint8_t tag, const IBuf& buf, bool tx, uint8_t txn_id,
         _xfer.size = buf.size;
         _xfer.crc = MISC::Crc32::compute(buf.data, buf.size);
     } else {
-        _watch.start(now_ms, msg::DataBegin::kTimeoutMs);
+        _watch.start(now_ms, DataBegin::kTimeoutMs);
     }
     return true;
 }
@@ -101,13 +104,13 @@ bool MultiByte::peekTx(Message& out) const noexcept
     }
     switch (_phase) {
     case Phase::Begin: {
-        return msg::DataBegin::make(_tag, _xfer.size, _xfer.crc).pack(out);
+        return DataBegin::make(_tag, _xfer.size, _xfer.crc, _index).pack(out);
     }
     case Phase::Data: {
         const uint8_t n = txChunkLen();
         const uint8_t* src = (n > 0u && _buf.data != nullptr)
             ? _buf.data + _xfer.offset : nullptr;
-        return msg::Data::make(_xfer.seq, src, n).pack(out);
+        return Data::make(_xfer.seq, src, n).pack(out);
     }
     }
     return false;
@@ -117,7 +120,7 @@ bool MultiByte::onTxResult(const TxSlot& slot) noexcept
 {
     const uint8_t id = slot.msg.id;
     if (!_tx_pend || !isTx() || _finished || _txn == 0u || slot.txn_id != _txn
-        || (id != msg::DataBegin::kId && id != msg::Data::kId)) {
+        || (id != DataBegin::kId && id != Data::kId)) {
         return false;
     }
     _tx_pend = false;
@@ -132,7 +135,7 @@ bool MultiByte::onTxResult(const TxSlot& slot) noexcept
             break; /* txChunkLen не должен так дать; не двигаем offset */
         }
         _xfer.offset = static_cast<uint16_t>(next);
-        _xfer.seq = static_cast<uint8_t>(_xfer.seq + 1u);
+        _xfer.seq = static_cast<uint16_t>(_xfer.seq + 1u);
         if (_xfer.offset >= _xfer.size) {
             succeed();
             if (MultiByteClient* c = _client) {
@@ -157,6 +160,7 @@ void MultiByte::resetXfer() noexcept
     _tx_pend = false;
     _txn = 0;
     _tag = 0;
+    _index = 0;
     _client = nullptr;
     _buf = {};
     _xfer = {};
@@ -198,11 +202,11 @@ bool MultiByte::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
     }
 
     Result o = Result::Continue;
-    msg::DataBegin begin{};
-    SMCP_IF_MSG(msg::DataBegin) {
+    DataBegin begin{};
+    SMCP_IF_MSG(DataBegin) {
         begin = body;
         o = onBegin(body, now_ms);
-    } else SMCP_IF_MSG(msg::Data) {
+    } else SMCP_IF_MSG(Data) {
         /* До DataBegin кадр не наш: короткий Get забирает TaggedOps. */
         if (_phase != Phase::Data) {
             return false;
@@ -218,7 +222,7 @@ bool MultiByte::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
             fail(Error::NotArmed);
             return true;
         }
-        if (!_client->onMbBuffer(_tag, _txn, begin.size, buf)) {
+        if (!_client->onMbBuffer(_tag, _index, _txn, begin.size, buf)) {
             /* Клиент уже завершил xfer (Nack или onReply) и reset. */
             return true;
         }
@@ -236,7 +240,7 @@ bool MultiByte::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
     return true;
 }
 
-MultiByte::Result MultiByte::onBegin(const msg::DataBegin& begin,
+MultiByte::Result MultiByte::onBegin(const DataBegin& begin,
                                      uint32_t now_ms) noexcept
 {
     if (_finished) {
@@ -254,7 +258,7 @@ MultiByte::Result MultiByte::onBegin(const msg::DataBegin& begin,
         fail(Error::Unexpected);
         return Result::Fail;
     }
-    if (begin.tag != _tag) {
+    if (begin.tag != _tag || begin.index != _index) {
         fail(Error::TagMismatch);
         return Result::Fail;
     }
@@ -264,7 +268,7 @@ MultiByte::Result MultiByte::onBegin(const msg::DataBegin& begin,
     return enterData(begin, now_ms);
 }
 
-MultiByte::Result MultiByte::enterData(const msg::DataBegin& begin,
+MultiByte::Result MultiByte::enterData(const DataBegin& begin,
                                        uint32_t now_ms) noexcept
 {
     if (_buf.data == nullptr) {
@@ -277,11 +281,11 @@ MultiByte::Result MultiByte::enterData(const msg::DataBegin& begin,
     }
     _xfer = {begin.size, begin.crc32, 0u, 0u};
     _phase = Phase::Data;
-    _watch.start(now_ms, msg::DataBegin::kTimeoutMs);
+    _watch.start(now_ms, DataBegin::kTimeoutMs);
     return Result::Continue;
 }
 
-MultiByte::Result MultiByte::onData(const msg::Data& chunk, uint32_t now_ms) noexcept
+MultiByte::Result MultiByte::onData(const Data& chunk, uint32_t now_ms) noexcept
 {
     if (_finished) {
         return finishedResult();
@@ -290,7 +294,7 @@ MultiByte::Result MultiByte::onData(const msg::Data& chunk, uint32_t now_ms) noe
         fail(Error::Unexpected);
         return Result::Fail;
     }
-    if (chunk.len > msg::kInlineMax) {
+    if (chunk.len > kInlineMax) {
         fail(Error::Unexpected);
         return Result::Fail;
     }
@@ -307,11 +311,11 @@ MultiByte::Result MultiByte::onData(const msg::Data& chunk, uint32_t now_ms) noe
         std::memcpy(_buf.data + _xfer.offset, chunk.data, chunk.len);
     }
     _xfer.offset = static_cast<uint16_t>(next);
-    _xfer.seq = static_cast<uint8_t>(_xfer.seq + 1u);
+    _xfer.seq = static_cast<uint16_t>(_xfer.seq + 1u);
     if (_xfer.offset >= _xfer.size) {
         return finishRxCrc();
     }
-    _watch.start(now_ms, msg::DataBegin::kTimeoutMs);
+    _watch.start(now_ms, DataBegin::kTimeoutMs);
     return Result::Continue;
 }
 
@@ -323,7 +327,7 @@ void MultiByte::notifyResult() noexcept
         return;
     }
     MultiByteClient* c = _client;
-    c->onMbResult(_tag, bufReceived(), _error);
+    c->onMbResult(_tag, _index, bufReceived(), _error);
 }
 
 void MultiByte::fail(Error err) noexcept
@@ -364,7 +368,7 @@ uint8_t MultiByte::txChunkLen() const noexcept
         return 0u;
     }
     const uint16_t left = static_cast<uint16_t>(_xfer.size - _xfer.offset);
-    return (left > msg::kInlineMax) ? msg::kInlineMax : static_cast<uint8_t>(left);
+    return (left > kInlineMax) ? kInlineMax : static_cast<uint8_t>(left);
 }
 
-} // namespace smcp
+} // namespace smcp::session

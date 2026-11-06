@@ -15,7 +15,7 @@
 #include <type_traits>
 
 #include "crc.hpp"
-#include "iFileSystem.hpp"
+#include "iFile.hpp"
 #include "obj_registry.hpp"
 #include "tags.hpp"
 
@@ -28,9 +28,13 @@ using BIF::IFile;
 
 inline constexpr std::size_t kCrcChunkSize = 64u;
 
-/** Полный путь шоу: basename + запас под префикс тома (`0:/…`). */
-inline constexpr std::size_t kPathPrefixRoom = 16u;
-inline constexpr std::size_t kPathSize = BIF::kDirNameSize + kPathPrefixRoom;
+/**
+ * Имя/путь в заголовке шоуфайла (wire). Не из FatFs:
+ * kShowNameSize == прежний BIF::kDirNameSize при _MAX_LFN=31.
+ */
+inline constexpr std::size_t kShowNameSize = 32u;
+inline constexpr std::size_t kPathPrefixRoom = 16u; /**< запас под префикс тома (`0:/…`). */
+inline constexpr std::size_t kPathSize = kShowNameSize + kPathPrefixRoom;
 
 inline constexpr uint8_t kMaxMismatches = 8u;
 
@@ -96,7 +100,9 @@ struct Header {
     [[nodiscard]] Status checkSize(std::size_t fileSize) const noexcept;
 };
 
+static_assert(kPathSize == 48u, "show Header path wire size");
 static_assert(sizeof(Header) == kPathSize + 20u);
+static_assert(sizeof(Header) == 68u, "show Header wire size");
 static_assert(alignof(Header) == alignof(uint32_t));
 
 /** Запись каталога на носителе. Поля — только фиксированной ширины (не size_t). */

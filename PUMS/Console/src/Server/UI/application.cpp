@@ -48,7 +48,7 @@ void Application::boot() noexcept
     setSerial1LogSink(&Application::onSerial1Log);
 }
 
-void Application::onPageChange(const nex::msg::evPage& e) noexcept
+void Application::onPageChange(const nex::session::evPage& e) noexcept
 {
     AppUI::onPageChange(e);
     overlay.redrawShownWidgets();
@@ -76,7 +76,7 @@ void Application::syncStatusBarLink() noexcept
     const unsigned freeKb =
         static_cast<unsigned>((memstat::freeMinBytes() + 512u) / 1024u);
     std::snprintf(buf, sizeof(buf), "%s (%uk)",
-        smcp::Node::cstr(mServer.getStatus()), freeKb);
+        smcp::Node::cstr(mServer.getState()), freeKb);
     _statusBar.setStatus(buf);
     memstat::resetFreeMin();
 }

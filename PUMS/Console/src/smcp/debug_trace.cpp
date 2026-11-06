@@ -7,18 +7,18 @@
 
 #if defined(SMCP_TRACE_LINK)
 
-#include "smcp/mech/message.hpp"
+#include "segment/message.hpp"
 
 namespace smcp {
 namespace {
 
-[[nodiscard]] char actionCh(msg::Action a) noexcept
+[[nodiscard]] char actionCh(segment::Action a) noexcept
 {
     switch (a) {
-    case msg::Action::Add: return '+';
-    case msg::Action::Remove: return '-';
-    case msg::Action::Set: return '=';
-    case msg::Action::Count: break;
+    case segment::Action::Add: return '+';
+    case segment::Action::Remove: return '-';
+    case segment::Action::Set: return '=';
+    case segment::Action::Last: break;
     }
     return '?';
 }
@@ -26,88 +26,88 @@ namespace {
 void printBody(const Packet& pkt) noexcept
 {
 #if defined(SMCP_TRACE_SHORT)
-    if (pkt.msg.id == msg::Nack::kId) {
-        msg::Nack nack{};
+    if (pkt.msg.id == session::Nack::kId) {
+        session::Nack nack{};
         if (nack.unpack(pkt.msg)) {
             std::printf("Nk %s %08lX",
-                msg::cstrS(static_cast<msg::ErrorCode>(nack.error)),
+                segment::vError::from_raw(nack.error.raw()).cstr(),
                 static_cast<unsigned long>(nack.detail));
             return;
         }
     }
-    if (pkt.msg.id == msg::Fault::kId) {
-        msg::Fault fault{};
+    if (pkt.msg.id == session::Fault::kId) {
+        session::Fault fault{};
         if (fault.unpack(pkt.msg)) {
-            char name[msg::Fault::kDetailMax + 1u]{};
+            char name[session::Fault::kDetailMax + 1u]{};
             for (uint8_t i = 0; i < fault.detail_len; ++i) {
                 name[i] = static_cast<char>(fault.detail[i]);
             }
             if (fault.detail_len > 0u) {
-                std::printf("Ft %s \"%s\"", msg::Fault::cstr(fault.error), name);
+                std::printf("Ft %s \"%s\"", session::Fault::cstr(fault.error), name);
             } else {
-                std::printf("Ft %s", msg::Fault::cstr(fault.error));
+                std::printf("Ft %s", session::Fault::cstr(fault.error));
             }
             return;
         }
     }
-    if (pkt.msg.id == msg::Ack::kId) {
+    if (pkt.msg.id == session::Ack::kId) {
         std::printf("Ack");
         return;
     }
-    if (pkt.msg.id == msg::Heartbeat::kId) {
+    if (pkt.msg.id == session::Heartbeat::kId) {
         std::printf("HB");
         return;
     }
-    if (pkt.msg.id == msg::Select::kId) {
-        msg::Select sel{};
+    if (pkt.msg.id == segment::Select::kId) {
+        segment::Select sel{};
         if (sel.unpack(pkt.msg)) {
             std::printf("S%c %lX", actionCh(sel.action),
                 static_cast<unsigned long>(sel.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::Block::kId) {
-        msg::Block blk{};
+    if (pkt.msg.id == segment::Block::kId) {
+        segment::Block blk{};
         if (blk.unpack(pkt.msg)) {
             std::printf("B%c %lX", actionCh(blk.action),
                 static_cast<unsigned long>(blk.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::GetTelemetry::kId) {
-        msg::GetTelemetry gt{};
+    if (pkt.msg.id == segment::GetTelemetry::kId) {
+        segment::GetTelemetry gt{};
         if (gt.unpack(pkt.msg)) {
             std::printf("GT %lX", static_cast<unsigned long>(gt.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::SetTarget::kId) {
-        msg::SetTarget st{};
+    if (pkt.msg.id == segment::SetTarget::kId) {
+        segment::SetTarget st{};
         if (st.unpack(pkt.msg)) {
             if (st.all_selected) {
                 std::printf("Tg * %c %ld/%u",
-                    st.target.mode == MoveMode::Relative ? 'R' : 'A',
+                    st.target.mode == axis::MoveMode::Relative ? 'R' : 'A',
                     static_cast<long>(st.target.target),
                     static_cast<unsigned>(st.target.speed));
             } else {
                 std::printf("Tg %u %c %ld/%u",
                     static_cast<unsigned>(st.axis_id),
-                    st.target.mode == MoveMode::Relative ? 'R' : 'A',
+                    st.target.mode == axis::MoveMode::Relative ? 'R' : 'A',
                     static_cast<long>(st.target.target),
                     static_cast<unsigned>(st.target.speed));
             }
             return;
         }
     }
-    if (pkt.msg.id == msg::ResetFault::kId) {
-        msg::ResetFault rf{};
+    if (pkt.msg.id == segment::ResetFault::kId) {
+        segment::ResetFault rf{};
         if (rf.unpack(pkt.msg)) {
             std::printf("RF %lX", static_cast<unsigned long>(rf.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::Telemetry::kId) {
-        msg::Telemetry tel{};
+    if (pkt.msg.id == segment::Telemetry::kId) {
+        segment::Telemetry tel{};
         if (tel.unpack(pkt.msg)) {
             std::printf("Te %u h=%u %ld %02X",
                 static_cast<unsigned>(tel.axis_id),
@@ -117,69 +117,69 @@ void printBody(const Packet& pkt) noexcept
             return;
         }
     }
-    std::printf("%s", msg::cstrPduS(static_cast<msg::CMsgId>(pkt.msg.id)));
+    std::printf("%s", segment::cstr(pkt.msg.id));
 #else
-    if (pkt.msg.id == msg::Nack::kId) {
-        msg::Nack nack{};
+    if (pkt.msg.id == session::Nack::kId) {
+        session::Nack nack{};
         if (nack.unpack(pkt.msg)) {
             std::printf("Nack error=%s detail=0x%08lX",
-                msg::cstr(static_cast<msg::ErrorCode>(nack.error)),
+                segment::vError::from_raw(nack.error.raw()).cstr(),
                 static_cast<unsigned long>(nack.detail));
             return;
         }
     }
-    if (pkt.msg.id == msg::Fault::kId) {
-        msg::Fault fault{};
+    if (pkt.msg.id == session::Fault::kId) {
+        session::Fault fault{};
         if (fault.unpack(pkt.msg)) {
-            char name[msg::Fault::kDetailMax + 1u]{};
+            char name[session::Fault::kDetailMax + 1u]{};
             for (uint8_t i = 0; i < fault.detail_len; ++i) {
                 name[i] = static_cast<char>(fault.detail[i]);
             }
             if (fault.detail_len > 0u) {
                 std::printf("Fault error=%s name=\"%s\"",
-                    msg::Fault::cstr(fault.error), name);
+                    session::Fault::cstr(fault.error), name);
             } else {
-                std::printf("Fault error=%s", msg::Fault::cstr(fault.error));
+                std::printf("Fault error=%s", session::Fault::cstr(fault.error));
             }
             return;
         }
     }
-    if (pkt.msg.id == msg::Ack::kId) {
+    if (pkt.msg.id == session::Ack::kId) {
         std::printf("Ack");
         return;
     }
-    if (pkt.msg.id == msg::Heartbeat::kId) {
+    if (pkt.msg.id == session::Heartbeat::kId) {
         std::printf("Heartbeat");
         return;
     }
-    if (pkt.msg.id == msg::Select::kId) {
-        msg::Select sel{};
+    if (pkt.msg.id == segment::Select::kId) {
+        segment::Select sel{};
         if (sel.unpack(pkt.msg)) {
             std::printf("Select %s mask=0x%08lX",
-                msg::cstr(sel.action),
+                segment::cstr(sel.action),
                 static_cast<unsigned long>(sel.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::Block::kId) {
-        msg::Block blk{};
+    if (pkt.msg.id == segment::Block::kId) {
+        segment::Block blk{};
         if (blk.unpack(pkt.msg)) {
             std::printf("Block %s mask=0x%08lX",
-                msg::cstr(blk.action),
+                segment::cstr(blk.action),
                 static_cast<unsigned long>(blk.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::GetTelemetry::kId) {
-        msg::GetTelemetry gt{};
+    if (pkt.msg.id == segment::GetTelemetry::kId) {
+        segment::GetTelemetry gt{};
         if (gt.unpack(pkt.msg)) {
             std::printf("GetTelemetry mask=0x%08lX",
                 static_cast<unsigned long>(gt.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::SetTarget::kId) {
-        msg::SetTarget st{};
+    if (pkt.msg.id == segment::SetTarget::kId) {
+        segment::SetTarget st{};
         if (st.unpack(pkt.msg)) {
             if (st.all_selected) {
                 std::printf("SetTarget all %s target=%ld speed=%u",
@@ -196,16 +196,16 @@ void printBody(const Packet& pkt) noexcept
             return;
         }
     }
-    if (pkt.msg.id == msg::ResetFault::kId) {
-        msg::ResetFault rf{};
+    if (pkt.msg.id == segment::ResetFault::kId) {
+        segment::ResetFault rf{};
         if (rf.unpack(pkt.msg)) {
             std::printf("ResetFault mask=0x%08lX",
                 static_cast<unsigned long>(rf.selection.raw()));
             return;
         }
     }
-    if (pkt.msg.id == msg::Telemetry::kId) {
-        msg::Telemetry tel{};
+    if (pkt.msg.id == segment::Telemetry::kId) {
+        segment::Telemetry tel{};
         if (tel.unpack(pkt.msg)) {
             std::printf("Telemetry mech=%u holder=%u pos=%ld st=0x%02X",
                 static_cast<unsigned>(tel.axis_id),
@@ -215,7 +215,7 @@ void printBody(const Packet& pkt) noexcept
             return;
         }
     }
-    std::printf("%s", msg::cstrPdu(static_cast<msg::CMsgId>(pkt.msg.id)));
+    std::printf("%s", segment::cstr(pkt.msg.id));
 #endif
 }
 
@@ -224,7 +224,7 @@ void printBody(const Packet& pkt) noexcept
 void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) noexcept
 {
 #if !defined(SMCP_TRACE_HB)
-    if (pkt.msg.id == msg::Heartbeat::kId) {
+    if (pkt.msg.id == session::Heartbeat::kId) {
         return;
     }
 #endif

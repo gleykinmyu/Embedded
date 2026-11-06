@@ -3,7 +3,7 @@
  * @brief test: CGroup<MaxMechs> : PoolView<GHDR, GSEL>. Не пульт.
  *
  * Local selection — биты 0…MaxMechs-1; слов GSEL = (MaxMechs+31)/32.
- * Recall пакует Selection по CMech: local_id → server_id + axis_id.
+ * Recall пакует segment::Selection по segment::console::Axis: local_id → server_id + axis_id.
  */
 
 #pragma once
@@ -13,7 +13,7 @@
 #include <cstring>
 
 #include "section_pool.hpp"
-#include "smcp/mech/Console/console.hpp"
+#include "segment/console.hpp"
 #include "smcp/show/group.hpp"
 
 namespace smcp {
@@ -22,18 +22,18 @@ namespace test {
 inline constexpr sf::Tag kGroupHeaderTag = 0x52444847u; /**< "GHDR". */
 inline constexpr sf::Tag kGroupSlotTag = 0x4C455347u;   /**< "GSEL". */
 
-/** Заголовок группы в пуле. PoolRef вместо Selection. */
+/** Заголовок группы в пуле. PoolRef вместо segment::Selection. */
 struct alignas(uint32_t) GroupHeader {
     uint8_t id = 0;
-    REG::BitMask<Group::Flag> flag;
+    REG::BitMask<show::Group::Flag> flag;
     uint8_t reserved_1[2]{};
     sf::PoolRef pool{};
-    char name[kGroupNameSize]{};
+    char name[show::kGroupNameSize]{};
     uint8_t reserved_2[8]{};
 
     [[nodiscard]] constexpr bool isBlocked() const noexcept
     {
-        return flag.any(Group::Flag::Blocked);
+        return flag.any(show::Group::Flag::Blocked);
     }
 
     void setName(const char* group_name) noexcept
@@ -42,16 +42,16 @@ struct alignas(uint32_t) GroupHeader {
             name[0] = '\0';
             return;
         }
-        std::strncpy(name, group_name, kGroupNameSize - 1u);
-        name[kGroupNameSize - 1u] = '\0';
+        std::strncpy(name, group_name, show::kGroupNameSize - 1u);
+        name[show::kGroupNameSize - 1u] = '\0';
     }
 
     void setBlocked(bool on = true) noexcept
     {
         if (on) {
-            flag.set(Group::Flag::Blocked);
+            flag.set(show::Group::Flag::Blocked);
         } else {
-            flag.clear(Group::Flag::Blocked);
+            flag.clear(show::Group::Flag::Blocked);
         }
     }
 
@@ -65,7 +65,7 @@ struct alignas(uint32_t) GroupHeader {
     }
 };
 
-static_assert(sizeof(GroupHeader) == kGroupWireSize);
+static_assert(sizeof(GroupHeader) == show::kGroupWireSize);
 static_assert(alignof(GroupHeader) == alignof(uint32_t));
 static_assert(offsetof(GroupHeader, pool) == 4);
 static_assert(offsetof(GroupHeader, name) == 8);
@@ -84,13 +84,13 @@ class IGroupBank;
 template <uint8_t MaxMechs>
 class IGroupBank {
 public:
-    using View = sf::PoolView<GroupHeader, Selection>;
+    using View = sf::PoolView<GroupHeader, segment::Selection>;
 
     virtual ~IGroupBank() = default;
 
     [[nodiscard]] virtual View viewAt(uint16_t i) noexcept = 0;
-    [[nodiscard]] virtual sf::IPool<GroupHeader, Selection>& pool() noexcept = 0;
-    [[nodiscard]] virtual IConsole& console() noexcept = 0;
+    [[nodiscard]] virtual sf::IPool<GroupHeader, segment::Selection>& pool() noexcept = 0;
+    [[nodiscard]] virtual segment::Console& console() noexcept = 0;
     virtual void markEdited() noexcept = 0;
 };
 
@@ -99,10 +99,10 @@ public:
  * Копия жива после compact чужой группы: at/size/header перечитывают first.
  */
 template <uint8_t MaxMechs>
-class CGroup : public sf::PoolView<GroupHeader, Selection> {
+class CGroup : public sf::PoolView<GroupHeader, segment::Selection> {
     static_assert(MaxMechs > 0u, "CGroup: MaxMechs > 0");
 
-    using Base = sf::PoolView<GroupHeader, Selection>;
+    using Base = sf::PoolView<GroupHeader, segment::Selection>;
 
 public:
     static constexpr uint8_t kMechCount = MaxMechs;
@@ -134,10 +134,10 @@ public:
         const GroupHeader* const h = header();
         return h != nullptr ? h->id : 0u;
     }
-    [[nodiscard]] REG::BitMask<Group::Flag> flags() const noexcept
+    [[nodiscard]] REG::BitMask<show::Group::Flag> flags() const noexcept
     {
         const GroupHeader* const h = header();
-        return h != nullptr ? h->flag : REG::BitMask<Group::Flag>{};
+        return h != nullptr ? h->flag : REG::BitMask<show::Group::Flag>{};
     }
     [[nodiscard]] const char* name() const noexcept
     {
@@ -149,12 +149,12 @@ public:
         const GroupHeader* const h = header();
         return h != nullptr && h->isBlocked();
     }
-    [[nodiscard]] bool contains(uint8_t local_id) const noexcept
+    [[nodiscard]] bool contains(uint16_t local_id) const noexcept
     {
         if (local_id >= MaxMechs) {
             return false;
         }
-        const Selection* const s = at(wordOf(local_id));
+        const segment::Selection* const s = at(wordOf(local_id));
         return s != nullptr && s->contains(bitOf(local_id));
     }
 
@@ -172,7 +172,7 @@ public:
     }
 
     /** Включить/снять local_id; хвост пустых GSEL сжимается. */
-    [[nodiscard]] bool set(uint8_t local_id, bool on) noexcept
+    [[nodiscard]] bool set(uint16_t local_id, bool on) noexcept
     {
         if (!(*this) || local_id >= MaxMechs) {
             return false;
@@ -183,14 +183,14 @@ public:
             if (w >= size() && !resize(static_cast<uint16_t>(w + 1u))) {
                 return false;
             }
-            Selection* const s = at(w);
+            segment::Selection* const s = at(w);
             if (s == nullptr) {
                 return false;
             }
             s->add(bit);
             return true;
         }
-        Selection* const s = at(w);
+        segment::Selection* const s = at(w);
         if (s != nullptr) {
             s->remove(bit);
         }
@@ -199,8 +199,8 @@ public:
     }
 
     /**
-     * Select по серверам: бит local → CMech::id() в маске этого server_id.
-     * Билет queued IGroupConsole не ставит (там ещё smcp::CGroup).
+     * Select по серверам: local → Patch.route (server_id + axis_id).
+     * Пока route не на segment::console::Axis — NotSent.
      */
     [[nodiscard]] Result recall() noexcept
     {
@@ -216,55 +216,15 @@ public:
         if (overlapsBlocked()) {
             return Result::OverlapsBlocked;
         }
-        IConsole& cons = _bank->console();
-        struct Wire {
-            uint8_t sid = 0;
-            Selection sel{};
-        };
-        Wire wires[MaxMechs]{};
-        uint8_t nw = 0u;
-        const uint8_t n = cons.localMechCount();
-        for (uint8_t i = 0u; i < n; ++i) {
-            CMech* const m = cons.localMech(i);
-            if (m == nullptr || !contains(m->localId())) {
-                continue;
-            }
-            const axis::Route r = m->route();
-            if (!msg::isServerId(r.server_id)) {
-                continue;
-            }
-            uint8_t w = 0u;
-            for (; w < nw; ++w) {
-                if (wires[w].sid == r.server_id) {
-                    break;
-                }
-            }
-            if (w == nw) {
-                if (nw >= MaxMechs) {
-                    return Result::NotSent;
-                }
-                wires[nw].sid = r.server_id;
-                ++nw;
-            }
-            wires[w].sel.add(r.axis_id);
-        }
-        if (nw == 0u) {
-            return Result::Empty;
-        }
-        for (uint8_t w = 0u; w < nw; ++w) {
-            ServerSession* const s = cons.server(wires[w].sid);
-            if (s == nullptr || !s->setSelection(wires[w].sel)) {
-                return Result::NotSent;
-            }
-        }
-        return Result::Ok;
+        (void)_bank->console();
+        return Result::NotSent;
     }
 
     /**
      * Записать local-биты (слово 0 = оси 0…31). Старшие слова снимаются.
      * Occupied снимается @a confirmed; OverlapsBlocked — нет.
      */
-    [[nodiscard]] Result record(Selection local, const char* group_name = nullptr,
+    [[nodiscard]] Result record(segment::Selection local, const char* group_name = nullptr,
                                 bool confirmed = false) noexcept
     {
         if (!(*this) || _bank == nullptr || local.empty()) {
@@ -273,14 +233,14 @@ public:
         if (!isEmpty() && !confirmed) {
             return Result::Occupied;
         }
-        const Selection words[1]{local};
+        const segment::Selection words[1]{local};
         if (overlapsBlocked(words, 1u)) {
             return Result::OverlapsBlocked;
         }
         if (!resize(1u)) {
             return Result::NotSent;
         }
-        Selection* const dst = at(0u);
+        segment::Selection* const dst = at(0u);
         if (dst == nullptr) {
             return Result::NotSent;
         }
@@ -301,17 +261,17 @@ public:
         if (!isEmpty() && !confirmed) {
             return Result::Occupied;
         }
-        IConsole& cons = _bank->console();
-        Selection words[kSelWords]{};
+        segment::Console& cons = _bank->console();
+        segment::Selection words[kSelWords]{};
         uint16_t used = 0u;
         bool any = false;
-        const uint8_t n = cons.localMechCount();
-        for (uint8_t i = 0u; i < n; ++i) {
-            CMech* const m = cons.localMech(i);
+        const uint16_t n = cons.axisCapacity();
+        for (uint16_t i = 0u; i < n; ++i) {
+            segment::console::Axis* const m = cons.axis(i);
             if (m == nullptr || !m->isSelected()) {
                 continue;
             }
-            const uint8_t lid = m->localId();
+            const uint16_t lid = i;
             if (lid >= MaxMechs) {
                 continue;
             }
@@ -370,22 +330,22 @@ public:
     }
 
 private:
-    [[nodiscard]] static constexpr uint16_t wordOf(uint8_t local_id) noexcept
+    [[nodiscard]] static constexpr uint16_t wordOf(uint16_t local_id) noexcept
     {
         return static_cast<uint16_t>(local_id / smcp::kMechCount);
     }
-    [[nodiscard]] static constexpr uint8_t bitOf(uint8_t local_id) noexcept
+    [[nodiscard]] static constexpr uint8_t bitOf(uint16_t local_id) noexcept
     {
         return static_cast<uint8_t>(local_id % smcp::kMechCount);
     }
 
     [[nodiscard]] bool overlapsBlocked() const noexcept
     {
-        Selection words[kSelWords]{};
+        segment::Selection words[kSelWords]{};
         const uint16_t n = size();
         const uint16_t used = (n < kSelWords) ? n : kSelWords;
         for (uint16_t w = 0u; w < used; ++w) {
-            const Selection* const s = at(w);
+            const segment::Selection* const s = at(w);
             if (s != nullptr) {
                 words[w] = *s;
             }
@@ -393,7 +353,7 @@ private:
         return overlapsBlocked(words, used);
     }
 
-    [[nodiscard]] bool overlapsBlocked(const Selection* words, uint16_t nwords) const noexcept
+    [[nodiscard]] bool overlapsBlocked(const segment::Selection* words, uint16_t nwords) const noexcept
     {
         if (_bank == nullptr || words == nullptr || nwords == 0u) {
             return false;
@@ -407,7 +367,7 @@ private:
             }
             const uint16_t m = (nwords < other.size()) ? nwords : other.size();
             for (uint16_t w = 0u; w < m; ++w) {
-                const Selection* const b = other.at(w);
+                const segment::Selection* const b = other.at(w);
                 if (b != nullptr && (words[w] & *b).any()) {
                     return true;
                 }
@@ -420,7 +380,7 @@ private:
     {
         uint16_t n = size();
         while (n > 0u) {
-            const Selection* const last = at(static_cast<uint16_t>(n - 1u));
+            const segment::Selection* const last = at(static_cast<uint16_t>(n - 1u));
             if (last != nullptr && last->any()) {
                 break;
             }
@@ -440,14 +400,14 @@ private:
  * GHDR[MaxGroups] + GSEL[MaxGroups * kSelWords].
  * Ёмкость Show — +2 секции. После load — syncFreeTop().
  */
-template <uint8_t MaxMechs, uint8_t MaxGroups = kGroupMaxCount>
-class CGroupBank : public sf::SectionPool<GroupHeader, Selection, MaxGroups,
+template <uint8_t MaxMechs, uint8_t MaxGroups = show::kGroupMaxCount>
+class CGroupBank : public sf::SectionPool<GroupHeader, segment::Selection, MaxGroups,
                                           static_cast<uint16_t>(MaxGroups) * selWordCount<MaxMechs>()>,
                    public IGroupBank<MaxMechs> {
     static_assert(MaxMechs > 0u, "CGroupBank: MaxMechs > 0");
     static_assert(MaxGroups > 0u, "CGroupBank: MaxGroups > 0");
 
-    using Pool = sf::SectionPool<GroupHeader, Selection, MaxGroups,
+    using Pool = sf::SectionPool<GroupHeader, segment::Selection, MaxGroups,
                                  static_cast<uint16_t>(MaxGroups) * selWordCount<MaxMechs>()>;
 
 public:
@@ -455,7 +415,7 @@ public:
     static constexpr uint8_t kCount = MaxGroups;
     static constexpr uint16_t kSelWords = selWordCount<MaxMechs>();
 
-    CGroupBank(sf::IShow& file, IConsole& console, bool required = true) noexcept
+    CGroupBank(sf::IShow& file, segment::Console& console, bool required = true) noexcept
         : Pool(file, kGroupHeaderTag, kGroupSlotTag, required)
         , _console(console)
     {
@@ -477,15 +437,15 @@ public:
         if (!this->isLayoutOk()) {
             return false;
         }
-        constexpr uint8_t kKnown = static_cast<uint8_t>(Group::Flag::Blocked)
-            | static_cast<uint8_t>(Group::Flag::Atomic);
+        constexpr uint8_t kKnown = static_cast<uint8_t>(show::Group::Flag::Blocked)
+            | static_cast<uint8_t>(show::Group::Flag::Atomic);
         auto* const self = const_cast<CGroupBank*>(this);
         for (uint8_t i = 0u; i < MaxGroups; ++i) {
             const GroupHeader* const h = self->headerAt(i);
             if ((h->flag.raw() & static_cast<uint8_t>(~kKnown)) != 0u) {
                 return false;
             }
-            if (std::memchr(h->name, '\0', kGroupNameSize) == nullptr) {
+            if (std::memchr(h->name, '\0', show::kGroupNameSize) == nullptr) {
                 return false;
             }
         }
@@ -501,12 +461,12 @@ public:
     {
         return this->at(i);
     }
-    [[nodiscard]] sf::IPool<GroupHeader, Selection>& pool() noexcept override { return *this; }
-    [[nodiscard]] IConsole& console() noexcept override { return _console; }
+    [[nodiscard]] sf::IPool<GroupHeader, segment::Selection>& pool() noexcept override { return *this; }
+    [[nodiscard]] segment::Console& console() noexcept override { return _console; }
     void markEdited() noexcept override { Pool::markEdited(); }
 
 private:
-    IConsole& _console;
+    segment::Console& _console;
 };
 
 static_assert(CGroup<24>::kSelWords == 1u);

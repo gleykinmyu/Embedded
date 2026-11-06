@@ -2,16 +2,15 @@
  * @file session.hpp
  * @brief Сессия к одному peer: фасад FSM (PROTOCOL.md).
  *
- * LinkHb | ReplyWnd | TaggedOps | MultiByte | _tx_ctrl.
- * MultiByte TX: сам peek→Session::send; Session::onTxResult → commit.
+ * session::LinkHb | session::ReplyWnd | session::TaggedOps | session::MultiByte | _tx_ctrl.
+ * session::MultiByte TX: сам peek→Session::send; Session::onTxResult → commit.
  */
 
 #pragma once
 
 #include <cstdint>
 
-#include "obj_bank.hpp"
-#include "obj_registry.hpp"
+#include "mem/polyslot.hpp"
 #include "smcp/node.hpp"
 #include "smcp/session/link_hb.hpp"
 #include "smcp/session/multi_byte.hpp"
@@ -26,17 +25,21 @@ namespace smcp {
 
 class Session {
 public:
-    using Status = LinkHb::Status;
-    using Fault = Node::Fault;
+    using Status = session::LinkHb::Status;
+    using Link = Node::Link;
 
     [[nodiscard]] static const char* cstr(Status status) noexcept
     {
-        return LinkHb::cstr(status);
+        return session::LinkHb::cstr(status);
     }
-    [[nodiscard]] static const char* cstr(Fault reason) noexcept { return Node::cstr(reason); }
-    [[nodiscard]] static const char* cstr(MultiByte::Error status) noexcept
+    [[nodiscard]] static const char* cstr(Link link) noexcept { return Node::cstr(link); }
+    [[nodiscard]] static const char* cstr(session::MultiByte::Error status) noexcept
     {
-        return MultiByte::cstr(status);
+        return session::MultiByte::cstr(status);
+    }
+    [[nodiscard]] static const char* cstr(session::TaggedOps::Result status) noexcept
+    {
+        return session::TaggedOps::cstr(status);
     }
 
     virtual ~Session() = default;
@@ -44,7 +47,6 @@ public:
 
     Node& node;
 
-    [[nodiscard]] uint8_t id() const noexcept { return _id; }
     [[nodiscard]] Status getStatus() const noexcept { return _link.status(); }
     [[nodiscard]] uint8_t peerId() const noexcept { return _peer_id; }
     [[nodiscard]] bool isOpen() const noexcept { return _link.isOpen(); }
@@ -52,10 +54,11 @@ public:
 
     void open(uint8_t peer_id) noexcept;
     void start(uint8_t peer_id) noexcept;
-    void close(Fault reason) noexcept;
+    /** @a link ≠ Up (Up → Down). Down — штатно; HbLost/PeerDown — lost. */
+    void close(Link link = Link::Down) noexcept;
 
     /**
-     * Short RPC → ReplyWnd (ожидание Ack|Nack).
+     * Short RPC → session::ReplyWnd (ожидание Ack|Nack).
      * @return true — в очереди.
      */
     template <typename T>
@@ -110,80 +113,79 @@ public:
         return send(pdu, m, txn_id);
     }
 
-    /** Ответ на Get: тело с echo txn (TaggedOps). */
-    [[nodiscard]] bool send(uint8_t tag, const IBuf& buf, uint8_t txn_id) noexcept
+    /** Ответ на Get: тело с echo txn (session::TaggedOps). index — из opener. */
+    [[nodiscard]] bool send(uint8_t tag, const IBuf& buf, uint8_t txn_id,
+                            uint8_t index = session::kIndexAll) noexcept
     {
-        return _tagged.sendBody(tag, buf, txn_id);
+        return _tagged.sendBody(tag, buf, txn_id, index);
+    }
+
+    template <typename Tag>
+    [[nodiscard]] bool send(Tag tag, const IBuf& buf, uint8_t txn_id,
+                            uint8_t index = session::kIndexAll) noexcept
+    {
+        return send(static_cast<uint8_t>(tag), buf, txn_id, index);
     }
 
     [[nodiscard]] uint8_t txnId() const noexcept { return _txn_tx; }
 
     void sendAck(uint8_t txn_id) noexcept;
-    void sendNack(uint8_t txn_id, uint8_t error,
-                  uint32_t detail = msg::Nack::kDetailNone) noexcept;
-
-    template <typename E>
-    void sendNack(uint8_t txn_id, E error,
-                  uint32_t detail = msg::Nack::kDetailNone) noexcept
-    {
-        sendNack(txn_id, static_cast<uint8_t>(error), detail);
-    }
+    void sendNack(uint8_t txn_id, session::vError error,
+                  uint32_t detail = session::Nack::kDetailNone) noexcept;
 
     /** Хук Node: кадр или локальный Timeout (FSM). */
-    inline void ack(const TxSlot& req, const msg::Ack& reply) noexcept
+    inline void ack(const TxSlot& req, const session::Ack& reply) noexcept
     {
         node.onAck(this, req, reply);
     }
 
-    inline void nack(const TxSlot& req, const msg::Nack& reply) noexcept
+    inline void nack(const TxSlot& req, const session::Nack& reply) noexcept
     {
         node.onNack(this, req, reply);
     }
-    inline void nack(const TxSlot& req, uint8_t error,
-                     uint32_t detail = msg::Nack::kDetailNone) noexcept
+    inline void nack(const TxSlot& req, session::vError error,
+                     uint32_t detail = session::Nack::kDetailNone) noexcept
     {
-        nack(req, msg::Nack::make(error, detail));
-    }
-    template <typename E>
-    void nack(const TxSlot& req, E error,
-              uint32_t detail = msg::Nack::kDetailNone) noexcept
-    {
-        nack(req, static_cast<uint8_t>(error), detail);
+        nack(req, session::Nack::make(error, detail));
     }
 
-    [[nodiscard]] inline bool set(uint8_t tag, const IBuf& buf) noexcept
+    /** @a index = @c session::kIndexAll — весь объект; иначе один экземпляр (ось). */
+    [[nodiscard]] inline session::TaggedOps::Result set(uint8_t tag, const IBuf& buf,
+                                         uint8_t index = session::kIndexAll) noexcept
     {
-        return _tagged.set(tag, buf);
+        return _tagged.set(tag, buf, index);
     }
-    [[nodiscard]] inline bool get(uint8_t tag, IBuf& buf) noexcept
+    [[nodiscard]] inline session::TaggedOps::Result get(uint8_t tag, IBuf& buf,
+                                         uint8_t index = session::kIndexAll) noexcept
     {
-        return _tagged.get(tag, buf);
+        return _tagged.get(tag, buf, index);
     }
 
 protected:
     [[nodiscard]] virtual bool onPacket(const Packet& pkt) noexcept;
-    virtual void onFault(Fault reason) noexcept;
+    virtual void tick() noexcept;
 
-    virtual void onGet(const msg::Get& body, uint8_t txn_id) noexcept;
-    [[nodiscard]] virtual bool onSetBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
-                                           IBuf& buf) noexcept;
-    virtual void onSet(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept;
-    virtual void onReply(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept;
+    virtual void onGet(const session::Get& body, uint8_t txn_id) noexcept;
+    [[nodiscard]] virtual bool onSetBuffer(uint8_t tag, uint8_t index, uint8_t txn_id,
+                                           uint16_t size, IBuf& buf) noexcept;
+    /**
+     * Set после успешного транспорта. None → Ack; иначе Nack(error).
+     * При сбое тела session::TaggedOps шлёт Body и сюда не заходит.
+     */
+    [[nodiscard]] virtual session::vError onSet(uint8_t tag, uint8_t index,
+                                            const IBuf& buf) noexcept;
+    virtual void onReply(uint8_t tag, uint8_t index, const IBuf& buf,
+                         session::MultiByte::Error status) noexcept;
 
-    ReplyWnd _reply;
-    LinkHb _link;
-    MultiByte _mb;
-    TaggedOps _tagged;
+    session::ReplyWnd _reply;
+    session::LinkHb _link;
+    session::MultiByte _mb;
+    session::TaggedOps _tagged;
 
 private:
     friend class Node;
-    friend class TaggedOps;
-    template <typename, typename>
-    friend class MISC::ObjRegistry;
+    friend class session::TaggedOps;
 
-    void set_id(uint8_t id) noexcept { _id = id; }
-
-    void tick() noexcept;
     [[nodiscard]] const TxSlot* peekTx() noexcept;
     void onTxResult(bool ok) noexcept;
 
@@ -194,7 +196,6 @@ private:
     void clearTx() noexcept;
     [[nodiscard]] const TxSlot* peekCtrl() noexcept;
 
-    uint8_t _id = 0;
     uint8_t _peer_id = 0;
     uint8_t _txn_tx = 0;
 
@@ -205,7 +206,12 @@ private:
     TxQueue<SMCP_SESSION_CTRL_TX_CAPACITY> _tx_ctrl;
 };
 
+/**
+ * Плотный пул Session[N] = PolyStore&lt;Session, S&gt;.
+ * Leaf: `SessionBank&lt;N, ShowSession&gt; bank(*this);` + `sessions() { return bank; }`.
+ * Индекс слота — только у Node::session(i) / forEach; на Session не хранится.
+ */
 template <uint8_t N, typename S = Session>
-using SessionBank = MISC::ObjBank<S, N, false>;
+using SessionBank = mem::PolyStore8<Session, S, N>;
 
 } // namespace smcp

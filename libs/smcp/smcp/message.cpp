@@ -67,10 +67,10 @@ uint32_t Message::loadU32(uint8_t off) const noexcept
 
 bool Message::isTransport() const noexcept
 {
-    return id == static_cast<uint8_t>(msg::Id::Ack)
-        || id == static_cast<uint8_t>(msg::Id::Nack)
-        || id == static_cast<uint8_t>(msg::Id::Fault)
-        || id == static_cast<uint8_t>(msg::Id::Heartbeat);
+    return id == static_cast<uint8_t>(session::msgId::Ack)
+        || id == static_cast<uint8_t>(session::msgId::Nack)
+        || id == static_cast<uint8_t>(session::msgId::Fault)
+        || id == static_cast<uint8_t>(session::msgId::Heartbeat);
 }
 
 bool Packet::isAddressedTo(uint8_t node_id) const noexcept
@@ -114,7 +114,7 @@ bool Packet::unpack(const BIF::CAN::Frame& frame) noexcept
     return true;
 }
 
-namespace msg {
+namespace session {
 
 bool Ack::pack(Message& m) const noexcept
 {
@@ -132,7 +132,7 @@ bool Nack::pack(Message& m) const noexcept
 {
     m = {};
     m.id = kId;
-    return m.push(error) && m.pushU32(detail);
+    return m.push(static_cast<uint8_t>(error)) && m.pushU32(detail);
 }
 
 bool Nack::unpack(const Message& m) noexcept
@@ -140,7 +140,7 @@ bool Nack::unpack(const Message& m) noexcept
     if (m.dlc != 5) {
         return false;
     }
-    error = m.data[0];
+    error = vError::from_raw(m.data[0]);
     detail = m.loadU32(1);
     return true;
 }
@@ -204,15 +204,16 @@ bool Get::pack(Message& m) const noexcept
 {
     m = {};
     m.id = kId;
-    return m.push(tag);
+    return m.push(tag) && m.push(index);
 }
 
 bool Get::unpack(const Message& m) noexcept
 {
-    if (m.dlc != 1) {
+    if (m.dlc != 2) {
         return false;
     }
     tag = m.data[0];
+    index = m.data[1];
     return true;
 }
 
@@ -220,7 +221,7 @@ bool Set::pack(Message& m) const noexcept
 {
     m = {};
     m.id = kId;
-    if (len > kInlineMax || !m.push(tag)) {
+    if (len > kInlineMax || !m.push(tag) || !m.push(index)) {
         return false;
     }
     for (uint8_t i = 0; i < len; ++i) {
@@ -233,16 +234,17 @@ bool Set::pack(Message& m) const noexcept
 
 bool Set::unpack(const Message& m) noexcept
 {
-    if (m.dlc < 1u || m.dlc > Message::kMaxDlc) {
+    if (m.dlc < 2u || m.dlc > Message::kMaxDlc) {
         return false;
     }
     tag = m.data[0];
-    len = static_cast<uint8_t>(m.dlc - 1u);
+    index = m.data[1];
+    len = static_cast<uint8_t>(m.dlc - 2u);
     if (len > kInlineMax) {
         return false;
     }
     for (uint8_t i = 0; i < len; ++i) {
-        data[i] = m.data[1u + i];
+        data[i] = m.data[2u + i];
     }
     return true;
 }
@@ -251,17 +253,18 @@ bool DataBegin::pack(Message& m) const noexcept
 {
     m = {};
     m.id = kId;
-    return m.push(tag) && m.pushU16(size) && m.pushU32(crc32);
+    return m.push(tag) && m.push(index) && m.pushU16(size) && m.pushU32(crc32);
 }
 
 bool DataBegin::unpack(const Message& m) noexcept
 {
-    if (m.dlc != 7) {
+    if (m.dlc != 8) {
         return false;
     }
     tag = m.data[0];
-    size = m.loadU16(1);
-    crc32 = m.loadU32(3);
+    index = m.data[1];
+    size = m.loadU16(2);
+    crc32 = m.loadU32(4);
     return true;
 }
 
@@ -269,7 +272,7 @@ bool Data::pack(Message& m) const noexcept
 {
     m = {};
     m.id = kId;
-    if (len > kMaxPayload || !m.push(seq)) {
+    if (len > kMaxPayload || !m.pushU16(seq)) {
         return false;
     }
     for (uint8_t i = 0; i < len; ++i) {
@@ -282,16 +285,19 @@ bool Data::pack(Message& m) const noexcept
 
 bool Data::unpack(const Message& m) noexcept
 {
-    if (m.dlc < 1u || m.dlc > Message::kMaxDlc) {
+    if (m.dlc < 2u || m.dlc > Message::kMaxDlc) {
         return false;
     }
-    seq = m.data[0];
-    len = static_cast<uint8_t>(m.dlc - 1u);
+    seq = m.loadU16(0);
+    len = static_cast<uint8_t>(m.dlc - 2u);
+    if (len > kMaxPayload) {
+        return false;
+    }
     for (uint8_t i = 0; i < len; ++i) {
-        data[i] = m.data[1u + i];
+        data[i] = m.data[2u + i];
     }
     return true;
 }
 
-} // namespace msg
+} // namespace session
 } // namespace smcp

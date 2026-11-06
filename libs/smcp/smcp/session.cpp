@@ -14,17 +14,14 @@ Session::Session(Node& n) noexcept
     , _link(*this)
     , _mb(*this)
     , _tagged(*this, _mb)
-{
-    detail::registerSession(n, *this);
-}
+{}
 
 void Session::open(uint8_t peer_id) noexcept
 {
     if (!node.isReady() || peer_id == 0u) {
         SMCP_LOG(SMCP_SESS,
-            "S%u rej p=%u rdy=%u\n",
-            "[SMCP] Session[%u] open reject peer=%u ready=%u\n",
-            static_cast<unsigned>(_id),
+            "Srej p=%u rdy=%u\n",
+            "[SMCP] Session open reject peer=%u ready=%u\n",
             static_cast<unsigned>(peer_id),
             node.isReady() ? 1u : 0u);
         return;
@@ -43,20 +40,20 @@ void Session::start(uint8_t peer_id) noexcept
     open(peer_id);
 }
 
-void Session::close(Fault reason) noexcept
+void Session::close(Link link) noexcept
 {
     if (_link.isIdle()) {
         return;
     }
-    if (reason != Fault::None) {
-        onFault(reason);
+    if (link == Link::Up) {
+        link = Link::Down;
     }
     _tagged.abort();
     _reply.abort(); /* окно ждало Ack → onNack(Body, Abort) */
     _master = false;
     _txn_tx = 0;
     clearTx();
-    _link.idle();
+    _link.idle(link); /* → Node::onLink(this, link) */
 }
 
 void Session::sendAck(uint8_t txn_id) noexcept
@@ -64,15 +61,15 @@ void Session::sendAck(uint8_t txn_id) noexcept
     if (!isOpen()) {
         return;
     }
-    send(msg::Ack{}, txn_id);
+    send(session::Ack{}, txn_id);
 }
 
-void Session::sendNack(uint8_t txn_id, uint8_t error, uint32_t detail) noexcept
+void Session::sendNack(uint8_t txn_id, session::vError error, uint32_t detail) noexcept
 {
     if (!isOpen()) {
         return;
     }
-    send(msg::Nack::make(error, detail), txn_id);
+    send(session::Nack::make(error, detail), txn_id);
 }
 
 bool Session::onPacket(const Packet& pkt) noexcept
@@ -91,44 +88,43 @@ bool Session::onPacket(const Packet& pkt) noexcept
     return _mb.onPacket(pkt, now);
 }
 
-void Session::onFault(Fault reason) noexcept
-{
-    node.onFault(this, reason);
-}
-
-void Session::onGet(const msg::Get& body, uint8_t txn_id) noexcept
+void Session::onGet(const session::Get& body, uint8_t txn_id) noexcept
 {
     (void)body;
-    sendNack(txn_id, msg::Nack::Error::NotSupported);
+    sendNack(txn_id, session::Error::NotSupported);
 }
 
-bool Session::onSetBuffer(uint8_t tag, uint8_t txn_id, uint16_t size,
+bool Session::onSetBuffer(uint8_t tag, uint8_t index, uint8_t txn_id, uint16_t size,
                           IBuf& buf) noexcept
 {
     (void)tag;
+    (void)index;
     (void)txn_id;
     (void)size;
     (void)buf;
     return false;
 }
 
-void Session::onSet(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept
+session::vError Session::onSet(uint8_t tag, uint8_t index, const IBuf& buf) noexcept
 {
     (void)tag;
+    (void)index;
     (void)buf;
-    (void)status;
+    return session::Error::NotSupported;
 }
 
-void Session::onReply(uint8_t tag, const IBuf& buf, MultiByte::Error status) noexcept
+void Session::onReply(uint8_t tag, uint8_t index, const IBuf& buf,
+                      session::MultiByte::Error status) noexcept
 {
     (void)tag;
+    (void)index;
     (void)buf;
     (void)status;
 }
 
 void Session::tick() noexcept
 {
-    /* Тикаем и при LinkError/Listen: wall-clock таймеры; TX режет send/pump. */
+    /* Тикаем и при Listen / Idle: wall-clock таймеры; TX режет pump (нужен Ready). */
     const uint32_t now = node.clockMs();
     _mb.tick(now); /* RX wd + TX peek→send */
     _tagged.tick(now);

@@ -11,10 +11,13 @@
 
 #include "ms_timer.hpp"
 #include "smcp/message.hpp"
+#include "smcp/node.hpp"
 
 namespace smcp {
 
 class Session;
+
+namespace session {
 
 class LinkHb {
 public:
@@ -36,8 +39,8 @@ public:
     /** Session::open → Connecting. */
     void connect() noexcept;
 
-    /** Session::close → Idle + сброс таймера. */
-    void idle() noexcept;
+    /** Session::close → Idle + onLink(@a link); @a link ≠ Up. */
+    void idle(Node::Link link = Node::Link::Down) noexcept;
 
     /** Connecting→ping; Open/Awaiting — miss / retry / HbLost. */
     void tick(uint32_t now_ms) noexcept;
@@ -52,7 +55,10 @@ private:
 
     Session& _s;
     Status _status = Status::Idle;
-    MISC::ReplyTimer _hb{msg::Heartbeat::kMissMax};
+    Node::Link _down = Node::Link::Down;
+    MISC::ReplyTimer _hb{Heartbeat::kMissMax};
 };
+
+} // namespace session
 
 } // namespace smcp

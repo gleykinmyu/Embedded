@@ -5,7 +5,7 @@
 
 Канал: CAN extended ID.  
 Транспортные PDU: `smcp/message.hpp` (Ack, Nack, Fault, Heartbeat, Get/Set/DataBegin/Data, конверт; lib `libs/smcp`).  
-Прикладные PDU — в своём слое (northbound: `smcp/mech/message.hpp`, см. `SYSTEM.md`).
+Прикладные PDU — в своём слое (northbound: `smcp/Server/message.hpp`, см. `SYSTEM.md`).
 
 ```text
 CAN ID (29 bit, IDE=1):
@@ -137,17 +137,20 @@ Peer **не различает** двух узлов с одним id — для
 Транспорт: Ack/Nack → **B**; Heartbeat → **C**; Fault → **D**; short RPC (Select…) → **A** (`request`); Get/Set → **TaggedOps** (не ReplyWnd); DataBegin / Data → MultiByte (`txn_id` эхо).  
 Классы прикладных MsgId — каталог в `SYSTEM.md`.
 
-### Inline vs multi (`kInlineMax` = 7)
+### Inline vs multi (`kInlineMax` = 6)
 
-Один порог на обе стороны:
-- **Set**: длина с DLC (отдельного поля нет). DLC=1 (`len=0`) → multi (DataBegin→Data*); DLC=2…8 → inline `len=1…7`. Пустой `set`/`send` (`size=0`) и **DataBegin(`size=0`)** запрещены.
-- **Ответ Get**: `len ≤ 7` → один **Data** (seq=0), его разбирает **TaggedOps**; иначе DataBegin→Data* (`size≥1`) — **MultiByte**. Иначе **Nack**. Клиент после тела на wire **не** шлёт Ack/Nack.
+Адрес — `tag:u8 | index:u8`. `index = 0xFF` (`kIndexAll`) — весь объект; `0…31` — одна ось. `server_id` в тег не входит: это peer сессии.
+
+Один порог на обе стороны (заголовок кадра 2 байта: адрес или `seq u16`):
+- **Get**: DLC=2, `tag | index`.
+- **Set**: длина payload с DLC (отдельного поля нет). DLC=2 (`len=0`, только адрес) → multi (DataBegin→Data*); DLC=3…8 → inline `len=1…6`. Пустой `set`/`send` (`size=0`) и **DataBegin(`size=0`)** запрещены.
+- **Ответ Get**: `len ≤ 6` → один **Data** (seq=0), его разбирает **TaggedOps**; иначе DataBegin→Data* (`size≥1`) — **MultiByte**. Иначе **Nack**. Клиент после тела на wire **не** шлёт Ack/Nack.
 
 API:
 - Short RPC (ждёт Ack|Nack): `Session::request(T)` → **ReplyWnd** (`_tx_req` + окно).
 - Без окна: `Session::send` / `send(T)` → `_tx_ctrl` (HB, Ack/Nack, тело, notify).
-- Get/Set: `Session::set` / `get` / `send(tag,IBuf,txn)` → **TaggedOps** (свои таймеры; opener+тело в ctrl).
-- Set RX — `onSetBuffer` → `onSet`; Get client — `onReply`; server Get — `onGet` → `send(tag,IBuf,txn)`.
+- Get/Set: `Session::set` / `get` / `send(tag,IBuf,txn,index)` → **TaggedOps** (свои таймеры; opener+тело в ctrl). `index` по умолчанию `kIndexAll`.
+- Set RX — `onSetBuffer` → `onSet`; Get client — `onReply`; server Get — `onGet` → `send(tag,IBuf,txn,index)`.
 - Длинное тело — **MultiByte** (DataBegin→Data*, не знает Get/Set).
 
 ### Тело txn (DataBegin / Data)
@@ -156,14 +159,14 @@ API:
 
 | Id | PDU | Тело |
 |----|-----|------|
-| 0x33 | **DataBegin** | `tag \| size:u16 LE \| crc32:u32 LE` (DLC=7), **size≥1** |
-| 0x34 | **Data** | `seq \| data≤7` (DLC=1…8) |
+| 0x33 | **DataBegin** | `tag \| index \| size:u16 LE \| crc32:u32 LE` (DLC=8), **size≥1**. tag\|index = opener |
+| 0x34 | **Data** | `seq:u16 LE \| data≤6` (DLC=2…8). seq с 0, без обёртки |
 
 - Конец multi: `offset == size` + CRC у RX (или TX дослал все куски).
 - Ошибки тела **Set (RX)**: `onSet` + `Nack(Body, detail=MultiByte::Error)`.
 - Ошибки тела **Get (клиент)**: `onReply` (в т.ч. `Timeout`); wire Nack opener → `onNack` + `onReply(Abort)`.
 - Set-клиент после тела ждёт Ack|Nack (таймер TaggedOps, не ReplyWnd); локальный abort → `onNack(kTimeout)`.
-- Транспортный `Nack.error`: ≤ `Max=0x0F`; прикладной — **выше Max** (`ErrorCode` с `0x10…`).
+- Транспортный `Nack.error`: ≤ `Max=0x0F`; прикладной — **выше Max** (`smcp::segment::Error` с `0x10…`).
 - Ожидание DataBegin и inter-frame multi: `MultiByte::tick`. Короткий Data своего Get и Ack-timeout Set-клиента — TaggedOps.
 - **Один** tagged job на Session (`TaggedOps::isBusy`); short Get-reply (`sendBody` inline) state не занимает.
 
@@ -172,9 +175,9 @@ API:
 
 ### 2. Wire / codec
 
-1. Транспортные PDU — `smcp/message.hpp`. Прикладные — свой файл в слое (`smcp/mech/message.hpp`).
+1. Транспортные PDU — `smcp/message.hpp`. Прикладные — свой файл в слое (`smcp/Server/message.hpp`).
    Nack несёт opaque `error`/`detail`; коды прикладного слоя — в его `message.hpp`.
-   Локальный abort Ack — `Nack::kTimeout` (не с шины).
+   Локальный abort Ack — `smcp::session::Error::Timeout` (не с шины).
    Fault — DLC=1…8: `error` + `detail[0…7]` (не Nack); `Fault::kIdConflict` — дубль `src`; detail = ASCII-имя (≤7).
    Свой IdConflict: Node шлёт Fault через `send` (ещё не sticky), drain, затем close сессий.
 2. Конверт: `Packet { src, dst, txn_id, Message { id, data[8], dlc } }`. Мирового `variant` нет.
@@ -189,7 +192,7 @@ API:
 
 - Класс **A** (short RPC): `Session::request(T)` → ReplyWnd; ответ → `onAck` / `onNack`.
 - Без окна: `Session::send` / `send(T)` → `_tx_ctrl`.
-- Get/Set: `set` / `get` / `send(tag, buf, txn)` → TaggedOps (+ MultiByte на длинное тело).
+- Get/Set: `set` / `get` / `send(tag, buf, txn, index)` → TaggedOps (+ MultiByte на длинное тело).
 - Класс **B**: `sendAck(txn_id)` / `sendNack(txn_id, error, detail=0)`.
   Nack DLC=5: `error | uint32 LE` (`error` — код вышестоящего протокола; `detail` — opaque, `Nack::kDetailNone` = 0). Ack DLC=0.
 - Класс **C**: логика внутри Session (`tick` / link HB).

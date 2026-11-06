@@ -16,17 +16,22 @@ MConsole::MConsole(BIF::IVolume& volume, BIF::IDirectory& dir, BIF::IFile& file,
                    smcp::ILink& link, smcp::Node::ClockFn clock) noexcept
     : Base(link, clock)
     , _sessionBank(*this)
+    , _profileRanges(_profileSlots)
     , show(*this)
     , cmechs(*this, show.group)
     , browser(volume, dir)
     , fio(*this, browser, show, file, bak)
-{}
+{
+    /* show после Base: указатель на патч выставляем здесь. */
+    patch = &show.patch;
+}
 
 void MConsole::begin(uint8_t console_id) noexcept
 {
     Base::begin(console_id);
     if (fio.useBak()) {
         NEX_DBG("Show from LKG: '%s'\n", show.name());
+        remapAxes();
     } else {
         NEX_DBG("No show in LKG (%s)\n", sf::Fio::cstr(fio.status()));
     }
@@ -42,9 +47,9 @@ bool MConsole::hasSelection() const noexcept
     return false;
 }
 
-smcp::Selection MConsole::selectionFromMechs() const noexcept
+smcp::segment::Selection MConsole::selectionFromMechs() const noexcept
 {
-    smcp::Selection selection;
+    smcp::segment::Selection selection;
     for (uint8_t i = 0; i < kMechCount; ++i) {
         if (cmechs[i].isSelectedBy(consoleId())) {
             selection.add(i);
@@ -61,6 +66,7 @@ void MConsole::onFioEvent(sf::Fio::Event ev) noexcept
     case Event::Loaded:
         clearActiveGroup();
         _mode = Mode::Work;
+        remapAxes();
         onConsoleChanged();
         break;
     case Event::Saved:
@@ -71,27 +77,22 @@ void MConsole::onFioEvent(sf::Fio::Event ev) noexcept
     }
 }
 
-void MConsole::onTelemetry(uint8_t src_id, const smcp::msg::Telemetry& body) noexcept
-{
-    GroupConsole::onTelemetry(src_id, body);
-    onMechChanged(body.axis_id);
-}
-
 void MConsole::onNack(smcp::Session* session, const smcp::TxSlot& req,
-                      const smcp::msg::Nack& reply) noexcept
+                      const smcp::session::Nack& reply) noexcept
 {
-    IGroupConsole::onNack(session, req, reply);
+    smcp::show::GroupConsole::onNack(session, req, reply);
     if (session == nullptr) {
         return;
     }
     _lastNack = reply;
     _lastNackReq = req.msg.id;
 
-    const smcp::Selection mask = smcp::Selection::from_raw(_lastNack.detail);
+    const smcp::segment::Selection mask = smcp::segment::Selection::from_raw(_lastNack.detail);
     if (!mask.empty()
-        && _lastNack.error != static_cast<uint8_t>(smcp::msg::ErrorCode::MechNotFound)
-        && (_lastNackReq == smcp::msg::Select::kId || _lastNackReq == smcp::msg::SetTarget::kId
-            || _lastNackReq == smcp::msg::Block::kId)) {
+        && _lastNack.error.raw()
+            != static_cast<uint8_t>(smcp::segment::Error::AxisNotFound)
+        && (_lastNackReq == smcp::segment::Select::kId || _lastNackReq == smcp::segment::SetTarget::kId
+            || _lastNackReq == smcp::segment::Block::kId)) {
         if (session == _link) {
             _link->getTelemetry(mask);
         }
@@ -103,7 +104,7 @@ void MConsole::requestMechTelemetry() noexcept
     if (_link == nullptr || !_link->isOpen()) {
         return;
     }
-    smcp::Selection mask;
+    smcp::segment::Selection mask;
     for (uint8_t i = 0; i < kMechCount; ++i) {
         mask.add(i);
     }
@@ -116,23 +117,13 @@ void MConsole::setUiReady() noexcept
     requestMechTelemetry();
 }
 
-void MConsole::onStatus(Status status) noexcept
+void MConsole::onState(State state) noexcept
 {
-    IGroupConsole::onStatus(status);
-    if (status == Status::Ready) {
-        _link = start(smcp::msg::kServerIdMin);
+    smcp::show::GroupConsole::onState(state);
+    if (state == State::Ready) {
+        _link = start(smcp::segment::kServerIdMin);
     }
     onConsoleChanged();
-}
-
-void MConsole::onFault(smcp::Session* session, smcp::Node::Fault reason) noexcept
-{
-    IGroupConsole::onFault(session, reason);
-    if (reason != smcp::Node::Fault::HbLost || session == nullptr || session != _link
-        || session->peerId() == 0u) {
-        return;
-    }
-    _retry = true;
 }
 
 void MConsole::update() noexcept
@@ -145,10 +136,14 @@ void MConsole::update() noexcept
     _link->start(_link->peerId());
 }
 
-void MConsole::onLink(smcp::Session* session, bool up) noexcept
+void MConsole::onLink(smcp::Session* session, Link link) noexcept
 {
-    IGroupConsole::onLink(session, up);
-    if (up && _uiReady && session == _link) {
+    smcp::show::GroupConsole::onLink(session, link);
+    if (link == Link::HbLost && session != nullptr && session == _link
+        && session->peerId() != 0u) {
+        _retry = true;
+    }
+    if (link == Link::Up && _uiReady && session == _link) {
         requestMechTelemetry();
     }
     onConsoleChanged();

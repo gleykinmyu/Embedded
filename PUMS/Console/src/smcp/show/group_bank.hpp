@@ -7,13 +7,13 @@
 
 #include <cstring>
 
-#include "obj_bank.hpp"
 #include "showFile.hpp"
-#include "smcp/show/cmech.hpp"
+#include "segment/console.hpp"
 #include "smcp/show/group.hpp"
 #include "smcp/show/group_console.hpp"
+#include "smcp/show/console.hpp"
 
-namespace smcp {
+namespace smcp::show {
 
 /**
  * Банк групп без N: пересечения с blocked и markEdited.
@@ -26,7 +26,7 @@ public:
     /** Одна blocked-группа и оси, пересекшиеся с последней операцией. */
     struct OverlapSlot {
         uint8_t group = 0xFFu;
-        Selection sel{};
+        segment::Selection sel{};
     };
 
     /** Буфер слотов вызывающего + сколько записали. */
@@ -35,9 +35,9 @@ public:
         uint8_t capacity = 0;
         uint8_t count = 0;
 
-        [[nodiscard]] Selection sels() const noexcept
+        [[nodiscard]] segment::Selection sels() const noexcept
         {
-            Selection all;
+            segment::Selection all;
             if (slot == nullptr) {
                 return all;
             }
@@ -60,13 +60,14 @@ public:
 
     virtual void markEdited() noexcept = 0;
     [[nodiscard]] const Overlap& overlap() const noexcept { return _overlap; }
-    /** Ось входит в blocked-группу. */
+
     [[nodiscard]] virtual bool containsBlocked(uint8_t axis_id) const noexcept = 0;
+
     /**
      * Пересечение @a mask с blocked, кроме @a except_id (kNoExcept — все).
      * Пишет overlap(); true — есть общие оси.
      */
-    virtual bool fillBlockedOverlap(uint8_t except_id, Selection mask) noexcept = 0;
+    virtual bool fillBlockedOverlap(uint8_t except_id, segment::Selection mask) noexcept = 0;
 
 protected:
     Overlap _overlap{};
@@ -83,7 +84,7 @@ public:
     static constexpr uint8_t kCount = N;
 
     /** Id слотов = индекс 0…N-1. */
-    CGroupBank(sf::IShow& file, IGroupConsole& console, bool required = true) noexcept
+    CGroupBank(sf::IShow& file, GroupConsole& console, bool required = true) noexcept
         : Base(file, kGroupSectionTag, required)
         , _console(console)
     {
@@ -97,6 +98,7 @@ public:
     {
         for (uint8_t i = 0; i < N; ++i) {
             this->rec(i).clear();
+            this->rec(i).id = i;
         }
         this->clearDesc();
         _overlap.count = 0;
@@ -122,12 +124,11 @@ public:
     /** Временный прокси слота (не хранить). */
     [[nodiscard]] CGroup operator[](uint8_t i) noexcept
     {
-        return CGroup(this->rec(i), *this, _console);
+        return CGroup(this->rec(i < N ? i : 0u), *this, _console);
     }
-    [[nodiscard]] const CGroup operator[](uint8_t i) const noexcept
+    [[nodiscard]] CGroup operator[](uint8_t i) const noexcept
     {
-        return CGroup(const_cast<Group&>(this->rec(i)), const_cast<CGroupBank&>(*this),
-                      const_cast<IGroupConsole&>(_console));
+        return const_cast<CGroupBank*>(this)->operator[](i);
     }
 
     void markEdited() noexcept override { Base::markEdited(); }
@@ -143,46 +144,39 @@ public:
         return false;
     }
 
-    bool fillBlockedOverlap(uint8_t except_id, Selection mask) noexcept override
+    bool fillBlockedOverlap(uint8_t except_id, segment::Selection mask) noexcept override
     {
         _overlap.count = 0;
-        bool any = false;
+        bool hit = false;
         for (uint8_t i = 0; i < N; ++i) {
             const Group& g = this->rec(i);
             if (g.id == except_id || !g.isBlocked()) {
                 continue;
             }
-            const Selection hit = g.sel & mask;
-            if (!hit.any()) {
+            const segment::Selection common = g.sel & mask;
+            if (common.empty()) {
                 continue;
             }
-            any = true;
+            hit = true;
             if (_overlap.slot != nullptr && _overlap.count < _overlap.capacity) {
-                OverlapSlot& dst = _overlap.slot[_overlap.count++];
-                dst.group = g.id;
-                dst.sel = hit;
+                _overlap.slot[_overlap.count].group = g.id;
+                _overlap.slot[_overlap.count].sel = common;
+                ++_overlap.count;
             }
         }
-        return any;
+        return hit;
     }
 
 private:
-    using Base::begin;
-    using Base::end;
-
-    IGroupConsole& _console;
+    GroupConsole& _console;
 };
 
-/** CMech + банк групп: отказ Select при сегментном Block или пересечении GRUP. */
-class CGMech : public CMech {
+/** show::Axis + банк групп: отказ Select при сегментном Block или пересечении GRUP. */
+class CGMech : public Axis {
 public:
-    CGMech(IConsole& console, IGroupBank& groups, uint8_t id) noexcept;
-    CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t id) noexcept;
-    CGMech(IConsole& console, IGroupBank& groups, uint8_t server_id, uint8_t axis_id,
-           uint8_t local_id) noexcept;
-    CGMech(IConsole& console, IGroupBank& groups, axis::Route route, uint8_t local_id) noexcept;
+    CGMech(segment::Console& console, IGroupBank& groups) noexcept;
 
-    /** Deselect — Ok, если Select в очереди. Add — Blocked / OverlapsBlocked / Occupied / NotSent. */
+    /** Deselect — Ok. Add — Blocked / OverlapsBlocked / Occupied / NotSent (TX через Patch). */
     [[nodiscard]] CGroup::Result trySelect(uint8_t console_id) noexcept;
 
 private:
@@ -190,6 +184,6 @@ private:
 };
 
 template <uint8_t N>
-using CGMechBank = MISC::ObjBank<CGMech, N>;
+using CGMechBank = segment::console::AxisStore<N, CGMech>;
 
-} // namespace smcp
+} // namespace smcp::show

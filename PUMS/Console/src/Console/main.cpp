@@ -102,7 +102,7 @@ void logCanDebug() noexcept
         static_cast<unsigned>(hw.rx[0].pending()),
         static_cast<unsigned>(board.can.available()),
         static_cast<unsigned>(board.can.availableForWrite()),
-        smcp::Node::cstr(console.getStatus()),
+        smcp::Node::cstr(console.getState()),
         ilinkCstr(linkConsole.getStatus()),
         (console.link() != nullptr && console.link()->isOpen()) ? 1u : 0u);
 }
@@ -197,14 +197,14 @@ int main(void)
     logCanDebug();
 #endif
 
-    console.begin(smcp::msg::kConsoleIdMin);
+    console.begin(smcp::segment::kConsoleIdMin);
 
     board.watchdog.kick();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
     NEX_DBG("SMCP console id=0x%02X, server id=0x%02X\n",
         static_cast<unsigned>(linkConsole.nodeId()),
-        static_cast<unsigned>(smcp::msg::kServerIdMin));
+        static_cast<unsigned>(smcp::segment::kServerIdMin));
 
     while (1) {
         if (board.tick()) {

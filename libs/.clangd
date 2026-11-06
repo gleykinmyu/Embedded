@@ -1,8 +1,9 @@
-# libs/* вне PlatformIO-проекта — compile_commands.json не находится при обходе вверх.
+# libs/* вне PlatformIO-проекта — своя база: compile_commands.json рядом.
+# Перегенерация: python3 libs/gen-compile-commands.py
 #
-# Какая база: по библиотеке. Перегенерация:
-#   dmx:  DMX/tools/update-compile-commands.ps1
-#   остальные: cd PUMS/Console && pio run -t compiledb
+# Override (свой тулчейн / проект):
+#   board/mega2560 — AVR gen-compile-commands.ps1
+#   dmx            — ../../DMX (PlatformIO compiledb)
 
 CompileFlags:
-  CompilationDatabase: ../DMX
+  CompilationDatabase: .

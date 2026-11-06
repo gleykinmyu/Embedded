@@ -1,6 +1,6 @@
 /**
  * @file group_pool.cpp
- * @brief Явная инстанциация test::CGroup / CGroupBank.
+ * @brief Явная инстанциация smcp::test::CGroup / CGroupBank.
  */
 
 #include "smcp/show/group_pool.hpp"

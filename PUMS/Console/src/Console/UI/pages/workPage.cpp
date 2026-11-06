@@ -9,7 +9,7 @@ namespace server {
 
 namespace {
 
-smcp::IGroupBank::OverlapSlot overlapSlots[MConsole::kGroupCount]{};
+smcp::show::IGroupBank::OverlapSlot overlapSlots[MConsole::kGroupCount]{};
 
 [[nodiscard]] uint8_t scenePageCount() noexcept
 {
@@ -62,9 +62,9 @@ bool fillMechBlockMessage(uint8_t id, char* out, std::size_t outLen) noexcept
         std::snprintf(out, outLen, uiMsg::kBlockByServerFmt, uiMsg::kWinchMark, winchNo);
         return true;
     }
-    smcp::Selection one;
+    smcp::segment::Selection one;
     one.add(id);
-    if (!console.show.group.fillBlockedOverlap(smcp::IGroupBank::kNoExcept, one)) {
+    if (!console.show.group.fillBlockedOverlap(smcp::show::IGroupBank::kNoExcept, one)) {
         return false;
     }
     const auto& ov = console.show.group.overlap();
@@ -186,8 +186,8 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         if (state != nex::TouchState::Release) {
             return;
         }
-        smcp::CGMech& m = console.cmechs[index];
-        m.block(!m.isBlocked());
+        smcp::show::CGMech& m = console.cmechs[index];
+        (void)m.block(!m.isBlocked());
         return;
     }
 
@@ -195,12 +195,12 @@ void WorkPage::onCellPress(uint8_t index, nex::TouchState state)
         return;
     }
 
-    smcp::CGMech& m = console.cmechs[index];
+    smcp::show::CGMech& m = console.cmechs[index];
     const uint8_t want = m.isSelectedBy(console.consoleId())
         ? smcp::kHolderNone
         : console.consoleId();
 
-    using Result = smcp::CGroup::Result;
+    using Result = smcp::show::CGroup::Result;
     const Result r = m.trySelect(want);
     if (r != Result::Blocked && r != Result::OverlapsBlocked) {
         return;
@@ -296,21 +296,21 @@ void WorkPage::onGroupPress(uint8_t comp, nex::TouchState state)
     }
 
     switch (console.show.group[group_id].recall()) {
-    case smcp::CGroup::Result::Ok:
+    case smcp::show::CGroup::Result::Ok:
         return;
-    case smcp::CGroup::Result::OverlapsBlocked:
+    case smcp::show::CGroup::Result::OverlapsBlocked:
         showSharedWinchesMsg();
         return;
-    case smcp::CGroup::Result::Blocked: {
+    case smcp::show::CGroup::Result::Blocked: {
         char msg[80]{};
         std::snprintf(msg, sizeof(msg), uiMsg::kGroupBlockedFmt,
             static_cast<unsigned>(group_id));
         showBlockMsg(msg);
         return;
     }
-    case smcp::CGroup::Result::Empty:
-    case smcp::CGroup::Result::Occupied:
-    case smcp::CGroup::Result::NotSent:
+    case smcp::show::CGroup::Result::Empty:
+    case smcp::show::CGroup::Result::Occupied:
+    case smcp::show::CGroup::Result::NotSent:
     default:
         onSelectNack();
         return;
@@ -472,7 +472,7 @@ void WorkPage::refreshGroupBtn(bool textModified) noexcept
             groupAssignBtn[i].sync(nullptr, false, enabled, hasSelection);
             continue;
         }
-        const smcp::CGroup grp = console.show.group[group_id];
+        const smcp::show::CGroup grp = console.show.group[group_id];
         const bool selected = (group_id == active_id);
         groupBtn[i].sync(&grp, selected, textModified);
         groupAssignBtn[i].sync(&grp, selected, enabled, hasSelection);
@@ -504,7 +504,7 @@ void WorkPage::paintGroupSlot(uint8_t index, bool selected) noexcept
     if (group_id == MConsole::kNoActiveGroup) {
         return;
     }
-    const smcp::CGroup grp = console.show.group[group_id];
+    const smcp::show::CGroup grp = console.show.group[group_id];
     if (grp.isEmpty()) {
         return;
     }

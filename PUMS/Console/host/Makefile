@@ -7,6 +7,7 @@
 ROOT      := $(abspath ..)
 EMBEDDED  := $(abspath $(ROOT)/../..)
 SMCP_SRC  := $(EMBEDDED)/libs/smcp/smcp
+SEG_SRC   := $(EMBEDDED)/libs/smcp/segment
 IFACES    := $(EMBEDDED)/libs/Interfaces
 
 CXX       ?= clang++
@@ -14,7 +15,10 @@ CXXFLAGS  := -std=c++17 -Wall -Wextra -O0 -g \
 	-DSMCP_DEBUG \
 	-DSMCP_TRACE_LINK \
 	-I$(IFACES) \
+	-I$(EMBEDDED)/libs \
 	-I$(EMBEDDED)/libs/smcp \
+	-I$(EMBEDDED)/libs/showFile \
+	-I$(ROOT)/src \
 	-I.
 
 BUILD     := build
@@ -34,10 +38,14 @@ SMCP_OBJS := \
 	$(BUILD)/debug.o
 
 CHECK     := $(BUILD)/smcp_check
+POOL      := $(BUILD)/range_pool_check
+SEGMENT   := $(BUILD)/segment_check
 
-.PHONY: all clean dirs bus node check
+PUMS_SMCP := $(ROOT)/src/smcp
 
-all: dirs bus node $(CHECK)
+.PHONY: all clean dirs bus node check pool-check segment-check
+
+all: dirs bus node $(CHECK) $(POOL) $(SEGMENT)
 
 bus: dirs $(BUS)
 node: dirs $(NODE)
@@ -59,6 +67,24 @@ $(CHECK): $(SMCP_OBJS) $(BUILD)/check_main.o
 
 check: $(CHECK)
 	$(CHECK)
+
+$(POOL): $(BUILD)/range_pool_check.o
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+pool-check: $(POOL)
+	$(POOL)
+
+SEGMENT_OBJS := \
+	$(BUILD)/console.o \
+	$(BUILD)/show_console.o \
+	$(BUILD)/server.o \
+	$(BUILD)/axis.o
+
+$(SEGMENT): $(SMCP_OBJS) $(SEGMENT_OBJS) $(BUILD)/segment_check.o
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+segment-check: $(SEGMENT)
+	$(SEGMENT)
 
 $(BUILD)/ilink.o: $(SMCP_SRC)/ilink.cpp $(SMCP_SRC)/ilink.hpp $(SMCP_SRC)/message.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -91,6 +117,23 @@ $(BUILD)/debug_trace.o: debug_trace.cpp nack_fmt.hpp
 $(BUILD)/node_main.o: node_main.cpp sim_node.hpp socket_can.hpp clock.hpp error_log.hpp nack_fmt.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 $(BUILD)/check_main.o: check_main.cpp sim_node.hpp hub_can.hpp error_log.hpp nack_fmt.hpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(BUILD)/range_pool_check.o: range_pool_check.cpp \
+	$(EMBEDDED)/libs/mem/range_alloc.hpp \
+	$(EMBEDDED)/libs/mem/slot.hpp | dirs
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(BUILD)/console.o: $(SEG_SRC)/console.cpp $(SEG_SRC)/console.hpp | dirs
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(BUILD)/show_console.o: $(PUMS_SMCP)/show/console.cpp \
+	$(PUMS_SMCP)/show/console.hpp $(SEG_SRC)/console.hpp | dirs
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(BUILD)/server.o: $(SEG_SRC)/server.cpp $(SEG_SRC)/server.hpp $(SEG_SRC)/message.hpp | dirs
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(BUILD)/axis.o: $(SEG_SRC)/axis.cpp $(SEG_SRC)/axis.hpp | dirs
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(BUILD)/segment_check.o: segment_check.cpp hub_can.hpp \
+	$(PUMS_SMCP)/show/console.hpp $(SEG_SRC)/server.hpp | dirs
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:

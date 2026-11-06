@@ -10,21 +10,6 @@
 
 namespace smcp {
 
-// --- detail ---
-
-namespace detail {
-
-void registerSession(Node& node, Session& session) noexcept
-{
-    uint8_t id = 0;
-    const MISC::RegStatus st = node.sessions().registerAuto(&session, id);
-    if (st != MISC::RegStatus::Ok) {
-        node.setStatus(Node::Status::RegisterFailed);
-    }
-}
-
-} // namespace detail
-
 // --- ctor ---
 
 Node::Node(ILink& link, ClockFn clock) noexcept
@@ -37,7 +22,7 @@ Node::Node(ILink& link, ClockFn clock) noexcept
 void Node::clearError() noexcept
 {
     _link.clearError();
-    setStatus(Status::Idle);
+    setError(Error::None);
 }
 
 void Node::setName(const char* node_name) noexcept
@@ -61,22 +46,18 @@ void Node::begin(uint8_t node_id) noexcept
     }
     _link.setNodeId(node_id);
     _listen.stop();
-    closeAllSessions(Fault::None);
-    if (_status >= Status::LinkError) {
-        clearError();
-    }
-    _listen.start(clockMs(), msg::Heartbeat::kTimeoutMs);
-    setStatus(Status::Listen);
+    closeAllSessions();
+    clearError();
+    _listen.start(clockMs(), session::Heartbeat::kTimeoutMs);
+    setState(State::Listen);
 }
 
 void Node::end() noexcept
 {
     _listen.stop();
-    closeAllSessions(Fault::None);
-    if (_status >= Status::LinkError) {
-        clearError();
-    }
-    setStatus(Status::Idle);
+    closeAllSessions();
+    clearError();
+    setState(State::Idle);
 }
 
 // --- сессии (lookup) ---
@@ -87,36 +68,35 @@ Session* Node::sessionByPeer(uint8_t peer_id) noexcept
         return nullptr;
     }
 
-    auto& reg = sessions();
-    const uint8_t end = reg.endId();
-    for (uint8_t id = reg.firstId(); id < end; ++id) {
-        Session* s = reg.get(id);
-        if (s != nullptr && s->peerId() == peer_id
-            && s->getStatus() != Session::Status::Idle) {
-            return s;
+    Session* found = nullptr;
+    sessions().forEach([&](Session& s, uint8_t) noexcept -> bool {
+        if (s.peerId() == peer_id && s.getStatus() != Session::Status::Idle) {
+            found = &s;
+            return true; /* стоп */
         }
-    }
-    return nullptr;
+        return false;
+    });
+    return found;
 }
 
 Session* Node::idleSession() noexcept
 {
-    auto& reg = sessions();
-    const uint8_t end = reg.endId();
-    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
-        Session* const s = reg.get(sid);
-        if (s != nullptr && s->getStatus() == Session::Status::Idle) {
-            return s;
+    Session* found = nullptr;
+    sessions().forEach([&](Session& s, uint8_t) noexcept -> bool {
+        if (s.getStatus() == Session::Status::Idle) {
+            found = &s;
+            return true; /* стоп */
         }
-    }
-    return nullptr;
+        return false;
+    });
+    return found;
 }
 
 // --- TX / pump (app) ---
 
 void Node::send(Message msg, uint8_t dst_id, uint8_t txn_id) noexcept
 {
-    if (_status == Status::IdConflict || _status == Status::Idle) {
+    if (_state == State::Idle) {
         return;
     }
 
@@ -160,10 +140,10 @@ void Node::update() noexcept
 
         pumpTx(/*do_tick=*/true);
 
-        if (_updateDepth == 1u && _status == Status::Listen && _listen.timedOut(_now_ms)) {
+        if (_updateDepth == 1u && _state == State::Listen && _listen.timedOut(_now_ms)) {
             _listen.stop();
-            if (_status == Status::Listen) {
-                setStatus(Status::Ready);
+            if (_state == State::Listen) {
+                setState(State::Ready);
             }
         }
 
@@ -174,47 +154,49 @@ void Node::update() noexcept
     }
 }
 
-void Node::closeAllSessions(Fault reason) noexcept
+void Node::closeAllSessions(Link link) noexcept
 {
-    auto& reg = sessions();
-    const uint8_t end = reg.endId();
-    for (uint8_t sid = reg.firstId(); sid < end; ++sid) {
-        Session* const s = reg.get(sid);
-        if (s != nullptr) {
-            s->close(reason);
-        }
-    }
+    sessions().forEach([&](Session& s, uint8_t) noexcept {
+        s.close(link);
+    });
 }
 
 // --- hooks (leaf / app) ---
 
 void Node::onPacket(const Packet& pkt) noexcept
 {
-    SMCP_IF_MSG(msg::Fault) {
+    SMCP_IF_MSG(session::Fault) {
         /* IdConflict: src = спорный id, сессию не рвём. Иной Fault — peer ушёл. */
         Session* const s = sessionByPeer(pkt.src_id);
-        char name[msg::Fault::kDetailMax + 1u]{};
+        char name[session::Fault::kDetailMax + 1u]{};
         std::memcpy(name, body.detail, body.detail_len);
         SMCP_LOG(SMCP_NODE,
-            "Ft %s s=%u p=%u n=%s\n",
-            "[SMCP] Node::onPacket Fault %s session=%u peer=%u name=\"%s\"\n",
-            msg::Fault::cstr(body.error),
-            s != nullptr ? static_cast<unsigned>(s->id()) : 0u,
+            "Ft %s p=%u n=%s\n",
+            "[SMCP] Node::onPacket Fault %s peer=%u name=\"%s\"\n",
+            session::Fault::cstr(body.error),
             static_cast<unsigned>(pkt.src_id),
             name);
-        if (body.error != msg::Fault::kIdConflict && s != nullptr) {
-            s->close(Fault::PeerDown);
+        if (body.error != session::Fault::kIdConflict && s != nullptr) {
+            s->close(Link::PeerDown);
         }
         return;
     }
 }
 
-void Node::onStatus(Status status) noexcept
+void Node::onState(State state) noexcept
 {
     SMCP_LOG(SMCP_NODE,
         "Nd %s id=%u\n",
-        "[SMCP] Node::onStatus %s (id=%u)\n",
-        cstr(status), static_cast<unsigned>(id()));
+        "[SMCP] Node::onState %s (id=%u)\n",
+        cstr(state), static_cast<unsigned>(id()));
+}
+
+void Node::onError(Error error) noexcept
+{
+    SMCP_LOG(SMCP_NODE,
+        "NdErr %s id=%u\n",
+        "[SMCP] Node::onError %s (id=%u)\n",
+        cstr(error), static_cast<unsigned>(id()));
 }
 
 void Node::onTxFull(Session* session) noexcept
@@ -227,9 +209,8 @@ void Node::onTxFull(Session* session) noexcept
         return;
     }
     SMCP_LOG(SMCP_NODE,
-        "TxFull s=%u p=%u\n",
-        "[SMCP] Node::onTxFull session=%u peer=%u\n",
-        static_cast<unsigned>(session->id()),
+        "TxFull p=%u\n",
+        "[SMCP] Node::onTxFull peer=%u\n",
         static_cast<unsigned>(session->peerId()));
 }
 
@@ -242,80 +223,67 @@ void Node::onSessionFull(uint8_t peer_id) noexcept
         static_cast<unsigned>(id()));
 }
 
-void Node::onFault(Session* session, Fault reason) noexcept
+void Node::onLink(Session* session, Link link) noexcept
 {
     SMCP_LOG(SMCP_NODE,
-        "Ft %s s=%u p=%u\n",
-        "[SMCP] Node::onFault %s session=%u peer=%u\n",
-        cstr(reason),
-        session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
-        session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u);
-}
-
-void Node::onLink(Session* session, bool up) noexcept
-{
-    SMCP_LOG(SMCP_NODE,
-        "Lk s=%u p=%u %u\n",
-        "[SMCP] Node::onLink session=%u peer=%u up=%u\n",
-        session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+        "Lk p=%u %s\n",
+        "[SMCP] Node::onLink peer=%u %s\n",
         session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
-        up ? 1u : 0u);
+        cstr(link));
 }
 
-void Node::onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept
+void Node::onAck(Session* session, const TxSlot& req, const session::Ack& reply) noexcept
 {
     (void)reply;
     SMCP_LOG(SMCP_NODE,
-        "Ack s=%u p=%u #%u %s\n",
-        "[SMCP] Node::onAck session=%u peer=%u pkt=%u req=%s\n",
-        session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+        "Ack p=%u #%u %s\n",
+        "[SMCP] Node::onAck peer=%u pkt=%u req=%s\n",
         session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
         static_cast<unsigned>(req.txn_id),
-        SMCP_PICK(msg::cstrS(req.msg.id), msg::cstr(req.msg.id)));
+        session::cstr(req.msg.id));
 }
 
-void Node::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
+void Node::onNack(Session* session, const TxSlot& req, const session::Nack& reply) noexcept
 {
     SMCP_LOG(SMCP_NODE,
-        "Nk s=%u p=%u #%u %s %u %08lX\n",
-        "[SMCP] Node::onNack session=%u peer=%u pkt=%u req=%s error=%u detail=0x%08lX\n",
-        session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+        "Nk p=%u #%u %s %u %08lX\n",
+        "[SMCP] Node::onNack peer=%u pkt=%u req=%s error=%u detail=0x%08lX\n",
         session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
         static_cast<unsigned>(req.txn_id),
-        SMCP_PICK(msg::cstrS(req.msg.id), msg::cstr(req.msg.id)),
-        static_cast<unsigned>(reply.error),
+        session::cstr(req.msg.id),
+        static_cast<unsigned>(static_cast<uint8_t>(reply.error)),
         static_cast<unsigned long>(reply.detail));
 }
 
 void Node::onPackFailed(Session* session, uint8_t msg_id) noexcept
 {
     SMCP_LOG(SMCP_NODE,
-        "Pack? s=%u p=%u %s(%u)\n",
-        "[SMCP] Node::onPackFailed session=%u peer=%u id=%s (%u)\n",
-        session != nullptr ? static_cast<unsigned>(session->id()) : 0u,
+        "Pack? p=%u %s(%u)\n",
+        "[SMCP] Node::onPackFailed peer=%u id=%s (%u)\n",
         session != nullptr ? static_cast<unsigned>(session->peerId()) : 0u,
-        SMCP_PICK(msg::cstrS(msg_id), msg::cstr(msg_id)),
+        session::cstr(msg_id),
         static_cast<unsigned>(msg_id));
 }
 
-// --- статус ---
-
-void Node::setStatus(Status status) noexcept
+void Node::setState(State state) noexcept
 {
-    if (status == _status) {
+    if (state == _state) {
         return;
     }
-    /* Отказ не затираем младшим статусом. Снять — Idle. LinkError → Ready после удачной TX. */
-    if (isFault() && status < _status && status != Status::Idle
-        && !(_status == Status::LinkError && status == Status::Ready)) {
-        return;
-    }
-
-    _status = status;
-    if (_status >= Status::LinkError) {
+    _state = state;
+    if (_state == State::Idle) {
         _listen.stop();
     }
-    onStatus(_status);
+    onState(_state);
+}
+
+void Node::setError(Error error) noexcept
+{
+    if (error == _error) {
+        return;
+    }
+    _error = error;
+    onError(_error);
 }
 
 // --- RX фильтр / IdConflict ---
@@ -324,10 +292,10 @@ bool Node::acceptRx(const Packet& pkt) noexcept
 {
     /* Чужой кадр с моим src → IdConflict. Исключение: Fault IdConflict —
      * уход новичка с тем же id; иначе Ready-инкумбент суицидится. */
-    if (pkt.src_id == id() && id() != 0u && _status != Status::Idle) {
-        if (pkt.msg.id == msg::Fault::kId) {
-            msg::Fault body{};
-            if (body.unpack(pkt.msg) && body.error == msg::Fault::kIdConflict) {
+    if (pkt.src_id == id() && id() != 0u && _state != State::Idle) {
+        if (pkt.msg.id == session::Fault::kId) {
+            session::Fault body{};
+            if (body.unpack(pkt.msg) && body.error == session::Fault::kIdConflict) {
                 return false;
             }
         }
@@ -335,7 +303,7 @@ bool Node::acceptRx(const Packet& pkt) noexcept
         return false;
     }
 
-    if (_status == Status::Idle || _status == Status::IdConflict) {
+    if (_state == State::Idle) {
         return false;
     }
 
@@ -344,7 +312,7 @@ bool Node::acceptRx(const Packet& pkt) noexcept
 
 void Node::enterIdConflict() noexcept
 {
-    if (_status == Status::IdConflict) {
+    if (_error == Error::IdConflict) {
         return;
     }
 
@@ -352,23 +320,23 @@ void Node::enterIdConflict() noexcept
         "Ft IdConflict id=%u\n",
         "[SMCP] Node::enterIdConflict (id=%u)\n",
         static_cast<unsigned>(id()));
-    msg::Fault body{};
-    body.error = msg::Fault::kIdConflict;
+    session::Fault body{};
+    body.error = session::Fault::kIdConflict;
     body.setDetailStr(_name);
-    send(body);
-    closeAllSessions(Fault::IdConflict);
+    send(body); /* ещё Listen/Ready — send в Idle уже нет */
+    closeAllSessions();
     pumpTx(/*do_tick=*/false);
     _tx.clear();
     _listen.stop();
-    onFault(nullptr, Fault::IdConflict);
-    setStatus(Status::IdConflict);
+    setError(Error::IdConflict);
+    setState(State::Idle);
 }
 
 // --- TX внутренности ---
 
 bool Node::sendWire(const TxSlot& item) noexcept
 {
-    if (_status == Status::IdConflict || _status == Status::Idle) {
+    if (_state == State::Idle) {
         return false;
     }
 
@@ -377,21 +345,14 @@ bool Node::sendWire(const TxSlot& item) noexcept
     pkt.txn_id = item.txn_id;
     pkt.msg = item.msg;
 
-    if (!_link.send(pkt)) {
-        setStatus(Status::LinkError);
-        return false;
-    }
-    if (_status == Status::LinkError) {
-        setStatus(Status::Ready);
-    }
-    return true;
+    /* Fail — только ILink::getStatus(); State не трогаем (можно снова пробовать). */
+    return _link.send(pkt);
 }
 
 void Node::pumpTx(bool do_tick) noexcept
 {
-    auto& reg = sessions();
-    const uint8_t first = reg.firstId();
-    const uint8_t cap = static_cast<uint8_t>(reg.capacity());
+    SessionSlots& slots = sessions();
+    const uint8_t cap = slots.capacity();
     const uint8_t ring = static_cast<uint8_t>(cap + 1u); /* сессии + bus */
 
     for (uint8_t tried = 0; tried < ring; ++tried) {
@@ -399,7 +360,7 @@ void Node::pumpTx(bool do_tick) noexcept
         _drainCursor = static_cast<uint8_t>((_drainCursor + 1u) % ring);
 
         if (slot == cap) {
-            if (_status == Status::IdConflict) {
+            if (_state == State::Idle) {
                 continue;
             }
             const TxSlot* item = _tx.peek();
@@ -408,14 +369,14 @@ void Node::pumpTx(bool do_tick) noexcept
             }
             if (!sendWire(*item)) {
                 onTxResult(false);
-                continue; /* LinkError: остальные слоты всё равно tick'аем */
+                continue;
             }
             _tx.drop();
             onTxResult(true);
             continue;
         }
 
-        Session* s = reg.get(static_cast<uint8_t>(first + slot));
+        Session* s = slots.at(slot);
         if (s == nullptr) {
             continue;
         }
@@ -424,7 +385,7 @@ void Node::pumpTx(bool do_tick) noexcept
             s->tick();
         }
 
-        if (_status != Status::Ready || s->getStatus() == Session::Status::Idle) {
+        if (_state != State::Ready || s->getStatus() == Session::Status::Idle) {
             continue;
         }
 
@@ -444,13 +405,13 @@ void Node::pumpTx(bool do_tick) noexcept
 
 Session* Node::openNewSession(const Packet& pkt) noexcept
 {
-    if (_status != Status::Ready) {
+    if (_state != State::Ready) {
         return nullptr;
     }
     if (pkt.src_id == 0u) {
         return nullptr;
     }
-    if (pkt.msg.id != msg::Heartbeat::kId) {
+    if (pkt.msg.id != session::Heartbeat::kId) {
         return nullptr;
     }
     if (pkt.dst_id != id()) {

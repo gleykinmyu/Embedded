@@ -13,7 +13,7 @@
 
 ```text
 Show (ATYP / APCH / GRUP / PRST / SETT)
-show::AxisPool: TypeBank + PatchBank → прокси (show::Patch* + ShowType* + live + Profile cache); POD в show/show_axis.hpp
+show::AxisPool: TypeBank + PatchBank → прокси (show::Patch* + AxisType* + live + Profile cache); POD в show/, smcp::ShowAxis рядом
 Group / Preset = SectionPool, wire-слоты
 MConsole = composition root (банки, Fio, сессии, хуки)
 UI = жесты / paint / uiMessages (без пользовательских строк в модели)
@@ -100,10 +100,10 @@ Cue = позже, над PRST
 
 | #   | Задача                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.1 | ✅ `axis::Profile` + `Route` + `IAxis` (с id); `show::ShowType` / `show::Patch` в `smcp/show/show_axis.hpp`                                                                                                                                                                                                                                                                                                                                         |
+| 5.1 | ✅ `axis::Profile` + `Route` + `IAxis` (с id); `show::AxisType` / `show::Patch` + `smcp::ShowAxis` в `smcp/show/show_axis.hpp`                                                                                                                                                                                                                                                                                                                                         |
 | 5.2 | ✅ `show::AxisPool` = TypeBank (ATYP) + PatchBank (APCH), `required`; `typeOf` / `isUsedType`; в `Show` (`kVersion` 0x0118); бюджет W25. SegHdr/SERV не в шоу — inventory с сервера (7.x)                                                                                                                                                                                                                                                           |
 | 5.3 | Прокси оси на APCH (B1) вместо банков: `show.patch.patch[i]` + `typeOf` + live; Telemetry / Select / UI — через прокси. Убрать `storage(server_id)` на консоли. Live — массив параллельно APCH (вне шоуфайла); кэш `Profile` по `Route` из сессии                                                                                                                                                                                                  |
-| 5.4 | Gaps axis_id; маска `Selection` 32 бит vs inventory 24 (биты 24…31 → `MechNotFound`): резать по `mechCapacity()` или поднять inventory до 32                                                                                                                                                                                                                                                                                                       |
+| 5.4 | Gaps axis_id; маска `Selection` 32 бит vs inventory 24 (биты 24…31 → `AxisNotFound`): резать по `axisCapacity()` или поднять inventory до 32                                                                                                                                                                                                                                                                                                       |
 | 5.5 | `MaxSessions ≥ MaxSeg` (сейчас `GroupConsole<24>` с 1 слотом; расширить `SessionBank` в `MConsole`); `start` на каждый server_id                                                                                                                                                                                                                                                                                                                   |
 | 5.6 | console_id из NVM до `CanLink` / `begin` (сейчас `CanLink(board.can, 1u)` + `begin(kConsoleIdMin)` в `Console/main.cpp` и `main_test.cpp`); смена id / после IdConflict → `begin(id)` + `start(server)`. Хранение — 5.9                                                                                                                                                                                                                            |
 | 5.7 | Потолки `{tag, max_count}` секций — таблица в прошивке (A3 / H1)                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -139,7 +139,7 @@ Cue = позже, над PRST
 | --- | ------------------------------------------------------------- |
 | 7.1 | Теги объектов + Get/Notify(hash) + broadcast                  |
 | 7.2 | Get/Set(blob) → multi-byte Node + CRC; abort по HbLost / Nack |
-| 7.3 | ServiceUnlock + Set(blob); PIN hash на сервере                |
+| 7.3 | ServiceAccess + Set(blob); PIN hash на сервере; авто-lock     |
 | 7.4 | Apply SERV: смена kind → warn/disarm                          |
 | 7.5 | Тег ShowBlob (UI sync — later)                                |
 
@@ -156,10 +156,10 @@ Cue = позже, над PRST
 | 8.1 | CanDemux: 1 ICAN → 2 Node                                                                                                     |
 | 8.2 | Два logical server_id/seg; jack→seg                                                                                           |
 | 8.3 | Паспорта + hash на сервере                                                                                                    |
-| 8.4 | `DriveMech::setTarget` (сейчас пустой: Ack + Telemetry, ось стоит): Moving + позиция, либо отказ до Ack                       |
+| 8.4 | `ServerAxis::setTarget` (сейчас пустой: Ack + Telemetry, ось стоит): Moving + позиция, либо отказ до Ack                       |
 | 8.5 | `acceptSetTarget`: концевики и ход → `Limits` (сейчас Ok всем)                                                                |
 | 8.6 | `resetFault()` / `resetGlobalFault` leaf: GPIO + снятие бита Fault (сейчас пусто; кнопку сброса в UI не включать раньше)      |
-| 8.7 | Telemetry хода: Δposition / rate-limit в тике привода, `pushTelemetry`                                                        |
+| 8.7 | Telemetry хода: Δposition / rate-limit в тике привода, `sendTelemetry`                                                        |
 | 8.8 | Линк к платам (CAN2 / UART): свой PDU привода, второй ILink не через тот же Node. CAN2 на F407 закрыт — в `board` только CAN1 |
 
 
@@ -176,7 +176,7 @@ Nextion `NX1060P101`, 600×1024, проект `src/PUMS 2.5.HMI`. Правки H
 - Геометрию и нумерацию клеток на `work` (раскладка = лебёдки в зале, дыра `b24` — пустое место сцены).
 - Затемнитель `t0` на `mFile` / `mGroup`. StatusBar — оверлей поверх HMI.
 - Клетки McUI-оверлеем поверх кнопок (`bco` / `txt` делают `ref` и затирают canvas).
-- baud 250000, CAN 1 Мбит, `DriveMech::kMaxSelected`.
+- baud 250000, CAN 1 Мбит, `ServerAxis::kMaxSelected`.
 - Поездку в высоту на экране — пока не готов 8.4.
 - Rope / Chain и `cfgpio` в HMI — пока нет инвентаря и назначения ног (8.2).
 
@@ -277,7 +277,7 @@ flowchart LR
 | `storage(server_id)` / CMechBank | прокси на APCH + live (5.3)         |
 | MaxSessions = 1                  | ≥ MaxSeg                            |
 | console_id = 1 константой        | настройки пульта на W25 (5.9)       |
-| `DriveMech` пустой               | 8.4–8.7                             |
+| `ServerAxis` пустой               | 8.4–8.7                             |
 | ATYP/APCH в Show ✅               | bulk Profile / PIN / CanDemux — 7–8 |
 
 

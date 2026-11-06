@@ -18,13 +18,13 @@ namespace smcp {
 void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) noexcept
 {
 #if !defined(SMCP_TRACE_HB)
-    if (pkt.msg.id == msg::Heartbeat::kId) {
+    if (pkt.msg.id == session::Heartbeat::kId) {
         return;
     }
 #endif
 
     const bool is_rx = (dir != nullptr && dir[0] == 'R');
-    const char* name = msg::cstr(pkt.msg.id);
+    const char* name = session::cstr(pkt.msg.id);
     const bool known = (name != nullptr && name[0] != '?' && name[0] != '\0');
 
     std::printf("[SMCP] %s %u>%u #%u id=%s(0x%02X) dlc=%u",
@@ -49,8 +49,8 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
     }
 
     if (is_rx) {
-        if (pkt.msg.id == msg::Nack::kId) {
-            msg::Nack nack{};
+        if (pkt.msg.id == session::Nack::kId) {
+            session::Nack nack{};
             if (nack.unpack(pkt.msg)) {
                 char buf[160]{};
                 host::formatNack(buf, sizeof(buf), 0, pkt.txn_id, nack);
@@ -58,46 +58,46 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
             } else {
                 std::fputs(" | Nack(unpack fail)", stdout);
             }
-        } else if (pkt.msg.id == msg::Ack::kId) {
+        } else if (pkt.msg.id == session::Ack::kId) {
             std::fputs(" | Ack", stdout);
-        } else if (pkt.msg.id == msg::Fault::kId) {
-            msg::Fault fault{};
+        } else if (pkt.msg.id == session::Fault::kId) {
+            session::Fault fault{};
             if (fault.unpack(pkt.msg)) {
-                char name[msg::Fault::kDetailMax + 1u]{};
+                char name[session::Fault::kDetailMax + 1u]{};
                 for (uint8_t i = 0; i < fault.detail_len; ++i) {
                     name[i] = static_cast<char>(fault.detail[i]);
                 }
                 if (fault.detail_len > 0u) {
                     std::printf(" | Fault %s name=\"%s\"",
-                        msg::Fault::cstr(fault.error), name);
+                        session::Fault::cstr(fault.error), name);
                 } else {
-                    std::printf(" | Fault %s", msg::Fault::cstr(fault.error));
+                    std::printf(" | Fault %s", session::Fault::cstr(fault.error));
                 }
             } else {
                 std::fputs(" | Fault(unpack fail)", stdout);
             }
-        } else if (pkt.msg.id == msg::Get::kId) {
-            msg::Get g{};
+        } else if (pkt.msg.id == session::Get::kId) {
+            session::Get g{};
             if (g.unpack(pkt.msg)) {
                 std::printf(" | Get tag=0x%02X", static_cast<unsigned>(g.tag));
             }
-        } else if (pkt.msg.id == msg::Set::kId) {
-            msg::Set s{};
+        } else if (pkt.msg.id == session::Set::kId) {
+            session::Set s{};
             if (s.unpack(pkt.msg)) {
                 std::printf(" | Set tag=0x%02X len=%u",
                     static_cast<unsigned>(s.tag),
                     static_cast<unsigned>(s.len));
             }
-        } else if (pkt.msg.id == msg::DataBegin::kId) {
-            msg::DataBegin b{};
+        } else if (pkt.msg.id == session::DataBegin::kId) {
+            session::DataBegin b{};
             if (b.unpack(pkt.msg)) {
                 std::printf(" | DataBegin tag=0x%02X size=%u crc=0x%08X",
                     static_cast<unsigned>(b.tag),
                     static_cast<unsigned>(b.size),
                     static_cast<unsigned>(b.crc32));
             }
-        } else if (pkt.msg.id == msg::Data::kId) {
-            msg::Data d{};
+        } else if (pkt.msg.id == session::Data::kId) {
+            session::Data d{};
             if (d.unpack(pkt.msg)) {
                 std::printf(" | Data seq=%u len=%u",
                     static_cast<unsigned>(d.seq),

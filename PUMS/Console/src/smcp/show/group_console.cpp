@@ -5,13 +5,13 @@
 
 #include "smcp/show/group_bank.hpp"
 
-namespace smcp {
+namespace smcp::show {
 
 namespace {
-const Selection kEmptySel{};
+const segment::Selection kEmptySel{};
 } // namespace
 
-CGroup::CGroup(Group& rec, IGroupBank& bank, IGroupConsole& console) noexcept
+CGroup::CGroup(Group& rec, IGroupBank& bank, GroupConsole& console) noexcept
     : _rec(&rec)
     , _bank(&bank)
     , _console(&console)
@@ -22,7 +22,7 @@ uint8_t CGroup::id() const noexcept
     return _rec != nullptr ? _rec->id : 0u;
 }
 
-const Selection& CGroup::sel() const noexcept
+const segment::Selection& CGroup::sel() const noexcept
 {
     return _rec != nullptr ? _rec->sel : kEmptySel;
 }
@@ -86,8 +86,7 @@ CGroup::Result CGroup::recall() noexcept
     if (_bank->fillBlockedOverlap(_rec->id, _rec->sel)) {
         return Result::OverlapsBlocked;
     }
-    const uint8_t peer = _console->serverId(0u);
-    ServerSession* const s = _console->server(peer);
+    Session* const s = _console->session(segment::kServerIdMin);
     if (s == nullptr || !s->setSelection(_rec->sel)) {
         return Result::NotSent;
     }
@@ -95,7 +94,7 @@ CGroup::Result CGroup::recall() noexcept
     return Result::Ok;
 }
 
-CGroup::Result CGroup::record(Selection selection, const char* name, bool confirmed) noexcept
+CGroup::Result CGroup::record(segment::Selection selection, const char* name, bool confirmed) noexcept
 {
     if (_rec == nullptr || _bank == nullptr || selection.empty()) {
         return Result::Empty;
@@ -140,13 +139,13 @@ bool CGroup::clear(bool confirmed) noexcept
     return true;
 }
 
-void IGroupConsole::onAck(Session* session, const TxSlot& req, const msg::Ack& reply) noexcept
+void GroupConsole::onAck(::smcp::Session* session, const TxSlot& req, const session::Ack& reply) noexcept
 {
     Node::onAck(session, req, reply);
     if (session == nullptr || !_queued) {
         return;
     }
-    if (req.msg.id != msg::Select::kId || req.txn_id != _queuedTxnId) {
+    if (req.msg.id != segment::Select::kId || req.txn_id != _queuedTxnId) {
         return;
     }
     const CGroup group = _queued;
@@ -156,47 +155,40 @@ void IGroupConsole::onAck(Session* session, const TxSlot& req, const msg::Ack& r
     onGroupAck(id);
 }
 
-void IGroupConsole::onNack(Session* session, const TxSlot& req, const msg::Nack& reply) noexcept
+void GroupConsole::onNack(::smcp::Session* session, const TxSlot& req, const session::Nack& reply) noexcept
 {
     Node::onNack(session, req, reply);
-    if (session != nullptr && _queued && req.msg.id == msg::Select::kId
+    if (session != nullptr && _queued && req.msg.id == segment::Select::kId
         && req.txn_id == _queuedTxnId) {
         clearQueuedGroup();
     }
 }
 
-void IGroupConsole::onFault(Session* session, Fault reason) noexcept
+void GroupConsole::onLink(::smcp::Session* session, Link link) noexcept
 {
-    Node::onFault(session, reason);
-    _active = CGroup{};
-    clearQueuedGroup();
-}
-
-void IGroupConsole::onLink(Session* session, bool up) noexcept
-{
-    Node::onLink(session, up);
-    if (!up && session != nullptr) {
+    Console::onLink(session, link);
+    if (link != Link::Up && session != nullptr) {
         _active = CGroup{};
         clearQueuedGroup();
     }
 }
 
-void IGroupConsole::onStatus(Status status) noexcept
+void GroupConsole::onState(State state) noexcept
 {
-    Node::onStatus(status);
-    if (status != Status::Ready && status != Status::LinkError) {
+    Node::onState(state);
+    if (state != State::Ready) {
         _active = CGroup{};
         clearQueuedGroup();
     }
 }
 
-void IGroupConsole::setQueuedGroup(CGroup group, ServerSession& session) noexcept
+void GroupConsole::setQueuedGroup(CGroup group, Session& session) noexcept
 {
     _queued = group;
     _queuedTxnId = session.txnId();
 }
 
-void IGroupConsole::clearActiveGroup() noexcept
+void GroupConsole::clearActiveGroup() noexcept
 {
     const CGroup groups[2] = { _active, _queued };
     _active = CGroup{};
@@ -207,16 +199,12 @@ void IGroupConsole::clearActiveGroup() noexcept
         if (!group || group.sel().empty()) {
             continue;
         }
-        const uint8_t peer = serverId(0u);
-        if (peer == 0u) {
-            continue;
-        }
-        ServerSession* const link = server(peer);
+        Session* const link = session(segment::kServerIdMin);
         if (link == nullptr || !link->isOpen()) {
             continue;
         }
-        link->select(msg::Action::Remove, group.sel());
+        link->select(segment::Action::Remove, group.sel());
     }
 }
 
-} // namespace smcp
+} // namespace smcp::show

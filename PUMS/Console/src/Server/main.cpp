@@ -21,7 +21,7 @@
 #include "nex.hpp"
 #include "smcp/can_link.hpp"
 
-smcp::CanLink linkServer(board.can, smcp::msg::kServerIdMin);
+smcp::CanLink linkServer(board.can, smcp::segment::kServerIdMin);
 MServer mServer(linkServer, boardClockMs);
 
 nex::AppTiming timing = {boardClockMs, 500u};
@@ -176,13 +176,13 @@ int main(void)
     }
 
     board.watchdog.kick();
-    mServer.begin(smcp::msg::kServerIdMin);
+    mServer.begin(smcp::segment::kServerIdMin);
     probeNexLink();
     app.boot();
     NEX_DBG("Application::boot() done, entering main loop\n");
     NEX_DBG("SMCP server id=0x%02X mechs=%u sessions=%u\n",
         static_cast<unsigned>(mServer.id()),
-        static_cast<unsigned>(mServer.mechCapacity()),
+        static_cast<unsigned>(mServer.axisCapacity()),
         static_cast<unsigned>(mServer.sessionCapacity()));
 
     while (1) {
