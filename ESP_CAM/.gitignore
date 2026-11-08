@@ -12,3 +12,10 @@ managed_components
 dependencies.lock
 .cache
 src/generated/
+src/www/status.html
+status.html.S
+status.html.inc
+__pycache__/
+*.pyc
+compile_commands.json
+sdkconfig.esp32_eth01_ota

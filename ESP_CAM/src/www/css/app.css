@@ -590,6 +590,16 @@ body {
   background: transparent !important;
   box-shadow: none !important;
 }
+/* Лимит стороны PT: стоит — янтарная стрелка; неизвестен — пунктир */
+.pads-pt .pad button.lim-set {
+  background: color-mix(in srgb, var(--warn) 22%, var(--panel));
+  border-color: var(--warn);
+  color: var(--warn);
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+.pads-pt .pad button.lim-unk {
+  border: 1px dashed var(--muted);
+}
 /* Limit / Home — компактные, по ширине как блок стрелок */
 .ctrl-pt .btn-row {
   display: flex;

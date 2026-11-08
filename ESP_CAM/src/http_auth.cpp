@@ -132,6 +132,9 @@ bool rawEq(const uint8_t *a, const uint8_t *b, size_t n)
 
 void HttpAuth::mintSession()
 {
+    if (sessionValid()) {
+        sess_ended_.store(true); /* новый вход выбивает старый браузер */
+    }
     fillAlnum(sess_, kSessLen);
     touchSession();
 }
@@ -391,14 +394,7 @@ bool HttpAuth::authorized(httpd_req_t *req, bool slide)
     }
     bool ok = false;
     if (!sessionValid()) {
-        const int64_t touch = sess_touch_us_.load(std::memory_order_acquire);
-        if (sess_[0] != '\0' && touch > 0) {
-            const int64_t age_s = (esp_timer_get_time() - touch) / 1000000LL;
-            ESP_LOGW(TAG, "session end age=%llds ttl=%us",
-                     static_cast<long long>(age_s),
-                     static_cast<unsigned>(sess_ttl_sec_));
-        }
-        /* Не clearSession здесь — гонка с новым login/touch. */
+        /* Очистка и лог — в expireIdle(), один раз. */
     } else if (!cookieEquals(req)) {
         ESP_LOGW(TAG, "session cookie reject, left=%us",
                  static_cast<unsigned>(sessionRemainSec()));
@@ -453,10 +449,36 @@ void HttpAuth::logout()
     if (mu_ != nullptr) {
         xSemaphoreTake(mu_, portMAX_DELAY);
     }
+    if (sess_[0] != '\0') {
+        sess_ended_.store(true);
+    }
     clearSession();
     if (mu_ != nullptr) {
         xSemaphoreGive(mu_);
     }
+}
+
+void HttpAuth::expireIdle()
+{
+    if (mu_ != nullptr) {
+        xSemaphoreTake(mu_, portMAX_DELAY);
+    }
+    if (sess_[0] != '\0' && !sessionValid()) {
+        const int64_t touch = sess_touch_us_.load(std::memory_order_acquire);
+        ESP_LOGW(TAG, "session end age=%llds ttl=%us",
+                 static_cast<long long>((esp_timer_get_time() - touch) / 1000000LL),
+                 static_cast<unsigned>(sess_ttl_sec_));
+        clearSession();
+        sess_ended_.store(true);
+    }
+    if (mu_ != nullptr) {
+        xSemaphoreGive(mu_);
+    }
+}
+
+bool HttpAuth::takeEnded()
+{
+    return sess_ended_.exchange(false);
 }
 
 bool HttpAuth::setPassword(const char *proof_hex, const char *new_hash_hex)

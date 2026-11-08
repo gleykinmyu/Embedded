@@ -94,6 +94,12 @@ public:
     void setAxisInvert(const pt::AxisInvert& inv, bool persist = true);
     const pt::AxisInvert& axisInvert() const { return pt_->axisInvert(); }
 
+    /** Лимит стороны по последнему ответу #L/#LC (NVS). Unknown — ответа ещё не было. */
+    enum class LimitState : uint8_t { Unknown = 0, Release = 1, Set = 2 };
+    /** axis — логическая сторона, как в toggleLimitation/setLimitationControl. */
+    void noteLimit(ccam::LimitAxis axis, ccam::Limitation state);
+    LimitState limitState(ccam::LimitAxis axis) const;
+
     /** 1..100% + знак → int8_t для move() (−100..+100). */
     static int8_t rateToSigned(uint8_t rate_1_to_100, int sign);
 
@@ -103,15 +109,11 @@ public:
     class DeviceLock {
     public:
         explicit DeviceLock(Ph350Ctrl& ctrl);
-        /** try_ms==0 — сразу; иначе ждать до try_ms. Не взяли → held_=false. */
-        DeviceLock(Ph350Ctrl& ctrl, uint32_t try_ms);
         ~DeviceLock();
         DeviceLock(const DeviceLock&) = delete;
         DeviceLock& operator=(const DeviceLock&) = delete;
-        bool held() const { return held_; }
 
     private:
-        void take(uint32_t wait_ms);
         Ph350Ctrl& ctrl_;
         bool held_{false};
     };
@@ -121,6 +123,8 @@ private:
     static void healthTask(void* arg);
     void loadSettings();
     void saveSettings() const;
+    void saveLimits() const;
+    uint8_t physLimitIndex(ccam::LimitAxis axis) const;
     void destroyDevices();
     void constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam);
     void startHealthTask();
@@ -159,6 +163,8 @@ private:
     uint8_t latest_preset_{0};
     bool at_latest_{false};
     pt::AxisInvert invert_{};
+    /** По 2 бита на физическую #L-ось 1..4 (bit 2*(n-1)), значения LimitState. */
+    uint8_t limits_{0};
 
     ccam::devices::PtLinkHealth health_{1000, 3};
     SemaphoreHandle_t dev_mu_{};

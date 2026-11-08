@@ -23,6 +23,8 @@ private:
     esp_err_t on_net(httpd_req_t *req);
 
     esp_err_t require_auth(httpd_req_t *req, bool slide = true);
+    /** Обрыв cookie-сессии → стоп pan/tilt/zoom/focus (браузер мог держать стрелку). */
+    static void sessionWatchTask(void *arg);
 
     static HttpStatus &self(httpd_req_t *req);
     static esp_err_t root_get(httpd_req_t *req);

@@ -288,38 +288,18 @@ AUTH.sessTtl=300;
     }
   };
   AUTH.ensure();
-  /* /api/status таймер не двигает. Клик без своей команды шлёт touch.
-     Время пишем только после успеха, иначе потерянный запрос глушит следующие 12 с. */
-  let _touchAt=0;
-  let _touchBusy=false;
-  const onTouchResult=(d)=>{
-    _touchBusy=false;
-    if(!d || d._stale) return;
-    if(d._http===401 || (d.ok===false && d.status==='auth')){
-      if(AUTH.inGateGrace()) return;
-      if(window._ptHold>0){ window._authDeferredGate=true; return; }
-      const why=(d.sess_live===true)?'Вход с другого места':'Сессия истекла';
-      AUTH.showGate(true, why);
-      return;
-    }
-    if(d.ok){
-      _touchAt=Date.now();
-      AUTH.applyTtlUi(d);
-      if(typeof d.sess_left_s==='number') AUTH.noteLeft(d);
-    }
-  };
-  AUTH.recentGesture=()=> Date.now()-(AUTH._gestureAt||0)<15000;
-  AUTH.touchNow=()=>{
-    if(document.body.classList.contains('login')||_touchBusy) return;
-    _touchBusy=true;
-    AUTH.api('touch').then(onTouchResult).catch(()=>{ _touchBusy=false; });
-  };
+  /* Keepalive: жест ставит флаг, ближайший tick шлёт /api/status с X-Esp-Active
+     и снимает флаг после ответа. Сессия живёт TTL после жеста (+ до одного tick).
+     Gate — только из tick. */
+  AUTH._activeSeq=0;
+  AUTH._activeAcked=0;
+  AUTH.markActive=()=>{ AUTH._activeSeq++; };
+  AUTH.isActive=()=> window._ptHold>0 || AUTH._activeSeq!==AUTH._activeAcked;
+  /* seq — значение на момент отправки; жест во время запроса не теряется. */
+  AUTH.ackActive=(seq)=>{ AUTH._activeAcked=seq; };
   const bump=()=>{
     if(document.body.classList.contains('login')) return;
-    AUTH._gestureAt=Date.now();
-    if(_touchBusy) return;
-    if(Date.now()-_touchAt<3000) return;
-    AUTH.touchNow();
+    AUTH.markActive();
   };
   ['pointerdown','keydown','touchstart','click','change','input'].forEach(ev=>{
     document.addEventListener(ev, bump, {capture:true, passive:true});

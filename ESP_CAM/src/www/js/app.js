@@ -1,7 +1,8 @@
 const $=id=>document.getElementById(id);
 /** Страница. Без этого заголовка API с cookie не принимается — голый URL молчит. */
-function apiFetch(url){
-  return fetch(url,{cache:'no-store',credentials:'same-origin',headers:{'X-Esp-Client':'ui'}});
+function apiFetch(url, extraHdr){
+  const headers=Object.assign({'X-Esp-Client':'ui'}, extraHdr||{});
+  return fetch(url,{cache:'no-store',credentials:'same-origin',headers});
 }
 /** Painting UI −150…+150 step5 → wire 00h…3Ch (E650/HE: Data×5). */
 function paintHex(n){
@@ -80,28 +81,24 @@ async function call(api,cmd,extra){
     const r=await apiFetch('/api/'+api+'?'+q);
     if(window.AUTH&&AUTH.stale(mark)) return {ok:false,status:'auth'};
     if(r.status===401 && window.AUTH){
+      /* Gate только из tick. Здесь — один me/retry, без showGate. */
       let body=null;
       try{ body=await r.json(); }catch(e){}
-      if(body && typeof body.sess_left_s==='number' && body.sess_left_s>0){
-        try{
-          const t=await AUTH.api('touch');
-          if(AUTH.stale(mark) || (t&&t._stale)) return {ok:false,status:'auth'};
-          if(t&&t.ok){ AUTH.noteLeft(t); /* повторим смысл вызова после продления */ }
-          else { authGateOrDefer('Сессия истекла'); return {ok:false,status:'auth'}; }
-        }catch(e){
-          authGateOrDefer('Сессия истекла');
-          return {ok:false,status:'auth'};
+      try{
+        const me=await AUTH.api('me');
+        if(AUTH.stale(mark) || (me&&me._stale)) return {ok:false,status:'auth'};
+        if(me&&me.ok){
+          AUTH.noteLeft(me);
+          const r2=await apiFetch('/api/'+api+'?'+q);
+          if(AUTH.stale(mark)) return {ok:false,status:'auth'};
+          if(r2.status===401) return {ok:false,status:'auth',sess_live:body&&body.sess_live};
+          const d2=await r2.json();
+          showBar(api+'/'+cmd,d2);
+          return d2;
         }
-        /* touch ок — один ретрай исходного запроса */
-        const r2=await apiFetch('/api/'+api+'?'+q);
-        if(AUTH.stale(mark)) return {ok:false,status:'auth'};
-        if(r2.status===401){ authGateOrDefer('Сессия истекла'); return {ok:false,status:'auth'}; }
-        const d2=await r2.json();
-        showBar(api+'/'+cmd,d2);
-        return d2;
-      }
-      authGateOrDefer('Сессия истекла');
-      return {ok:false,status:'auth'};
+      }catch(e){}
+      if(window._ptHold>0) window._authDeferredGate=true;
+      return {ok:false,status:'auth',sess_live:body&&body.sess_live};
     }
     const d=await r.json();
     showBar(api+'/'+cmd,d);
@@ -516,15 +513,40 @@ function setLimitArm(on){
   const b=$('limit_arm');
   if(b){ b.classList.toggle('armed', !!on); b.setAttribute('aria-pressed', on?'true':'false'); }
 }
-function fireLimitAxis(ax){
+/** limits[ax-1]: 0 неизвестно, 1 снят, 2 стоит — с контроллера (NVS). */
+const LIMIT_HOLD=['tilt_up','tilt_down','pan_left','pan_right'];
+const LIMIT_TITLE=['лимит неизвестен','лимита нет','лимит стоит'];
+window._limits=[0,0,0,0];
+function applyLimits(arr){
+  if(!Array.isArray(arr)||arr.length!==4) return;
+  window._limits=arr.map(v=>(v===1||v===2)?v:0);
+  LIMIT_HOLD.forEach((hold,i)=>{
+    const b=document.querySelector('[data-hold="'+hold+'"]');
+    if(!b) return;
+    const s=window._limits[i];
+    b.classList.toggle('lim-set', s===2);
+    b.classList.toggle('lim-unk', s===0);
+    b.title=LIMIT_TITLE[s];
+  });
+}
+async function fireLimitAxis(ax){
   setLimitArm(false);
   if($('limax')) $('limax').value=String(ax);
   const caps=window._ptCaps||{};
+  let d;
   if(caps.limit_ctrl){
-    if($('limact')) $('limact').value='1';
-    return ptz('limit_ctrl');
+    /* #LC явный: стоит → снять, иначе поставить */
+    if($('limact')) $('limact').value=window._limits[ax-1]===2?'0':'1';
+    d=await ptz('limit_ctrl');
+  } else {
+    d=await ptz('limit_toggle');
   }
-  return ptz('limit_toggle');
+  if(d&&d.ok&&d.axis===ax&&(d.limit==='set'||d.limit==='release')){
+    const next=window._limits.slice();
+    next[ax-1]=d.limit==='set'?2:1;
+    applyLimits(next);
+  }
+  return d;
 }
 const limArmBtn=$('limit_arm');
 if(limArmBtn){
@@ -544,16 +566,11 @@ document.addEventListener('pointerdown',e=>{
 }, true);
 function beginPtHold(){
   window._ptHold=(window._ptHold||0)+1;
-  if(window._ptHold!==1) return;
-  if(window.AUTH&&typeof AUTH.touchNow==='function') AUTH.touchNow();
-  window._ptHoldTimer=setInterval(()=>{
-    if(window.AUTH&&typeof AUTH.touchNow==='function') AUTH.touchNow();
-  }, 8000);
+  if(window.AUTH&&typeof AUTH.markActive==='function') AUTH.markActive();
 }
 function endPtHold(){
   window._ptHold=Math.max(0,(window._ptHold||0)-1);
   if(window._ptHold>0) return;
-  if(window._ptHoldTimer){ clearInterval(window._ptHoldTimer); window._ptHoldTimer=null; }
   if(window._authDeferredGate){
     window._authDeferredGate=false;
     if(document.body.classList.contains('login')) return;
@@ -1052,8 +1069,12 @@ async function tick(){
   _tickBusy=true;
   const mark=window.AUTH?AUTH.mark():0;
   try{
-    const r=await apiFetch('/api/status');
+    /* Был жест с прошлого tick (или держим стрелку) → X-Esp-Active, сервер сдвигает idle. */
+    const active=window.AUTH&&typeof AUTH.isActive==='function'&&AUTH.isActive();
+    const seq=window.AUTH?AUTH._activeSeq:0;
+    const r=await apiFetch('/api/status', active?{'X-Esp-Active':'1'}:null);
     if(window.AUTH&&AUTH.stale(mark)) return;
+    if(r.ok && active && typeof AUTH.ackActive==='function') AUTH.ackActive(seq);
     if(r.status===401 && window.AUTH){
       let body=null;
       try{ body=await r.json(); }catch(e){}
@@ -1133,6 +1154,7 @@ async function tick(){
     if(document.activeElement!==$('ptmodel') && document.activeElement!==$('cammodel'))
       applyModels(d);
     applyCaps(d);
+    applyLimits(d.limits);
     if(window.PresetUI&&PresetUI.syncFromCtrl) PresetUI.syncFromCtrl(d);
   }catch(e){showBar('status',{ok:false,status:'net'})}
   finally{ _tickBusy=false; }
@@ -1265,11 +1287,8 @@ if($('net_save')) $('net_save').onclick=async()=>{
     const mark=window.AUTH?AUTH.mark():0;
     const r=await apiFetch('/api/net?'+q);
     if(window.AUTH&&AUTH.stale(mark)) return;
-    if(r.status===401 && window.AUTH){
-      let body=null;
-      try{ body=await r.json(); }catch(e){}
-      if(!(body && typeof body.sess_left_s==='number' && body.sess_left_s>0))
-        AUTH.showGate(true,'Сессия истекла');
+    if(r.status===401){
+      /* Gate только из tick — здесь просто выходим. */
       return;
     }
     const d=await r.json();

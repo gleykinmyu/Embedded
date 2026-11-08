@@ -62,6 +62,7 @@ constexpr char kKeyRate[] = "rate";
 constexpr char kKeyInv[] = "invert"; // bit0 pan,1 tilt,2 zoom,3 focus
 constexpr char kKeyPt[] = "pt_model";
 constexpr char kKeyCam[] = "cam_model";
+constexpr char kKeyLimits[] = "limits";
 
 template <typename T>
 T* place(void* storage, ccam::Transport& bus) {
@@ -97,26 +98,15 @@ bool model_supported(ccam::devices::PtModelId pt, ccam::devices::CameraModelId c
 
 } // namespace
 
-void Ph350Ctrl::DeviceLock::take(uint32_t wait_ms) {
+Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl) : ctrl_(ctrl) {
     if (ctrl_.dev_mu_ == nullptr) {
         return;
     }
     if (xSemaphoreGetMutexHolder(ctrl_.dev_mu_) == xTaskGetCurrentTaskHandle()) {
         return; /* уже держим — не брать повторно и не отдавать в деструкторе */
     }
-    const TickType_t ticks =
-        (wait_ms == portMAX_DELAY) ? portMAX_DELAY : pdMS_TO_TICKS(wait_ms);
-    if (xSemaphoreTake(ctrl_.dev_mu_, ticks) == pdTRUE) {
-        held_ = true;
-    }
-}
-
-Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl) : ctrl_(ctrl) {
-    take(portMAX_DELAY);
-}
-
-Ph350Ctrl::DeviceLock::DeviceLock(Ph350Ctrl& ctrl, uint32_t try_ms) : ctrl_(ctrl) {
-    take(try_ms);
+    xSemaphoreTake(ctrl_.dev_mu_, portMAX_DELAY);
+    held_ = true;
 }
 
 Ph350Ctrl::DeviceLock::~DeviceLock() {
@@ -301,6 +291,9 @@ void Ph350Ctrl::loadSettings() {
         invert_.zoom = (v & 0x04) != 0;
         invert_.focus = (v & 0x08) != 0;
     }
+    if (nvs_get_u8(h, kKeyLimits, &v) == ESP_OK) {
+        limits_ = v;
+    }
 
     char pt_key[12] = {};
     char cam_key[12] = {};
@@ -341,7 +334,13 @@ bool Ph350Ctrl::setModels(ccam::devices::PtModelId pt, ccam::devices::CameraMode
     if (!model_supported(pt, cam)) {
         return false;
     }
+    const bool pt_changed = pt != pt_id_;
     constructDevices(pt, cam);
+    if (pt_changed && limits_ != 0) {
+        /* Лимиты живут в головке: у другой модели они неизвестны. */
+        limits_ = 0;
+        saveLimits();
+    }
     if (persist) {
         saveSettings();
     }
@@ -391,6 +390,57 @@ void Ph350Ctrl::setAxisInvert(const pt::AxisInvert& inv, bool persist) {
     if (persist && !same) {
         saveSettings();
     }
+}
+
+uint8_t Ph350Ctrl::physLimitIndex(ccam::LimitAxis axis) const {
+    using ccam::LimitAxis;
+    switch (axis) {
+    case LimitAxis::TiltUp:
+        return invert_.tilt ? 1 : 0;
+    case LimitAxis::TiltDown:
+        return invert_.tilt ? 0 : 1;
+    case LimitAxis::PanLeft:
+        return invert_.pan ? 3 : 2;
+    case LimitAxis::PanRight:
+        return invert_.pan ? 2 : 3;
+    }
+    return 0xFF;
+}
+
+void Ph350Ctrl::noteLimit(ccam::LimitAxis axis, ccam::Limitation state) {
+    const uint8_t i = physLimitIndex(axis);
+    if (i > 3) {
+        return;
+    }
+    const auto v = static_cast<uint8_t>(state == ccam::Limitation::Set ? LimitState::Set
+                                                                        : LimitState::Release);
+    const uint8_t next = static_cast<uint8_t>((limits_ & ~(0x03u << (2 * i))) | (v << (2 * i)));
+    if (next == limits_) {
+        return;
+    }
+    limits_ = next;
+    saveLimits();
+}
+
+Ph350Ctrl::LimitState Ph350Ctrl::limitState(ccam::LimitAxis axis) const {
+    const uint8_t i = physLimitIndex(axis);
+    if (i > 3) {
+        return LimitState::Unknown;
+    }
+    const uint8_t v = (limits_ >> (2 * i)) & 0x03u;
+    return v <= 2 ? static_cast<LimitState>(v) : LimitState::Unknown;
+}
+
+void Ph350Ctrl::saveLimits() const {
+    nvs_handle_t h{};
+    if (nvs_open(kNvsNs, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "limits: nvs open fail");
+        return;
+    }
+    if (nvs_set_u8(h, kKeyLimits, limits_) != ESP_OK || nvs_commit(h) != ESP_OK) {
+        ESP_LOGW(TAG, "limits: nvs write fail");
+    }
+    nvs_close(h);
 }
 
 int8_t Ph350Ctrl::rateToSigned(uint8_t rate_1_to_100, int sign) {

@@ -57,6 +57,10 @@ public:
     uint32_t sessionTtlSec() const { return sess_ttl_sec_; }
     /** Остаток cookie-сессии, сек (0 если нет). */
     uint32_t sessionRemainSec() const;
+    /** Периодически: истёкшая по idle сессия очищается и помечается как оборванная. */
+    void expireIdle();
+    /** true один раз после обрыва сессии (idle, logout, вход с другого места). */
+    bool takeEnded();
 
 private:
     void load();
@@ -85,5 +89,6 @@ private:
     uint32_t sess_ttl_sec_{kSessTtlDefSec};
     /** atomic: на ESP32 int64_t иначе читается «рвано» → ложный expiry. */
     std::atomic<int64_t> sess_touch_us_{0};
+    std::atomic<bool> sess_ended_{false};
     mutable SemaphoreHandle_t mu_{nullptr};
 };

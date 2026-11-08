@@ -13,7 +13,7 @@
 | `css/app.css` | PTZ-pads, пресеты, sticky note |
 | `js/app.js` | логика управления |
 | `vendor/iptv-ui/kit/` | IPTV UI kit |
-| `status.html` | **сборка** (`tools/build_www.py`) — превью в дереве |
+| `status.html` | **сборка** (`tools/build_www.py`) — превью, не в git |
 
 ## Сборка
 

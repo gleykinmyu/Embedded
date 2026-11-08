@@ -42,7 +42,6 @@ struct Q {
     char gates[120]{}; ///< params scope=deps: whitelist gates (iris:manual,…)
     char scope[16]{};  ///< "" | "deps"
     char user[40]{};
-    char pass[40]{};
     char proof[68]{}; ///< hex SHA-256, логин и смена пароля
     char hash[68]{};  ///< hex SHA-256 нового пароля
 };
@@ -96,11 +95,9 @@ void load_q(httpd_req_t *req, Q &q) {
     (void)httpd_query_key_value(query, "gates", q.gates, sizeof(q.gates));
     (void)httpd_query_key_value(query, "scope", q.scope, sizeof(q.scope));
     (void)httpd_query_key_value(query, "user", q.user, sizeof(q.user));
-    (void)httpd_query_key_value(query, "pass", q.pass, sizeof(q.pass));
     (void)httpd_query_key_value(query, "proof", q.proof, sizeof(q.proof));
     (void)httpd_query_key_value(query, "hash", q.hash, sizeof(q.hash));
     url_decode_inplace(q.user);
-    url_decode_inplace(q.pass);
     url_decode_inplace(q.data);
     url_decode_inplace(q.data2);
     url_decode_inplace(q.only);
@@ -286,6 +283,31 @@ struct HttpMu {
 HttpStatus::HttpStatus(EthLan8720 &eth, Ph350Ctrl &pt) : eth_(eth), pt_(pt) {
     mu_ = xSemaphoreCreateMutex();
     auth_.begin();
+    if (xTaskCreate(&HttpStatus::sessionWatchTask, "sess_wd", 3072, this, 4, nullptr) != pdPASS) {
+        ESP_LOGE(TAG, "sess_wd task failed");
+    }
+}
+
+void HttpStatus::sessionWatchTask(void *arg)
+{
+    auto *self = static_cast<HttpStatus *>(arg);
+    static constexpr pt::Axis kAxes[] = {
+        pt::Axis::Pan, pt::Axis::Tilt, pt::Axis::Zoom, pt::Axis::Focus,
+    };
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        self->auth_.expireIdle();
+        if (!self->auth_.takeEnded() || otaIsBusy()) {
+            continue;
+        }
+        ESP_LOGW(TAG, "session ended → stop pan/tilt/zoom/focus");
+        Ph350Ctrl::DeviceLock dev(self->pt_);
+        auto &head = self->pt_.pt();
+        /* Каждая ось отдельно: отказ одной не должен оставить другие в движении. */
+        for (pt::Axis axis : kAxes) {
+            (void)head.move(axis, 0);
+        }
+    }
 }
 
 HttpStatus &HttpStatus::self(httpd_req_t *req) {
@@ -294,9 +316,14 @@ HttpStatus &HttpStatus::self(httpd_req_t *req) {
 
 esp_err_t HttpStatus::require_auth(httpd_req_t *req, bool slide)
 {
-    /* Фоновый /api/status не продлевает idle. Любой другой запрос — сдвигает. */
+    /* /api/status: peek без slide. X-Esp-Active: 1 — канонический UI keepalive
+     * (presence watermark на клиенте); отдельный auth/touch для idle не нужен. */
     if (req != nullptr && req->uri != nullptr && strcmp(req->uri, "/api/status") == 0) {
-        slide = false;
+        char act[4] = {};
+        const bool active =
+            httpd_req_get_hdr_value_str(req, "X-Esp-Active", act, sizeof(act)) == ESP_OK &&
+            act[0] == '1';
+        slide = active;
     } else {
         slide = true;
     }
@@ -349,18 +376,6 @@ esp_err_t HttpStatus::on_auth(httpd_req_t *req)
                  static_cast<unsigned>(sess ? auth_.sessionRemainSec() : 0),
                  static_cast<unsigned>(HttpAuth::kSessTtlMaxSec),
                  static_cast<unsigned>(HttpAuth::kSessTtlMinSec));
-        return send_json(req, buf);
-    }
-    if (strcmp(q.cmd, "touch") == 0) {
-        /* явное продление idle от UI (клик/клавиша) */
-        if (!auth_.authorized(req, true) || !auth_.sessionActive()) {
-            (void)require_auth(req, false);
-            return ESP_OK;
-        }
-        snprintf(buf, sizeof(buf),
-                 "{\"ok\":true,\"status\":\"ok\",\"sess_ttl_s\":%u,\"sess_left_s\":%u}",
-                 static_cast<unsigned>(auth_.sessionTtlSec()),
-                 static_cast<unsigned>(auth_.sessionRemainSec()));
         return send_json(req, buf);
     }
     if (strcmp(q.cmd, "challenge") == 0) {
@@ -451,14 +466,12 @@ esp_err_t HttpStatus::on_auth(httpd_req_t *req)
 }
 
 esp_err_t HttpStatus::on_status(httpd_req_t *req) {
-    /* Фоновый tick не продлевает cookie-сессию — только проверка. */
+    /* Idle сдвигается только с X-Esp-Active: 1 (см. require_auth). */
     if (require_auth(req, false) != ESP_OK) {
         return ESP_OK;
     }
-    /* Только чтение кэша health_/caps. Не ждать params/power — иначе шапка
-     * залипает на «ETH —» пока Camera-опрос держит шину (особенно при Выкл). */
-    Ph350Ctrl::DeviceLock dev(pt_, 0);
-    (void)dev;
+    /* Только кэш health_/caps, без DeviceLock: иначе шапка ждёт params/power.
+     * Смена моделей идёт в этом же httpd-потоке, поэтому pt_/cam_ здесь не меняются. */
     char ip[16] = {};
     char mask[16] = {};
     char gw[16] = {};
@@ -488,7 +501,9 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         }
         cam_qid[j] = '\0';
     }
-    char buf[1408];
+    using ccam::LimitAxis;
+    const auto lim = [this](LimitAxis a) { return static_cast<unsigned>(pt_.limitState(a)); };
+    char buf[1536];
     const int wrote = snprintf(
         buf, sizeof(buf),
         "{\"link\":%s,\"ip\":\"%s\",\"mask\":\"%s\",\"gw\":\"%s\",\"mac\":\"%s\","
@@ -500,6 +515,7 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         "\"cam_tx\":%s,\"cam_alive\":%s,\"cam_qid\":\"%s\",\"cam_fail\":%u,"
         "\"inv_pan\":%s,\"inv_tilt\":%s,\"inv_zoom\":%s,\"inv_focus\":%s,"
         "\"latest_preset\":%u,\"at_latest\":%s,"
+        "\"limits\":[%u,%u,%u,%u],"
         "\"pt_caps\":{\"abs_pt\":%s,\"abs_pt_speed\":%s,\"preset_map\":%s,\"preset_opts\":%s,"
         "\"limit_ctrl\":%s,\"limit_toggle\":%s,\"tally\":%s,\"fan\":%s,\"wiper\":%s,"
         "\"washer\":%s,\"wireless\":%s,\"option\":%s,\"tilt_range\":%s,"
@@ -524,6 +540,8 @@ esp_err_t HttpStatus::on_status(httpd_req_t *req) {
         inv.pan ? "true" : "false", inv.tilt ? "true" : "false", inv.zoom ? "true" : "false",
         inv.focus ? "true" : "false",
         static_cast<unsigned>(pt_.latestPreset()), pt_.atLatest() ? "true" : "false",
+        lim(LimitAxis::TiltUp), lim(LimitAxis::TiltDown), lim(LimitAxis::PanLeft),
+        lim(LimitAxis::PanRight),
         pc.abs_pt ? "true" : "false",
         pc.abs_pt_speed ? "true" : "false", pc.preset_map ? "true" : "false",
         pc.preset_opts ? "true" : "false",
@@ -848,6 +866,7 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             ccam::Limitation state = ccam::Limitation::Release;
             st = head.toggleLimitation(static_cast<ccam::LimitAxis>(ax), &state);
             if (st == ccam::Status::Ok) {
+                pt_.noteLimit(static_cast<ccam::LimitAxis>(ax), state);
                 snprintf(buf, sizeof(buf),
                          "{\"ok\":true,\"status\":\"ok\",\"axis\":%d,\"limit\":\"%s\",\"data\":\"#L%d\"}",
                          ax, state == ccam::Limitation::Set ? "set" : "release", ax);
@@ -863,7 +882,8 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             st = ipt->setLimitationControl(static_cast<ccam::LimitAxis>(ax),
                                            static_cast<ccam::Limitation>(act));
             if (st == ccam::Status::Ok) {
-    snprintf(buf, sizeof(buf),
+                pt_.noteLimit(static_cast<ccam::LimitAxis>(ax), static_cast<ccam::Limitation>(act));
+                snprintf(buf, sizeof(buf),
                          "{\"ok\":true,\"status\":\"ok\",\"axis\":%d,\"limit\":\"%s\",\"data\":\"#LC\"}",
                          ax, act ? "set" : "release");
                 return send_json(req, buf);
