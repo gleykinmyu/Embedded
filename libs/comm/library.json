@@ -1,0 +1,13 @@
+{
+  "name": "comm",
+  "version": "1.0.0",
+  "description": "Protocol exchange: Job, IProto/ProtoContainer, ILink, Node, Session",
+  "dependencies": {
+    "mem": "*",
+    "Interfaces": "*"
+  },
+  "build": {
+    "libArchive": false,
+    "includeDir": ".."
+  }
+}

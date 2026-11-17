@@ -1,7 +1,7 @@
 {
   "name": "mem",
   "version": "1.0.0",
-  "description": "Slot store / range allocator (ISlot, Store, RangeAllocator)",
+  "description": "ISlot/IdSlot/Store, List, ObjRegistry, PolyStore, RangeAllocator",
   "build": {
     "libArchive": false,
     "includeDir": ".."

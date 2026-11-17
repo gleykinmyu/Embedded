@@ -69,7 +69,7 @@ void LinkHb::setStatus(Status status) noexcept
     }
 }
 
-void LinkHb::ping(uint32_t now_ms) noexcept
+void LinkHb::ping(MISC::time_t now_ms) noexcept
 {
     Message m{};
     m.id = Heartbeat::kId;
@@ -89,7 +89,7 @@ void LinkHb::pong() noexcept
     _s.send(m);
 }
 
-bool LinkHb::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
+bool LinkHb::onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept
 {
     if (pkt.msg.id != Heartbeat::kId) {
         return false;
@@ -114,7 +114,7 @@ bool LinkHb::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
     return true;
 }
 
-void LinkHb::tick(uint32_t now_ms) noexcept
+void LinkHb::tick(MISC::time_t now_ms) noexcept
 {
     if (_s.isMaster() && _status == Status::Connecting) {
         ping(now_ms);
@@ -125,7 +125,7 @@ void LinkHb::tick(uint32_t now_ms) noexcept
     }
 
     if (_s.isMaster()) {
-        if (_hb.isWaiting() && _hb.isReplyLimit()) {
+        if (_hb.isWaiting() && _hb.isAttemptsOver()) {
             _s.close(Session::Link::HbLost);
             return;
         }
@@ -133,7 +133,7 @@ void LinkHb::tick(uint32_t now_ms) noexcept
         return;
     }
 
-    if (_hb.isReplyLimit()) {
+    if (_hb.isAttemptsOver()) {
         _s.close(Session::Link::HbLost);
         return;
     }

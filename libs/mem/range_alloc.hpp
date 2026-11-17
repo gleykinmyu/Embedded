@@ -7,6 +7,13 @@
  *   mem::SlotStore16<Profile, 64> slots;
  *   mem::RangeAllocator16<Profile, 16> ranges(slots);
  *   auto* r = ranges.alloc(3);
+ *
+ * TODO: SlotRange в проде не используется (только тест + база AllocRange).
+ *   Как только диапазон — ресурс из пула, нужен allocator; голый вид без
+ *   распоряжения (alloc/free/resize) никому не нужен. AllocRange : SlotRange
+ *   тащит лишний _slots: тот же указатель уже есть в _alloc._slots
+ *   (на ARM ≈ 12 байт на дескриптор вместо ~8). Кандидат: убрать SlotRange,
+ *   оставить AllocRange(_alloc + _range) с at/forEach через _alloc._slots.
  */
 
 #pragma once
@@ -17,9 +24,9 @@
 #include <utility>
 
 #include "mem/slot.hpp"
+#include "mem/visit.hpp"
 
 namespace mem {
-
 
 template <typename T, typename SizeT = uint16_t>
 class IRangeAllocator;
@@ -58,9 +65,6 @@ static_assert(std::is_trivially_copyable_v<Range<uint16_t>>);
  */
 template <typename T, typename SizeT = uint16_t>
 class SlotRange {
-    static_assert(std::is_integral_v<SizeT> && std::is_unsigned_v<SizeT>,
-                  "SlotRange: SizeT must be unsigned integral");
-
 public:
     using value_type = T;
     using cap_t = SizeT;
@@ -125,15 +129,8 @@ public:
         const cap_t n = size();
         for (idx_t i = 0u; i < n; ++i) {
             T* const p = at(i);
-            if (p == nullptr) {
-                continue;
-            }
-            if constexpr (std::is_invocable_r_v<bool, Fn&, T&, idx_t>) {
-                if (fn(*p, i)) {
-                    return;
-                }
-            } else {
-                fn(*p, i);
+            if (p != nullptr && detail::visit(fn, *p, i)) {
+                return;
             }
         }
     }
@@ -157,9 +154,6 @@ protected:
  */
 template <typename T, typename SizeT>
 class IRangeAllocator : public ISlot<AllocRange<T, SizeT>, SizeT> {
-    static_assert(std::is_integral_v<SizeT> && std::is_unsigned_v<SizeT>,
-                  "IRangeAllocator: SizeT must be unsigned integral");
-
     using ItemSlot = ISlot<AllocRange<T, SizeT>, SizeT>;
 
 public:
@@ -187,7 +181,8 @@ public:
     IRangeAllocator& operator=(const IRangeAllocator&) = delete;
 
     [[nodiscard]] SizeT freeTop() const noexcept { return _free_top; }
-    [[nodiscard]] SizeT freeSlots() const noexcept
+    /** Свободный хвост payload (дыры в середине не учитываются; их снимает compact). */
+    [[nodiscard]] SizeT tailFree() const noexcept
     {
         return static_cast<SizeT>(_slots.capacity() - _free_top);
     }
@@ -244,6 +239,7 @@ private:
 
 /**
  * Аллоцируемый диапазон: SlotRange + ссылка на IRangeAllocator (resize / free / compact).
+ * Наследует SlotRange → в объекте лежит _slots из базы и _alloc (у него снова те же слоты).
  */
 template <typename T, typename SizeT = uint16_t>
 class AllocRange : public SlotRange<T, SizeT> {
@@ -296,11 +292,16 @@ public:
         return resizeOnce(n);
     }
 
-    /** Сбросить дескриптор (ячейки не трогаем) → isFree. */
+    /**
+     * Сбросить дескриптор (ячейки не трогаем) → isFree.
+     * Если диапазон был на хвосте — опустить freeTop.
+     */
     void free() noexcept
     {
-        this->_range.first = 0u;
-        this->_range.count = 0u;
+        if (!this->empty() && this->_range.end() == _alloc.freeTop()) {
+            _alloc.setFreeTop(this->_range.first);
+        }
+        this->clearRange();
     }
 
     void compact() noexcept { _alloc.compact(); }
@@ -315,16 +316,21 @@ template <typename T, typename SizeT>
 bool AllocRange<T, SizeT>::resizeOnce(SizeT n) noexcept
 {
     range_type& pr = this->_range;
-    typename Base::slot_type& sl = this->_slots;
+    slot_type& sl = this->_slots;
 
     if (n == pr.count) {
         return true;
     }
 
     if (n < pr.count) {
-        pr.count = n;
+        const SizeT free_top = _alloc.freeTop();
+        if (pr.end() == free_top) {
+            _alloc.setFreeTop(static_cast<SizeT>(pr.first + n));
+        }
         if (n == 0u) {
-            pr.first = 0u;
+            this->clearRange();
+        } else {
+            pr.count = n;
         }
         return true;
     }
@@ -375,14 +381,9 @@ void IRangeAllocator<T, SizeT>::compact() noexcept
     const SizeT cap = _slots.capacity();
 
     this->forEach([&](item_type& it, SizeT) {
-        range_type& pr = it._range;
-        if (pr.count == 0u) {
-            pr.first = 0u;
-            return;
-        }
-        if (pr.first >= cap || pr.count > static_cast<SizeT>(cap - pr.first)) {
-            pr.first = 0u;
-            pr.count = 0u;
+        const range_type& pr = it._range;
+        if (pr.count == 0u || pr.first >= cap || pr.count > static_cast<SizeT>(cap - pr.first)) {
+            it.free();
         }
     });
 
@@ -472,6 +473,5 @@ using RangeAllocator16 = RangeAllocator<T, uint16_t, RangeCap>;
 
 template <typename T, uint8_t RangeCap>
 using RangeAllocator8 = RangeAllocator<T, uint8_t, RangeCap>;
-
 
 } // namespace mem

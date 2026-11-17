@@ -7,24 +7,21 @@ namespace nex {
 namespace detail {
 
 void registerPage(IAppUI& app, IPage& page) noexcept {
-    const MISC::RegStatus st = app.storage().registerSeq(&page, page.ID);
-    if (st != MISC::RegStatus::Ok)
+    PageReg& reg = app.storage();
+    // Страницы плотно 0…N-1 в порядке объявления (SmartApp обходит по индексу).
+    const mem::RegStatus st = (page.ID == reg.count()) ? reg.registerAt(page.ID, page)
+                                                       : mem::RegStatus::OutOfRange;
+    if (st != mem::RegStatus::Ok)
         app.reportRegisterError(st, Route{page.ID, 0u});
 }
 
 void registerComponent(IPage& page, Component& c) noexcept {
-    MISC::ObjRegistry<Component, uint8_t>& reg = page.storage();
+    CompReg& reg = page.storage();
 
-    // `id == 0` в конструкторе — автослот; `registerAt(0, …)` дал бы IdOutOfRange (firstId == kFirstCompId).
-    MISC::RegStatus st;
-    if (c.id() == 0u) {
-        uint8_t assignedId = 0u;
-        st = reg.registerAuto(&c, assignedId);
-    } else {
-        st = reg.registerAt(c.id(), &c);
-    }
+    // `id == 0` в конструкторе — автослот; `registerAt(0, …)` дал бы OutOfRange (kFirstId == kFirstCompId).
+    const mem::RegStatus st = (c.id() == 0u) ? reg.registerAuto(c) : reg.registerAt(c.id(), c);
 
-    if (st != MISC::RegStatus::Ok)
+    if (st != mem::RegStatus::Ok)
         static_cast<IAppUI&>(page.app).reportRegisterError(st, Route{page.ID, c.id()});
 }
 
@@ -70,7 +67,7 @@ void IPage::onResponse(const msg::getString& response, Route route, uint8_t tag)
 }
 
 uint8_t IPage::compCount() const noexcept {
-    return const_cast<IPage*>(this)->storage().registeredCount();
+    return const_cast<IPage*>(this)->storage().count();
 }
 
 Component* IPage::getComponent(uint8_t comp) noexcept {

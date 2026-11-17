@@ -1,6 +1,9 @@
 {
   "name": "Nextion",
   "version": "1.0.0",
+  "dependencies": {
+    "mem": "*"
+  },
   "build": {
     "libArchive": false,
     "extraScript": "syncHMI/pio_hmi_gen.py",

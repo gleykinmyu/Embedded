@@ -7,7 +7,7 @@
 #include "../core/nexMessages.hpp"
 #include "../core/nexSession.hpp"
 #include "../../Interfaces/ibyte_stream.hpp"
-#include "../../Interfaces/obj_registry.hpp"
+#include "mem/obj_registry.hpp"
 
 namespace nex {
 
@@ -48,7 +48,7 @@ inline msg::Status makeAppError(AppError reporter, uint16_t detail) noexcept {
     return s;
 }
 
-inline msg::Status appErrorFrom(MISC::RegStatus st) noexcept {
+inline msg::Status appErrorFrom(mem::RegStatus st) noexcept {
     return makeAppError(AppError::Register, static_cast<uint16_t>(st));
 }
 
@@ -113,7 +113,7 @@ inline uint16_t appErrorDetail(const msg::Status& st) noexcept {
 inline const char* appErrorDetailCstr(AppError reporter, uint16_t detail) noexcept {
     switch (reporter) {
     case AppError::Register:
-        return MISC::cstr(static_cast<MISC::RegStatus>(detail));
+        return mem::cstr(static_cast<mem::RegStatus>(detail));
     case AppError::Command:
         return cstr(static_cast<Command::Status>(detail));
     case AppError::Session:

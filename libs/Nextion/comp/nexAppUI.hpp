@@ -2,7 +2,6 @@
 
 #include <cstdint>
 
-#include "../../Interfaces/obj_registry.hpp"
 #include "nexComponentBase.hpp"
 #include "../app/nexOvlApp.hpp"
 
@@ -52,10 +51,10 @@ public:
     virtual void onResponse(const msg::getString& response, Route route, uint8_t tag) noexcept override;
 
 protected:
-    [[nodiscard]] virtual MISC::ObjRegistry<IPage, uint8_t>& storage() noexcept = 0;
+    [[nodiscard]] virtual PageReg& storage() noexcept = 0;
 
-    /** `onStatus(AppError::Register, …)` при сбое `ObjRegistry::register`. */
-    void reportRegisterError(MISC::RegStatus st, Route route) noexcept;
+    /** `onStatus(AppError::Register, …)` при сбое регистрации. */
+    void reportRegisterError(mem::RegStatus st, Route route) noexcept;
 };
 
 inline Component* IAppUI::getComponent(Route route) noexcept {
@@ -74,10 +73,10 @@ public:
     using IAppUI::IAppUI;
 
 protected:
-    [[nodiscard]] MISC::ObjRegistry<IPage, uint8_t>& storage() noexcept override { return _pages; }
+    [[nodiscard]] PageReg& storage() noexcept override { return _pages; }
 
 private:
-    MISC::ObjStorage<IPage, MaxPages, uint8_t, 0> _pages;
+    mem::ObjRegStore<IPage, MaxPages, PageRegMode> _pages;
 };
 
 using DefaultAppUI = AppUI<kDefaultMaxPages>;

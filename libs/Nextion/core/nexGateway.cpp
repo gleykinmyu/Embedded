@@ -264,7 +264,7 @@ bool Gateway::pushCommand(const Command& cmd) {
     return true;
 }
 
-bool Gateway::transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept {
+bool Gateway::transmit(MISC::time_t now_ms, MISC::time_t timeout_ms) noexcept {
     if (_txFramer.isIdle()) {
         _txStallTimer.stop();
         return true;

@@ -43,14 +43,14 @@ public:
     void idle(Node::Link link = Node::Link::Down) noexcept;
 
     /** Connecting→ping; Open/Awaiting — miss / retry / HbLost. */
-    void tick(uint32_t now_ms) noexcept;
+    void tick(MISC::time_t now_ms) noexcept;
 
     /** RX Heartbeat; иначе false. */
-    [[nodiscard]] bool onPacket(const Packet& pkt, uint32_t now_ms) noexcept;
+    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept;
 
 private:
     void setStatus(Status status) noexcept;
-    void ping(uint32_t now_ms) noexcept;
+    void ping(MISC::time_t now_ms) noexcept;
     void pong() noexcept;
 
     Session& _s;

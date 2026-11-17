@@ -98,7 +98,7 @@ public:
 
     bool pushCommand(const Command& cmd);
     /** Продолжить TX; при полном TX-кольце (`write()==0`) — yield до следующего вызова. */
-    bool transmit(uint32_t now_ms, uint32_t timeout_ms) noexcept;
+    bool transmit(MISC::time_t now_ms, MISC::time_t timeout_ms) noexcept;
     bool receive(Message& out);
     bool writeTransparentRaw(const uint8_t* data, size_t len) noexcept;
 

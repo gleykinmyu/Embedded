@@ -101,7 +101,7 @@ public:
      * Пустой @a buf — буфер спросим в NeedBuf. Иначе ёмкость уже есть и
      * DataBegin сразу переводит в Data.
      */
-    [[nodiscard]] bool armRx(uint8_t tag, uint8_t txn_id, uint32_t now_ms,
+    [[nodiscard]] bool armRx(uint8_t tag, uint8_t txn_id, MISC::time_t now_ms,
                              MultiByteClient* client, const IBuf& buf = {},
                              uint8_t index = kIndexAll) noexcept;
 
@@ -136,14 +136,14 @@ public:
      * RX-watchdog → onMbResult(Timeout).
      * TX: peek → Session::send (один кадр в полёте).
      */
-    void tick(uint32_t now_ms) noexcept;
+    void tick(MISC::time_t now_ms) noexcept;
 
     /**
      * RX DataBegin/Data своего txn. Чужой кадр, Data до DataBegin, не Rx, finished → false.
      * NeedBuf → client.onMbBuffer + attach → Data.
      * Done/Fail → client.onMbResult.
      */
-    [[nodiscard]] bool onPacket(const Packet& pkt, uint32_t now_ms) noexcept;
+    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept;
 
 private:
     /** Заголовок ещё не прошёл (Begin) или идут куски (Data). */
@@ -152,12 +152,12 @@ private:
         Data,      /**< Куски тела. */
     };
 
-    [[nodiscard]] Result onBegin(const DataBegin& begin, uint32_t now_ms) noexcept;
-    [[nodiscard]] Result onData(const Data& chunk, uint32_t now_ms) noexcept;
+    [[nodiscard]] Result onBegin(const DataBegin& begin, MISC::time_t now_ms) noexcept;
+    [[nodiscard]] Result onData(const Data& chunk, MISC::time_t now_ms) noexcept;
     /** Буфер уже есть: принять заголовок и перейти в Data. */
-    [[nodiscard]] Result enterData(const DataBegin& begin, uint32_t now_ms) noexcept;
+    [[nodiscard]] Result enterData(const DataBegin& begin, MISC::time_t now_ms) noexcept;
     [[nodiscard]] bool arm(uint8_t tag, uint8_t index, const IBuf& buf, bool tx,
-                           uint8_t txn_id, uint32_t now_ms, MultiByteClient* client) noexcept;
+                           uint8_t txn_id, MISC::time_t now_ms, MultiByteClient* client) noexcept;
     void notifyResult() noexcept;
     void fail(Error err) noexcept;
     void succeed() noexcept;

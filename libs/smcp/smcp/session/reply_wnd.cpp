@@ -33,17 +33,17 @@ void ReplyWnd::abort(bool notify) noexcept
     _ack.clear();
 }
 
-const TxSlot* ReplyWnd::peek(uint32_t now_ms) noexcept
+const TxSlot* ReplyWnd::peek(MISC::time_t now_ms) noexcept
 {
     if (_ack.isWaiting()) {
-        if (!_ack.timedOut(now_ms) || _ack.isReplyLimit()) {
+        if (!_ack.timedOut(now_ms) || _ack.isAttemptsOver()) {
             return nullptr;
         }
     }
     return _q.peek();
 }
 
-void ReplyWnd::startAck(uint32_t now_ms) noexcept
+void ReplyWnd::startAck(MISC::time_t now_ms) noexcept
 {
     _ack.start(now_ms, Ack::kTimeoutMs);
 }
@@ -76,9 +76,9 @@ bool ReplyWnd::onPacket(const Packet& pkt) noexcept
     return false;
 }
 
-void ReplyWnd::tick(uint32_t now_ms) noexcept
+void ReplyWnd::tick(MISC::time_t now_ms) noexcept
 {
-    if (!_ack.timedOut(now_ms) || !_ack.isReplyLimit()) {
+    if (!_ack.timedOut(now_ms) || !_ack.isAttemptsOver()) {
         return;
     }
     const TxSlot* h = _q.peek();

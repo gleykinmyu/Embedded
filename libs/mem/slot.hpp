@@ -17,8 +17,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
+
+#include "mem/visit.hpp"
 
 namespace mem {
 
@@ -39,6 +42,9 @@ public:
     using cap_t = SizeT;
     /** Индекс слота; тот же SizeT, завязан на cap_t. */
     using idx_t = cap_t;
+
+    /** Макс. ёмкость вида (наследники могут сузить). */
+    static constexpr SizeT kMaxCapacity = std::numeric_limits<SizeT>::max();
 
     /**
      * Обернуть внешний буфер (не владеет).
@@ -77,36 +83,14 @@ public:
     constexpr void forEach(Fn&& fn)
         noexcept(noexcept(fn(std::declval<T&>(), idx_t{})))
     {
-        if (_data == nullptr) {
-            return;
-        }
-        for (idx_t i = 0u; i < _capacity; ++i) {
-            if constexpr (std::is_invocable_r_v<bool, Fn&, T&, idx_t>) {
-                if (fn(_data[i], i)) {
-                    return;
-                }
-            } else {
-                fn(_data[i], i);
-            }
-        }
+        each(*this, fn);
     }
 
     template <typename Fn>
     constexpr void forEach(Fn&& fn) const
         noexcept(noexcept(fn(std::declval<const T&>(), idx_t{})))
     {
-        if (_data == nullptr) {
-            return;
-        }
-        for (idx_t i = 0u; i < _capacity; ++i) {
-            if constexpr (std::is_invocable_r_v<bool, Fn&, const T&, idx_t>) {
-                if (fn(_data[i], i)) {
-                    return;
-                }
-            } else {
-                fn(_data[i], i);
-            }
-        }
+        each(*this, fn);
     }
 
     /**
@@ -115,6 +99,8 @@ public:
      */
     void move(idx_t dst, idx_t src, cap_t count) noexcept
     {
+        static_assert(std::is_nothrow_move_assignable_v<T>,
+                      "ISlot::move: T must be nothrow move-assignable");
         if (_data == nullptr || count == 0u || dst == src) {
             return;
         }
@@ -132,16 +118,43 @@ public:
         }
     }
 
+    /** Обменять слоты @a a и @a b. @return false — индекс вне [0, capacity). */
+    bool swap(idx_t a, idx_t b) noexcept(std::is_nothrow_swappable_v<T>)
+    {
+        if (_data == nullptr || a >= _capacity || b >= _capacity) {
+            return false;
+        }
+        using std::swap;
+        swap(_data[a], _data[b]);
+        return true;
+    }
+
 protected:
     T* const _data;
     const cap_t _capacity;
+
+private:
+    template <typename Self, typename Fn>
+    static constexpr void each(Self& self, Fn& fn)
+    {
+        if (self._data == nullptr) {
+            return;
+        }
+        using E = std::conditional_t<std::is_const_v<Self>, const T, T>;
+        for (idx_t i = 0u; i < self._capacity; ++i) {
+            E& e = self._data[i];
+            if (detail::visit(fn, e, i)) {
+                return;
+            }
+        }
+    }
 };
 
 /**
  * ISlot + нумерация с First: логический id ∈ [First, First+capacity).
  *
  * Физические at/move — protected (индексы 0…capacity-1).
- * Снаружи — firstId/endId/atId/idInRange. ctor как у ISlot: (T*, capacity).
+ * Снаружи — kFirstId/endId/atId/idInRange. ctor как у ISlot: (T*, capacity).
  *
  *   IdSlot&lt;Profile, uint16_t, 10&gt;  // id 10…10+cap-1
  */
@@ -154,35 +167,34 @@ public:
     using cap_t = SizeT;
     using idx_t = cap_t;
 
-    static constexpr SizeT kFirst = First;
+    static constexpr SizeT kFirstId = First;
+    /** Макс. ёмкость: endId() = First + capacity помещается в SizeT. */
+    static constexpr SizeT kMaxCapacity = std::numeric_limits<SizeT>::max() - First;
 
+    /** @a capacity > kMaxCapacity обрезается. */
     constexpr IdSlot(T* data, SizeT capacity) noexcept
-        : Base(data, capacity)
+        : Base(data, capacity < kMaxCapacity ? capacity : kMaxCapacity)
     {}
 
     using Base::capacity;
 
-    [[nodiscard]] static constexpr SizeT firstId() noexcept { return First; }
-
-    [[nodiscard]] constexpr SizeT endId() const noexcept
-    {
-        return static_cast<SizeT>(static_cast<std::size_t>(First)
-                                  + static_cast<std::size_t>(this->capacity()));
-    }
+    [[nodiscard]] constexpr SizeT endId() const noexcept { return idOf(this->capacity()); }
 
     [[nodiscard]] constexpr bool idInRange(SizeT id) const noexcept
     {
-        if (id < First) {
-            return false;
-        }
-        return static_cast<std::size_t>(id - First)
-            < static_cast<std::size_t>(this->capacity());
+        return id >= First && id < endId();
     }
 
     /** Физический индекс; только при idInRange. */
     [[nodiscard]] static constexpr SizeT indexOf(SizeT id) noexcept
     {
         return static_cast<SizeT>(id - First);
+    }
+
+    /** Логический id физического индекса @a idx. */
+    [[nodiscard]] static constexpr SizeT idOf(SizeT idx) noexcept
+    {
+        return static_cast<SizeT>(idx + First);
     }
 
     /** Слот по логическому id; вне диапазона → nullptr. */
@@ -201,6 +213,7 @@ protected:
     using Base::data;
     using Base::forEach;
     using Base::move;
+    using Base::swap;
 };
 
 /**
@@ -229,17 +242,18 @@ class Store : public SlotBase {
 
     /** Indexed: SlotBase(args..., cells, cap); T{SlotBase&, id}. */
     template <std::size_t... I, typename... Args>
-    Store(std::true_type, std::index_sequence<I...>, Args&... args)
-        noexcept(std::is_nothrow_constructible_v<SlotBase, Args&..., T*, SizeT>
+    Store(std::true_type, std::index_sequence<I...>, Args&&... args)
+        noexcept(std::is_nothrow_constructible_v<SlotBase, Args..., T*, SizeT>
                  && std::is_nothrow_constructible_v<T, SlotBase&, SizeT>)
-        : SlotBase(args..., _cells, Capacity)
+        : SlotBase(static_cast<Args&&>(args)..., _cells, Capacity)
         , _cells{T{static_cast<SlotBase&>(*this), static_cast<SizeT>(I)}...}
     {}
 
     template <std::size_t... I, typename... Args>
-    Store(std::false_type, std::index_sequence<I...>, Args&... args)
-        noexcept(std::is_nothrow_constructible_v<T, Args&...>)
+    Store(std::false_type, std::index_sequence<I...>, Args&&... args)
+        noexcept(std::is_nothrow_constructible_v<T, Args...>)
         : SlotBase(_cells, Capacity)
+        /* args как lvalue: одна пачка на каждую ячейку (не move). */
         , _cells{((void)I, T{args...})...}
     {}
 
@@ -252,14 +266,15 @@ public:
     static constexpr SizeT kCapacity = Capacity;
     static constexpr bool kIndexed = Indexed;
 
+    /** Args&&... — принять временные; Indexed=false копирует их в каждую ячейку. */
     template <typename... Args>
-    explicit Store(Args&... args) noexcept(
-        Indexed ? (std::is_nothrow_constructible_v<SlotBase, Args&..., T*, SizeT>
+    explicit Store(Args&&... args) noexcept(
+        Indexed ? (std::is_nothrow_constructible_v<SlotBase, Args..., T*, SizeT>
                    && std::is_nothrow_constructible_v<T, SlotBase&, SizeT>)
-                : std::is_nothrow_constructible_v<T, Args&...>)
+                : std::is_nothrow_constructible_v<T, Args...>)
         : Store(std::bool_constant<Indexed>{},
                 std::make_index_sequence<Capacity>{},
-                args...)
+                static_cast<Args&&>(args)...)
     {}
 
     ~Store() = default;

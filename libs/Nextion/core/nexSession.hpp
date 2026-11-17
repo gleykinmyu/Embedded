@@ -174,7 +174,7 @@ public:
      * Продолжить TX активной транзакции (`Gateway::transmit`).
      * @return false — `TransmitFailed`; при `!isActive()` — true (нечего слать).
      */
-    [[nodiscard]] bool transmit(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms) noexcept;
+    [[nodiscard]] bool transmit(Gateway& gateway, MISC::time_t now_ms, MISC::time_t timeout_ms) noexcept;
 
     /** Завершить активную транзакцию: снять таймер, pop головы очереди. @a success — сбросить статусы ошибок. */
     void end(bool success) noexcept;
@@ -193,7 +193,7 @@ public:
      * Таймаут ответа: проверка дедлайна; после полного TX — постановка таймера или `ResponseComplete`.
      * @return true — смотреть `getStatus()` (`ResponseTimedOut` / `ResponseComplete`), завершить сессию снаружи.
      */
-    [[nodiscard]] bool pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms, BkCmd bkcmd) noexcept;
+    [[nodiscard]] bool pollTimeout(Gateway& gateway, MISC::time_t now_ms, MISC::time_t timeout_ms, BkCmd bkcmd) noexcept;
     
     [[nodiscard]] Status getStatus() const noexcept { return _status; }
     void clearError() noexcept {

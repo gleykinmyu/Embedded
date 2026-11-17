@@ -31,11 +31,10 @@ void detail::registerSection(IShow& file, ISection& sec) noexcept
         return;
     }
     /* id выдаётся плотно с 0 (FirstId = 0) — на этом держится индексация pending. */
-    uint8_t id = 0;
-    const MISC::RegStatus st = file._sections.registerAuto(&sec, id);
-    if (st != MISC::RegStatus::Ok) {
+    const mem::RegStatus st = file._sections.registerAuto(sec);
+    if (st != mem::RegStatus::Ok) {
         SF_DBG("[SF] registerSection fail tag=0x%08lX reg=%s\n",
-            static_cast<unsigned long>(sec.tag()), MISC::cstr(st));
+            static_cast<unsigned long>(sec.tag()), mem::cstr(st));
         file._status = Status::RegisterFailed;
     }
 }
@@ -256,22 +255,20 @@ bool IShow::copyFrom(const IShow& src) noexcept
     if (magic != src.magic || version != src.version) {
         return false;
     }
-    if (sectionCount() != src.sectionCount()) {
+    if (_sections.count() != src._sections.count()) {
         return false;
     }
 
-    const uint8_t first = _sections.firstId();
-    const uint8_t end = _sections.endId();
-    /* Сначала сверка раскладки — dest не меняем при несовпадении. */
-    for (uint8_t id = first; id < end; ++id) {
-        const ISection* d = section(id);
-        const ISection* s = src.section(id);
-        if (d == nullptr || s == nullptr) {
-            return false;
-        }
-        if (d->checkLayout(*s) != Status::Ok) {
-            return false;
-        }
+    /* Сначала сверка раскладки — dest не меняем при несовпадении.
+     * Число равно: у каждой d есть s с тем же id ⇔ наборы id совпадают. */
+    bool same = true;
+    _sections.forEach([&](const ISection& d, uint8_t id) {
+        const ISection* s = src._sections.get(id);
+        same = s != nullptr && d.checkLayout(*s) == Status::Ok;
+        return !same;
+    });
+    if (!same) {
+        return false;
     }
 
     /* Раскладка совпала — копируем метаданные и все секции; copyFrom не откажет (тот же checkLayout). */
@@ -281,9 +278,7 @@ bool IShow::copyFrom(const IShow& src) noexcept
     for (uint8_t i = 0; i < kMaxMismatches; ++i) {
         _mismatches[i] = src._mismatches[i];
     }
-    for (uint8_t id = first; id < end; ++id) {
-        (void)section(id)->copyFrom(*src.section(id));
-    }
+    _sections.forEach([&](ISection& d, uint8_t id) { (void)d.copyFrom(*src._sections.get(id)); });
     return true;
 }
 
@@ -325,15 +320,15 @@ const SectionDesc& IShow::pendingDesc(uint8_t id) const noexcept
 ISection* IShow::find(Tag tag) noexcept
 {
     /* Линейный поиск по зарегистрированным секциям. */
-    const uint8_t first = _sections.firstId();
-    const uint8_t end = _sections.endId();
-    for (uint8_t id = first; id < end; ++id) {
-        ISection* s = _sections.get(id);
-        if (s != nullptr && s->tag() == tag) {
-            return s;
+    ISection* found = nullptr;
+    _sections.forEach([&](ISection& s, uint8_t) {
+        if (s.tag() != tag) {
+            return false;
         }
-    }
-    return nullptr;
+        found = &s;
+        return true;
+    });
+    return found;
 }
 
 const ISection* IShow::find(Tag tag) const noexcept
@@ -413,8 +408,8 @@ Status IShow::load(IFile& io, const char* path, const TagMask& tags, bool allowT
      * Overflow / Io / BadLayout до commit → старые desc остаются.
      */
     const uint8_t cap = static_cast<uint8_t>(_sections.capacity());
-    /* Show: ObjStorage FirstId = 0; pending[i] ↔ section id i. */
-    if (_pendingDesc == nullptr || cap == 0u || _sections.firstId() != 0u) {
+    /* pending[i] ↔ section id i (SectionReg::kFirstId == 0). */
+    if (_pendingDesc == nullptr || cap == 0u) {
         return fail(io, Status::BadLayout);
     }
     for (uint8_t i = 0; i < cap; ++i) {
@@ -569,7 +564,7 @@ Status IShow::save(IFile& io, const char* path) noexcept
 {
     _status = Status::Ok;
     /* Проверки до открытия файла; шоу пишется всегда целиком. */
-    const uint16_t nsec = sectionCount();
+    const uint16_t nsec = _sections.count();
     if (path == nullptr || nsec == 0u) {
         return fail(Status::BadLayout);
     }

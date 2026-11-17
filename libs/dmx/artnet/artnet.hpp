@@ -2,15 +2,15 @@
  * @file artnet.hpp
  * @brief Art-Net 4 OpDmx поверх IUdp. INode — логика, Node<N> — реестр привязок.
  *
- * В ObjRegistry слот 0…N-1, не Art-Net universe id (он 0…32767).
+ * id в реестре привязок — слот 0…N-1, не Art-Net universe id (он 0…32767).
  * Universe живёт снаружи; Binding хранит указатель, seq и physical.
  */
 #pragma once
 
 #include "../dmx_data.hpp"
 #include "iudp.hpp"
+#include "mem/obj_registry.hpp"
 #include "netutil.hpp"
-#include "obj_registry.hpp"
 
 #include <cstring>
 
@@ -33,8 +33,7 @@ public:
     [[nodiscard]] uint8_t id() const noexcept { return _id; }
 
 private:
-    template <typename, typename>
-    friend class MISC::ObjRegistry;
+    MEM_OBJ_REGISTRY_FRIEND;
 
     void set_id(uint8_t id) noexcept { _id = id; }
 
@@ -43,7 +42,8 @@ private:
 
 class INode {
 public:
-    using BindReg = MISC::ObjRegistry<Binding, uint8_t>;
+    using BindRegMode = mem::WithIds<uint8_t>;
+    using BindReg = mem::ObjRegistry<Binding, BindRegMode>;
 
     INode(const INode&) = delete;
     INode& operator=(const INode&) = delete;
@@ -178,10 +178,7 @@ public:
     [[nodiscard]] uint32_t frameCount() const noexcept { return _frameCount; }
 
     [[nodiscard]] BindReg& binds() noexcept { return _binds; }
-    [[nodiscard]] const BindReg& binds() const noexcept
-    {
-        return const_cast<INode*>(this)->_binds;
-    }
+    [[nodiscard]] const BindReg& binds() const noexcept { return _binds; }
 
 protected:
     INode(BIF::NET::IUdp& udp, BindReg& binds) noexcept
@@ -198,15 +195,7 @@ private:
     template <typename F>
     void forEach(F&& fn) noexcept
     {
-        const uint8_t first = _binds.firstId();
-        const uint8_t end = _binds.endId();
-        for (uint8_t id = first; id < end; ++id) {
-            Binding* b = _binds.get(id);
-            if (b == nullptr)
-                continue;
-            if (!fn(*b))
-                break;
-        }
+        _binds.forEach([&](Binding& b, uint8_t) { return !fn(b); });
     }
 
     void clearBinds() noexcept
@@ -341,12 +330,12 @@ public:
         : INode(udp, _store)
     {
         for (uint8_t i = 0; i < N; ++i)
-            (void)_store.registerAt(i, &_pool[i]);
+            (void)_store.registerAt(i, _pool[i]);
     }
 
 private:
     Binding _pool[N]{};
-    MISC::ObjStorage<Binding, N, uint8_t, 0> _store{};
+    mem::ObjRegStore<Binding, N, BindRegMode> _store{};
 };
 
 } // namespace dmx::artnet

@@ -4,6 +4,7 @@
  *
  * Все ячейки — один Derived; снаружи вид Base* с шагом sizeof(Derived).
  * Не смешивает разные наследники в одном массиве.
+ * base_offset учитывает сдвиг Base внутри Derived (множественное / полиморфное наследование).
  *
  *   #include "mem/polyslot.hpp"   // -I …/libs
  *
@@ -17,6 +18,8 @@
 #include <cstdint>
 #include <type_traits>
 #include <utility>
+
+#include "mem/visit.hpp"
 
 namespace mem {
 
@@ -38,14 +41,17 @@ public:
     using idx_t = cap_t;
 
     /**
-     * @param data     начало массива Derived (как void*)
-     * @param capacity число слотов
-     * @param stride   sizeof(Derived); должен быть ≥ sizeof(Base)
+     * @param data        начало массива Derived (как void*)
+     * @param capacity    число слотов
+     * @param stride      sizeof(Derived); должен быть ≥ sizeof(Base)
+     * @param base_offset байтовый сдвиг Base внутри Derived (0 — Base в начале)
      */
-    constexpr IPolySlot(void* data, cap_t capacity, std::size_t stride) noexcept
+    constexpr IPolySlot(void* data, cap_t capacity, std::size_t stride,
+                        std::size_t base_offset = 0u) noexcept
         : _data(static_cast<unsigned char*>(data))
         , _capacity(capacity)
         , _stride(stride)
+        , _base_offset(base_offset)
     {}
 
     ~IPolySlot() = default;
@@ -55,6 +61,7 @@ public:
 
     [[nodiscard]] constexpr cap_t capacity() const noexcept { return _capacity; }
     [[nodiscard]] constexpr std::size_t stride() const noexcept { return _stride; }
+    [[nodiscard]] constexpr std::size_t baseOffset() const noexcept { return _base_offset; }
 
     [[nodiscard]] constexpr void* data() noexcept { return _data; }
     [[nodiscard]] constexpr const void* data() const noexcept { return _data; }
@@ -65,7 +72,8 @@ public:
         if (_data == nullptr || i >= _capacity || _stride == 0u) {
             return nullptr;
         }
-        return reinterpret_cast<Base*>(_data + static_cast<std::size_t>(i) * _stride);
+        return reinterpret_cast<Base*>(_data + static_cast<std::size_t>(i) * _stride
+                                       + _base_offset);
     }
 
     [[nodiscard]] const Base* at(idx_t i) const noexcept
@@ -79,44 +87,33 @@ public:
     template <typename Fn>
     void forEach(Fn&& fn) noexcept(noexcept(fn(std::declval<Base&>(), idx_t{})))
     {
-        for (idx_t i = 0u; i < _capacity; ++i) {
-            Base* const p = at(i);
-            if (p == nullptr) {
-                return;
-            }
-            if constexpr (std::is_invocable_r_v<bool, Fn&, Base&, idx_t>) {
-                if (fn(*p, i)) {
-                    return;
-                }
-            } else {
-                fn(*p, i);
-            }
-        }
+        each(*this, fn);
     }
 
     template <typename Fn>
     void forEach(Fn&& fn) const
         noexcept(noexcept(fn(std::declval<const Base&>(), idx_t{})))
     {
-        for (idx_t i = 0u; i < _capacity; ++i) {
-            const Base* const p = at(i);
-            if (p == nullptr) {
-                return;
-            }
-            if constexpr (std::is_invocable_r_v<bool, Fn&, const Base&, idx_t>) {
-                if (fn(*p, i)) {
-                    return;
-                }
-            } else {
-                fn(*p, i);
-            }
-        }
+        each(*this, fn);
     }
 
 protected:
     unsigned char* const _data;
     const cap_t _capacity;
     const std::size_t _stride;
+    const std::size_t _base_offset;
+
+private:
+    template <typename Self, typename Fn>
+    static void each(Self& self, Fn& fn)
+    {
+        for (idx_t i = 0u; i < self._capacity; ++i) {
+            auto* const p = self.at(i);
+            if (p == nullptr || detail::visit(fn, *p, i)) {
+                return;
+            }
+        }
+    }
 };
 
 /**
@@ -139,10 +136,20 @@ class PolyStore : public IPolySlot<Base, SizeT> {
 
     using PolyBase = IPolySlot<Base, SizeT>;
 
+    /** Сдвиг Base внутри Derived (без доступа к объекту). */
+    [[nodiscard]] static std::size_t baseOffsetOf() noexcept
+    {
+        alignas(Derived) unsigned char buf[sizeof(Derived)]{};
+        auto* const d = reinterpret_cast<Derived*>(buf);
+        auto* const b = static_cast<Base*>(d);
+        return static_cast<std::size_t>(reinterpret_cast<unsigned char*>(b) - buf);
+    }
+
     template <std::size_t... I, typename... Args>
-    PolyStore(std::index_sequence<I...>, Args&... args) noexcept(
-        std::is_nothrow_constructible_v<Derived, Args&...>)
-        : PolyBase(static_cast<void*>(_cells), Capacity, sizeof(Derived))
+    PolyStore(std::index_sequence<I...>, Args&&... args) noexcept(
+        std::is_nothrow_constructible_v<Derived, Args...>)
+        : PolyBase(static_cast<void*>(_cells), Capacity, sizeof(Derived), baseOffsetOf())
+        /* args как lvalue: одна и та же пачка на каждую ячейку (не move). */
         , _cells{((void)I, Derived{args...})...}
     {}
 
@@ -154,10 +161,11 @@ public:
 
     static constexpr SizeT kCapacity = Capacity;
 
+    /** Args&&... — принять временные; в ячейки копируются (не move из rvalue). */
     template <typename... Args>
-    explicit PolyStore(Args&... args) noexcept(
-        std::is_nothrow_constructible_v<Derived, Args&...>)
-        : PolyStore(std::make_index_sequence<Capacity>{}, args...)
+    explicit PolyStore(Args&&... args) noexcept(
+        std::is_nothrow_constructible_v<Derived, Args...>)
+        : PolyStore(std::make_index_sequence<Capacity>{}, static_cast<Args&&>(args)...)
     {}
 
     ~PolyStore() = default;
@@ -173,12 +181,13 @@ public:
     /** Тот же слот как Derived*. */
     [[nodiscard]] Derived* atDerived(idx_t i) noexcept
     {
-        return static_cast<Derived*>(this->at(i));
+        Base* const b = this->at(i);
+        return b != nullptr ? static_cast<Derived*>(b) : nullptr;
     }
 
     [[nodiscard]] const Derived* atDerived(idx_t i) const noexcept
     {
-        return static_cast<const Derived*>(this->at(i));
+        return const_cast<PolyStore*>(this)->atDerived(i);
     }
 
     [[nodiscard]] Derived& operator[](idx_t i) noexcept { return *atDerived(i); }

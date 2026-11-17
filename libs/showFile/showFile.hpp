@@ -16,13 +16,18 @@
 
 #include "crc.hpp"
 #include "iFile.hpp"
-#include "obj_registry.hpp"
+#include "mem/obj_registry.hpp"
 #include "tags.hpp"
 
 namespace sf {
 
 class IShow;
 class ISection;
+
+/** Реестр секций: id плотно с 0 (= индекс pending). */
+using SectionRegMode = mem::WithIds<uint8_t>;
+using SectionReg = mem::ObjRegistry<ISection, SectionRegMode>;
+static_assert(SectionReg::kFirstId == 0u, "sf: pending[i] indexed by section id");
 
 using BIF::IFile;
 
@@ -255,10 +260,9 @@ public:
     [[nodiscard]] bool copyFrom(const ISection& src) noexcept;
 
 private:
-    template <typename, typename>
-    friend class MISC::ObjRegistry;
+    MEM_OBJ_REGISTRY_FRIEND;
 
-    /** Id реестра; вызывает ObjRegistry при register. */
+    /** Id реестра; вызывает реестр при регистрации / снятии. */
     void set_id(uint8_t id) noexcept { _id = id; }
 
     uint8_t _id = 0;
@@ -283,16 +287,6 @@ public:
     /** Все секции isValid(). */
     [[nodiscard]] virtual bool isValid() const noexcept;
 
-    [[nodiscard]] uint16_t sectionCount() const noexcept
-    {
-        return static_cast<uint16_t>(_sections.registeredCount());
-    }
-    /** Секция по id реестра; нет — nullptr. */
-    [[nodiscard]] ISection* section(uint8_t id) noexcept { return _sections.get(id); }
-    [[nodiscard]] const ISection* section(uint8_t id) const noexcept
-    {
-        return const_cast<IShow*>(this)->_sections.get(id);
-    }
     /** Секция по FourCC / записи каталога. */
     [[nodiscard]] ISection* find(Tag tag) noexcept;
     [[nodiscard]] const ISection* find(Tag tag) const noexcept;
@@ -351,7 +345,7 @@ protected:
      * слот занят ⇔ tag != 0. Указатель с адреса члена Show — в mem-init ок.
      * @a magic_ / @a version_ — пишутся в заголовок и проверяются при load.
      */
-    IShow(MISC::ObjRegistry<ISection, uint8_t>& sections, SectionDesc* pendingDesc,
+    IShow(SectionReg& sections, SectionDesc* pendingDesc,
           uint32_t magic_, uint16_t version_) noexcept
         : magic(magic_)
         , version(version_)
@@ -373,30 +367,16 @@ private:
     template <typename F>
     void forEachSection(F&& fn) noexcept
     {
-        const uint8_t first = _sections.firstId();
-        const uint8_t end = _sections.endId();
-        for (uint8_t id = first; id < end; ++id) {
-            ISection* s = _sections.get(id);
-            if (s != nullptr) {
-                fn(*s);
-            }
-        }
+        _sections.forEach([&](ISection& s, uint8_t) { fn(s); });
     }
 
     template <typename F>
     void forEachSection(F&& fn) const noexcept
     {
-        const uint8_t first = _sections.firstId();
-        const uint8_t end = _sections.endId();
-        for (uint8_t id = first; id < end; ++id) {
-            const ISection* s = const_cast<IShow*>(this)->_sections.get(id);
-            if (s != nullptr) {
-                fn(*s);
-            }
-        }
+        static_cast<const SectionReg&>(_sections).forEach([&](const ISection& s, uint8_t) { fn(s); });
     }
 
-    MISC::ObjRegistry<ISection, uint8_t>& _sections;
+    SectionReg& _sections;
     SectionDesc* _pendingDesc = nullptr; /**< Show<N>::_pendingDesc[N]. */
     char _name[kPathSize]{};
     Status _status = Status::Ok;
@@ -468,7 +448,7 @@ public:
 
 private:
     /** FirstId = 0 → индекс pending == id секции. */
-    using Store = MISC::ObjStorage<ISection, N, uint8_t, 0>;
+    using Store = mem::ObjRegStore<ISection, N, SectionRegMode>;
     Store _store{};
     SectionDesc _pendingDesc[N]{};
 };

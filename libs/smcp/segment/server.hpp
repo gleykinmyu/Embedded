@@ -13,8 +13,8 @@
 #include <cstring>
 #include <type_traits>
 
+#include "mem/obj_registry.hpp"
 #include "obj_bank.hpp"
-#include "obj_registry.hpp"
 #include "segment/axis.hpp"
 #include "segment/message.hpp"
 #include "smcp/ilink.hpp"
@@ -27,14 +27,15 @@ namespace segment {
 namespace server {
 class Axis;
 class Session;
-/** Phys axis_id / ёмкость inventory (Id у ObjRegistry / ObjStorage). */
+/** Phys axis_id / ёмкость inventory (id = слот реестра). */
 using idx_t = uint8_t;
 /** Банк осей[N]: @a AxisT : Axis; ctor регистрирует в IServer. */
 template <typename AxisT, idx_t N>
 using AxisBank = MISC::ObjBank<AxisT, N>;
-using AxisReg = MISC::ObjRegistry<Axis, idx_t>;
+using AxisRegMode = mem::WithIds<idx_t>;
+using AxisReg = mem::ObjRegistry<Axis, AxisRegMode>;
 template <idx_t Cap>
-using AxisStore = MISC::ObjStorage<Axis, Cap, idx_t, 0>;
+using AxisStore = mem::ObjRegStore<Axis, Cap, AxisRegMode>;
 } // namespace server
 
 class IServer;
@@ -76,7 +77,7 @@ public:
     }
 
 protected:
-    /** ObjRegistry::registerAt — слот = phys axis_id. */
+    /** Из реестра: registerAt — phys axis_id; снятие — kNoId. */
     void set_id(idx_t axis_id) noexcept { _axis_id = axis_id; }
 
     idx_t _axis_id = 0;
@@ -84,8 +85,7 @@ protected:
     int32_t _position = 0;
     REG::BitMask<axis::Status> _status{};
 
-    template <typename, typename>
-    friend class MISC::ObjRegistry;
+    MEM_OBJ_REGISTRY_FRIEND;
 };
 
 namespace detail {

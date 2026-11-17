@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "ms_timer.hpp"
+
 #include "debug.hpp"
 #include "enum_value.hpp"
 #include "ican.hpp"
@@ -140,7 +142,7 @@ enum class msgId : uint8_t {
 struct Ack {
     static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Ack);
     SMCP_NAME("Ack", "Ack")
-    static constexpr uint16_t kTimeoutMs = 100u;
+    static constexpr MISC::time_t kTimeoutMs = 100u;
     static constexpr uint8_t kRetry = 3u;
 
     [[nodiscard]] bool pack(Message& m) const noexcept;
@@ -250,7 +252,7 @@ struct Fault {
 struct Heartbeat {
     static constexpr uint8_t kId = static_cast<uint8_t>(msgId::Heartbeat);
     SMCP_NAME("HB", "Heartbeat")
-    static constexpr uint16_t kTimeoutMs = 200u;
+    static constexpr MISC::time_t kTimeoutMs = 200u;
     /** Сколько интервалов T без RX HB до down. */
     static constexpr uint8_t kMissMax = 3u;
 
@@ -340,7 +342,7 @@ struct DataBegin {
     static constexpr uint8_t kId = static_cast<uint8_t>(msgId::DataBegin);
     SMCP_NAME("DBg", "DataBegin")
     /** Межфреймовый gap MultiByte (RX/TX progress); локальный abort. */
-    static constexpr uint16_t kTimeoutMs = 100u;
+    static constexpr MISC::time_t kTimeoutMs = 100u;
 
     uint8_t tag = 0;
     uint8_t index = kIndexAll;

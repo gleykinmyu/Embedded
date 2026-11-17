@@ -12,8 +12,8 @@ namespace nex {
 namespace {
 
 static constexpr uint8_t kPollTagBase = 0u;
-static constexpr uint32_t kPageSwitchTimeoutMs = 1000u;
-static constexpr uint32_t kSwitchPageResendMs = 500u;
+static constexpr MISC::time_t kPageSwitchTimeoutMs = 1000u;
+static constexpr MISC::time_t kSwitchPageResendMs = 500u;
 
 } // namespace
 
@@ -84,15 +84,14 @@ void SmartApp::applyFromTable() noexcept {
         if (c == nullptr)
             continue;
 
-        MISC::ObjRegistry<Component, uint8_t>& reg = pg->storage();
-        const MISC::RegStatus st = reg.rebind(rec.compiled_id, rec.panel_id);
-        if (st != MISC::RegStatus::Ok && st != MISC::RegStatus::SwappedWithOccupiedSlot)
+        const mem::RegStatus st = pg->storage().rebind(rec.compiled_id, rec.panel_id);
+        if (st != mem::RegStatus::Ok)
             onStatus(appErrorFrom(st), Route{pg->ID, c->id()});
     }
 }
 
 void SmartApp::update() noexcept {
-    const uint32_t now_ms = nowMs();
+    const MISC::time_t now_ms = nowMs();
     if (_mode == IdMapMode::Discover) {
         if (_phase == DiscoverPhase::Idle)
             discoverBegin();
@@ -130,7 +129,7 @@ void SmartApp::discoverBegin() noexcept {
     requestCurrentPage();
 }
 
-void SmartApp::discoverTick(uint32_t now_ms) noexcept {
+void SmartApp::discoverTick(MISC::time_t now_ms) noexcept {
     switch (_phase) {
     case DiscoverPhase::Idle:
     case DiscoverPhase::Done:

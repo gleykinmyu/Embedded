@@ -23,8 +23,6 @@
 
 #include "bitmask.hpp"
 #include "enum_value.hpp"
-#include "obj_registry.hpp"
-
 namespace smcp {
 namespace axis {
 

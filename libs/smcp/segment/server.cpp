@@ -19,8 +19,7 @@ namespace detail {
 
 void registerAxis(IServer& server, Axis& axis) noexcept
 {
-    const MISC::RegStatus st = server.storage().registerAt(axis.axisId(), &axis);
-    if (st != MISC::RegStatus::Ok) {
+    if (server.storage().registerAt(axis.axisId(), axis) != mem::RegStatus::Ok) {
         server.setError(Node::Error::RegisterFailed);
         return;
     }

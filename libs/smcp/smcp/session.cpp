@@ -74,7 +74,7 @@ void Session::sendNack(uint8_t txn_id, session::vError error, uint32_t detail) n
 
 bool Session::onPacket(const Packet& pkt) noexcept
 {
-    const uint32_t now = node.clockMs();
+    const MISC::time_t now = node.clockMs();
     if (_link.onPacket(pkt, now)) {
         return true;
     }
@@ -125,7 +125,7 @@ void Session::onReply(uint8_t tag, uint8_t index, const IBuf& buf,
 void Session::tick() noexcept
 {
     /* Тикаем и при Listen / Idle: wall-clock таймеры; TX режет pump (нужен Ready). */
-    const uint32_t now = node.clockMs();
+    const MISC::time_t now = node.clockMs();
     _mb.tick(now); /* RX wd + TX peek→send */
     _tagged.tick(now);
     _reply.tick(now);
@@ -134,7 +134,7 @@ void Session::tick() noexcept
 
 const TxSlot* Session::peekTx() noexcept
 {
-    const uint32_t now = node.clockMs();
+    const MISC::time_t now = node.clockMs();
     if (_rr_ctrl) {
         if (const TxSlot* p = peekCtrl()) {
             return p;

@@ -427,7 +427,7 @@ private:
     void fireSanityError(unsigned idx) noexcept
     {
         switch (idx) {
-        case 0u: onStatus(appErrorFrom(MISC::RegStatus::SlotOccupied), Route{kPageId, kDupCompId}); break;
+        case 0u: onStatus(appErrorFrom(mem::RegStatus::Occupied), Route{kPageId, kDupCompId}); break;
         case 1u: onStatus(appErrorFrom(Command::Status::EmptyLiteral)); break;
         case 2u: onStatus(appErrorFrom(Session::Status::QueueFull)); break;
         case 3u: onStatus(appErrorFrom(Gateway::Status::RxOverflow)); break;

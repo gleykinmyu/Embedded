@@ -9,7 +9,7 @@ IPage* IAppUI::getPage(uint8_t id) noexcept {
 }
 
 uint8_t IAppUI::pageCount() const noexcept {
-    return const_cast<IAppUI*>(this)->storage().registeredCount();
+    return const_cast<IAppUI*>(this)->storage().count();
 }
 
 namespace {
@@ -41,8 +41,8 @@ void IAppUI::showKeybdNum(const Component& target) noexcept
     openKeybd(*this, kKeybdBPage, kKeybdBLoadPageId, kKeybdBLoadCmpId, target);
 }
 
-void IAppUI::reportRegisterError(MISC::RegStatus st, Route route) noexcept {
-    if (st != MISC::RegStatus::Ok)
+void IAppUI::reportRegisterError(mem::RegStatus st, Route route) noexcept {
+    if (st != mem::RegStatus::Ok)
         onStatus(appErrorFrom(st), route);
 }
 

@@ -140,7 +140,7 @@ public:
         return "?";
     }
 
-    using ClockFn = uint32_t (*)();
+    using ClockFn = MISC::time_t (*)();
 
     // --- ctor ---
 
@@ -150,7 +150,7 @@ public:
     // --- идентичность / часы / линк ---
 
     [[nodiscard]] uint8_t id() const noexcept { return _link.nodeId(); }
-    [[nodiscard]] uint32_t clockMs() const noexcept
+    [[nodiscard]] MISC::time_t clockMs() const noexcept
     {
         return _clock != nullptr ? _clock() : _now_ms;
     }
@@ -323,7 +323,7 @@ private:
     State _state = State::Idle;
     Error _error = Error::None;
     ClockFn _clock;
-    uint32_t _now_ms = 0;
+    MISC::time_t _now_ms = 0;
     uint8_t _updateDepth = 0;
     uint8_t _drainCursor = 0;
     MISC::MsTimer _listen{};

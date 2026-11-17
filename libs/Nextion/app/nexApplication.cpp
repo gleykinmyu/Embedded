@@ -193,7 +193,7 @@ void Application::update() noexcept {
         return;
     ++_updateDepth;
 
-    const uint32_t now_ms = nowMs();
+    const MISC::time_t now_ms = nowMs();
 
     if (!_session.begin(_gateway) && _session.getStatus() == Session::Status::PushFailed) {
         abortSessionFault();
@@ -228,7 +228,7 @@ void Application::update() noexcept {
     --_updateDepth;
 }
 
-void Application::processTransportFault(uint32_t now_ms) noexcept {
+void Application::processTransportFault(MISC::time_t now_ms) noexcept {
     // Re-TX head при `StreamRxError` + `bkcmd`/`canRetryActive`; иначе `onStatus` и сброс session.
     const Gateway::Status gwSt = _gateway.getStatus();
     const BIF::IByteStream::Status streamSt = _stream.getStatus();

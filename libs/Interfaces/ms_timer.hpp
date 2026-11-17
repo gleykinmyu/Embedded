@@ -1,8 +1,8 @@
 /**
  * @file ms_timer.hpp
- * @brief Одноразовый таймаут по `uint32_t` ms (wrap-safe) и ReplyTimer (попытки + waiting).
+ * @brief Одноразовый таймаут по time_t (мс, wrap-safe) и ReplyTimer (попытки + waiting).
  *
- * `_expires_ms == 0` — остановлен (`kStopped`).
+ * `_expires_ms == 0` — остановлен (`kStopped`): обнулённый объект = остановлен.
  */
 
 #pragma once
@@ -11,9 +11,12 @@
 
 namespace MISC {
 
+/** Момент и длительность в миллисекундах. Ширина — у таймера, снаружи не выбирается. */
+using time_t = uint32_t;
+
 class MsTimer {
 public:
-    static constexpr uint32_t kStopped = 0u;
+    static constexpr time_t kStopped = 0u;
 
     constexpr MsTimer() noexcept = default;
 
@@ -21,35 +24,39 @@ public:
 
     void stop() noexcept { _expires_ms = kStopped; }
 
-    /** `_expires_ms = now_ms + duration_ms`. */
-    void start(uint32_t now_ms, uint32_t duration_ms) noexcept { _expires_ms = now_ms + duration_ms; }
+    /** `_expires_ms = now_ms + duration_ms`; попадание на kStopped → +1 мс. */
+    void start(time_t now_ms, time_t duration_ms) noexcept
+    {
+        const time_t t = now_ms + duration_ms;
+        _expires_ms = (t == kStopped) ? t + 1u : t;
+    }
 
     /** Start только если stopped. */
-    void startOnce(uint32_t now_ms, uint32_t duration_ms) noexcept
+    void startOnce(time_t now_ms, time_t duration_ms) noexcept
     {
         if (!isRunning()) {
             start(now_ms, duration_ms);
         }
     }
 
-    /** true — timeout истёк (полу-кольцо uint32_t). */
-    [[nodiscard]] bool timedOut(uint32_t now_ms) const noexcept
+    /** true — timeout истёк (полу-кольцо time_t). */
+    [[nodiscard]] bool timedOut(time_t now_ms) const noexcept
     {
         if (!isRunning()) {
             return false;
         }
-        constexpr uint32_t kHalfModulus = UINT32_C(1) << 31;
+        constexpr time_t kHalfModulus = time_t{1} << 31;
         return (now_ms - _expires_ms) < kHalfModulus;
     }
 
 private:
-    uint32_t _expires_ms = kStopped;
+    time_t _expires_ms = kStopped;
 };
 
 /**
  * MsTimer + лимит попыток + флаг «ждём ответ».
  * start → ++attempts + T (+ isWaiting по умолчанию).
- * Первое окно: clear + start(..., false); miss/retry: сначала isReplyLimit, потом start.
+ * Первое окно: clear + start(..., false); miss/retry: сначала isAttemptsOver, потом start.
  */
 class ReplyTimer {
 public:
@@ -64,12 +71,15 @@ public:
         _timer.stop();
     }
 
-    [[nodiscard]] bool isWaiting() const noexcept { return _waiting; }
+    /** Ждём ответ. Пока таймер не запущен, ожидания нет. */
+
+    //Таймер запущен пока ждем ответ на свой запрос. Если нужно окно тишины, то запускаем таймер с waiting = false.
+    [[nodiscard]] bool isWaiting() const noexcept { return _waiting && _timer.isRunning(); }
     [[nodiscard]] uint8_t attempts() const noexcept { return _attempts; }
     [[nodiscard]] bool isRunning() const noexcept { return _timer.isRunning(); }
 
     /** ++attempts, старт T; waiting — ждать ответ (false = окно тишины / miss). */
-    void start(uint32_t now_ms, uint32_t timeout_ms, bool waiting = true) noexcept
+    void start(time_t now_ms, time_t timeout_ms, bool waiting = true) noexcept
     {
         ++_attempts;
         _waiting = waiting;
@@ -77,19 +87,19 @@ public:
     }
 
     /** Продлить T без ++attempts (например multi-byte тело, пока ждём Ack). */
-    void extend(uint32_t now_ms, uint32_t timeout_ms) noexcept
+    void extend(time_t now_ms, time_t timeout_ms) noexcept
     {
         if (_waiting) {
             _timer.start(now_ms, timeout_ms);
         }
     }
 
-    [[nodiscard]] bool timedOut(uint32_t now_ms) const noexcept
+    [[nodiscard]] bool timedOut(time_t now_ms) const noexcept
     {
         return _timer.timedOut(now_ms);
     }
 
-    [[nodiscard]] bool isReplyLimit() const noexcept
+    [[nodiscard]] bool isAttemptsOver() const noexcept
     {
         return _attempts >= _max_attempts;
     }

@@ -22,12 +22,12 @@ class IPage;
 
 /** clock + session timeout. */
 struct AppTiming {
-    using ClockMsFn = uint32_t (*)() noexcept;
+    using ClockMsFn = MISC::time_t (*)() noexcept;
 
-    static constexpr uint32_t kDefaultTimeoutMs = 500u;
+    static constexpr MISC::time_t kDefaultTimeoutMs = 500u;
 
     ClockMsFn clockMs{};
-    uint32_t timeoutMs = kDefaultTimeoutMs;
+    MISC::time_t timeoutMs = kDefaultTimeoutMs;
 };
 
 /** Runtime + protocol hooks + screen shell. Без page/component registry — см. `IAppUI` / `AppUI<>`. */
@@ -51,8 +51,8 @@ public:
      *  @return `true` — idle; `false` — stall-timeout без прогресса очереди (`getTimeout()`). */
     [[nodiscard]] bool pumpUntilIdle() noexcept;
 
-    void setTimeout(uint32_t ms) noexcept { _timeoutMs = ms; }
-    [[nodiscard]] uint32_t getTimeout() const noexcept { return _timeoutMs; }
+    void setTimeout(MISC::time_t ms) noexcept { _timeoutMs = ms; }
+    [[nodiscard]] MISC::time_t getTimeout() const noexcept { return _timeoutMs; }
 
     /** Кэш последнего `onStatus` (после dedup в базовом override). */
     [[nodiscard]] const msg::Status& lastError() const noexcept { return _lastError; }
@@ -61,7 +61,7 @@ public:
     [[nodiscard]] uint8_t lastErrorComp() const noexcept { return _lastErrorRoute.comp; }
 
     /** Текущее время (тот же источник, что у Session timeout). */
-    [[nodiscard]] uint32_t nowMs() const noexcept { return _clockMsFn(); }
+    [[nodiscard]] MISC::time_t nowMs() const noexcept { return _clockMsFn(); }
 
     /** Сброс `_lastError` и ошибок stream/gateway; очередь `Session` не трогается. */
     void clearErrors() noexcept;
@@ -128,7 +128,7 @@ private:
     friend class SmartApp;
 
     void abortSessionFault() noexcept;
-    void processTransportFault(uint32_t now_ms) noexcept;
+    void processTransportFault(MISC::time_t now_ms) noexcept;
 
     ScreenLayout _screen{};
 
@@ -144,7 +144,7 @@ private:
     uint8_t _updateDepth = 0u;
 
     ClockMsFn _clockMsFn;
-    uint32_t _timeoutMs = AppTiming::kDefaultTimeoutMs;
+    MISC::time_t _timeoutMs = AppTiming::kDefaultTimeoutMs;
 };
 
 } // namespace nex

@@ -2,7 +2,7 @@
  * @file range_pool_check.cpp
  * @brief Unit-тесты mem::Range / SlotRange / AllocRange / RangeAllocator.
  *
- *   make -C host pool-check
+ *   make -C libs/mem/test pool-check
  */
 
 #include <cstdint>
@@ -70,7 +70,7 @@ void test_empty_pool()
     CHECK(e.slots.capacity() == 16u);
     CHECK(e.a.capacity() == 4u);
     CHECK(e.a.freeTop() == 0u);
-    CHECK(e.a.freeSlots() == 16u);
+    CHECK(e.a.tailFree() == 16u);
     CHECK(e.a.isLayoutOk());
     CHECK(e.a.at(0) != nullptr);
     CHECK(e.a.at(0)->empty());
@@ -108,13 +108,27 @@ void test_shrink_and_clear_hole()
     CHECK(e.a.at(0)->resize(2));
     CHECK(e.a.at(0)->range().count == 2u);
     CHECK(e.a.at(0)->range().first == 0u);
-    CHECK(e.a.freeTop() == 8u);
+    CHECK(e.a.freeTop() == 8u); /* дыра в середине — хвост не опускается */
 
     e.a.at(0)->free();
     CHECK(e.a.at(0)->empty());
     CHECK(e.a.at(0)->range().first == 0u);
     CHECK(e.a.freeTop() == 8u);
     CHECK(e.a.isLayoutOk());
+}
+
+void test_tail_reclaim()
+{
+    Env e;
+    /* SlotRange(_slots,_range) + _alloc → два указателя на одни слоты + Range */
+    static_assert(sizeof(mem::AllocRange<uint32_t>) >= 2u * sizeof(void*) + sizeof(mem::Range<>));
+    CHECK(e.a.at(0)->resize(4));
+    CHECK(e.a.freeTop() == 4u);
+    CHECK(e.a.at(0)->resize(2)); /* хвост — опустить freeTop */
+    CHECK(e.a.freeTop() == 2u);
+    e.a.at(0)->free();
+    CHECK(e.a.freeTop() == 0u);
+    CHECK(e.a.tailFree() == 16u);
 }
 
 void test_grow_at_tail()
@@ -150,7 +164,7 @@ void test_full_and_resize_compact()
     Env e;
     CHECK(e.a.at(0)->resize(8));
     CHECK(e.a.at(1)->resize(8));
-    CHECK(e.a.freeSlots() == 0u);
+    CHECK(e.a.tailFree() == 0u);
     CHECK(!e.a.at(2)->resize(1));
 
     e.a.at(0)->free();
@@ -231,6 +245,7 @@ int main()
     test_empty_pool();
     test_alloc_bump();
     test_shrink_and_clear_hole();
+    test_tail_reclaim();
     test_grow_at_tail();
     test_grow_relocates();
     test_full_and_resize_compact();

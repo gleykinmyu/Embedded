@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "../../Interfaces/obj_registry.hpp"
+#include "mem/obj_registry.hpp"
 #include "../core/nexMessages.hpp"
 #include "../core/nexTypes.hpp"
 
@@ -13,6 +13,13 @@ namespace nex {
     class SmartApp;
     class IPage;
     class Component;
+
+    /** Реестр страниц: id = `IPage::ID`, плотно с 0. */
+    using PageRegMode = mem::WithIds<uint8_t>;
+    using PageReg = mem::ObjRegistry<IPage, PageRegMode>;
+    /** Реестр виджетов страницы: panel id с `kFirstCompId`. */
+    using CompRegMode = mem::WithIds<uint8_t, kFirstCompId>;
+    using CompReg = mem::ObjRegistry<Component, CompRegMode>;
 
     namespace detail {
         void registerPage(IAppUI& app, IPage& page) noexcept;
@@ -71,15 +78,15 @@ namespace nex {
         uint8_t compCount() const noexcept;
 
     private:
-        friend class MISC::ObjRegistry<IPage, uint8_t>;
+        MEM_OBJ_REGISTRY_FRIEND;
         friend class SmartApp;
         friend void detail::registerComponent(IPage& page, Component& c) noexcept;
 
-        /** `ID` фиксирован при создании; вызывается только из `ObjRegistry`. */
+        /** `ID` фиксирован при создании; реестр страниц его не меняет. */
         void set_id(uint8_t) noexcept {}
 
     protected:
-        virtual MISC::ObjRegistry<Component, uint8_t>& storage() noexcept = 0;
+        virtual CompReg& storage() noexcept = 0;
     };
 
     /**
@@ -164,14 +171,14 @@ namespace nex {
         virtual void onMsgBox(const msg::evMsgBox& e) { (void)e; }
 
     private:
-        friend class MISC::ObjRegistry<Component, uint8_t>;
+        MEM_OBJ_REGISTRY_FRIEND;
 
         void set_id(uint8_t id) noexcept { id_ = id; }
         uint8_t id_;
     };
 
     /**
-     * Страница с `ObjStorage<Component, MaxWidgets, uint8_t, kFirstCompId>` — только виджеты (panel id 1…N).
+     * Страница с `ObjRegStore<Component, MaxWidgets, CompRegMode>` — только виджеты (panel id 1…N).
      * `kPageCompId` в реестре не хранится; `getComponent(0)` всегда `nullptr`.
      */
     template <uint8_t MaxWidgets>
@@ -183,10 +190,10 @@ namespace nex {
         using IPage::IPage;
 
     protected:
-        MISC::ObjRegistry<Component, uint8_t>& storage() noexcept override { return _components; }
+        CompReg& storage() noexcept override { return _components; }
 
     private:
-        MISC::ObjStorage<Component, kRegistryCapacity, uint8_t, kFirstCompId> _components;
+        mem::ObjRegStore<Component, kRegistryCapacity, CompRegMode> _components;
     };
 
     /*

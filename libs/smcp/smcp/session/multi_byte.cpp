@@ -37,7 +37,7 @@ const char* MultiByte::cstr(Error err) noexcept
 
 // --- arm ---
 
-bool MultiByte::armRx(uint8_t tag, uint8_t txn_id, uint32_t now_ms,
+bool MultiByte::armRx(uint8_t tag, uint8_t txn_id, MISC::time_t now_ms,
                       MultiByteClient* client, const IBuf& buf,
                       uint8_t index) noexcept
 {
@@ -51,7 +51,7 @@ bool MultiByte::armTx(uint8_t tag, const IBuf& buf, uint8_t txn_id,
 }
 
 bool MultiByte::arm(uint8_t tag, uint8_t index, const IBuf& buf, bool tx,
-                    uint8_t txn_id, uint32_t now_ms, MultiByteClient* client) noexcept
+                    uint8_t txn_id, MISC::time_t now_ms, MultiByteClient* client) noexcept
 {
     if (isBusy() || txn_id == 0u || client == nullptr) {
         return false;
@@ -179,7 +179,7 @@ void MultiByte::abort() noexcept
 
 // --- pump / RX feed ---
 
-void MultiByte::tick(uint32_t now_ms) noexcept
+void MultiByte::tick(MISC::time_t now_ms) noexcept
 {
     if (!_finished && _mode == Mode::Rx && _watch.timedOut(now_ms)) {
         fail(Error::Timeout);
@@ -195,7 +195,7 @@ void MultiByte::tick(uint32_t now_ms) noexcept
     }
 }
 
-bool MultiByte::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
+bool MultiByte::onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept
 {
     if (!isRx() || _finished || _txn == 0u || pkt.txn_id != _txn) {
         return false;
@@ -241,7 +241,7 @@ bool MultiByte::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
 }
 
 MultiByte::Result MultiByte::onBegin(const DataBegin& begin,
-                                     uint32_t now_ms) noexcept
+                                     MISC::time_t now_ms) noexcept
 {
     if (_finished) {
         return finishedResult();
@@ -269,7 +269,7 @@ MultiByte::Result MultiByte::onBegin(const DataBegin& begin,
 }
 
 MultiByte::Result MultiByte::enterData(const DataBegin& begin,
-                                       uint32_t now_ms) noexcept
+                                       MISC::time_t now_ms) noexcept
 {
     if (_buf.data == nullptr) {
         fail(Error::NotArmed);
@@ -285,7 +285,7 @@ MultiByte::Result MultiByte::enterData(const DataBegin& begin,
     return Result::Continue;
 }
 
-MultiByte::Result MultiByte::onData(const Data& chunk, uint32_t now_ms) noexcept
+MultiByte::Result MultiByte::onData(const Data& chunk, MISC::time_t now_ms) noexcept
 {
     if (_finished) {
         return finishedResult();

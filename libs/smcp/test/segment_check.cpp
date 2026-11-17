@@ -2,7 +2,7 @@
  * @file segment_check.cpp
  * @brief In-process Console ↔ Server: AxisRegistered + AxisProfile (паспорт).
  *
- *   make -C host segment-check
+ *   make -C PUMS/Console/host segment-check
  */
 
 #include <cstdint>

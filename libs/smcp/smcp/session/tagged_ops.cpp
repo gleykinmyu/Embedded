@@ -23,7 +23,7 @@ void TaggedOps::armPend(const Message& m, uint8_t txn) noexcept
     _pend.dst_id = _s.peerId();
 }
 
-void TaggedOps::beginAck(uint8_t txn, uint8_t msg_id, uint32_t now_ms) noexcept
+void TaggedOps::beginAck(uint8_t txn, uint8_t msg_id, MISC::time_t now_ms) noexcept
 {
     _state = State::SetOutAwaitAck;
     _pend.txn_id = txn;
@@ -257,10 +257,10 @@ void TaggedOps::onMbTxDone() noexcept
     reset();
 }
 
-void TaggedOps::tick(uint32_t now_ms) noexcept
+void TaggedOps::tick(MISC::time_t now_ms) noexcept
 {
     if (_state == State::SetOutAwaitAck && _ack.timedOut(now_ms)) {
-        if (_ack.isReplyLimit()) {
+        if (_ack.isAttemptsOver()) {
             _s.nack(_pend, Error::Timeout);
             reset();
         } else {
@@ -292,7 +292,7 @@ void TaggedOps::onMbResult(uint8_t tag, uint8_t index, const IBuf& buf,
     reset();
 }
 
-bool TaggedOps::onPacket(const Packet& pkt, uint32_t now_ms) noexcept
+bool TaggedOps::onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept
 {
     if (!_s.isOpen()) {
         return false;

@@ -172,7 +172,7 @@ bool Session::begin(Gateway& gateway) noexcept {
     return true;
 }
 
-bool Session::transmit(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms) noexcept {
+bool Session::transmit(Gateway& gateway, MISC::time_t now_ms, MISC::time_t timeout_ms) noexcept {
     if (!isActive())
         return true;
 
@@ -234,7 +234,7 @@ bool Session::retryActive(Gateway& gateway, BkCmd bkcmd) noexcept {
     return true;
 }
 
-bool Session::pollTimeout(Gateway& gateway, uint32_t now_ms, uint32_t timeout_ms, BkCmd bkcmd) noexcept {
+bool Session::pollTimeout(Gateway& gateway, MISC::time_t now_ms, MISC::time_t timeout_ms, BkCmd bkcmd) noexcept {
     if (_responseTimer.isRunning() && isActive()) {
         if (_responseTimer.timedOut(now_ms)) {
             _status = Status::Timeout;

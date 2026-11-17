@@ -64,9 +64,9 @@ public:
                                 uint8_t index = kIndexAll) noexcept;
 
     /** Get / Set / Ack|Nack / короткий Data своего Get. DataBegin и Data* тела — Session → MultiByte. */
-    [[nodiscard]] bool onPacket(const Packet& pkt, uint32_t now_ms) noexcept;
+    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now_ms) noexcept;
 
-    void tick(uint32_t now_ms) noexcept;
+    void tick(MISC::time_t now_ms) noexcept;
 
     /** SetOutInline: opener ушёл на wire → SetOutAwaitAck. */
     void onTxResult(const TxSlot& slot) noexcept;
@@ -105,7 +105,7 @@ private:
     void finishSetIn(uint8_t tag, uint8_t index, const IBuf& buf,
                      MultiByte::Error err, uint8_t txn) noexcept;
     void armPend(const Message& m, uint8_t txn) noexcept;
-    void beginAck(uint8_t txn, uint8_t msg_id, uint32_t now_ms) noexcept;
+    void beginAck(uint8_t txn, uint8_t msg_id, MISC::time_t now_ms) noexcept;
 
     Session& _s;
     MultiByte& _mb;

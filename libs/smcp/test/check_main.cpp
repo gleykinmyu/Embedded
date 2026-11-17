@@ -2,7 +2,7 @@
  * @file check_main.cpp
  * @brief In-process матрица vs PROTOCOL.md (transport Node/Session).
  *
- *   make -C host check
+ *   make -C PUMS/Console/host check
  *
  * Покрытие PROTOCOL (транспорт):
  *   Node begin/end/Listen/Ready, SessionFull, IdConflict (+Fault detail name),

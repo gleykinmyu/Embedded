@@ -42,15 +42,15 @@ public:
     /**
      * Голова для TX/retry: nullptr, пока ждём Ack (кроме окна retry по timeout).
      */
-    [[nodiscard]] const TxSlot* peek(uint32_t now_ms) noexcept;
+    [[nodiscard]] const TxSlot* peek(MISC::time_t now_ms) noexcept;
 
     /** После успешного wire головы req — старт/restart `_ack`. */
-    void startAck(uint32_t now_ms) noexcept;
+    void startAck(MISC::time_t now_ms) noexcept;
 
     /** Свой Ack|Nack (окно ждёт, txn головы) → Session::ack/nack. */
     [[nodiscard]] bool onPacket(const Packet& pkt) noexcept;
 
-    void tick(uint32_t now_ms) noexcept;
+    void tick(MISC::time_t now_ms) noexcept;
 
 private:
     Session& _s;

@@ -57,7 +57,7 @@ private:
     void applyFromTable() noexcept;
     void discoverArm() noexcept;
     void discoverBegin() noexcept;
-    void discoverTick(uint32_t now_ms) noexcept;
+    void discoverTick(MISC::time_t now_ms) noexcept;
     void discoverFail(const char* reason) noexcept;
     void discoverFinishSuccess() noexcept;
     void discoverAdvanceCompId() noexcept;
@@ -77,7 +77,7 @@ private:
     uint8_t _scan_id = 1u;
     uint8_t _polled = 0u;
     MsTimer _switchPageTimeout{};
-    uint32_t _switch_page_last_sendme_ms = 0u;
+    MISC::time_t _switch_page_last_sendme_ms = 0u;
 };
 
 } // namespace nex
