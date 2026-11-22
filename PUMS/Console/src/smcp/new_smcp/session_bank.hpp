@@ -20,7 +20,7 @@ class SessionBank : public comm::ProtoBank<Session, N, SessionSlots> {
     using Base = comm::ProtoBank<Session, N, SessionSlots>;
 
 public:
-    explicit SessionBank(comm::Node<Packet>& node) noexcept
+    explicit SessionBank(comm::Node<Frame>& node) noexcept
         : Base(node)
         , _route(*this)
     {}

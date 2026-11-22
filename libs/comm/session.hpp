@@ -15,20 +15,20 @@
 #include <type_traits>
 #include <utility>
 
-#include "comm/container.hpp"
 #include "comm/node.hpp"
+#include "comm/old/container.hpp"
 
 namespace comm {
 
-template <typename Frame>
-class Session : public ProtoContainer<Frame> {
+template <typename Packet>
+class Session : public ProtoContainer<Packet> {
 public:
-    using NodeT = Node<Frame>;
-    using Proto = IProto<Frame>;
+    using NodeT = Node<Packet>;
+    using Proto = IProto<Packet>;
     using addr_t = typename NodeT::addr_t;
 
     /** Слот банка: attach в банк. */
-    explicit Session(ProtoContainer<Frame>& box) noexcept { box.attach(*this); }
+    explicit Session(ProtoContainer<Packet>& box) noexcept { box.attach(*this); }
 
     [[nodiscard]] addr_t peer() const noexcept { return _peer; }
     [[nodiscard]] bool isOpen() const noexcept { return _open; }
@@ -52,26 +52,26 @@ public:
         _peer = addr_t::kNone;
     }
 
-    [[nodiscard]] bool peekTx(Proto*& owner, Frame& out,
+    [[nodiscard]] bool peekTx(Proto*& owner, Packet& out,
                               MISC::time_t now) noexcept override
     {
         if (!_open) {
             return false;
         }
-        return ProtoContainer<Frame>::peekTx(owner, out, now);
+        return ProtoContainer<Packet>::peekTx(owner, out, now);
     }
 
-    [[nodiscard]] bool onPacket(const Frame& frame, MISC::time_t now) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& frame, MISC::time_t now) noexcept override
     {
         if (!_open || frame.src != _peer) {
             return false;
         }
-        return ProtoContainer<Frame>::onPacket(frame, now);
+        return ProtoContainer<Packet>::onPacket(frame, now);
     }
 
     void abort() noexcept override
     {
-        ProtoContainer<Frame>::abort();
+        ProtoContainer<Packet>::abort();
         _open = false;
         _peer = addr_t::kNone;
     }
@@ -85,13 +85,13 @@ private:
  * Пул сессий без размера: слоты уже в списке предка ProtoSlots.
  * find — открытая с peer; open — find или свободный слот + Sess::open.
  */
-template <typename Frame, typename Sess = Session<Frame>>
-class SessionSlots : public ProtoSlots<Sess, Frame> {
-    static_assert(std::is_base_of_v<Session<Frame>, Sess>,
-                  "SessionSlots: Sess must derive from comm::Session<Frame>");
+template <typename Packet, typename Sess = Session<Packet>>
+class SessionSlots : public ProtoSlots<Sess, Packet> {
+    static_assert(std::is_base_of_v<Session<Packet>, Sess>,
+                  "SessionSlots: Sess must derive from comm::Session<Packet>");
 
 public:
-    using NodeT = Node<Frame>;
+    using NodeT = Node<Packet>;
     using SessionT = Sess;
     using addr_t = typename SessionT::addr_t;
 
@@ -145,7 +145,7 @@ public:
     }
 
     /** RX: сразу в сессию по src. */
-    [[nodiscard]] bool onPacket(const Frame& frame, MISC::time_t now) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& frame, MISC::time_t now) noexcept override
     {
         SessionT* s = find(frame.src);
         if (s == nullptr) {
@@ -156,12 +156,12 @@ public:
 
 protected:
     explicit SessionSlots(NodeT& node) noexcept
-        : ProtoSlots<Sess, Frame>(node)
+        : ProtoSlots<Sess, Packet>(node)
     {}
 };
 
 /** Session[N] на Node. Массив и at() — у ProtoBank, база — SessionSlots. */
-template <typename Frame, uint8_t N, typename Sess = Session<Frame>>
-using SessionBank = ProtoBank<Sess, N, SessionSlots<Frame, Sess>>;
+template <typename Packet, uint8_t N, typename Sess = Session<Packet>>
+using SessionBank = ProtoBank<Sess, N, SessionSlots<Packet, Sess>>;
 
 } // namespace comm

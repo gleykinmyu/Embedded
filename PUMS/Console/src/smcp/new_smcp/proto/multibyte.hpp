@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "comm/container.hpp"
+#include "comm/old/container.hpp"
 #include "crc.hpp"
 #include "ms_timer.hpp"
 #include "smcp/new_smcp/ibuf.hpp"
@@ -21,7 +21,7 @@ namespace smcp::proto {
 
 struct MultiByteClient;
 
-class MultiByte : public comm::Proto<Packet> {
+class MultiByte : public comm::Proto<Frame> {
 public:
     enum class Mode : uint8_t { Idle = 0, Rx, Tx };
 
@@ -134,7 +134,7 @@ public:
         fail(Error::Abort);
     }
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override;
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t now) noexcept override;
 
     void tick(MISC::time_t now) noexcept override
     {
@@ -145,7 +145,7 @@ public:
     }
 
 protected:
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
     {
         if (_inFlight || !isTx() || _finished || !_session.isOpen()) {
             return false;
@@ -160,7 +160,7 @@ protected:
             b.index = _index;
             b.size = _xfer.size;
             b.crc32 = _xfer.crc;
-            b.pack(out.msg);
+            b.pack(out);
             break;
         }
         case Phase::Data: {
@@ -171,7 +171,7 @@ protected:
             if (n > 0u && _buf.data != nullptr) {
                 std::memcpy(d.data, _buf.data + _xfer.offset, n);
             }
-            d.pack(out.msg);
+            d.pack(out);
             break;
         }
         }
@@ -179,7 +179,7 @@ protected:
         return true;
     }
 
-    void onTxDone(const Packet& frame, bool ok) noexcept override;
+    void onTxDone(const Frame& frame, bool ok) noexcept override;
 
 private:
     enum class Phase : uint8_t { Begin = 0, Data };
@@ -363,7 +363,7 @@ struct MultiByteClient {
     virtual void onMbTxDone() noexcept = 0;
 };
 
-inline bool MultiByte::onPacket(const Packet& pkt, MISC::time_t now) noexcept
+inline bool MultiByte::onPacket(const Frame& pkt, MISC::time_t now) noexcept
 {
     if (!isRx() || _finished || _txn == 0u || pkt.txn != _txn) {
         return false;
@@ -406,7 +406,7 @@ inline bool MultiByte::onPacket(const Packet& pkt, MISC::time_t now) noexcept
     return true;
 }
 
-inline void MultiByte::onTxDone(const Packet& frame, bool ok) noexcept
+inline void MultiByte::onTxDone(const Frame& frame, bool ok) noexcept
 {
     if (!_inFlight || !isTx() || _finished || frame.txn != _txn) {
         return;

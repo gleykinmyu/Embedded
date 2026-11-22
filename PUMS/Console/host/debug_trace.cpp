@@ -43,7 +43,7 @@ void smcpTracePacket(const char* dir, uint8_t /*node_id*/, const Packet& pkt) no
             std::fputs("-", stdout);
         } else {
             for (uint8_t i = 0; i < pkt.msg.dlc && i < Message::kMaxDlc; ++i) {
-                std::printf("%02X", static_cast<unsigned>(pkt.msg.data[i]));
+                std::printf("%02X", static_cast<unsigned>(pkt.msg.payload[i]));
             }
         }
     }

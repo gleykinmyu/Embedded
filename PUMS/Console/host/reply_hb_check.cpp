@@ -25,7 +25,7 @@ int g_fail = 0;
         }                                                                      \
     } while (0)
 
-using smcp::Packet;
+using smcp::Frame;
 using smcp::addr_t;
 using smcp::MsgId;
 using smcp::Ack;
@@ -39,10 +39,10 @@ using SessionBank = smcp::SessionBank<N>;
 using smcp::proto::Reply;
 using smcp::proto::RequestJob;
 using smcp::proto::LinkHb;
-using Proto = comm::IProto<Packet>;
+using Proto = comm::IProto<Frame>;
 using St = comm::Job::Status;
 
-struct Root : comm::ProtoContainer<Packet> {};
+struct Root : comm::ProtoContainer<Frame> {};
 
 /** Ловит onLink. На Down база закрывает слот. */
 struct Watch : Session {
@@ -57,30 +57,30 @@ protected:
     }
 };
 
-Packet makeAck(addr_t src, uint8_t txn)
+Frame makeAck(addr_t src, uint8_t txn)
 {
-    Packet p{};
+    Frame p{};
     p.src = src;
     p.txn = txn;
-    Ack{}.pack(p.msg);
+    Ack{}.pack(p);
     return p;
 }
 
-Packet makeNack(addr_t src, uint8_t txn, Err err)
+Frame makeNack(addr_t src, uint8_t txn, Err err)
 {
-    Packet p{};
+    Frame p{};
     p.src = src;
     p.txn = txn;
     Nack n{};
     n.error = err;
-    n.pack(p.msg);
+    n.pack(p);
     return p;
 }
 
-[[nodiscard]] Heartbeat::Msg msgOf(const Packet& pkt)
+[[nodiscard]] Heartbeat::Msg msgOf(const Frame& pkt)
 {
     Heartbeat hb{};
-    if (!hb.unpack(pkt.msg)) {
+    if (!hb.unpack(pkt)) {
         return Heartbeat::Msg::KeepAlive;
     }
     return hb.msg;
@@ -89,10 +89,10 @@ Packet makeNack(addr_t src, uint8_t txn, Err err)
 /** Привязать peer, не стартуя мастерский LinkHb. */
 void bind(Session& s, addr_t peer)
 {
-    static_cast<comm::Session<Packet>&>(s).open(peer);
+    static_cast<comm::Session<Frame>&>(s).open(peer);
 }
 
-bool pumpTx(Session& sess, Packet& out, MISC::time_t now)
+bool pumpTx(Session& sess, Frame& out, MISC::time_t now)
 {
     Proto* owner = nullptr;
     if (!sess.peekTx(owner, out, now) || owner == nullptr) {
@@ -117,10 +117,10 @@ void test_reply_ack()
     CHECK(job.txn != 0u);
     CHECK(job.status() == St::Queued);
 
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, 0u));
     CHECK(tx.dst == peer && tx.txn == job.txn);
-    CHECK(tx.msg.id == MsgId::Get);
+    CHECK(tx.id == MsgId::Get);
     CHECK(job.status() == St::Active);
     CHECK(reply.isWaiting());
 
@@ -140,7 +140,7 @@ void test_reply_nack()
     RequestJob job{};
     job.req.id = MsgId::Select;
     CHECK(reply.submit(job));
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, 0u));
 
     CHECK(sess.onPacket(makeNack(addr_t{3}, job.txn, Err::Busy), 5u));
@@ -163,13 +163,13 @@ void test_reply_window()
     CHECK(reply.submit(a));
     CHECK(reply.submit(b));
 
-    Packet tx{};
+    Frame tx{};
     Proto* owner = nullptr;
     CHECK(sess.peekTx(owner, tx, 0u) && owner != nullptr);
     CHECK(tx.txn == a.txn);
     // пока _wire — второй peekTx false
     Proto* again = nullptr;
-    Packet slot{};
+    Frame slot{};
     CHECK(!sess.peekTx(again, slot, 1u));
 
     owner->onTxDone(tx, true);
@@ -198,7 +198,7 @@ void test_reply_early_ack()
     job.req.id = MsgId::Get;
     CHECK(reply.submit(job));
 
-    Packet tx{};
+    Frame tx{};
     Proto* owner = nullptr;
     CHECK(sess.peekTx(owner, tx, 0u));
     CHECK(job.status() == St::Queued);
@@ -224,7 +224,7 @@ void test_reply_retry_timeout()
     // один retry для короткого теста
     job.retries = 1;
 
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, 0u));
     CHECK(job.attempts() == 1u);
 
@@ -253,9 +253,9 @@ void test_hb_master_slave()
     CHECK(sessS.link == LinkHb::Status::Down);
 
     sessM.tick(0u);
-    Packet req{};
+    Frame req{};
     CHECK(pumpTx(sessM, req, 0u));
-    CHECK(req.msg.id == MsgId::Heartbeat);
+    CHECK(req.id == MsgId::Heartbeat);
     CHECK(msgOf(req) == Heartbeat::Msg::Request);
 
     req.src = idM;
@@ -263,7 +263,7 @@ void test_hb_master_slave()
     CHECK(sessS.link == LinkHb::Status::Connecting);
 
     sessS.tick(1u);
-    Packet ack{};
+    Frame ack{};
     CHECK(pumpTx(sessS, ack, 1u));
     CHECK(msgOf(ack) == Heartbeat::Msg::Ack);
 
@@ -275,7 +275,7 @@ void test_hb_master_slave()
     sessM.tick(2u);
     const MISC::time_t kaAt = 2u + Heartbeat::kTimeoutMs;
     sessM.tick(kaAt);
-    Packet ka{};
+    Frame ka{};
     CHECK(pumpTx(sessM, ka, kaAt));
     CHECK(msgOf(ka) == Heartbeat::Msg::KeepAlive);
 
@@ -294,7 +294,7 @@ void test_hb_lost()
     MISC::time_t now = 0;
     for (uint8_t i = 0; i < Heartbeat::kMissMax; ++i) {
         sess.tick(now);
-        Packet tx{};
+        Frame tx{};
         CHECK(pumpTx(sess, tx, now));
         CHECK(msgOf(tx) == Heartbeat::Msg::Request);
         sess.tick(now);
@@ -315,7 +315,7 @@ void test_hb_rx_resets_attempts()
 
     MISC::time_t now = 0;
     sess.tick(now);
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, now));
     sess.tick(now);
     now += Heartbeat::kTimeoutMs;
@@ -324,15 +324,15 @@ void test_hb_rx_resets_attempts()
     sess.tick(now);
     CHECK(sess.link == LinkHb::Status::Connecting);
 
-    Packet ka{};
+    Frame ka{};
     ka.src = addr_t{9};
-    Heartbeat{Heartbeat::Msg::Ack}.pack(ka.msg);
+    Heartbeat{Heartbeat::Msg::Ack}.pack(ka);
     CHECK(sess.onPacket(ka, now));
     CHECK(sess.link == LinkHb::Status::Up);
 
     ka = {};
     ka.src = addr_t{9};
-    Heartbeat{Heartbeat::Msg::KeepAlive}.pack(ka.msg);
+    Heartbeat{Heartbeat::Msg::KeepAlive}.pack(ka);
     CHECK(sess.onPacket(ka, now));
     CHECK(!pumpTx(sess, tx, now));
 
@@ -350,17 +350,17 @@ void test_hb_rx_resets_attempts()
     CHECK(!sess.isOpen());
 }
 
-struct DeadLink : comm::ILink<Packet> {
+struct DeadLink : comm::ILink<Frame> {
     State state() const noexcept override { return State::Closed; }
     std::size_t txSpace() const noexcept override { return 0; }
     std::size_t txBusy() const noexcept override { return 0; }
-    bool send(const Packet&, void*) noexcept override { return false; }
-    bool pollTx(Packet&, void*&, TxResult&) noexcept override { return false; }
+    bool send(const Frame&, void*) noexcept override { return false; }
+    bool pollTx(Frame&, void*&, TxResult&) noexcept override { return false; }
     void abortTx() noexcept override {}
-    bool receive(Packet&) noexcept override { return false; }
+    bool receive(Frame&) noexcept override { return false; }
 };
 
-bool pumpNode(Node& node, Packet& out, uint32_t now)
+bool pumpNode(Node& node, Frame& out, uint32_t now)
 {
     Proto* owner = nullptr;
     if (!node.peekTx(owner, out, now) || owner == nullptr) {
@@ -370,14 +370,14 @@ bool pumpNode(Node& node, Packet& out, uint32_t now)
     return true;
 }
 
-Packet makeAsk(addr_t src, addr_t dst)
+Frame makeAsk(addr_t src, addr_t dst)
 {
-    Packet p{};
+    Frame p{};
     p.src = src;
     p.dst = dst;
     Heartbeat hb{};
     hb.msg = Heartbeat::Msg::Request;
-    hb.pack(p.msg);
+    hb.pack(p);
     return p;
 }
 
@@ -389,13 +389,13 @@ void test_hb_route_admits_slave()
     node.begin(addr_t{1});
     SessionBank<1> bank(node);
 
-    const Packet ask = makeAsk(addr_t{4}, addr_t{1});
+    const Frame ask = makeAsk(addr_t{4}, addr_t{1});
     CHECK(node.onPacket(ask, 1u));
     Session* s = bank.find(addr_t{4});
     CHECK(s != nullptr && s->isOpen());
 
     node.tick(1u);
-    Packet pong{};
+    Frame pong{};
     CHECK(pumpNode(node, pong, 1u));
     CHECK(pong.dst == addr_t{4});
     CHECK(msgOf(pong) == Heartbeat::Msg::Ack);
@@ -411,12 +411,12 @@ void test_hb_route_busy()
 
     CHECK(node.onPacket(makeAsk(addr_t{4}, addr_t{1}), 1u));
     node.tick(1u);
-    Packet pong{};
+    Frame pong{};
     CHECK(pumpNode(node, pong, 1u));
 
     CHECK(node.onPacket(makeAsk(addr_t{5}, addr_t{1}), 2u));
     CHECK(bank.find(addr_t{5}) == nullptr);
-    Packet busy{};
+    Frame busy{};
     CHECK(pumpNode(node, busy, 2u));
     CHECK(busy.dst == addr_t{5});
     CHECK(msgOf(busy) == Heartbeat::Msg::Busy);
@@ -429,13 +429,13 @@ void test_hb_master_busy_stops()
     Watch sess(root);
     sess.open(addr_t{9});
     sess.tick(0u);
-    Packet ping{};
+    Frame ping{};
     CHECK(pumpTx(sess, ping, 0u));
     CHECK(msgOf(ping) == Heartbeat::Msg::Request);
 
-    Packet busy{};
+    Frame busy{};
     busy.src = addr_t{9};
-    Heartbeat{Heartbeat::Msg::Busy}.pack(busy.msg);
+    Heartbeat{Heartbeat::Msg::Busy}.pack(busy);
     CHECK(sess.onPacket(busy, 1u));
     CHECK(sess.link == LinkHb::Status::PeerBusy);
     CHECK(!sess.isOpen());

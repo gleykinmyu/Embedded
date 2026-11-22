@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-#include "comm/container.hpp"
+#include "comm/old/container.hpp"
 #include "comm/job_net.hpp"
 #include "smcp/new_smcp/session.hpp"
 
@@ -25,7 +25,7 @@ struct RequestJob : comm::JobNet {
  * Протокол ответов на сессии.
  * Окно Active = 1: пока ждём Ack|Nack, следующий Queued не уходит на wire.
  */
-class Reply : public comm::Proto<Packet>, private comm::IJobOwner {
+class Reply : public comm::Proto<Frame>, private comm::IJobOwner {
 public:
     using Jobs = comm::JobListNet<RequestJob>;
     using St = comm::Job::Status;
@@ -64,9 +64,9 @@ public:
         return _jobs.submit(job);
     }
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t) noexcept override
     {
-        const MsgId id = pkt.msg.id;
+        const MsgId id = pkt.id;
         if (id != MsgId::Ack && id != MsgId::Nack) {
             return false;
         }
@@ -106,7 +106,7 @@ public:
     }
 
 protected:
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t now) noexcept override
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t now) noexcept override
     {
         _now = now;
         if (!_session.isOpen() || _wire != nullptr || _jobs.activeCount() >= kWindow) {
@@ -119,12 +119,12 @@ protected:
         out = {};
         out.dst = _session.peer();
         out.txn = j->txn;
-        out.msg = j->req;
+        out.copyBody(j->req);
         _wire = j;
         return true;
     }
 
-    void onTxDone(const Packet& frame, bool ok) noexcept override
+    void onTxDone(const Frame& frame, bool ok) noexcept override
     {
         RequestJob* j = _wire;
         _wire = nullptr;

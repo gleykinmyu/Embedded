@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "crc.hpp"
 #include "smcp/new_smcp/new_smcp.hpp"
 
 namespace {
@@ -26,7 +27,7 @@ int g_fail = 0;
         }                                                                      \
     } while (0)
 
-using smcp::Packet;
+using smcp::Frame;
 using smcp::addr_t;
 using smcp::MsgId;
 using smcp::Ack;
@@ -35,21 +36,21 @@ using smcp::Err;
 using smcp::Fault;
 using smcp::Get;
 using smcp::Set;
-using smcp::Data;
+using smcp::SeqData;
 using smcp::IBuf;
 using smcp::Session;
 using smcp::Node;
 using smcp::proto::FaultProto;
-using smcp::proto::MultiByte;
+using smcp::proto::MultiFrame;
 using smcp::proto::Tagged;
 using smcp::proto::ITaggedSink;
 using smcp::proto::Segment;
 using smcp::proto::ISegmentSink;
-using Proto = comm::IProto<Packet>;
+using Proto = comm::IProto<Frame>;
 
-struct Root : comm::ProtoContainer<Packet> {};
+struct Root : comm::ProtoContainer<Frame> {};
 
-bool pumpTx(Session& sess, Packet& out, uint32_t now)
+bool pumpTx(Session& sess, Frame& out, uint32_t now)
 {
     Proto* owner = nullptr;
     if (!sess.peekTx(owner, out, now) || owner == nullptr) {
@@ -59,14 +60,14 @@ bool pumpTx(Session& sess, Packet& out, uint32_t now)
     return true;
 }
 
-struct DeadLink : comm::ILink<Packet> {
+struct DeadLink : comm::ILink<Frame> {
     State state() const noexcept override { return State::Closed; }
     std::size_t txSpace() const noexcept override { return 0; }
     std::size_t txBusy() const noexcept override { return 0; }
-    bool send(const Packet&, void*) noexcept override { return false; }
-    bool pollTx(Packet&, void*&, TxResult&) noexcept override { return false; }
+    bool send(const Frame&, void*) noexcept override { return false; }
+    bool pollTx(Frame&, void*&, TxResult&) noexcept override { return false; }
     void abortTx() noexcept override {}
-    bool receive(Packet&) noexcept override { return false; }
+    bool receive(Frame&) noexcept override { return false; }
 };
 
 struct FaultNode : Node {
@@ -92,14 +93,14 @@ void test_fault()
     FaultProto fault(node);
 
     fault.raiseIdConflict("nodeA");
-    Packet tx{};
+    Frame tx{};
     Proto* owner = nullptr;
     CHECK(node.peekTx(owner, tx, 0u) && owner == &fault);
     CHECK(tx.dst == addr_t::kBroadcast);
-    CHECK(tx.msg.id == MsgId::Fault);
+    CHECK(tx.id == MsgId::Fault);
     owner->onTxDone(tx, true);
 
-    Packet rx{};
+    Frame rx{};
     rx.src = addr_t{7};
     Fault body{};
     body.reason = Fault::Code::IdConflict;
@@ -107,7 +108,7 @@ void test_fault()
     body.detail[0] = 'x';
     body.detail[1] = 'y';
     body.detail[2] = 'z';
-    body.pack(rx.msg);
+    body.pack(rx);
     CHECK(node.onPacket(rx, 1u));
     CHECK(node.n == 1 && node.src == addr_t{7});
     CHECK(node.last.reason == Fault::Code::IdConflict && node.last.detail_len == 3u);
@@ -119,7 +120,7 @@ struct TagSink : ITaggedSink {
     uint8_t tag = 0;
     uint8_t index = 0;
     uint8_t txn = 0;
-    MultiByte::Error mbErr = MultiByte::Error::None;
+    MultiFrame::Error mbErr = MultiFrame::Error::None;
     bool setOk = false;
     Nack nack{};
     uint8_t buf[32]{};
@@ -158,7 +159,7 @@ struct TagSink : ITaggedSink {
     }
 
     void onReply(uint8_t t, uint8_t i, const IBuf& b,
-                 MultiByte::Error err) noexcept override
+                 MultiFrame::Error err) noexcept override
     {
         ev = Ev::Reply;
         tag = t;
@@ -182,11 +183,11 @@ struct TagSink : ITaggedSink {
 
 void test_tagged_short_get()
 {
-    std::puts("CASE Tagged: short Get → Data → onReply");
+    std::puts("CASE Tagged: short Get → SeqData → onReply");
     Root root;
     Session sess(root);
     sess.open(addr_t{2});
-    MultiByte mb(sess);
+    MultiFrame mb(sess);
     TagSink sink;
     Tagged tagged(sess, mb, &sink);
 
@@ -194,23 +195,34 @@ void test_tagged_short_get()
     IBuf dst{rxbuf, sizeof(rxbuf)};
     CHECK(tagged.get(0x11, dst, 3) == Tagged::Result::Ok);
 
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, 0u));
-    CHECK(tx.msg.id == MsgId::Get && tx.txn != 0u);
+    CHECK(tx.id == MsgId::Get && tx.txn != 0u);
 
-    Packet data{};
+    const uint8_t raw[3] = {0xAAu, 0xBBu, 0xCCu};
+    Frame hdr{};
+    hdr.src = addr_t{2};
+    hdr.txn = tx.txn;
+    SeqData head{};
+    head.seq = 0;
+    head.first.chunks = 1;
+    MISC::Crc32 crc;
+    crc.update(raw, sizeof(raw));
+    head.first.crc32 = crc;
+    head.pack(hdr);
+    CHECK(sess.onPacket(hdr, 10u));
+
+    Frame data{};
     data.src = addr_t{2};
     data.txn = tx.txn;
-    Data d{};
-    d.seq = 0;
-    d.len = 3;
-    d.data[0] = 0xAAu;
-    d.data[1] = 0xBBu;
-    d.data[2] = 0xCCu;
-    d.pack(data.msg);
-    CHECK(sess.onPacket(data, 10u));
+    SeqData body{};
+    body.seq = 1;
+    body.chunk.len = 3;
+    std::memcpy(body.chunk.data, raw, sizeof(raw));
+    body.pack(data);
+    CHECK(sess.onPacket(data, 11u));
     CHECK(sink.ev == TagSink::Ev::Reply);
-    CHECK(sink.mbErr == MultiByte::Error::None);
+    CHECK(sink.mbErr == MultiFrame::Error::None);
     CHECK(sink.gotLen == 3u && sink.buf[0] == 0xAAu && sink.buf[2] == 0xCCu);
     CHECK(sink.tag == 0x11u && sink.index == 3u);
 }
@@ -221,21 +233,21 @@ void test_tagged_short_set_roundtrip()
     Root root;
     Session sess(root);
     sess.open(addr_t{4});
-    MultiByte mb(sess);
+    MultiFrame mb(sess);
     TagSink sink;
     Tagged tagged(sess, mb, &sink);
 
     uint8_t payload[2] = {0x10, 0x20};
     CHECK(tagged.set(0x22, IBuf{payload, 2}, 1) == Tagged::Result::Ok);
 
-    Packet tx{};
+    Frame tx{};
     CHECK(pumpTx(sess, tx, 0u));
-    CHECK(tx.msg.id == MsgId::Set);
+    CHECK(tx.id == MsgId::Set);
 
-    Packet ack{};
+    Frame ack{};
     ack.src = addr_t{4};
     ack.txn = tx.txn;
-    Ack{}.pack(ack.msg);
+    Ack{}.pack(ack);
     CHECK(sess.onPacket(ack, 5u));
     CHECK(sink.ev == TagSink::Ev::SetAck && sink.setOk);
 }
@@ -246,11 +258,11 @@ void test_tagged_inbound_set()
     Root root;
     Session sess(root);
     sess.open(addr_t{5});
-    MultiByte mb(sess);
+    MultiFrame mb(sess);
     TagSink sink;
     Tagged tagged(sess, mb, &sink);
 
-    Packet setPkt{};
+    Frame setPkt{};
     setPkt.src = addr_t{5};
     setPkt.txn = 9;
     Set s{};
@@ -259,13 +271,13 @@ void test_tagged_inbound_set()
     s.len = 2;
     s.data[0] = 1;
     s.data[1] = 2;
-    s.pack(setPkt.msg);
+    s.pack(setPkt);
     CHECK(sess.onPacket(setPkt, 0u));
     CHECK(sink.ev == TagSink::Ev::Set && sink.gotLen == 2u);
 
-    Packet ackTx{};
+    Frame ackTx{};
     CHECK(pumpTx(sess, ackTx, 1u));
-    CHECK(ackTx.msg.id == MsgId::Ack && ackTx.txn == 9u);
+    CHECK(ackTx.id == MsgId::Ack && ackTx.txn == 9u);
 }
 
 void test_tagged_inbound_get_sendBody()
@@ -274,35 +286,36 @@ void test_tagged_inbound_get_sendBody()
     Root root;
     Session sess(root);
     sess.open(addr_t{6});
-    MultiByte mb(sess);
+    MultiFrame mb(sess);
     TagSink sink;
     Tagged tagged(sess, mb, &sink);
 
-    Packet getPkt{};
+    Frame getPkt{};
     getPkt.src = addr_t{6};
     getPkt.txn = 11;
     Get g{};
     g.tag = 0x44;
     g.index = 0;
-    g.pack(getPkt.msg);
+    g.pack(getPkt);
     CHECK(sess.onPacket(getPkt, 0u));
     CHECK(sink.ev == TagSink::Ev::Get && sink.txn == 11u);
 
     uint8_t body[2] = {7, 8};
     CHECK(tagged.sendBody(sink.tag, IBuf{body, 2}, sink.txn, sink.index));
 
-    Packet dataTx{};
+    Frame dataTx{};
+    mb.tick(1u);
     CHECK(pumpTx(sess, dataTx, 1u));
-    CHECK(dataTx.msg.id == MsgId::Data && dataTx.txn == 11u);
+    CHECK(dataTx.id == MsgId::SeqData && dataTx.txn == 11u);
 }
 
 struct SegLog : ISegmentSink {
     int n = 0;
     MsgId last = MsgId{};
-    void onSegment(const Packet& pkt) noexcept override
+    void onSegment(const Frame& pkt) noexcept override
     {
         ++n;
-        last = pkt.msg.id;
+        last = pkt.id;
     }
 };
 
@@ -315,14 +328,14 @@ void test_segment()
     SegLog log;
     Segment seg(sess, &log);
 
-    Packet p{};
+    Frame p{};
     p.src = addr_t{8};
-    p.msg.id = MsgId::Select;
-    p.msg.dlc = 0;
+    p.id = MsgId::Select;
+    p.payload.clear();
     CHECK(sess.onPacket(p, 0u));
     CHECK(log.n == 1 && log.last == MsgId::Select);
 
-    p.msg.id = MsgId::Get;
+    p.id = MsgId::Get;
     CHECK(!sess.onPacket(p, 1u));
     CHECK(log.n == 1);
 }

@@ -13,7 +13,7 @@
 #pragma once
 
 #include "comm/session.hpp"
-#include "smcp/new_smcp/packet.hpp"
+#include "smcp/new_smcp/transport.hpp"
 #include "smcp/new_smcp/pdu.hpp"
 #include "smcp/new_smcp/proto/link_hb.hpp"
 
@@ -22,18 +22,18 @@ namespace smcp {
 namespace proto {
 class Reply;
 class Tagged;
-class MultiByte;
+class MultiFrame;
 } // namespace proto
 
-class Session : public comm::Session<Packet> {
+class Session : public comm::Session<Frame> {
     friend class proto::LinkHb;
     friend class proto::Reply;
     friend class proto::Tagged;
-    friend class proto::MultiByte;
+    friend class proto::MultiFrame;
 
 public:
-    using CommSession = comm::Session<Packet>;
-    explicit Session(comm::ProtoContainer<Packet>& box) noexcept
+    using CommSession = comm::Session<Frame>;
+    explicit Session(comm::ProtoContainer<Frame>& box) noexcept
         : CommSession(box)
     {}
 
@@ -79,22 +79,22 @@ private:
 };
 
 /** Банк без размера. parent() — узел, не голый контейнер. */
-class SessionSlots : public comm::SessionSlots<Packet, Session> {
+class SessionSlots : public comm::SessionSlots<Frame, Session> {
 public:
-    using NodeT = comm::Node<Packet>;
+    using NodeT = comm::Node<Frame>;
 
     [[nodiscard]] NodeT& parent() noexcept override
     {
-        return static_cast<NodeT&>(comm::SessionSlots<Packet, Session>::parent());
+        return static_cast<NodeT&>(comm::SessionSlots<Frame, Session>::parent());
     }
 
     [[nodiscard]] const NodeT& parent() const noexcept override
     {
-        return static_cast<const NodeT&>(comm::SessionSlots<Packet, Session>::parent());
+        return static_cast<const NodeT&>(comm::SessionSlots<Frame, Session>::parent());
     }
 
 protected:
-    using comm::SessionSlots<Packet, Session>::SessionSlots;
+    using comm::SessionSlots<Frame, Session>::SessionSlots;
 };
 
 } // namespace smcp

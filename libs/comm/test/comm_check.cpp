@@ -26,7 +26,7 @@ int g_fail = 0;
     } while (0)
 
 /**
- * Адрес кадра (Frame::src / dst).
+ * Адрес кадра (Packet::src / dst).
  * kNone — константа типа; accepts(dst) — у self (broadcast/подсеть внутри).
  */
 struct addr_t {
@@ -48,20 +48,20 @@ struct addr_t {
 };
 inline constexpr addr_t addr_t::kNone{};
 
-struct Frame {
+struct Packet {
     addr_t src{};
     addr_t dst{};
     uint8_t id = 0;
 };
 
-using IProto = comm::IProto<Frame>;
-using ILink = comm::ILink<Frame>;
+using IProto = comm::IProto<Packet>;
+using ILink = comm::ILink<Packet>;
 
 /** Окно TX линка: слот хранит кадр и cookie. Завершение можно отдать не по порядку. */
 template <uint8_t Cap = 8>
 struct FakeLink : ILink {
     struct Slot {
-        Frame frame{};
+        Packet frame{};
         void* cookie = nullptr;
         typename ILink::TxResult res = ILink::TxResult::Ok;
         bool busy = false;
@@ -71,7 +71,7 @@ struct FakeLink : ILink {
     Slot tx[Cap]{};
     uint8_t txN = 0;
 
-    Frame rx[Cap]{};
+    Packet rx[Cap]{};
     uint8_t rxR = 0;
     uint8_t rxW = 0;
 
@@ -86,7 +86,7 @@ struct FakeLink : ILink {
 
     [[nodiscard]] std::size_t txBusy() const noexcept override { return txN; }
 
-    [[nodiscard]] bool send(const Frame& frame, void* cookie) noexcept override
+    [[nodiscard]] bool send(const Packet& frame, void* cookie) noexcept override
     {
         if (st != ILink::State::Open || txN >= Cap) {
             return false;
@@ -106,7 +106,7 @@ struct FakeLink : ILink {
         return false;
     }
 
-    [[nodiscard]] bool pollTx(Frame& frame, void*& cookie,
+    [[nodiscard]] bool pollTx(Packet& frame, void*& cookie,
                               typename ILink::TxResult& result) noexcept override
     {
         for (uint8_t i = 0; i < Cap; ++i) {
@@ -152,7 +152,7 @@ struct FakeLink : ILink {
         }
     }
 
-    [[nodiscard]] bool receive(Frame& out) noexcept override
+    [[nodiscard]] bool receive(Packet& out) noexcept override
     {
         if (st != ILink::State::Open || rxR == rxW) {
             return false;
@@ -162,7 +162,7 @@ struct FakeLink : ILink {
         return true;
     }
 
-    bool pushRx(const Frame& f) noexcept
+    bool pushRx(const Packet& f) noexcept
     {
         if (static_cast<uint8_t>(rxW - rxR) >= Cap) {
             return false;
@@ -173,19 +173,19 @@ struct FakeLink : ILink {
     }
 };
 
-struct Echo : comm::Proto<Frame> {
+struct Echo : comm::Proto<Packet> {
     uint8_t wantId = 0;
     bool haveTx = false;
     bool inFlight = false;
     bool lastOk = false;
     int rx = 0;
 
-    explicit Echo(comm::ProtoContainer<Frame>& box, uint8_t id) noexcept
-        : comm::Proto<Frame>(box)
+    explicit Echo(comm::ProtoContainer<Packet>& box, uint8_t id) noexcept
+        : comm::Proto<Packet>(box)
         , wantId(id)
     {}
 
-    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
     {
         if (inFlight || !haveTx) {
             return false;
@@ -198,13 +198,13 @@ struct Echo : comm::Proto<Frame> {
         return true;
     }
 
-    void onTxDone(const Frame&, bool ok) noexcept override
+    void onTxDone(const Packet&, bool ok) noexcept override
     {
         inFlight = false;
         lastOk = ok;
     }
 
-    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
     {
         if (pkt.id != wantId) {
             return false;
@@ -221,14 +221,14 @@ struct Echo : comm::Proto<Frame> {
     }
 };
 
-struct TestNode : comm::Node<Frame> {
+struct TestNode : comm::Node<Packet> {
     int stateHits = 0;
     int errHits = 0;
     State lastState = State::Idle;
     Error lastError = Error::None;
 
-    using comm::Node<Frame>::Node;
-    using comm::Node<Frame>::goReady;
+    using comm::Node<Packet>::Node;
+    using comm::Node<Packet>::goReady;
 
 protected:
     void onState(State st) noexcept override
@@ -248,7 +248,7 @@ void test_tx_slot_and_done()
     std::puts("CASE Node: peekTx → send → pollTx → onTxDone");
     FakeLink<> link;
     TestNode node(link);
-    comm::Session<Frame> sess(node);
+    comm::Session<Packet> sess(node);
     Echo echo(sess, 7);
 
     node.begin(1);
@@ -271,7 +271,7 @@ void test_session_rx_demux()
     std::puts("CASE SessionBank: find/open + RX по peer");
     FakeLink<> link;
     TestNode node(link);
-    comm::SessionBank<Frame, 2> bank(node);
+    comm::SessionBank<Packet, 2> bank(node);
     Echo ea(bank.at(0), 10);
     Echo eb(bank.at(1), 20);
 
@@ -283,7 +283,7 @@ void test_session_rx_demux()
     CHECK(bank.open(2) == &bank.at(0)); // уже open
     CHECK(bank.open(4) == nullptr);     // нет слота
 
-    Frame pkt{};
+    Packet pkt{};
     pkt.src = 2;
     pkt.dst = 1;
     pkt.id = 10;
@@ -303,14 +303,14 @@ void test_id_conflict()
     std::puts("CASE Listen: _ncp, src == наш адрес → AddrConflict");
     FakeLink<> link;
     TestNode node(link);
-    comm::Ncp<Frame> ncp(node);
+    comm::Ncp<Packet> ncp(node);
     CHECK(ncp.linked());
-    comm::Ncp<Frame> extra(node);
+    comm::Ncp<Packet> extra(node);
     CHECK(!extra.linked());
     node.begin(5);
     CHECK(node.state() == TestNode::State::Listen);
 
-    Frame pkt{};
+    Packet pkt{};
     pkt.src = 5;
     pkt.dst = 1;
     CHECK(link.pushRx(pkt));
@@ -327,7 +327,7 @@ void test_ncp_null()
     TestNode node(link);
     node.begin(5);
 
-    Frame pkt{};
+    Packet pkt{};
     pkt.src = 5;
     pkt.dst = 1;
     CHECK(link.pushRx(pkt));
@@ -341,7 +341,7 @@ void test_listen_window()
     std::puts("CASE Listen: окно NCP → Ready");
     FakeLink<> link;
     TestNode node(link);
-    comm::Ncp<Frame> ncp(node, 10);
+    comm::Ncp<Packet> ncp(node, 10);
     node.begin(5);
 
     node.update(0);
@@ -358,7 +358,7 @@ void test_window_two()
     std::puts("CASE TxWindow=2: два слота");
     FakeLink<> link;
     TestNode node(link);
-    comm::Session<Frame> sess(node);
+    comm::Session<Packet> sess(node);
     Echo a(sess, 1);
     Echo b(sess, 2);
 
@@ -382,7 +382,7 @@ void test_ooo_cookie()
     std::puts("CASE cookie: завершение не по порядку send");
     FakeLink<> link;
     TestNode node(link);
-    comm::Session<Frame> sess(node);
+    comm::Session<Packet> sess(node);
     Echo a(sess, 1);
     Echo b(sess, 2);
 
@@ -409,7 +409,7 @@ void test_closed_session_silent()
     std::puts("CASE закрытая Session не peekTx / не onPacket");
     FakeLink<> link;
     TestNode node(link);
-    comm::Session<Frame> sess(node);
+    comm::Session<Packet> sess(node);
     Echo echo(sess, 3);
 
     node.begin(1);
@@ -426,7 +426,7 @@ void test_closed_session_silent()
     CHECK(!echo.inFlight);
 
     sess.close();
-    Frame pkt{};
+    Packet pkt{};
     pkt.src = 2;
     pkt.dst = 1;
     pkt.id = 3;

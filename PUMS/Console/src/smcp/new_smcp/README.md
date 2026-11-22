@@ -7,8 +7,7 @@
 | файл | роль |
 |---|---|
 | `addr.hpp` | `addr_t` для `comm::Node` |
-| `message.hpp` | **один** `MsgId` + `Message` |
-| `packet.hpp` | `Packet` = Frame (`src`/`dst`/`txn`/`msg`) |
+| `transport.hpp` | `MsgId` + `Message` + `Frame` |
 | `pdu.hpp` | pack/unpack служебных PDU |
 | `session_bank.hpp` | `SessionBank<N>`: сессии + `LinkHbRoute` |
 | `ibuf.hpp` | `IBuf` для тел Get/Set |
@@ -31,7 +30,7 @@
 
 ## Дальше
 
-1. CanLink / host ILink под `Packet`
+1. CanLink / host ILink под `Frame`
 2. Session leaf: состав протоколов + общий `TxnAlloc`
 3. Segment PDU pack/unpack и разделение ролей при необходимости
 4. Длинный Get/Set (DataBegin→Data*) — host-тесты

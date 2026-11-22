@@ -7,21 +7,20 @@
 
 #pragma once
 
-#include "comm/container.hpp"
-#include "smcp/new_smcp/packet.hpp"
-#include "smcp/new_smcp/message.hpp"
+#include "comm/old/container.hpp"
+#include "smcp/new_smcp/transport.hpp"
 
 namespace smcp::proto {
 
-/** Приём northbound PDU (тело ещё в pkt.msg; pack/unpack PDU — позже / снаружи). */
+/** Приём northbound PDU (тело ещё в pkt.payload; pack/unpack PDU — позже / снаружи). */
 struct ISegmentSink {
-    virtual void onSegment(const Packet& pkt) noexcept = 0;
+    virtual void onSegment(const Frame& pkt) noexcept = 0;
 
 protected:
     ~ISegmentSink() = default;
 };
 
-class Segment : public comm::Proto<Packet> {
+class Segment : public comm::Proto<Frame> {
 public:
     explicit Segment(SessionT& session, ISegmentSink* sink = nullptr) noexcept
         : Proto(session)
@@ -46,9 +45,9 @@ public:
         }
     }
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t) noexcept override
     {
-        if (!isSegmentMsg(pkt.msg.id)) {
+        if (!isSegmentMsg(pkt.id)) {
             return false;
         }
         if (_sink != nullptr) {
@@ -61,7 +60,7 @@ public:
     void abort() noexcept override {}
 
 protected:
-    [[nodiscard]] bool peekTx(Packet&, MISC::time_t) noexcept override { return false; }
+    [[nodiscard]] bool peekTx(Frame&, MISC::time_t) noexcept override { return false; }
 
 private:
     ISegmentSink* _sink = nullptr;

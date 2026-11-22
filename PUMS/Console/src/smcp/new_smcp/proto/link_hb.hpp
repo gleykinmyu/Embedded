@@ -14,9 +14,9 @@
 
 #include <cstdint>
 
-#include "comm/container.hpp"
+#include "comm/old/container.hpp"
 #include "ms_timer.hpp"
-#include "smcp/new_smcp/packet.hpp"
+#include "smcp/new_smcp/transport.hpp"
 #include "smcp/new_smcp/pdu.hpp"
 
 namespace smcp {
@@ -39,7 +39,7 @@ enum class LinkStatus : uint8_t {
     PeerBusy
 };
 
-class LinkHb : public comm::Proto<Packet> {
+class LinkHb : public comm::Proto<Frame> {
 public:
     using Status = LinkStatus;
     using Role = SessionRole;
@@ -70,7 +70,7 @@ public:
      * Не ждали — Pong: Ack на Request, иначе пустой KeepAlive.
      * Счётчик запусков обнуляется и тут же тратит 1 на окно тишины (waiting=false).
      */
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override;
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t now) noexcept override;
 
     /**
      * Мастер: ping сразу, пока ответ не ждём, и снова по таймауту.
@@ -87,14 +87,14 @@ public:
 
 protected:
     /** Ping и Pong — один Heartbeat на peer. Кто из них, помнит _wire до onTxDone. */
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override;
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override;
 
     /**
      * Pong таймер не трогает: мы никого не ждём.
      * Ping взводит ожидание ответа (waiting=true). Статус при этом не меняется.
      * Если пока кадр был в полёте уже пришёл HB, окно тишины живое — не затираем его.
      */
-    void onTxDone(const Packet&, bool ok) noexcept override;
+    void onTxDone(const Frame&, bool ok) noexcept override;
 
 private:
     /**

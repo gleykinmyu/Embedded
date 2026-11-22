@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "comm/proto.hpp"
+#include "comm/old/proto.hpp"
 
 namespace {
 
@@ -25,15 +25,15 @@ int g_fail = 0;
         }                                                                      \
     } while (0)
 
-struct Frame {
+struct Packet {
     uint8_t src = 0;
     uint8_t dst = 0;
     uint8_t id = 0;
 };
 
-using IProto = comm::IProto<Frame>;
+using IProto = comm::IProto<Packet>;
 
-struct Leaf : comm::Proto<Frame> {
+struct Leaf : comm::Proto<Packet> {
     uint8_t id = 0;
     uint8_t src = 0;
     bool haveTx = false;
@@ -44,12 +44,12 @@ struct Leaf : comm::Proto<Frame> {
     int rxHits = 0;
     bool broken = false;
 
-    explicit Leaf(comm::ProtoContainer<Frame>& box, uint8_t id_) noexcept
-        : comm::Proto<Frame>(box)
+    explicit Leaf(comm::ProtoContainer<Packet>& box, uint8_t id_) noexcept
+        : comm::Proto<Packet>(box)
         , id(id_)
     {}
 
-    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
     {
         if (inFlight || !haveTx) {
             return false;
@@ -63,7 +63,7 @@ struct Leaf : comm::Proto<Frame> {
         return true;
     }
 
-    void onTxDone(const Frame& f, bool ok) noexcept override
+    void onTxDone(const Packet& f, bool ok) noexcept override
     {
         if (!inFlight || f.id != id) {
             return;
@@ -72,7 +72,7 @@ struct Leaf : comm::Proto<Frame> {
         lastTxOk = ok;
     }
 
-    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
     {
         if (pkt.id != id) {
             return false;
@@ -92,17 +92,17 @@ struct Leaf : comm::Proto<Frame> {
     [[nodiscard]] bool ok() const noexcept override { return !broken; }
 };
 
-struct BankLeaf : comm::Proto<Frame> {
+struct BankLeaf : comm::Proto<Packet> {
     uint8_t id = 0;
     bool haveTx = false;
     bool inFlight = false;
     int ticks = 0;
 
-    explicit BankLeaf(comm::ProtoContainer<Frame>& box) noexcept
-        : comm::Proto<Frame>(box)
+    explicit BankLeaf(comm::ProtoContainer<Packet>& box) noexcept
+        : comm::Proto<Packet>(box)
     {}
 
-    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
     {
         if (inFlight || !haveTx) {
             return false;
@@ -113,14 +113,14 @@ struct BankLeaf : comm::Proto<Frame> {
         haveTx = false;
         return true;
     }
-    void onTxDone(const Frame&, bool) noexcept override
+    void onTxDone(const Packet&, bool) noexcept override
     {
         if (!inFlight) {
             return;
         }
         inFlight = false;
     }
-    [[nodiscard]] bool onPacket(const Frame&, MISC::time_t) noexcept override { return false; }
+    [[nodiscard]] bool onPacket(const Packet&, MISC::time_t) noexcept override { return false; }
     void tick(MISC::time_t) noexcept override { ++ticks; }
     void abort() noexcept override
     {
@@ -129,7 +129,7 @@ struct BankLeaf : comm::Proto<Frame> {
     }
 };
 
-struct Root : comm::ProtoContainer<Frame> {
+struct Root : comm::ProtoContainer<Packet> {
     Leaf a{*this, 1};
     Leaf b{*this, 2};
 };
@@ -147,7 +147,7 @@ void test_rr_tx()
 {
     std::puts("CASE peekTx(owner, …) + onTxDone(frame, ok)");
     Root r;
-    Frame slot{};
+    Packet slot{};
     r.a.haveTx = true;
     r.b.haveTx = true;
 
@@ -169,7 +169,7 @@ void test_rx_demux()
 {
     std::puts("CASE onPacket — первый подходящий");
     Root r;
-    Frame pkt{};
+    Packet pkt{};
     pkt.id = 2;
     CHECK(r.onPacket(pkt, 0u));
     CHECK(r.a.rxHits == 0 && r.b.rxHits == 1);
@@ -200,10 +200,10 @@ void test_recursive_ok()
 void test_bank()
 {
     std::puts("CASE ProtoBank: T[N] в списке контейнера");
-    struct Box : comm::ProtoContainer<Frame> {};
+    struct Box : comm::ProtoContainer<Packet> {};
     Box box;
     comm::ProtoBank<BankLeaf, 3> bank(box);
-    Frame slot{};
+    Packet slot{};
     CHECK(!bank.empty() && bank.ok() && bank.size == 3u);
     bank.at(0).haveTx = true;
     bank.at(0).id = 7;
@@ -223,7 +223,7 @@ void test_tx_fills_src()
 {
     std::puts("CASE peekTx: протокол пишет src в слот");
     Root r;
-    Frame slot{};
+    Packet slot{};
     r.a.src = 0x10;
     r.a.haveTx = true;
     IProto* owner = nullptr;
@@ -235,7 +235,7 @@ void test_empty_peek()
 {
     std::puts("CASE peekTx false — нечего слать");
     Root r;
-    Frame slot{};
+    Packet slot{};
     IProto* owner = nullptr;
     CHECK(!r.peekTx(owner, slot, 0u) && owner == nullptr);
 }
@@ -244,12 +244,12 @@ void test_outstanding()
 {
     std::puts("CASE outstanding у листа; другой ребёнок может peekTx");
     Root r;
-    Frame slot{};
+    Packet slot{};
     r.a.haveTx = true;
     r.b.haveTx = true;
     IProto* ownerA = nullptr;
     CHECK(r.peekTx(ownerA, slot, 0u) && ownerA == &r.a && slot.id == 1u);
-    Frame slotA = slot;
+    Packet slotA = slot;
     IProto* again = nullptr;
     CHECK(!static_cast<IProto&>(r.a).peekTx(again, slot, 1u)); // a ещё inFlight
     IProto* ownerB = nullptr;
@@ -260,16 +260,16 @@ void test_outstanding()
     CHECK(!r.b.inFlight);
 }
 
-struct Mid : comm::ProtoContainer<Frame> {
+struct Mid : comm::ProtoContainer<Packet> {
     Leaf leaf;
-    explicit Mid(comm::ProtoContainer<Frame>& outer) noexcept
+    explicit Mid(comm::ProtoContainer<Packet>& outer) noexcept
         : leaf{*this, 7}
     {
         outer.attach(*this);
     }
 };
 
-struct Outer : comm::ProtoContainer<Frame> {
+struct Outer : comm::ProtoContainer<Packet> {
     Mid mid{*this};
 };
 
@@ -277,7 +277,7 @@ void test_nested_owner()
 {
     std::puts("CASE два контейнера: owner — лист");
     Outer o;
-    Frame slot{};
+    Packet slot{};
     o.mid.leaf.haveTx = true;
 
     IProto* owner = nullptr;
@@ -299,7 +299,7 @@ void test_slot_owner()
     r.b.haveTx = true;
 
     IProto* owners[2]{};
-    Frame slots[2]{};
+    Packet slots[2]{};
     CHECK(r.peekTx(owners[0], slots[0], 0u));
     CHECK(r.peekTx(owners[1], slots[1], 1u));
     CHECK(owners[0] == &r.a && owners[1] == &r.b);

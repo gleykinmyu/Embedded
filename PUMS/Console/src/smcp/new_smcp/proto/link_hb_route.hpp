@@ -18,14 +18,14 @@ namespace smcp::proto {
 //Протокол, который отвечает за маршрутизацию Heartbeat Request
 //Должен быть зарегистрирован в SessionBank после всех сессий
 //Отвечает за поиск свободной сессии для открытия нового сеанса
-class LinkHbRoute : public comm::Proto<Packet> {
+class LinkHbRoute : public comm::Proto<Frame> {
 public:
     explicit LinkHbRoute(SessionSlots& bank) noexcept
         : Proto(bank.parent())
         , _bank(bank)
     {}
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t now) noexcept override
     {
         SMCP_IF_MSG(Heartbeat) {
             if (body.msg == Heartbeat::Msg::Request && !pkt.dst.isBroadcast()) {
@@ -57,20 +57,20 @@ public:
     }
 
 protected:
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
     {
         if (_txReady) {
             out = {};
             out.dst = _busyDst;
             out.txn = 0;
-            Heartbeat{Heartbeat::Msg::Busy}.pack(out.msg);
+            Heartbeat{Heartbeat::Msg::Busy}.pack(out);
             _txReady = false;
             return true;
         }
         return false;
     }
 
-    void onTxDone(const Packet& pkt, bool ok) noexcept override
+    void onTxDone(const Frame& pkt, bool ok) noexcept override
     {
         if (ok) {
             _busyDst = addr_t::kNone;

@@ -10,7 +10,7 @@
 #pragma once
 
 #include "comm/node.hpp"
-#include "smcp/new_smcp/packet.hpp"
+#include "smcp/new_smcp/transport.hpp"
 #include "smcp/new_smcp/pdu.hpp"
 
 namespace smcp {
@@ -19,12 +19,12 @@ namespace proto {
 class FaultProto;
 } // namespace proto
 
-class Node : public comm::Node<Packet> {
+class Node : public comm::Node<Frame> {
     friend class proto::FaultProto;
 
 public:
-    explicit Node(comm::ILink<Packet>& link) noexcept
-        : comm::Node<Packet>(link)
+    explicit Node(comm::ILink<Frame>& link) noexcept
+        : comm::Node<Frame>(link)
     {}
 
 protected:

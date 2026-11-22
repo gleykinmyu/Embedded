@@ -99,6 +99,9 @@ public:
     /** Итоговый CRC (с xorout). Состояние объекта не меняет. */
     [[nodiscard]] constexpr uint32_t value() const noexcept { return _crc ^ kXorOut; }
 
+    /** Записать уже посчитанный итог: после вызова value() == @a v. */
+    constexpr void setValue(uint32_t v) noexcept { _crc = v ^ kXorOut; }
+
     /** One-shot: CRC всего буфера. */
     [[nodiscard]] static uint32_t compute(const uint8_t* data, std::size_t len) noexcept
     {

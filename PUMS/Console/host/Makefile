@@ -79,6 +79,7 @@ job-check proto-check comm-check:
 
 REPLY_HB := $(BUILD)/reply_hb_check
 NEW_LINK_HB := $(ROOT)/src/smcp/new_smcp/proto/link_hb.cpp
+NEW_MULTIFRAME := $(ROOT)/src/smcp/new_smcp/proto/multiframe.cpp
 
 $(REPLY_HB): reply_hb_check.cpp $(NEW_LINK_HB) | dirs
 	$(CXX) $(CXXFLAGS) -o $@ reply_hb_check.cpp $(NEW_LINK_HB)
@@ -88,8 +89,8 @@ reply-hb-check: $(REPLY_HB)
 
 PROTO_REST := $(BUILD)/proto_rest_check
 
-$(PROTO_REST): proto_rest_check.cpp $(NEW_LINK_HB) | dirs
-	$(CXX) $(CXXFLAGS) -o $@ proto_rest_check.cpp $(NEW_LINK_HB)
+$(PROTO_REST): proto_rest_check.cpp $(NEW_LINK_HB) $(NEW_MULTIFRAME) | dirs
+	$(CXX) $(CXXFLAGS) -o $@ proto_rest_check.cpp $(NEW_LINK_HB) $(NEW_MULTIFRAME)
 
 proto-rest-check: $(PROTO_REST)
 	$(PROTO_REST)

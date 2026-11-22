@@ -5,13 +5,13 @@
 
 #pragma once
 
-#include "comm/container.hpp"
+#include "comm/old/container.hpp"
 #include "smcp/new_smcp/node.hpp"
 #include "smcp/new_smcp/pdu.hpp"
 
 namespace smcp::proto {
 
-class FaultProto : public comm::Proto<Packet> {
+class FaultProto : public comm::Proto<Frame> {
 public:
     explicit FaultProto(Node& node) noexcept
         : Proto(node)
@@ -33,7 +33,7 @@ public:
         }
     }
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t) noexcept override
     {
         SMCP_IF_MSG(Fault) {
             _node.onFault(pkt.src, body);
@@ -50,7 +50,7 @@ public:
     }
 
 protected:
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t) noexcept override
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t) noexcept override
     {
         if (!_pending || _inFlight) {
             return false;
@@ -58,13 +58,13 @@ protected:
         out = {};
         out.dst = addr_t::kBroadcast;
         out.txn = 0;
-        _pdu.pack(out.msg);
+        _pdu.pack(out);
         _inFlight = true;
         _pending = false;
         return true;
     }
 
-    void onTxDone(const Packet&, bool) noexcept override { _inFlight = false; }
+    void onTxDone(const Frame&, bool) noexcept override { _inFlight = false; }
 
 private:
     Node& _node;

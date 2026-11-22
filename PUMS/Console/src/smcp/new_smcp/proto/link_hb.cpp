@@ -72,7 +72,7 @@ void LinkHb::prepareTxMsg(Heartbeat::Msg msg) noexcept {
     _txState = txState::Ready;
 }
 
-bool LinkHb::onPacket(const Packet& pkt, MISC::time_t now) noexcept
+bool LinkHb::onPacket(const Frame& pkt, MISC::time_t now) noexcept
 {
     SMCP_IF_MSG(Heartbeat) {
         if (_status == Status::LostHb || _status == Status::PeerBusy) {
@@ -149,20 +149,20 @@ void LinkHb::abort() noexcept
     stop();
 }
 
-bool LinkHb::peekTx(Packet& out, MISC::time_t) noexcept
+bool LinkHb::peekTx(Frame& out, MISC::time_t) noexcept
 {
     if (_txState == txState::Ready) {
         _txState = txState::Packed;
         out = {};
         out.dst = _session.peer();
         out.txn = 0;
-        Heartbeat{_txMsg}.pack(out.msg);
+        Heartbeat{_txMsg}.pack(out);
         return true;
     }
     return false;
 }
 
-void LinkHb::onTxDone(const Packet&, bool ok) noexcept
+void LinkHb::onTxDone(const Frame&, bool ok) noexcept
 {
     if (_txState == txState::Packed) {
         _txState = ok ? txState::Sent : txState::Ready;

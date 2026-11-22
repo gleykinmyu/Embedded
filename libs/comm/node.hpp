@@ -8,8 +8,8 @@
  *
  * Окно TX — у ILink. Node кладёт owner в cookie send и забирает его из pollTx.
  *
- * Frame (больше полей Node не трогает):
- *   - конструируется как Frame{};
+ * Packet (больше полей Node не трогает):
+ *   - конструируется как Packet{};
  *   - src и dst одного типа addr_t, оба присваиваются.
  * addr_t:
  *   - static const addr_t kNone — пустой адрес;
@@ -25,31 +25,31 @@
 #include <type_traits>
 #include <utility>
 
-#include "comm/container.hpp"
 #include "comm/ilink.hpp"
-#include "comm/iproto.hpp"
+#include "comm/old/container.hpp"
+#include "comm/old/iproto.hpp"
 #include "ms_timer.hpp"
 
 namespace comm {
 
-template <typename Frame>
+template <typename Packet>
 class NcpBase;
 
 /**
  * Узел на среде: ILink + контейнер протоколов. Окно TX — у линка.
  */
-template <typename Frame>
-class Node : public ProtoContainer<Frame> {
-    friend class NcpBase<Frame>;
+template <typename Packet>
+class Node : public ProtoContainer<Packet> {
+    friend class NcpBase<Packet>;
 
 public:
-    using Proto = IProto<Frame>;
-    using Link = ILink<Frame>;
-    using addr_t = std::decay_t<decltype(std::declval<Frame>().src)>;
+    using Proto = IProto<Packet>;
+    using Link = ILink<Packet>;
+    using addr_t = std::decay_t<decltype(std::declval<Packet>().src)>;
     using TxResult = typename Link::TxResult;
 
-    static_assert(std::is_same_v<addr_t, std::decay_t<decltype(std::declval<Frame>().dst)>>,
-                  "Node: Frame::src and Frame::dst must have the same type");
+    static_assert(std::is_same_v<addr_t, std::decay_t<decltype(std::declval<Packet>().dst)>>,
+                  "Node: Packet::src and Packet::dst must have the same type");
 
     enum class State : uint8_t {
         Idle = 0, ///< до begin / после end
@@ -168,7 +168,7 @@ protected:
     virtual void onError(Error) noexcept {}
 
     /** Кадр нам — решает addr_t: self.accepts(dst). */
-    [[nodiscard]] bool accepts(const Frame& frame) const noexcept
+    [[nodiscard]] bool accepts(const Packet& frame) const noexcept
     {
         return _self_addr.accepts(frame.dst);
     }
@@ -198,7 +198,7 @@ private:
     {
         while (_link.txSpace() > 0u) {
             Proto* owner = nullptr;
-            Frame frame{};
+            Packet frame{};
             if (!this->peekTx(owner, frame, now) || owner == nullptr) {
                 break;
             }
@@ -212,7 +212,7 @@ private:
 
     void completeTx() noexcept
     {
-        Frame frame{};
+        Packet frame{};
         void* cookie = nullptr;
         TxResult result = TxResult::Ok;
         while (_link.pollTx(frame, cookie, result)) {
@@ -230,7 +230,7 @@ private:
 
     void pumpRx(MISC::time_t now) noexcept
     {
-        Frame frame{};
+        Packet frame{};
         while (_link.receive(frame)) {
             if (frame.src == addr_t::kNone) {
                 continue;
@@ -266,10 +266,10 @@ private:
  * В Listen узел обращается к ней по _ncp, не по месту в списке.
  * Потомкам — ready() и addrConflict().
  */
-template <typename Frame>
-class NcpBase : public ProtoBase<Frame> {
+template <typename Packet>
+class NcpBase : public ProtoBase<Packet> {
 public:
-    using NodeT = Node<Frame>;
+    using NodeT = Node<Packet>;
 
 protected:
     explicit NcpBase(NodeT& node) noexcept
@@ -289,20 +289,20 @@ protected:
  * В Listen Node зовёт onPacket по _ncp: src == наш адрес → addrConflict().
  * Окно истекло без конфликта → ready().
  */
-template <typename Frame>
-class Ncp : public NcpBase<Frame> {
+template <typename Packet>
+class Ncp : public NcpBase<Packet> {
 public:
-    using NodeT = typename NcpBase<Frame>::NodeT;
+    using NodeT = typename NcpBase<Packet>::NodeT;
 
     /** Окно тишины на шине, как у прежнего Node (~Heartbeat). */
     static constexpr MISC::time_t kListenMs = 200u;
 
     explicit Ncp(NodeT& node, MISC::time_t listenMs = kListenMs) noexcept
-        : NcpBase<Frame>(node)
+        : NcpBase<Packet>(node)
         , _listenMs(listenMs)
     {}
 
-    [[nodiscard]] bool onPacket(const Frame& frame, MISC::time_t) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& frame, MISC::time_t) noexcept override
     {
         const auto self = this->_node.selfAddr();
         if (self == decltype(self)::kNone || frame.src != self) {
@@ -328,7 +328,7 @@ public:
     void abort() noexcept override { _listen.stop(); }
 
 protected:
-    [[nodiscard]] bool peekTx(Frame&, MISC::time_t) noexcept override { return false; }
+    [[nodiscard]] bool peekTx(Packet&, MISC::time_t) noexcept override { return false; }
 
 private:
     MISC::time_t _listenMs;

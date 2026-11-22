@@ -1,6 +1,6 @@
 /**
  * @file new_smcp/ibuf.hpp
- * @brief Невладеющий буфер тела (Get/Set / MultiByte).
+ * @brief Невладеющий буфер тела (Get/Set / MultiFrame).
  */
 
 #pragma once

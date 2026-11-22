@@ -1,5 +1,5 @@
 /**
- * @file comm/container.hpp
+ * @file comm/old/container.hpp
  * @brief comm::ProtoContainer / Proto / ProtoChild / ProtoSlots / ProtoBank.
  *
  * Один список детей. peekTx — RR, owner пробрасывается до конечного протокола.
@@ -14,16 +14,16 @@
 
 #include "mem/list.hpp"
 #include "mem/visit.hpp"
-#include "comm/iproto.hpp"
+#include "comm/old/iproto.hpp"
 #include "obj_bank.hpp"
 
 namespace comm {
 
 /** Контейнер протоколов: список детей, RR в peekTx. */
-template <typename Frame>
-class ProtoContainer : public IProto<Frame> {
+template <typename Packet>
+class ProtoContainer : public IProto<Packet> {
 public:
-    using Proto = IProto<Frame>;
+    using Proto = IProto<Packet>;
 
     /** Обход детей. fn → bool, true — стоп. */
     template <typename Fn>
@@ -50,7 +50,7 @@ public:
     }
 
     /** С _cursor, один круг. Стоп на первом, у кого есть кадр. */
-    [[nodiscard]] bool peekTx(Proto*& owner, Frame& out,
+    [[nodiscard]] bool peekTx(Proto*& owner, Packet& out,
                               MISC::time_t now) noexcept override
     {
         if (_list.empty()) {
@@ -73,7 +73,7 @@ public:
         }
     }
 
-    [[nodiscard]] bool onPacket(const Frame& frame, MISC::time_t now) noexcept override
+    [[nodiscard]] bool onPacket(const Packet& frame, MISC::time_t now) noexcept override
     {
         bool taken = false;
         forEach([&](Proto& c) -> bool {
@@ -123,10 +123,10 @@ private:
  * Вложенный контейнер. Конструктор сам делает attach и хранит родителя.
  * parent() наследник может подменить.
  */
-template <typename Frame>
-class ProtoChild : public ProtoContainer<Frame> {
+template <typename Packet>
+class ProtoChild : public ProtoContainer<Packet> {
 public:
-    using Parent = ProtoContainer<Frame>;
+    using Parent = ProtoContainer<Packet>;
 
     [[nodiscard]] virtual Parent& parent() noexcept { return _parent; }
     [[nodiscard]] virtual const Parent& parent() const noexcept { return _parent; }
@@ -143,10 +143,10 @@ private:
 };
 
 /** Листовой протокол: ProtoBase + attach в _list контейнера. */
-template <typename Frame>
-class Proto : public ProtoBase<Frame> {
+template <typename Packet>
+class Proto : public ProtoBase<Packet> {
 protected:
-    explicit Proto(ProtoContainer<Frame>& box) noexcept
+    explicit Proto(ProtoContainer<Packet>& box) noexcept
     {
         box.attach(*this);
     }
@@ -156,9 +156,9 @@ protected:
  * Банк без массива: знает T, размера нет.
  * forEach приводит каждого ребёнка списка к T. В списке только слоты T.
  */
-template <typename T, typename Frame = typename T::frame_type>
-class ProtoSlots : public ProtoChild<Frame> {
-    static_assert(std::is_base_of_v<IProto<Frame>, T>, "ProtoSlots: T must derive from comm::IProto");
+template <typename T, typename Packet = typename T::packet_type>
+class ProtoSlots : public ProtoChild<Packet> {
+    static_assert(std::is_base_of_v<IProto<Packet>, T>, "ProtoSlots: T must derive from comm::IProto");
 
 public:
     using Slot = T;
@@ -166,7 +166,7 @@ public:
     template <typename Fn>
     void forEach(Fn&& fn) noexcept
     {
-        ProtoContainer<Frame>::forEach([&](IProto<Frame>& p) -> bool {
+        ProtoContainer<Packet>::forEach([&](IProto<Packet>& p) -> bool {
             return mem::detail::visit(fn, static_cast<T&>(p));
         });
     }
@@ -174,14 +174,14 @@ public:
     template <typename Fn>
     void forEach(Fn&& fn) const noexcept
     {
-        ProtoContainer<Frame>::forEach([&](const IProto<Frame>& p) -> bool {
+        ProtoContainer<Packet>::forEach([&](const IProto<Packet>& p) -> bool {
             return mem::detail::visit(fn, static_cast<const T&>(p));
         });
     }
 
 protected:
-    explicit ProtoSlots(ProtoContainer<Frame>& parent) noexcept
-        : ProtoChild<Frame>(parent)
+    explicit ProtoSlots(ProtoContainer<Packet>& parent) noexcept
+        : ProtoChild<Packet>(parent)
     {}
 };
 
@@ -191,14 +191,14 @@ protected:
  * По умолчанию Base = ProtoSlots&lt;T&gt;. Индекс слота в конструктор T не передаётся.
  *
  *   ProtoBank&lt;Leaf, 3&gt; leaves(box);
- *   ProtoBank&lt;Sess, N, SessionSlots&lt;Frame, Sess&gt;&gt; sessions(node);
+ *   ProtoBank&lt;Sess, N, SessionSlots&lt;Packet, Sess&gt;&gt; sessions(node);
  */
-template <typename T, uint8_t N, typename Base = ProtoSlots<T, typename T::frame_type>>
+template <typename T, uint8_t N, typename Base = ProtoSlots<T, typename T::packet_type>>
 class ProtoBank : public Base {
     static_assert(N >= 1u, "ProtoBank: N >= 1");
-    static_assert(std::is_base_of_v<ProtoSlots<T, typename Base::frame_type>, Base>,
+    static_assert(std::is_base_of_v<ProtoSlots<T, typename Base::packet_type>, Base>,
                   "ProtoBank: Base must derive from ProtoSlots<T>");
-    static_assert(std::is_constructible_v<T, ProtoContainer<typename Base::frame_type>&>,
+    static_assert(std::is_constructible_v<T, ProtoContainer<typename Base::packet_type>&>,
                   "ProtoBank: T(ProtoContainer&) must attach itself");
 
 public:

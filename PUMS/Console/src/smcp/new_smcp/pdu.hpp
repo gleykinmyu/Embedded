@@ -1,6 +1,6 @@
 /**
  * @file new_smcp/pdu.hpp
- * @brief Тонкие PDU: pack/unpack в Message (без логики протоколов).
+ * @brief Тонкие PDU: pack/unpack в Message или Frame (без логики протоколов).
  */
 
 #pragma once
@@ -9,24 +9,31 @@
 #include <cstdint>
 #include <cstring>
 
+#include "crc.hpp"
+#include "mem/byte_writer.hpp"
 #include "ms_timer.hpp"
-#include "smcp/new_smcp/message.hpp"
+#include "smcp/new_smcp/transport.hpp"
 
 namespace smcp {
+
+/** Макс. байт тела в одном Set: payload минус tag|index. */
+inline constexpr uint8_t kInlineMax = Message::kMaxLen - 2u;
 
 struct Ack {
     static constexpr MsgId kId = MsgId::Ack;
     static constexpr MISC::time_t kTimeoutMs = 100u;
     static constexpr uint8_t kRetry = 3u;
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
     }
-    [[nodiscard]] bool unpack(const Message& m) const noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) const noexcept
     {
-        return m.id == kId && m.dlc == 0u;
+        return m.id == kId && m.bodySize() == 0u;
     }
 };
 
@@ -48,27 +55,30 @@ struct Nack {
     Err error = Err::None;
     uint32_t detail = kDetailNone;
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
-        m.push(error);
-        m.pushU32(detail);
+        m.payload.push(error);
+        m.payload.pushU32(detail);
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
-        if (m.id != kId || m.dlc != 5u) {
+        if (m.id != kId || m.bodySize() != 5u) {
             return false;
         }
-        error = static_cast<Err>(m.data[0]);
-        detail = m.loadU32(1);
+        mem::IByteReader p{m.payload};
+        detail = p.pullU32();
+        error = static_cast<Err>(p.pull());
         return true;
     }
 };
 
 struct Fault {
     static constexpr MsgId kId = MsgId::Fault;
-    static constexpr uint8_t kDetailMax = Message::kMaxDlc - 1u;
+    static constexpr uint8_t kDetailMax = Message::kMaxLen - 1u;
 
     enum class Code : uint8_t {
         IdConflict = 0x01,
@@ -78,30 +88,36 @@ struct Fault {
     uint8_t detail_len = 0;
     uint8_t detail[kDetailMax]{};
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
         assert(detail_len <= kDetailMax);
         const uint8_t n = detail_len <= kDetailMax ? detail_len : kDetailMax;
-        m.push(reason);
+        m.payload.push(reason);
         for (uint8_t i = 0; i < n; ++i) {
-            m.push(detail[i]);
+            m.payload.push(detail[i]);
         }
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
-        if (m.id != kId || m.dlc < 1u) {
+        if (m.id != kId || m.bodySize() < 1u) {
             return false;
         }
-        reason = static_cast<Code>(m.data[0]);
-        detail_len = static_cast<uint8_t>(m.dlc - 1u);
+        mem::IByteReader p{m.payload};
+        detail_len = static_cast<uint8_t>(p.cursor() - 1u);
         if (detail_len > kDetailMax) {
             detail_len = kDetailMax;
         }
-        if (detail_len != 0u) {
-            std::memcpy(detail, m.data + 1, detail_len);
+        while (p.cursor() > static_cast<std::size_t>(detail_len) + 1u) {
+            (void)p.pull();
         }
+        for (uint8_t i = detail_len; i > 0u; --i) {
+            detail[i - 1u] = p.pull();
+        }
+        reason = static_cast<Code>(p.pull());
         return true;
     }
 };
@@ -121,27 +137,30 @@ struct Heartbeat {
 
     Msg msg = Msg::KeepAlive;
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
         if (msg != Msg::KeepAlive) {
-            m.push(msg);
+            m.payload.push(msg);
         }
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
         if (m.id != kId) {
             return false;
         }
-        if (m.dlc == 0u) {
+        if (m.bodySize() == 0u) {
             msg = Msg::KeepAlive;
             return true;
         }
-        if (m.dlc != 1u) {
+        if (m.bodySize() != 1u) {
             return false;
         }
-        msg = static_cast<Msg>(m.data[0]);
+        mem::IByteReader p{m.payload};
+        msg = static_cast<Msg>(p.pull());
         return true;
     }
 };
@@ -151,20 +170,23 @@ struct Get {
     uint8_t tag = 0;
     uint8_t index = kIndexAll;
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
-        m.push(tag);
-        m.push(index);
+        m.payload.push(tag);
+        m.payload.push(index);
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
-        if (m.id != kId || m.dlc != 2u) {
+        if (m.id != kId || m.bodySize() != 2u) {
             return false;
         }
-        tag = m.data[0];
-        index = m.data[1];
+        mem::IByteReader p{m.payload};
+        index = p.pull();
+        tag = p.pull();
         return true;
     }
 };
@@ -176,96 +198,111 @@ struct Set {
     uint8_t len = 0;
     uint8_t data[kInlineMax]{};
 
-    void pack(Message& m) const noexcept
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
         assert(len <= kInlineMax);
         const uint8_t n = len <= kInlineMax ? len : kInlineMax;
-        m.push(tag);
-        m.push(index);
+        m.payload.push(tag);
+        m.payload.push(index);
         for (uint8_t i = 0; i < n; ++i) {
-            m.push(data[i]);
+            m.payload.push(data[i]);
         }
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
-        if (m.id != kId || m.dlc < 2u) {
+        if (m.id != kId || m.bodySize() < 2u) {
             return false;
         }
-        tag = m.data[0];
-        index = m.data[1];
-        len = static_cast<uint8_t>(m.dlc - 2u);
+        mem::IByteReader p{m.payload};
+        len = static_cast<uint8_t>(p.cursor() - 2u);
         if (len > kInlineMax) {
             len = kInlineMax;
         }
-        if (len != 0u) {
-            std::memcpy(data, m.data + 2, len);
+        while (p.cursor() > static_cast<std::size_t>(len) + 2u) {
+            (void)p.pull();
         }
+        for (uint8_t i = len; i > 0u; --i) {
+            data[i - 1u] = p.pull();
+        }
+        index = p.pull();
+        tag = p.pull();
         return true;
     }
 };
 
-struct DataBegin {
-    static constexpr MsgId kId = MsgId::DataBegin;
+/**
+ * Единственный кадр длинного тела.
+ * [0..1] seq. Дальше kPayload байт.
+ * seq = 0: uint16 число чанков данных и CRC32 тела. Другая длина — не кадр.
+ * seq ≥ 1: байты чанка. Промежуточный чанк полный, последний может быть короче.
+ */
+struct SeqData {
+    static constexpr MsgId kId = MsgId::SeqData;
     static constexpr MISC::time_t kTimeoutMs = 100u;
-    uint8_t tag = 0;
-    uint8_t index = kIndexAll;
-    uint16_t size = 0;
-    uint32_t crc32 = 0;
+    static constexpr uint8_t kPayload = Message::kMaxLen - 2u;
 
-    void pack(Message& m) const noexcept
-    {
-        m.clear();
-        m.id = kId;
-        m.push(tag);
-        m.push(index);
-        m.pushU16(size);
-        m.pushU32(crc32);
-    }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
-    {
-        if (m.id != kId || m.dlc != 8u) {
-            return false;
-        }
-        tag = m.data[0];
-        index = m.data[1];
-        size = m.loadU16(2);
-        crc32 = m.loadU32(4);
-        return size >= 1u;
-    }
-};
-
-struct Data {
-    static constexpr MsgId kId = MsgId::Data;
     uint16_t seq = 0;
-    uint8_t len = 0;
-    uint8_t data[kInlineMax]{};
+    union {
+        struct {
+            uint16_t chunks;
+            MISC::Crc32 crc32;
+        } first;
+        struct {
+            uint8_t len;
+            uint8_t data[kPayload];
+        } chunk;
+    };
 
-    void pack(Message& m) const noexcept
+    SeqData() noexcept : first{} {}
+
+    template <typename M>
+    void pack(M& m) const noexcept
     {
         m.clear();
         m.id = kId;
-        assert(len <= kInlineMax);
-        const uint8_t n = len <= kInlineMax ? len : kInlineMax;
-        m.pushU16(seq);
+        m.payload.pushU16(seq);
+        if (seq == 0u) {
+            m.payload.pushU16(first.chunks);
+            m.payload.pushU32(first.crc32.value());
+            return;
+        }
+        assert(chunk.len <= kPayload);
+        const uint8_t n = chunk.len <= kPayload ? chunk.len : kPayload;
         for (uint8_t i = 0; i < n; ++i) {
-            m.push(data[i]);
+            m.payload.push(chunk.data[i]);
         }
     }
-    [[nodiscard]] bool unpack(const Message& m) noexcept
+
+    template <typename M>
+    [[nodiscard]] bool unpack(const M& m) noexcept
     {
-        if (m.id != kId || m.dlc < 2u) {
+        if (m.id != kId || m.bodySize() < 2u) {
             return false;
         }
-        seq = m.loadU16(0);
-        len = static_cast<uint8_t>(m.dlc - 2u);
-        if (len > kInlineMax) {
-            len = kInlineMax;
+        mem::IByteReader p{m.payload};
+        const uint8_t* d = p.data();
+        seq = static_cast<uint16_t>(d[0] | (static_cast<uint16_t>(d[1]) << 8));
+        if (seq == 0u) {
+            if (m.bodySize() != 2u + 2u + 4u) {
+                return false;
+            }
+            first.crc32.setValue(p.pullU32());
+            first.chunks = p.pullU16();
+            seq = p.pullU16();
+            return true;
         }
-        if (len != 0u) {
-            std::memcpy(data, m.data + 2, len);
+        chunk.len = static_cast<uint8_t>(p.cursor() - 2u);
+        if (chunk.len == 0u || chunk.len > kPayload) {
+            return false;
         }
+        for (uint8_t i = chunk.len; i > 0u; --i) {
+            chunk.data[i - 1u] = p.pull();
+        }
+        seq = p.pullU16();
         return true;
     }
 };

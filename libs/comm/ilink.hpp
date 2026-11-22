@@ -13,7 +13,7 @@
 
 namespace comm {
 
-template <typename Frame>
+template <typename Packet>
 class ILink {
 public:
     enum class State : uint8_t {
@@ -41,20 +41,20 @@ public:
     [[nodiscard]] virtual std::size_t txBusy() const noexcept = 0;
 
     /** send(frame, nullptr). */
-    [[nodiscard]] bool send(const Frame& frame) noexcept { return send(frame, nullptr); }
+    [[nodiscard]] bool send(const Packet& frame) noexcept { return send(frame, nullptr); }
 
     /**
      * Принять @a frame в слот среды вместе с @a cookie (может быть nullptr).
      * @return false — Closed / Fault / нет места.
      */
-    [[nodiscard]] virtual bool send(const Frame& frame, void* cookie) noexcept = 0;
+    [[nodiscard]] virtual bool send(const Packet& frame, void* cookie) noexcept = 0;
 
     /**
      * Один завершённый слот: кадр, cookie из send, исход.
      * Порядок — как отдаёт среда (не обязательно FIFO).
      * @return false — завершений нет.
      */
-    [[nodiscard]] virtual bool pollTx(Frame& frame, void*& cookie,
+    [[nodiscard]] virtual bool pollTx(Packet& frame, void*& cookie,
                                       TxResult& result) noexcept = 0;
 
     /** Слоты в полёте завершатся через pollTx как Failed. */
@@ -64,7 +64,7 @@ public:
      * Один входящий кадр.
      * @return false — пусто / Closed / Fault.
      */
-    [[nodiscard]] virtual bool receive(Frame& out) noexcept = 0;
+    [[nodiscard]] virtual bool receive(Packet& out) noexcept = 0;
 
 protected:
     ILink() = default;

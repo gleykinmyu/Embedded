@@ -1,9 +1,10 @@
 /**
  * @file new_smcp/proto/tagged.hpp
- * @brief Get / Set opener + короткое тело; длинное — MultiByte.
+ * @brief Get / Set opener + короткое тело; длинное — MultiFrame (SeqData).
  *
  * Клиент: get/set → onReply / onSetAck.
- * Сервер: onGet / onSetBuffer+onSet → sendBody / Ack|Nack.
+ * Сервер: onGet / onSetOpen+receive → sendBody / Ack|Nack.
+ * Короткий Set копируется через onSetBuffer. Длинный — буфер в receive до SeqData.
  */
 
 #pragma once
@@ -11,12 +12,12 @@
 #include <cstdint>
 #include <cstring>
 
-#include "comm/container.hpp"
+#include "comm/old/container.hpp"
 #include "ms_timer.hpp"
 #include "smcp/new_smcp/ibuf.hpp"
-#include "smcp/new_smcp/packet.hpp"
+#include "smcp/new_smcp/transport.hpp"
 #include "smcp/new_smcp/pdu.hpp"
-#include "smcp/new_smcp/proto/multibyte.hpp"
+#include "smcp/new_smcp/proto/multiframe.hpp"
 
 namespace smcp::proto {
 
@@ -26,11 +27,19 @@ struct ITaggedSink {
     virtual void onGet(const Get& body, uint8_t txn) noexcept = 0;
 
     /**
-     * NeedBuf / inline Set: отдать буфер ≥ size.
+     * Короткий Set: отдать буфер ≥ size.
      * @return false — NotSupported.
      */
     [[nodiscard]] virtual bool onSetBuffer(uint8_t tag, uint8_t index, uint8_t txn,
                                            uint16_t size, IBuf& buf) noexcept = 0;
+
+    /** Set без тела: договорились о SeqData. Приём — receive(buf) из этого вызова. */
+    virtual void onSetOpen(uint8_t tag, uint8_t index, uint8_t txn) noexcept
+    {
+        (void)tag;
+        (void)index;
+        (void)txn;
+    }
 
     /** Тело Set принято (транспорт Ok). Err::None → Ack, иначе Nack. */
     [[nodiscard]] virtual Err onSet(uint8_t tag, uint8_t index,
@@ -38,7 +47,7 @@ struct ITaggedSink {
 
     /** Итог своего Get (клиент). */
     virtual void onReply(uint8_t tag, uint8_t index, const IBuf& buf,
-                         MultiByte::Error err) noexcept = 0;
+                         MultiFrame::Error err) noexcept = 0;
 
     /** Итог своего Set (клиент): ok или Nack. */
     virtual void onSetAck(uint8_t tag, uint8_t index, bool ok,
@@ -48,7 +57,7 @@ protected:
     ~ITaggedSink() = default;
 };
 
-class Tagged : public comm::Proto<Packet>, private MultiByteClient {
+class Tagged : public comm::Proto<Frame>, private comm::IJobOwner {
 public:
     enum class State : uint8_t {
         Idle = 0,
@@ -62,10 +71,10 @@ public:
 
     enum class Result : uint8_t { Ok = 0, Busy, Fail };
 
-    Tagged(SessionT& session, MultiByte& mb, ITaggedSink* sink = nullptr) noexcept
+    Tagged(SessionT& session, MultiFrame& xfer, ITaggedSink* sink = nullptr) noexcept
         : Proto(session)
         , _session(session)
-        , _mb(mb)
+        , _xfer(xfer)
         , _sink(sink)
         , _ack(Ack::kRetry)
     {}
@@ -105,9 +114,8 @@ public:
             return Result::Ok;
         }
 
-        if (!_mb.armTx(tag, buf, txn, this, index)) {
-            return Result::Fail;
-        }
+        _txBuf = buf;
+        _deferTx = true;
         Set body{};
         body.tag = tag;
         body.index = index;
@@ -135,7 +143,11 @@ public:
         if (txn == 0u) {
             return Result::Fail;
         }
-        if (!_mb.armRx(tag, txn, _now, this, buf, index)) {
+        _pend.txn = txn;
+        _pend.tag = tag;
+        _pend.index = index;
+        if (!submitRx(buf)) {
+            _pend = {};
             return Result::Fail;
         }
         Get body{};
@@ -151,34 +163,38 @@ public:
         return Result::Ok;
     }
 
-    /** Ответ на Get: short Data или DataBegin→Data*. */
+    /** Ответ на Get: всегда SeqData, даже короткое тело. */
     [[nodiscard]] bool sendBody(uint8_t tag, const IBuf& buf, uint8_t txn,
                                 uint8_t index = kIndexAll) noexcept
     {
         if (!_session.isOpen() || txn == 0u || buf.size == 0u || buf.data == nullptr) {
             return false;
         }
-        if (buf.size <= kInlineMax) {
-            Data d{};
-            d.seq = 0;
-            d.len = static_cast<uint8_t>(buf.size);
-            std::memcpy(d.data, buf.data, d.len);
-            queueOut(txn, [&](Message& m) { d.pack(m); });
-            return true;
-        }
         if (isBusy()) {
             return false;
         }
-        if (!_mb.armTx(tag, buf, txn, this, index)) {
+        _pend.txn = txn;
+        _pend.tag = tag;
+        _pend.index = index;
+        if (!submitTx(buf)) {
             return false;
         }
         _state = State::GetReply;
         return true;
     }
 
+    /** Приём SeqData в уже известный буфер. Зовут из onSetOpen. */
+    [[nodiscard]] bool receive(const IBuf& buf) noexcept
+    {
+        if (_state != State::SetIn || _job.isBusy()) {
+            return false;
+        }
+        return submitRx(buf);
+    }
+
     void sendAck(uint8_t txn) noexcept
     {
-        queueOut(txn, [](Message& m) { Ack{}.pack(m); });
+        queueOut(txn, [](Frame& m) { Ack{}.pack(m); });
     }
 
     void sendNack(uint8_t txn, Err err, uint32_t detail = Nack::kDetailNone) noexcept
@@ -186,10 +202,10 @@ public:
         Nack n{};
         n.error = err;
         n.detail = detail;
-        queueOut(txn, [&](Message& m) { n.pack(m); });
+        queueOut(txn, [&](Frame& m) { n.pack(m); });
     }
 
-    [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override
+    [[nodiscard]] bool onPacket(const Frame& pkt, MISC::time_t now) noexcept override
     {
         _now = now;
         if (!_session.isOpen()) {
@@ -224,17 +240,10 @@ public:
                 return true;
             }
             if (_state == State::GetAsk) {
-                failGet(MultiByte::Error::Abort);
+                failGet(MultiFrame::Error::Abort);
                 return true;
             }
             return false;
-        }
-        SMCP_IF_MSG(Data) {
-            if (_state != State::GetAsk || txn != _pend.txn || _mb.isData()) {
-                return false;
-            }
-            finishShortData(body);
-            return true;
         }
         SMCP_IF_MSG(Get) {
             if (_sink != nullptr) {
@@ -248,12 +257,13 @@ public:
                 return true;
             }
             if (body.len == 0u) {
-                if (!_mb.armRx(body.tag, txn, now, this, {}, body.index)) {
-                    sendNack(txn, Err::Body,
-                             static_cast<uint32_t>(MultiByte::Error::NotArmed));
-                    return true;
-                }
+                _pend.txn = txn;
+                _pend.tag = body.tag;
+                _pend.index = body.index;
                 _state = State::SetIn;
+                if (_sink != nullptr) {
+                    _sink->onSetOpen(body.tag, body.index, txn);
+                }
                 return true;
             }
             IBuf buf{};
@@ -265,7 +275,7 @@ public:
             }
             std::memcpy(buf.data, body.data, body.len);
             buf.size = body.len;
-            finishSetIn(body.tag, body.index, buf, MultiByte::Error::None, txn);
+            finishSetIn(body.tag, body.index, buf, MultiFrame::Error::None, txn);
             return true;
         }
         return false;
@@ -292,34 +302,31 @@ public:
 
     void abort() noexcept override
     {
-        _mb.abort();
-        if (_state == State::GetAsk) {
-            failGet(MultiByte::Error::Abort);
+        if (_job.isBusy()) {
+            _xfer.abort();
             return;
         }
-        if (_state == State::SetIn) {
-            finishSetIn(_mb.tag(), _mb.index(), _mb.bufReceived(),
-                        MultiByte::Error::Abort, _mb.txn());
-            reset();
+        if (_state == State::GetAsk) {
+            failGet(MultiFrame::Error::Abort);
             return;
         }
         if (isSetOut()) {
             Nack n{};
             n.error = Err::Body;
-            n.detail = static_cast<uint32_t>(MultiByte::Error::Abort);
+            n.detail = static_cast<uint32_t>(MultiFrame::Error::Abort);
             const uint8_t tag = _pend.tag;
             const uint8_t index = _pend.index;
-            reset();
+            resetLocal();
             if (_sink != nullptr) {
                 _sink->onSetAck(tag, index, false, n);
             }
             return;
         }
-        reset();
+        resetLocal();
     }
 
 protected:
-    [[nodiscard]] bool peekTx(Packet& out, MISC::time_t now) noexcept override
+    [[nodiscard]] bool peekTx(Frame& out, MISC::time_t now) noexcept override
     {
         _now = now;
         if (_inFlight || !_session.isOpen()) {
@@ -339,7 +346,7 @@ protected:
             out = {};
             out.dst = _session.peer();
             out.txn = _pend.txn;
-            out.msg = _pend.msg;
+            out.copyBody(_pend.msg);
             _inFlight = true;
             _wireOut = false;
             return true;
@@ -347,7 +354,7 @@ protected:
         return false;
     }
 
-    void onTxDone(const Packet&, bool ok) noexcept override
+    void onTxDone(const Frame&, bool ok) noexcept override
     {
         _inFlight = false;
         if (_wireOut) {
@@ -363,7 +370,7 @@ protected:
         _pend.sent = true;
         if (!ok) {
             if (_state == State::GetAsk) {
-                failGet(MultiByte::Error::Abort);
+                failGet(MultiFrame::Error::Abort);
             } else if (isSetOut()) {
                 Nack n{};
                 n.error = Err::Body;
@@ -378,8 +385,21 @@ protected:
         }
         if (_state == State::SetOutInline) {
             beginAck(_now);
+            return;
         }
-        // GetAsk / SetOut: opener ушёл; ждём Data / MB / Ack после тела
+        if (_state == State::SetOut && _deferTx) {
+            _deferTx = false;
+            if (!submitTx(_txBuf)) {
+                Nack n{};
+                n.error = Err::Body;
+                const uint8_t tag = _pend.tag;
+                const uint8_t index = _pend.index;
+                resetLocal();
+                if (_sink != nullptr) {
+                    _sink->onSetAck(tag, index, false, n);
+                }
+            }
+        }
     }
 
 private:
@@ -402,11 +422,21 @@ private:
 
     void reset() noexcept
     {
-        _mb.resetXfer();
+        if (_job.isBusy()) {
+            _xfer.abort();
+            return;
+        }
+        resetLocal();
+    }
+
+    void resetLocal() noexcept
+    {
         _state = State::Idle;
         _pend = {};
         _ack.clear();
         _outPending = false;
+        _deferTx = false;
+        _txBuf = {};
     }
 
     void beginAck(MISC::time_t now) noexcept
@@ -432,46 +462,26 @@ private:
         }
     }
 
-    void failGet(MultiByte::Error err) noexcept
+    void failGet(MultiFrame::Error err) noexcept
     {
-        readOpenerTag();
-        const uint8_t tag = _pend.tag;
-        const uint8_t index = _pend.index;
-        const IBuf got = _mb.bufReceived();
-        reset();
-        if (_sink != nullptr) {
-            _sink->onReply(tag, index, got, err);
-        }
-    }
-
-    void finishShortData(const Data& chunk) noexcept
-    {
-        if (chunk.seq != 0u) {
-            failGet(MultiByte::Error::Seq);
+        if (_job.isBusy()) {
+            _job.error = err;
+            _xfer.abort();
             return;
-        }
-        const IBuf dst = _mb.bufReserved();
-        if (chunk.len > dst.size) {
-            failGet(MultiByte::Error::Overflow);
-            return;
-        }
-        if (chunk.len > 0u && dst.data != nullptr) {
-            std::memcpy(dst.data, chunk.data, chunk.len);
         }
         readOpenerTag();
         const uint8_t tag = _pend.tag;
         const uint8_t index = _pend.index;
-        const IBuf got{dst.data, chunk.len};
-        reset();
+        resetLocal();
         if (_sink != nullptr) {
-            _sink->onReply(tag, index, got, MultiByte::Error::None);
+            _sink->onReply(tag, index, {}, err);
         }
     }
 
     void finishSetIn(uint8_t tag, uint8_t index, const IBuf& buf,
-                     MultiByte::Error err, uint8_t txn) noexcept
+                     MultiFrame::Error err, uint8_t txn) noexcept
     {
-        if (err != MultiByte::Error::None) {
+        if (err != MultiFrame::Error::None) {
             if (txn != 0u) {
                 sendNack(txn, Err::Body, static_cast<uint32_t>(err));
             }
@@ -493,7 +503,7 @@ private:
     {
         _out = {};
         _out.txn = txn;
-        packMsg(_out.msg);
+        packMsg(_out);
         _outPending = true;
     }
 
@@ -511,74 +521,83 @@ private:
         return 0;
     }
 
-    // MultiByteClient
-    [[nodiscard]] bool onMbBuffer(uint8_t tag, uint8_t index, uint8_t txn_id,
-                                  uint16_t size, IBuf& buf) noexcept override
+    void onDone(comm::Job& job) noexcept override
     {
-        if (_sink == nullptr
-            || !_sink->onSetBuffer(tag, index, txn_id, size, buf)
-            || buf.size < size || (size > 0u && buf.data == nullptr)) {
-            sendNack(txn_id, Err::NotSupported);
-            reset();
+        auto& frame = static_cast<FrameJob&>(job);
+        const MultiFrame::Error err = frame.status() == comm::Job::Status::Ok
+            ? MultiFrame::Error::None
+            : (frame.error == MultiFrame::Error::None ? MultiFrame::Error::Abort : frame.error);
+        const IBuf view{frame.buf.data, frame.got};
+        const uint8_t tag = _pend.tag;
+        const uint8_t index = _pend.index;
+        const uint8_t txn = frame.txn;
+        const State st = _state;
+
+        if (st == State::GetAsk) {
+            resetLocal();
+            if (_sink != nullptr) {
+                _sink->onReply(tag, index, view, err);
+            }
+            return;
+        }
+        if (st == State::SetIn) {
+            resetLocal();
+            finishSetIn(tag, index, view, err, txn);
+            return;
+        }
+        if (st == State::SetOut) {
+            if (err == MultiFrame::Error::None) {
+                beginAck(_now);
+                return;
+            }
+            Nack n{};
+            n.error = Err::Body;
+            n.detail = static_cast<uint32_t>(err);
+            resetLocal();
+            if (_sink != nullptr) {
+                _sink->onSetAck(tag, index, false, n);
+            }
+            return;
+        }
+        if (st == State::GetReply) {
+            resetLocal();
+        }
+    }
+
+    [[nodiscard]] bool submitTx(const IBuf& buf) noexcept
+    {
+        return submit(buf, FrameJob::Dir::Tx);
+    }
+
+    [[nodiscard]] bool submitRx(const IBuf& buf) noexcept
+    {
+        return submit(buf, FrameJob::Dir::Rx);
+    }
+
+    [[nodiscard]] bool submit(const IBuf& buf, FrameJob::Dir dir) noexcept
+    {
+        if (_job.isBusy() || _pend.txn == 0u) {
             return false;
         }
-        return true;
-    }
-
-    void onMbResult(uint8_t tag, uint8_t index, const IBuf& buf,
-                    MultiByte::Error err) noexcept override
-    {
-        if (_state == State::GetAsk) {
-            reset();
-            if (_sink != nullptr) {
-                _sink->onReply(tag, index, buf, err);
-            }
-            return;
-        }
-        if (_state == State::SetIn) {
-            const uint8_t txn = _mb.txn();
-            finishSetIn(tag, index, buf, err, txn);
-            reset();
-            return;
-        }
-        if (_state == State::GetReply || _state == State::SetOut) {
-            // TX fail mid-body
-            if (_state == State::SetOut) {
-                Nack n{};
-                n.error = Err::Body;
-                n.detail = static_cast<uint32_t>(err);
-                const uint8_t t = _pend.tag;
-                const uint8_t i = _pend.index;
-                readOpenerTag();
-                reset();
-                if (_sink != nullptr) {
-                    _sink->onSetAck(t != 0u ? t : tag, i != 0u ? i : index, false, n);
-                }
-            } else {
-                reset();
-            }
-        }
-    }
-
-    void onMbTxDone() noexcept override
-    {
-        if (_state == State::SetOut) {
-            readOpenerTag();
-            _mb.resetXfer();
-            beginAck(_now);
-            return;
-        }
-        // GetReply
-        reset();
+        _job.buf = buf;
+        _job.txn = _pend.txn;
+        _job.dir = dir;
+        _job.error = MultiFrame::Error::None;
+        _job.got = 0;
+        _job.owner = this;
+        return _xfer.submit(_job);
     }
 
     SessionT& _session;
-    MultiByte& _mb;
+    MultiFrame& _xfer;
     ITaggedSink* _sink = nullptr;
     State _state = State::Idle;
     PendSlot _pend{};
+    FrameJob _job{};
+    IBuf _txBuf{};
+    bool _deferTx = false;
     MISC::ReplyTimer _ack;
-    Packet _out{};
+    Frame _out{};
     bool _outPending = false;
     bool _inFlight = false;
     bool _wireOut = false;
