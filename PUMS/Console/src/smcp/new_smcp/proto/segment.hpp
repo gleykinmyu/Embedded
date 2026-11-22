@@ -9,7 +9,7 @@
 
 #include "comm/container.hpp"
 #include "smcp/new_smcp/packet.hpp"
-#include "smcp/new_smcp/message.hpp"
+#include "smcp/new_smcp/proto/msg/frame.hpp"
 
 namespace smcp::proto {
 
@@ -30,16 +30,16 @@ public:
 
     void setSink(ISegmentSink* sink) noexcept { _sink = sink; }
 
-    [[nodiscard]] static bool isSegmentMsg(MsgId id) noexcept
+    [[nodiscard]] static bool isSegmentMsg(proto::msg::Id id) noexcept
     {
         switch (id) {
-        case MsgId::Select:
-        case MsgId::Block:
-        case MsgId::SetTarget:
-        case MsgId::GetTelemetry:
-        case MsgId::ResetFault:
-        case MsgId::ServiceAccess:
-        case MsgId::Telemetry:
+        case proto::msg::Id::Select:
+        case proto::msg::Id::Block:
+        case proto::msg::Id::SetTarget:
+        case proto::msg::Id::GetTelemetry:
+        case proto::msg::Id::ResetFault:
+        case proto::msg::Id::ServiceAccess:
+        case proto::msg::Id::Telemetry:
             return true;
         default:
             return false;

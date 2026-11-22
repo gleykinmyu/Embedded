@@ -83,7 +83,7 @@ public:
 
     [[nodiscard]] bool armRx(uint8_t tag, uint8_t txn_id, MISC::time_t now,
                              MultiByteClient* client, const IBuf& buf = {},
-                             uint8_t index = kIndexAll) noexcept
+                             uint8_t index = proto::msg::kIndexAll) noexcept
     {
         return arm(tag, index, buf, false, txn_id, now, client);
     }
@@ -102,7 +102,7 @@ public:
 
     [[nodiscard]] bool armTx(uint8_t tag, const IBuf& buf, uint8_t txn_id,
                              MultiByteClient* client,
-                             uint8_t index = kIndexAll) noexcept
+                             uint8_t index = proto::msg::kIndexAll) noexcept
     {
         return arm(tag, index, buf, true, txn_id, 0u, client);
     }
@@ -265,7 +265,7 @@ private:
             fail(Error::Unexpected);
             return Result::Fail;
         }
-        if (chunk.len > kInlineMax) {
+        if (chunk.len > proto::msg::kInlineMax) {
             fail(Error::Unexpected);
             return Result::Fail;
         }
@@ -330,7 +330,7 @@ private:
             return 0u;
         }
         const uint16_t left = static_cast<uint16_t>(_xfer.size - _xfer.offset);
-        return (left > kInlineMax) ? kInlineMax : static_cast<uint8_t>(left);
+        return (left > proto::msg::kInlineMax) ? proto::msg::kInlineMax : static_cast<uint8_t>(left);
     }
 
     Session& _session;

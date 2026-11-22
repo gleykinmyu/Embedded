@@ -7,7 +7,7 @@
 | файл | роль |
 |---|---|
 | `addr.hpp` | `addr_t` для `comm::Node` |
-| `message.hpp` | **один** `MsgId` + `Message` |
+| `proto/msg/frame.hpp` | **один** `MsgId` + `Message` |
 | `packet.hpp` | `Packet` = Frame (`src`/`dst`/`txn`/`msg`) |
 | `pdu.hpp` | pack/unpack служебных PDU |
 | `session_bank.hpp` | `SessionBank<N>`: сессии + `LinkHbRoute` |

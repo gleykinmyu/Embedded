@@ -76,7 +76,7 @@ public:
     [[nodiscard]] State state() const noexcept { return _state; }
 
     [[nodiscard]] Result set(uint8_t tag, const IBuf& buf,
-                             uint8_t index = kIndexAll) noexcept
+                             uint8_t index = proto::msg::kIndexAll) noexcept
     {
         if (!_session.isOpen() || buf.size == 0u || buf.data == nullptr) {
             return Result::Fail;
@@ -89,7 +89,7 @@ public:
             return Result::Fail;
         }
 
-        if (buf.size <= kInlineMax) {
+        if (buf.size <= proto::msg::kInlineMax) {
             Set body{};
             body.tag = tag;
             body.index = index;
@@ -123,7 +123,7 @@ public:
     }
 
     [[nodiscard]] Result get(uint8_t tag, IBuf& buf,
-                             uint8_t index = kIndexAll) noexcept
+                             uint8_t index = proto::msg::kIndexAll) noexcept
     {
         if (!_session.isOpen() || buf.data == nullptr || buf.size == 0u) {
             return Result::Fail;
@@ -153,17 +153,17 @@ public:
 
     /** Ответ на Get: short Data или DataBegin→Data*. */
     [[nodiscard]] bool sendBody(uint8_t tag, const IBuf& buf, uint8_t txn,
-                                uint8_t index = kIndexAll) noexcept
+                                uint8_t index = proto::msg::kIndexAll) noexcept
     {
         if (!_session.isOpen() || txn == 0u || buf.size == 0u || buf.data == nullptr) {
             return false;
         }
-        if (buf.size <= kInlineMax) {
+        if (buf.size <= proto::msg::kInlineMax) {
             Data d{};
             d.seq = 0;
             d.len = static_cast<uint8_t>(buf.size);
             std::memcpy(d.data, buf.data, d.len);
-            queueOut(txn, [&](Message& m) { d.pack(m); });
+            queueOut(txn, [&](proto::msg::Frame& m) { d.pack(m); });
             return true;
         }
         if (isBusy()) {
@@ -178,7 +178,7 @@ public:
 
     void sendAck(uint8_t txn) noexcept
     {
-        queueOut(txn, [](Message& m) { Ack{}.pack(m); });
+        queueOut(txn, [](proto::msg::Frame& m) { Ack{}.pack(m); });
     }
 
     void sendNack(uint8_t txn, Err err, uint32_t detail = Nack::kDetailNone) noexcept
@@ -186,7 +186,7 @@ public:
         Nack n{};
         n.error = err;
         n.detail = detail;
-        queueOut(txn, [&](Message& m) { n.pack(m); });
+        queueOut(txn, [&](proto::msg::Frame& m) { n.pack(m); });
     }
 
     [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override
@@ -391,7 +391,7 @@ private:
         uint8_t tag = 0;
         uint8_t index = 0;
         bool sent = false;
-        Message msg{};
+        proto::msg::Frame msg{};
     };
 
     [[nodiscard]] bool isSetOut() const noexcept
@@ -499,9 +499,9 @@ private:
 
     [[nodiscard]] uint8_t allocTxn() noexcept
     {
-        for (uint8_t n = 0; n < kTxnIdMax; ++n) {
+        for (uint8_t n = 0; n < proto::msg::kTxnIdMax; ++n) {
             uint8_t t = _nextTxn++;
-            if (_nextTxn == 0u || _nextTxn > kTxnIdMax) {
+            if (_nextTxn == 0u || _nextTxn > proto::msg::kTxnIdMax) {
                 _nextTxn = 1u;
             }
             if (t != 0u) {

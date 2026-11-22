@@ -10,4 +10,5 @@
 #include "comm/job.hpp"
 #include "comm/job_net.hpp"
 #include "comm/node.hpp"
+#include "comm/payload.hpp"
 #include "comm/session.hpp"

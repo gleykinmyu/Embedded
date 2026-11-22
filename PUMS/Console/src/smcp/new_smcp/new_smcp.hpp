@@ -1,12 +1,12 @@
 /**
  * @file new_smcp/new_smcp.hpp
- * @brief Новый SMCP на comm: Packet / MsgId / PDU / proto/.
+ * @brief Новый SMCP на comm: Packet / Id / PDU / proto/.
  */
 #pragma once
 
 #include "comm/comm.hpp"
 #include "smcp/new_smcp/addr.hpp"
-#include "smcp/new_smcp/message.hpp"
+#include "smcp/new_smcp/proto/msg/frame.hpp"
 #include "smcp/new_smcp/packet.hpp"
 #include "smcp/new_smcp/pdu.hpp"
 #include "smcp/new_smcp/node.hpp"

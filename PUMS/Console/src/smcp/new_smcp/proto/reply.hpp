@@ -15,9 +15,9 @@
 
 namespace smcp::proto {
 
-/** Задача short RPC: исходящий Message + итог Nack при Failed. */
+/** Задача short RPC: исходящий proto::msg::Frame + итог Nack при Failed. */
 struct RequestJob : comm::JobNet {
-    Message req{};
+    proto::msg::Frame req{};
     Nack nack{}; ///< при Failed / Timeout (error=Timeout)
 };
 
@@ -66,8 +66,8 @@ public:
 
     [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t) noexcept override
     {
-        const MsgId id = pkt.msg.id;
-        if (id != MsgId::Ack && id != MsgId::Nack) {
+        const proto::msg::Id id = pkt.msg.id;
+        if (id != proto::msg::Id::Ack && id != proto::msg::Id::Nack) {
             return false;
         }
         // Active после onTxDone; Queued/_wire — если Ack пришёл раньше start.
@@ -161,9 +161,9 @@ private:
 
     [[nodiscard]] uint8_t allocTxn() noexcept
     {
-        for (uint8_t n = 0; n < kTxnIdMax; ++n) {
+        for (uint8_t n = 0; n < proto::msg::kTxnIdMax; ++n) {
             uint8_t t = _nextTxn++;
-            if (_nextTxn == 0u || _nextTxn > kTxnIdMax) {
+            if (_nextTxn == 0u || _nextTxn > proto::msg::kTxnIdMax) {
                 _nextTxn = 1u;
             }
             if (t == 0u) {

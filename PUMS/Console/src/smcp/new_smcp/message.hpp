@@ -12,10 +12,10 @@
 
 #pragma once
 
-#include <cassert>
 #include <cstdint>
-#include <cstring>
-#include <type_traits>
+
+#include "comm/payload.hpp"
+#include "smcp/new_smcp/proto/base/frame.hpp"
 
 namespace smcp {
 
@@ -49,77 +49,15 @@ enum class MsgId : uint8_t {
     Telemetry = 0x40,
 };
 
-/** Payload кадра (до 8 байт). id = MsgId. */
+/** Кадр: id = MsgId, payload — байты data CAN. */
 struct Message {
-    static constexpr uint8_t kMaxDlc = 8u;
+    using FramePayload = decltype(FrameBase{}.payload);
+    /** Байт в data кадра: из FrameBase уходит то, что не поместилось в CAN ID. */
+    static constexpr uint8_t kMaxDlc = static_cast<uint8_t>(
+        FramePayload::kLenMax - FramePayload::kLenMin);
 
     MsgId id{};
-    uint8_t dlc = 0;
-    uint8_t data[kMaxDlc]{};
-
-    void clear() noexcept
-    {
-        id = MsgId{};
-        dlc = 0;
-        std::memset(data, 0, sizeof(data));
-    }
-
-    void setPayload(const uint8_t* src, uint8_t n) noexcept
-    {
-        if (src == nullptr) {
-            n = 0;
-        }
-        if (n > kMaxDlc) {
-            n = kMaxDlc;
-        }
-        dlc = n;
-        if (n != 0u) {
-            std::memcpy(data, src, n);
-        }
-    }
-
-    void push(uint8_t b) noexcept
-    {
-        assert(dlc < kMaxDlc);
-        if (dlc >= kMaxDlc) {
-            return;
-        }
-        data[dlc++] = b;
-    }
-
-    /** enum class : uint8_t — тот же байт на проводе. */
-    template <typename E>
-    auto push(E v) noexcept -> std::enable_if_t<
-        std::is_enum_v<E> && std::is_same_v<std::underlying_type_t<E>, uint8_t>>
-    {
-        push(static_cast<uint8_t>(v));
-    }
-
-    void pushU16(uint16_t v) noexcept
-    {
-        push(static_cast<uint8_t>(v));
-        push(static_cast<uint8_t>(v >> 8));
-    }
-
-    void pushU32(uint32_t v) noexcept
-    {
-        pushU16(static_cast<uint16_t>(v));
-        pushU16(static_cast<uint16_t>(v >> 16));
-    }
-
-    [[nodiscard]] uint16_t loadU16(uint8_t off) const noexcept
-    {
-        if (off + 1u >= dlc) {
-            return 0;
-        }
-        return static_cast<uint16_t>(data[off] | (static_cast<uint16_t>(data[off + 1u]) << 8));
-    }
-
-    [[nodiscard]] uint32_t loadU32(uint8_t off) const noexcept
-    {
-        return static_cast<uint32_t>(loadU16(off))
-            | (static_cast<uint32_t>(loadU16(static_cast<uint8_t>(off + 2u))) << 16);
-    }
+    comm::Payload<0, kMaxDlc> payload{};
 };
 
 } // namespace smcp

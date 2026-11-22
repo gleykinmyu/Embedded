@@ -6,6 +6,9 @@
 
   python3 libs/gen-compile-commands.py
 
+file и -I — относительно libs/ (directory — абсолютный путь к libs: clangd 22
+склеивает относительный file с directory и не раскрывает directory «.»).
+
 Исключения (свой тулчейн / своя база):
   board/mega2560  — AVR, gen-compile-commands.ps1
   dmx             — .clangd → ../../DMX (опционально)
@@ -14,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -39,7 +43,7 @@ def skipped(rel: Path) -> bool:
 
 
 def include_dirs() -> list[str]:
-    """Типичные -I как у PlatformIO lib_extra_dirs + layout библиотек."""
+    """-I относительно libs/ (как lib_extra_dirs + layout библиотек)."""
     dirs = [
         LIBS,  # #include "mem/slot.hpp", "smcp/ilink.hpp"
         LIBS / "Interfaces",
@@ -54,7 +58,13 @@ def include_dirs() -> list[str]:
         LIBS / "ccam" / "include",
         LIBS / "ccam" / "src",
     ]
-    return [str(d) for d in dirs if d.is_dir()]
+    rels: list[str] = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        rel = d.resolve().relative_to(LIBS).as_posix()
+        rels.append("." if rel == "." or rel == "" else rel)
+    return rels
 
 
 def collect_files() -> list[Path]:
@@ -71,7 +81,7 @@ def collect_files() -> list[Path]:
 
 
 def entry_for(path: Path, cxx: str, incs: list[str]) -> dict:
-    file_s = str(path.resolve())
+    rel = path.resolve().relative_to(LIBS).as_posix()
     suf = path.suffix.lower()
     args = [cxx]
     if suf in HDR_SUFFIXES:
@@ -83,20 +93,42 @@ def entry_for(path: Path, cxx: str, incs: list[str]) -> dict:
     args += ["-Wall", "-Wextra"]
     for inc in incs:
         args.append(f"-I{inc}")
-    args.append(file_s)
+    args.append(rel)
     return {
-        "directory": str(LIBS),
-        "file": file_s,
+        # Абсолютный каталог libs: относительно него заданы file и -I.
+        "directory": LIBS.as_posix(),
+        "file": rel,
         "arguments": args,
     }
 
 
+def arm_gxx() -> str | None:
+    """Тулчейн PlatformIO: clangd через --query-driver берёт у него <cstdint>."""
+    found = shutil.which("arm-none-eabi-g++") or shutil.which("arm-none-eabi-g++.exe")
+    if found:
+        return str(Path(found).resolve())
+    roots = []
+    if os.environ.get("PLATFORMIO_CORE_DIR"):
+        roots.append(Path(os.environ["PLATFORMIO_CORE_DIR"]))
+    roots.append(Path.home() / ".platformio")
+    roots.append(Path("C:/.platformio"))
+    for root in roots:
+        packages = root / "packages"
+        if not packages.is_dir():
+            continue
+        hits = sorted(packages.glob("toolchain-gccarmnoneeabi*/bin/arm-none-eabi-g++*"))
+        exe = [p for p in hits if p.suffix.lower() == ".exe"]
+        pick = exe[-1] if exe else (hits[-1] if hits else None)
+        if pick and pick.is_file():
+            return str(pick.resolve())
+    return None
+
+
 def main() -> int:
-    cxx = shutil.which("clang++") or shutil.which("c++")
-    if not cxx:
-        print("clang++/c++ не найден в PATH", file=sys.stderr)
-        return 1
-    cxx = str(Path(cxx).resolve())
+    # arm-none-eabi-g++ этой машины, иначе имя clang++ (на macOS он несёт libc++).
+    cxx = arm_gxx() or "clang++"
+    if cxx != "clang++":
+        cxx = Path(cxx).as_posix()
 
     files = collect_files()
     if not files:
@@ -108,7 +140,7 @@ def main() -> int:
 
     out = LIBS / "compile_commands.json"
     out.write_text(json.dumps(entries, indent=4) + "\n", encoding="utf-8")
-    print(f"clang++: {cxx}")
+    print(f"compiler: {cxx}")
     print(f"includes: {len(incs)}")
     print(f"Wrote {len(entries)} entries: {out}")
     return 0
