@@ -6,6 +6,8 @@
 #include "esp_eth.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
 
 class HttpStatus;
 
@@ -35,6 +37,16 @@ public:
     bool link_up() const { return link_up_; }
     bool has_ip() const { return got_ip_; }
 
+    /** Адрес, маска, шлюз, MAC и линк одной копией. Без NVS и без драйвера. */
+    struct Live {
+        bool link{false};
+        char address[16]{"0.0.0.0"};
+        char mask[16]{"0.0.0.0"};
+        char gateway[16]{"0.0.0.0"};
+        char mac[18]{"00:00:00:00:00:00"};
+    };
+    void copyLive(Live &out) const;
+
 private:
     bool apply_static_ip();
     bool apply_now();
@@ -58,4 +70,5 @@ private:
     uint8_t mac_[6]{};
     volatile bool link_up_{};
     volatile bool got_ip_{};
+    mutable portMUX_TYPE live_mux_ = portMUX_INITIALIZER_UNLOCKED;
 };

@@ -1,5 +1,8 @@
 #include "http_status.h"
 
+#include "http_api.h"
+#include "http_reply.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,17 +319,8 @@ HttpStatus &HttpStatus::self(httpd_req_t *req) {
 
 esp_err_t HttpStatus::require_auth(httpd_req_t *req, bool slide)
 {
-    /* /api/status: peek без slide. X-Esp-Active: 1 — канонический UI keepalive
-     * (presence watermark на клиенте); отдельный auth/touch для idle не нужен. */
-    if (req != nullptr && req->uri != nullptr && strcmp(req->uri, "/api/status") == 0) {
-        char act[4] = {};
-        const bool active =
-            httpd_req_get_hdr_value_str(req, "X-Esp-Active", act, sizeof(act)) == ESP_OK &&
-            act[0] == '1';
-        slide = active;
-    } else {
-        slide = true;
-    }
+    /* Legacy-команды продлевают idle. GET /api/status идёт через http_get_status. */
+    slide = true;
     if (auth_.authorized(req, slide)) {
         return ESP_OK;
     }
@@ -433,7 +427,7 @@ esp_err_t HttpStatus::on_auth(httpd_req_t *req)
     }
     if (strcmp(q.cmd, "set_pass") == 0) {
         /* proof=SHA-256(nonce||старый хеш), hash=SHA-256(newsalt||новый пароль) */
-        if (!auth_.setPassword(q.proof, q.hash)) {
+        if (auth_.setPassword(q.proof, q.hash) != AuthWrite::Applied) {
             return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
         }
         return send_json(req, "{\"ok\":true,\"status\":\"ok\"}");
@@ -457,115 +451,14 @@ esp_err_t HttpStatus::on_auth(httpd_req_t *req)
         return send_json(req, buf);
     }
     if (strcmp(q.cmd, "reissue_token") == 0) {
-        auth_.reissueToken();
+        if (!auth_.reissueToken()) {
+            return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
+        }
         snprintf(buf, sizeof(buf),
                  "{\"ok\":true,\"status\":\"ok\",\"token\":\"%s\"}", auth_.apiToken());
         return send_json(req, buf);
     }
     return send_json(req, "{\"ok\":false,\"status\":\"param\"}");
-}
-
-esp_err_t HttpStatus::on_status(httpd_req_t *req) {
-    /* Idle сдвигается только с X-Esp-Active: 1 (см. require_auth). */
-    if (require_auth(req, false) != ESP_OK) {
-        return ESP_OK;
-    }
-    /* Только кэш health_/caps, без DeviceLock: иначе шапка ждёт params/power.
-     * Смена моделей идёт в этом же httpd-потоке, поэтому pt_/cam_ здесь не меняются. */
-    char ip[16] = {};
-    char mask[16] = {};
-    char gw[16] = {};
-    char mac[18] = {};
-    eth_.ip_text(ip, sizeof(ip));
-    eth_.mask_text(mask, sizeof(mask));
-    eth_.gw_text(gw, sizeof(gw));
-    eth_.mac_text(mac, sizeof(mac));
-    const uint32_t uptime_s = static_cast<uint32_t>(xTaskGetTickCount() / configTICK_RATE_HZ);
-
-    const pt::AxisInvert &inv = pt_.axisInvert();
-    const ccam::devices::PtCaps pc = pt_.ptCaps();
-    const ccam::devices::CamCaps cc = pt_.camCaps();
-    const auto &hl = pt_.linkHealth();
-    const unsigned pwr = hl.powerCode() == 0xFF ? 255u : static_cast<unsigned>(hl.powerCode());
-    const unsigned pt_err = hl.errorCode() == 0xFF ? 255u : static_cast<unsigned>(hl.errorCode());
-    char cam_qid[24] = {};
-    {
-        const char *src = hl.camId();
-        size_t j = 0;
-        for (size_t i = 0; src[i] != '\0' && j + 1 < sizeof(cam_qid); ++i) {
-            const char c = src[i];
-            if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) {
-                continue;
-            }
-            cam_qid[j++] = c;
-        }
-        cam_qid[j] = '\0';
-    }
-    using ccam::LimitAxis;
-    const auto lim = [this](LimitAxis a) { return static_cast<unsigned>(pt_.limitState(a)); };
-    char buf[1536];
-    const int wrote = snprintf(
-        buf, sizeof(buf),
-        "{\"link\":%s,\"ip\":\"%s\",\"mask\":\"%s\",\"gw\":\"%s\",\"mac\":\"%s\","
-        "\"uptime_s\":%lu,\"sess_ttl_s\":%u,\"sess_left_s\":%u,\"model\":\"%s\",\"cam\":\"%s\","
-        "\"pt_id\":\"%s\",\"cam_id\":\"%s\",\"rate\":%u,"
-        "\"pt_alive\":%s,\"pt_power\":%u,\"pt_power_s\":\"%s\",\"pt_powered\":%s,"
-        "\"pt_optics\":%s,\"pt_optics_fail\":%u,"
-        "\"pt_fail\":%u,\"pt_error\":%u,"
-        "\"cam_tx\":%s,\"cam_alive\":%s,\"cam_qid\":\"%s\",\"cam_fail\":%u,"
-        "\"inv_pan\":%s,\"inv_tilt\":%s,\"inv_zoom\":%s,\"inv_focus\":%s,"
-        "\"latest_preset\":%u,\"at_latest\":%s,"
-        "\"limits\":[%u,%u,%u,%u],"
-        "\"pt_caps\":{\"abs_pt\":%s,\"abs_pt_speed\":%s,\"preset_map\":%s,\"preset_opts\":%s,"
-        "\"limit_ctrl\":%s,\"limit_toggle\":%s,\"tally\":%s,\"fan\":%s,\"wiper\":%s,"
-        "\"washer\":%s,\"wireless\":%s,\"option\":%s,\"tilt_range\":%s,"
-        "\"heater\":%s,\"defroster\":%s,\"pos_disp\":%s,\"pt_pos\":%s,\"lens_q\":%s,"
-        "\"exposure_q\":%s,\"landing\":%s,\"software_ver\":%s,\"power_cam_tx\":%s},"
-        "\"cam_caps\":{\"hd_detail\":%s,\"neg_pos\":%s,\"field_frame\":%s,"
-        "\"chroma\":%s,\"black_shade\":%s,\"synchro\":%s,\"abc\":%s,\"paint\":%s,"
-        "\"genlock\":%s,\"gamma\":%s,\"agc_max\":%s,\"total_dtl\":%s,"
-        "\"monitor\":%s,\"lens_h\":%s,\"menu_lr\":%s}}",
-        eth_.link_up() ? "true" : "false", ip, mask, gw, mac,
-        static_cast<unsigned long>(uptime_s),
-        static_cast<unsigned>(auth_.sessionTtlSec()),
-        static_cast<unsigned>(auth_.sessionRemainSec()),
-        pt_.pt().modelLabel(), pt_.cam().modelLabel(),
-        ccam::devices::ptModelKey(pt_.ptModel()), ccam::devices::camModelKey(pt_.camModel()),
-        static_cast<unsigned>(pt_.defaultRate()), hl.alive() ? "true" : "false", pwr,
-        hl.powerLabel(), hl.powered() ? "true" : "false",
-        hl.opticsAlive() ? "true" : "false", static_cast<unsigned>(hl.opticsFailStreak()),
-        static_cast<unsigned>(hl.failStreak()), pt_err,
-        hl.camTxLikely() ? "true" : "false", hl.camAlive() ? "true" : "false", cam_qid,
-        static_cast<unsigned>(hl.camFailStreak()),
-        inv.pan ? "true" : "false", inv.tilt ? "true" : "false", inv.zoom ? "true" : "false",
-        inv.focus ? "true" : "false",
-        static_cast<unsigned>(pt_.latestPreset()), pt_.atLatest() ? "true" : "false",
-        lim(LimitAxis::TiltUp), lim(LimitAxis::TiltDown), lim(LimitAxis::PanLeft),
-        lim(LimitAxis::PanRight),
-        pc.abs_pt ? "true" : "false",
-        pc.abs_pt_speed ? "true" : "false", pc.preset_map ? "true" : "false",
-        pc.preset_opts ? "true" : "false",
-        pc.limit_ctrl ? "true" : "false", pc.limit_toggle ? "true" : "false",
-        pc.tally ? "true" : "false", pc.fan ? "true" : "false", pc.wiper ? "true" : "false",
-        pc.washer ? "true" : "false", pc.wireless ? "true" : "false",
-        pc.option ? "true" : "false", pc.tilt_range ? "true" : "false",
-        pc.heater ? "true" : "false", pc.defroster ? "true" : "false",
-        pc.pos_disp ? "true" : "false", pc.pt_pos ? "true" : "false",
-        pc.lens_q ? "true" : "false", pc.exposure_q ? "true" : "false",
-        pc.landing ? "true" : "false", pc.software_ver ? "true" : "false",
-        pc.power_cam_tx ? "true" : "false",
-        cc.hd_detail ? "true" : "false", cc.neg_pos ? "true" : "false",
-        cc.field_frame ? "true" : "false", cc.chroma ? "true" : "false",
-        cc.black_shade ? "true" : "false", cc.synchro ? "true" : "false",
-        cc.abc ? "true" : "false", cc.paint ? "true" : "false",
-        cc.genlock ? "true" : "false", cc.gamma ? "true" : "false",
-        cc.agc_max ? "true" : "false", cc.total_dtl ? "true" : "false",
-        cc.monitor ? "true" : "false", cc.lens_h ? "true" : "false",
-        cc.menu_lr ? "true" : "false");
-    if (wrote < 0 || static_cast<size_t>(wrote) >= sizeof(buf)) {
-        return reply_st(req, ccam::Status::Buffer);
-    }
-    return send_json(req, buf);
 }
 
 esp_err_t reply_ota_busy(httpd_req_t *req) {
@@ -1536,10 +1429,6 @@ esp_err_t HttpStatus::root_get(httpd_req_t *req) {
     return self(req).on_root(req);
 }
 
-esp_err_t HttpStatus::status_get(httpd_req_t *req) {
-    return self(req).on_status(req);
-}
-
 esp_err_t HttpStatus::ptz_get(httpd_req_t *req) {
     return self(req).on_ptz(req);
 }
@@ -1652,22 +1541,24 @@ void HttpStatus::start() {
     }
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 12;
+    cfg.max_uri_handlers = 48;
     cfg.stack_size = 10240;
+    cfg.uri_match_fn = httpd_uri_match_wildcard;
     if (httpd_start(&srv_, &cfg) != ESP_OK) {
+        srv_ = nullptr;
         ESP_LOGE(TAG, "httpd start failed");
         return;
     }
+    auto abort_http = [this]() {
+        httpd_stop(srv_);
+        srv_ = nullptr;
+        ESP_LOGE(TAG, "HTTP start aborted");
+    };
     httpd_uri_t root = {};
     root.uri = "/";
     root.method = HTTP_GET;
     root.handler = root_get;
     root.user_ctx = this;
-    httpd_uri_t status = {};
-    status.uri = "/api/status";
-    status.method = HTTP_GET;
-    status.handler = status_get;
-    status.user_ctx = this;
     httpd_uri_t ptz = {};
     ptz.uri = "/api/ptz";
     ptz.method = HTTP_GET;
@@ -1688,11 +1579,18 @@ void HttpStatus::start() {
     net.method = HTTP_GET;
     net.handler = net_get;
     net.user_ctx = this;
-    httpd_register_uri_handler(srv_, &root);
-    httpd_register_uri_handler(srv_, &status);
-    httpd_register_uri_handler(srv_, &ptz);
-    httpd_register_uri_handler(srv_, &cam);
-    httpd_register_uri_handler(srv_, &auth);
-    httpd_register_uri_handler(srv_, &net);
+    /* GET /api/status регистрирует http_api. /api/* не регистрируется.
+     * 5 старых слотов и 24 новых — 29 из 48. */
+    if (httpd_register_uri_handler(srv_, &root) != ESP_OK ||
+        httpd_register_uri_handler(srv_, &ptz) != ESP_OK ||
+        httpd_register_uri_handler(srv_, &cam) != ESP_OK ||
+        httpd_register_uri_handler(srv_, &auth) != ESP_OK ||
+        httpd_register_uri_handler(srv_, &net) != ESP_OK ||
+        !http_api_register(srv_, this) ||
+        httpd_register_err_handler(srv_, HTTPD_404_NOT_FOUND, http_on_404) != ESP_OK ||
+        httpd_register_err_handler(srv_, HTTPD_405_METHOD_NOT_ALLOWED, http_on_405) != ESP_OK) {
+        abort_http();
+        return;
+    }
     ESP_LOGI(TAG, "HTTP listen :80");
 }

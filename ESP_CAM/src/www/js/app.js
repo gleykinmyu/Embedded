@@ -1062,6 +1062,83 @@ async function saveInvert(){
 ['inv_pan','inv_tilt','inv_zoom','inv_focus'].forEach(id=>{
   $(id).addEventListener('change',()=>saveInvert());
 });
+/** Временный мост: новый BridgeStatus → поля, которые страница уже читает. */
+function adaptStatus(data){
+  if(!data||typeof data!=='object') return null;
+  const net=data.network||{};
+  const head=data.head||{};
+  const cam=data.camera||{};
+  const motion=data.motion||{};
+  const orient=motion.orientation||{};
+  const presets=data.presets||{};
+  const limits=data.limits||{};
+  const power=head.power||{};
+  const session=data.session||{};
+  const limitCode={unknown:0,clear:1,set:2};
+  const headNames={
+    absolute_aim:'abs_pt',absolute_aim_speed:'abs_pt_speed',preset_map:'preset_map',
+    preset_options:'preset_opts',limit_set:'limit_ctrl',limit_toggle:'limit_toggle',
+    tally:'tally',fan:'fan',wiper:'wiper',washer:'washer',wireless:'wireless',option:'option',
+    tilt_span:'tilt_range',heater:'heater',defroster:'defroster',aim_control:'pt_pos',
+    aim_displayed:'pos_disp',optics:'lens_q',exposure_reading:'exposure_q',landing:'landing',
+    head_version:'software_ver',power_camera_link:'power_cam_tx'
+  };
+  const camNames={
+    hd_detail:'hd_detail',negative:'neg_pos',scan:'field_frame',chroma:'chroma',
+    black_shade:'black_shade',synchro:'synchro',black_balance:'abc',paint:'paint',
+    genlock:'genlock',gamma:'gamma',agc_ceiling:'agc_max',master_detail:'total_dtl',
+    monitor:'monitor',lens_interface:'lens_h',menu_left_right:'menu_lr'
+  };
+  function remap(src, names){
+    const out={};
+    if(!src) return out;
+    Object.keys(names).forEach(key=>{
+      if(typeof src[key]==='boolean') out[names[key]]=src[key];
+    });
+    return out;
+  }
+  return {
+    link:!!net.link,
+    ip:net.address||'',
+    mask:net.mask||'',
+    gw:net.gateway||'',
+    mac:net.mac||'',
+    uptime_s:data.uptime_seconds,
+    sess_ttl_s:session.ttl_seconds,
+    sess_left_s:session.seconds_left,
+    model:head.name||'',
+    cam:cam.name||'',
+    pt_id:head.model||'',
+    cam_id:cam.model||'',
+    rate:motion.rate,
+    pt_alive:!!head.alive,
+    pt_power:power.code==null?255:power.code,
+    pt_power_s:power.label||'',
+    pt_powered:!!head.powered,
+    pt_optics:!!head.optics_alive,
+    pt_optics_fail:head.optics_fail_count||0,
+    pt_fail:head.fail_count||0,
+    pt_error:head.error_code==null?255:head.error_code,
+    cam_tx:!!cam.transmitter,
+    cam_alive:!!cam.alive,
+    cam_qid:cam.identifier||'',
+    cam_fail:cam.fail_count||0,
+    inv_pan:!!orient.pan,
+    inv_tilt:!!orient.tilt,
+    inv_zoom:!!orient.zoom,
+    inv_focus:!!orient.focus,
+    latest_preset:presets.latest==null?0:presets.latest,
+    at_latest:!!presets.active,
+    limits:[
+      limitCode[limits.tilt_up]||0,
+      limitCode[limits.tilt_down]||0,
+      limitCode[limits.pan_left]||0,
+      limitCode[limits.pan_right]||0
+    ],
+    pt_caps:remap(head.capabilities, headNames),
+    cam_caps:remap(cam.capabilities, camNames)
+  };
+}
 let _tickBusy=false;
 async function tick(){
   if(document.body.classList.contains('login') || _tickBusy) return;
@@ -1081,17 +1158,21 @@ async function tick(){
       const A=window.AUTH;
       if(A.inGateGrace && A.inGateGrace()) return;
       /* Один раз проверить сессию через me (cookie/гонка), не открывать gate сразу. */
+      let me=null;
       try{
-        const me=await A.api('me');
+        me=await A.api('me');
         if(A.stale(mark) || (me&&me._stale)) return;
         if(me&&me.ok){ A.noteLeft(me); return; }
       }catch(e){}
       if(A.stale(mark)) return;
-      const why=(body&&body.sess_live===true)?'Вход с другого места':'Сессия истекла';
+      const denied=A.authDenied?A.authDenied(me)||A.authDenied(body):null;
+      const why=denied&&denied.live?'Вход с другого места':'Сессия истекла';
       authGateOrDefer(why);
       return;
     }
-    const d=await r.json();
+    const env=await r.json();
+    const d=env&&env.ok===true&&env.data?adaptStatus(env.data):null;
+    if(!d){ showBar('status',{ok:false,status:'net'}); return; }
     if(window.AUTH&&typeof window.AUTH.noteLeft==='function') window.AUTH.noteLeft(d);
     if($('link')) link.textContent=d.link?'up':'down';
     const ptOk=!!d.pt_alive;

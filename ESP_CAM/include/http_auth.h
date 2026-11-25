@@ -14,9 +14,15 @@
  * Пароль в NVS не пишется: соль и SHA-256(salt||password).
  * Браузер шлёт proof = SHA-256(nonce||hash). Заводской пароль admin.
  */
+enum class AuthWrite { Applied, Rejected, StoreFailed };
+
 class HttpAuth {
 public:
-    static constexpr size_t kUserMax = 32;
+    /**
+     * Длина имени в байтах UTF-8, не в символах Unicode.
+     * OpenAPI LoginRequest.user ограничивает maxLength символами и не задаёт алфавит.
+     */
+    static constexpr size_t kUserMaxLen = 32;
     static constexpr size_t kPassMax = 64;
     static constexpr size_t kTokenLen = 32;
     static constexpr size_t kSessLen = 32;
@@ -37,6 +43,13 @@ public:
     bool fromPage(httpd_req_t *req) const;
     /** Cookie этой сессии (и сессия ещё жива). Не сдвигает idle. */
     bool cookieMatches(httpd_req_t *req) const;
+    /**
+     * Живая cookie и X-Esp-Client: ui. Bearer не учитывается.
+     * slide сдвигает idle только при успехе.
+     */
+    bool operatorSession(httpd_req_t *req, bool slide);
+    /** Заголовок Authorization: Bearer совпал с токеном. Сессию не трогает. */
+    bool bearerMatches(httpd_req_t *req) const;
     /** Сравнение cookie с sess_, даже если idle уже истёк. */
     bool cookieEquals(httpd_req_t *req) const;
     /** Соль текущего пароля, одноразовый nonce и соль для нового пароля. Hex. */
@@ -46,15 +59,20 @@ public:
     bool login(const char *user, const char *proof_hex, char *sess_out, size_t sess_cap);
     void logout();
     /** proof старого пароля, hash = hex SHA-256(newsalt || новый пароль). */
-    bool setPassword(const char *proof_hex, const char *new_hash_hex);
-    void reissueToken();
+    AuthWrite setPassword(const char *proof_hex, const char *new_hash_hex);
+    /** false — token в RAM и NVS не заменён. Новый token отличается от прежнего. */
+    bool reissueToken();
+    /**
+     * false — значение вне 30…300 либо NVS не принял запись.
+     * При ошибке записи прежний TTL остаётся и в RAM, и как читаемое значение NVS.
+     */
     bool setSessionTtlSec(uint32_t sec);
 
     const char *user() const { return user_; }
     const char *apiToken() const { return api_token_; }
     bool sessionActive() const;
     const char *session() const { return sess_; }
-    uint32_t sessionTtlSec() const { return sess_ttl_sec_; }
+    uint32_t sessionTtlSec() const { return sess_ttl_sec_.load(std::memory_order_relaxed); }
     /** Остаток cookie-сессии, сек (0 если нет). */
     uint32_t sessionRemainSec() const;
     /** Периодически: истёкшая по idle сессия очищается и помечается как оборванная. */
@@ -64,9 +82,14 @@ public:
 
 private:
     void load();
-    void save() const;
+    /** Первичная запись и миграция открытого пароля. Не используется точечными изменениями. */
+    bool save() const;
+    bool storePassword(const uint8_t *salt, const uint8_t *hash) const;
+    /** Стирает salt и ph только после уже подтверждённой объединённой записи. */
+    void eraseLegacyPassword() const;
+    bool storeToken(const char *token) const;
+    bool storeTtl(uint32_t sec) const;
     void mintSession();
-    void mintToken();
     void touchSession();
     bool sessionValid() const;
     void clearSession();
@@ -76,17 +99,20 @@ private:
     bool consumeProof(const char *proof_hex);
     void sealPlain(const char *pass);
 
-    char user_[kUserMax]{};
+    char user_[kUserMaxLen + 1]{};
     uint8_t salt_[kSaltLen]{};
     uint8_t hash_[kHashLen]{};
     bool hash_ok_{false};
+    /** Новый ключ есть, но прочитать запись пароля целиком нельзя. Старые salt/ph не подхватываются. */
+    bool password_corrupt_{false};
     uint8_t nonce_[kSaltLen]{};
     uint8_t newsalt_[kSaltLen]{};
     int64_t nonce_us_{0};
     bool nonce_arm_{false};
     char api_token_[kTokenLen + 1]{};
     char sess_[kSessLen + 1]{};
-    uint32_t sess_ttl_sec_{kSessTtlDefSec};
+    /** atomic: sess_wd читает TTL в тот момент, когда httpd его записывает. */
+    std::atomic<uint32_t> sess_ttl_sec_{kSessTtlDefSec};
     /** atomic: на ESP32 int64_t иначе читается «рвано» → ложный expiry. */
     std::atomic<int64_t> sess_touch_us_{0};
     std::atomic<bool> sess_ended_{false};

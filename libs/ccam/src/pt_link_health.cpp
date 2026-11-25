@@ -18,6 +18,15 @@ void PtLinkHealth::clearCam()
     cam_id_[0] = '\0';
 }
 
+void PtLinkHealth::reset()
+{
+    pt_.clear();
+    clearOptics();
+    clearCam();
+    power_code_ = 0xFF;
+    error_code_ = 0xFF;
+}
+
 void PtLinkHealth::tick(uint32_t now_ms)
 {
     if (pt_dev_ == nullptr) {

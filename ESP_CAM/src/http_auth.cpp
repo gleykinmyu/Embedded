@@ -14,10 +14,19 @@ static const char *TAG = "auth";
 static const char *kNs = "auth";
 static const char *kUser = "user";
 static const char *kPass = "pass"; /* старый открытый пароль, после миграции стирается */
-static const char *kSalt = "salt";
+static const char *kSalt = "salt"; /* прежняя пара, читается только пока нет pw */
 static const char *kHash = "ph";
+static const char *kPw = "pw"; /* salt || hash, ровно 48 байт */
 static const char *kTok = "token";
 static const char *kTtl = "ttl";
+
+struct PasswordRecord {
+    uint8_t salt[HttpAuth::kSaltLen];
+    uint8_t hash[HttpAuth::kHashLen];
+};
+static_assert(sizeof(PasswordRecord) == 48, "password record is salt and hash without padding");
+static_assert(sizeof(PasswordRecord) == HttpAuth::kSaltLen + HttpAuth::kHashLen,
+              "password record is only salt and hash");
 static constexpr int64_t kNonceTtlUs = 60LL * 1000000LL;
 
 namespace {
@@ -139,11 +148,6 @@ void HttpAuth::mintSession()
     touchSession();
 }
 
-void HttpAuth::mintToken()
-{
-    fillAlnum(api_token_, kTokenLen);
-}
-
 void HttpAuth::touchSession()
 {
     sess_touch_us_.store(esp_timer_get_time(), std::memory_order_release);
@@ -165,7 +169,8 @@ bool HttpAuth::sessionValid() const
         return false;
     }
     const int64_t age_us = esp_timer_get_time() - touch;
-    const int64_t ttl_us = static_cast<int64_t>(sess_ttl_sec_) * 1000000LL;
+    const int64_t ttl_us =
+        static_cast<int64_t>(sess_ttl_sec_.load(std::memory_order_relaxed)) * 1000000LL;
     /* Отрицательный age — скачок таймера, сессию не рвём. */
     if (age_us < 0) {
         return true;
@@ -183,11 +188,12 @@ uint32_t HttpAuth::sessionRemainSec() const
     if (!sessionValid()) {
         return 0;
     }
+    const uint32_t ttl = sess_ttl_sec_.load(std::memory_order_relaxed);
     const int64_t touch = sess_touch_us_.load(std::memory_order_acquire);
     const int64_t age_us = esp_timer_get_time() - touch;
-    const int64_t ttl_us = static_cast<int64_t>(sess_ttl_sec_) * 1000000LL;
+    const int64_t ttl_us = static_cast<int64_t>(ttl) * 1000000LL;
     if (age_us < 0) {
-        return sess_ttl_sec_;
+        return ttl;
     }
     const int64_t left = ttl_us - age_us;
     if (left <= 0) {
@@ -224,8 +230,13 @@ void HttpAuth::sealPlain(const char *pass)
     esp_fill_random(salt_, sizeof(salt_));
     hash_ok_ = sha256Cat(salt_, sizeof(salt_), reinterpret_cast<const uint8_t *>(pass),
                           strlen(pass), hash_);
-    if (hash_ok_) {
-        save();
+    if (!hash_ok_) {
+        return;
+    }
+    if (save()) {
+        ESP_LOGI(TAG, "password sealed");
+    } else {
+        ESP_LOGW(TAG, "password hash not stored");
     }
 }
 
@@ -243,12 +254,41 @@ bool HttpAuth::consumeProof(const char *proof_hex)
     return rawEq(got, expect, sizeof(got));
 }
 
+namespace {
+
+enum class PwRead { Absent, Ready, Corrupt };
+
+PwRead read_password(nvs_handle_t h, PasswordRecord *out)
+{
+    size_t n = sizeof(PasswordRecord);
+    const esp_err_t rc = nvs_get_blob(h, kPw, out, &n);
+    if (rc == ESP_ERR_NVS_NOT_FOUND) {
+        return PwRead::Absent;
+    }
+    if (rc == ESP_OK && n == sizeof(PasswordRecord)) {
+        return PwRead::Ready;
+    }
+    return PwRead::Corrupt;
+}
+
+bool read_legacy_password(nvs_handle_t h, PasswordRecord *out)
+{
+    size_t ns = HttpAuth::kSaltLen;
+    size_t nh = HttpAuth::kHashLen;
+    const esp_err_t salt = nvs_get_blob(h, kSalt, out->salt, &ns);
+    const esp_err_t hash = nvs_get_blob(h, kHash, out->hash, &nh);
+    return salt == ESP_OK && hash == ESP_OK && ns == HttpAuth::kSaltLen && nh == HttpAuth::kHashLen;
+}
+
+} // namespace
+
 void HttpAuth::load()
 {
     snprintf(user_, sizeof(user_), "admin");
     api_token_[0] = '\0';
-    sess_ttl_sec_ = kSessTtlDefSec;
+    sess_ttl_sec_.store(kSessTtlDefSec, std::memory_order_relaxed);
     hash_ok_ = false;
+    password_corrupt_ = false;
     memset(salt_, 0, sizeof(salt_));
     memset(hash_, 0, sizeof(hash_));
 
@@ -260,11 +300,6 @@ void HttpAuth::load()
     if (nvs_get_str(h, kUser, user_, &n) != ESP_OK || user_[0] == '\0') {
         snprintf(user_, sizeof(user_), "admin");
     }
-    n = sizeof(salt_);
-    const bool salt_ok = nvs_get_blob(h, kSalt, salt_, &n) == ESP_OK && n == sizeof(salt_);
-    n = sizeof(hash_);
-    const bool hash_ok = nvs_get_blob(h, kHash, hash_, &n) == ESP_OK && n == sizeof(hash_);
-    hash_ok_ = salt_ok && hash_ok;
     n = sizeof(api_token_);
     if (nvs_get_str(h, kTok, api_token_, &n) != ESP_OK) {
         api_token_[0] = '\0';
@@ -277,28 +312,207 @@ void HttpAuth::load()
         if (ttl > kSessTtlMaxSec) {
             ttl = kSessTtlMaxSec;
         }
-        sess_ttl_sec_ = ttl;
+        sess_ttl_sec_.store(ttl, std::memory_order_relaxed);
     }
+
+    PasswordRecord rec{};
+    const PwRead pw = read_password(h, &rec);
+    if (pw == PwRead::Corrupt) {
+        password_corrupt_ = true;
+        nvs_close(h);
+        ESP_LOGW(TAG, "password record unreadable, legacy keys left untouched");
+        return;
+    }
+    if (pw == PwRead::Ready) {
+        memcpy(salt_, rec.salt, sizeof(salt_));
+        memcpy(hash_, rec.hash, sizeof(hash_));
+        hash_ok_ = true;
+        nvs_close(h);
+        eraseLegacyPassword();
+        return;
+    }
+
+    const bool legacy = read_legacy_password(h, &rec);
     nvs_close(h);
+    if (!legacy) {
+        return;
+    }
+    memcpy(salt_, rec.salt, sizeof(salt_));
+    memcpy(hash_, rec.hash, sizeof(hash_));
+    hash_ok_ = true;
+    if (!storePassword(salt_, hash_)) {
+        ESP_LOGW(TAG, "password migration not stored, legacy keys kept");
+        return;
+    }
+    eraseLegacyPassword();
 }
 
-void HttpAuth::save() const
+namespace {
+
+bool nvs_visible(esp_err_t set)
+{
+    return set == ESP_OK || set == ESP_ERR_NVS_REMOVE_FAILED;
+}
+
+bool nvs_put_blob(nvs_handle_t h, const char *key, const void *data, size_t len)
+{
+    if (!data || len == 0 || len > sizeof(PasswordRecord)) {
+        return false;
+    }
+    if (!nvs_visible(nvs_set_blob(h, key, data, len))) {
+        return false;
+    }
+    uint8_t got[sizeof(PasswordRecord)];
+    size_t n = len;
+    return nvs_get_blob(h, key, got, &n) == ESP_OK && n == len && memcmp(got, data, len) == 0;
+}
+
+bool nvs_put_str(nvs_handle_t h, const char *key, const char *value)
+{
+    if (!value || value[0] == '\0' || strlen(value) > HttpAuth::kUserMaxLen) {
+        return false;
+    }
+    if (!nvs_visible(nvs_set_str(h, key, value))) {
+        return false;
+    }
+    char got[HttpAuth::kUserMaxLen + 1];
+    size_t n = sizeof(got);
+    return nvs_get_str(h, key, got, &n) == ESP_OK && constEq(got, value);
+}
+
+bool nvs_put_u32(nvs_handle_t h, const char *key, uint32_t value)
+{
+    if (!nvs_visible(nvs_set_u32(h, key, value))) {
+        return false;
+    }
+    uint32_t got = 0;
+    return nvs_get_u32(h, key, &got) == ESP_OK && got == value;
+}
+
+} // namespace
+
+bool HttpAuth::save() const
 {
     nvs_handle_t h{};
     if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
         ESP_LOGW(TAG, "nvs open fail");
+        return false;
+    }
+    bool ok = nvs_put_str(h, kUser, user_);
+    if (ok && hash_ok_) {
+        PasswordRecord rec{};
+        memcpy(rec.salt, salt_, sizeof(rec.salt));
+        memcpy(rec.hash, hash_, sizeof(rec.hash));
+        ok = nvs_put_blob(h, kPw, &rec, sizeof(rec));
+    }
+    if (ok) {
+        const esp_err_t erased = nvs_erase_key(h, kPass);
+        if (erased != ESP_OK && erased != ESP_ERR_NVS_NOT_FOUND) {
+            ok = false;
+        }
+    }
+    if (ok && api_token_[0] != '\0' && !nvs_put_str(h, kTok, api_token_)) {
+        ok = false;
+    }
+    if (ok && !nvs_put_u32(h, kTtl, sess_ttl_sec_.load(std::memory_order_relaxed))) {
+        ok = false;
+    }
+    if (ok) {
+        (void)nvs_commit(h);
+    }
+    nvs_close(h);
+    if (!ok) {
+        ESP_LOGW(TAG, "nvs save failed");
+    }
+    return ok;
+}
+
+bool HttpAuth::storePassword(const uint8_t *salt, const uint8_t *hash) const
+{
+    if (!salt || !hash) {
+        return false;
+    }
+    PasswordRecord rec{};
+    memcpy(rec.salt, salt, sizeof(rec.salt));
+    memcpy(rec.hash, hash, sizeof(rec.hash));
+    nvs_handle_t h{};
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "nvs open fail");
+        return false;
+    }
+    const bool ok = nvs_put_blob(h, kPw, &rec, sizeof(rec));
+    if (ok) {
+        (void)nvs_commit(h);
+    }
+    nvs_close(h);
+    return ok;
+}
+
+void HttpAuth::eraseLegacyPassword() const
+{
+    nvs_handle_t h{};
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "legacy password keys not erased");
         return;
     }
-    (void)nvs_set_str(h, kUser, user_);
-    if (hash_ok_) {
-        (void)nvs_set_blob(h, kSalt, salt_, sizeof(salt_));
-        (void)nvs_set_blob(h, kHash, hash_, sizeof(hash_));
+    uint8_t scratch[HttpAuth::kHashLen];
+    size_t n = sizeof(scratch);
+    const bool salt_there = nvs_get_blob(h, kSalt, scratch, &n) != ESP_ERR_NVS_NOT_FOUND;
+    n = sizeof(scratch);
+    const bool hash_there = nvs_get_blob(h, kHash, scratch, &n) != ESP_ERR_NVS_NOT_FOUND;
+    memset(scratch, 0, sizeof(scratch));
+    if (!salt_there && !hash_there) {
+        nvs_close(h);
+        return;
     }
-    (void)nvs_erase_key(h, kPass);
-    (void)nvs_set_str(h, kTok, api_token_);
-    (void)nvs_set_u32(h, kTtl, sess_ttl_sec_);
-    (void)nvs_commit(h);
+    bool ok = true;
+    if (salt_there) {
+        const esp_err_t erased = nvs_erase_key(h, kSalt);
+        ok = erased == ESP_OK || erased == ESP_ERR_NVS_NOT_FOUND;
+    }
+    if (hash_there) {
+        const esp_err_t erased = nvs_erase_key(h, kHash);
+        ok = ok && (erased == ESP_OK || erased == ESP_ERR_NVS_NOT_FOUND);
+    }
+    if (ok) {
+        (void)nvs_commit(h);
+    } else {
+        ESP_LOGW(TAG, "legacy password keys not erased");
+    }
     nvs_close(h);
+}
+
+bool HttpAuth::storeToken(const char *token) const
+{
+    if (!token) {
+        return false;
+    }
+    nvs_handle_t h{};
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "nvs open fail");
+        return false;
+    }
+    const bool ok = nvs_put_str(h, kTok, token);
+    if (ok) {
+        (void)nvs_commit(h);
+    }
+    nvs_close(h);
+    return ok;
+}
+
+bool HttpAuth::storeTtl(uint32_t sec) const
+{
+    nvs_handle_t h{};
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "nvs open fail");
+        return false;
+    }
+    const bool ok = nvs_put_u32(h, kTtl, sec);
+    if (ok) {
+        (void)nvs_commit(h);
+    }
+    nvs_close(h);
+    return ok;
 }
 
 void HttpAuth::begin()
@@ -307,7 +521,9 @@ void HttpAuth::begin()
         mu_ = xSemaphoreCreateMutex();
     }
     load();
-    if (!hash_ok_) {
+    if (password_corrupt_) {
+        ESP_LOGW(TAG, "password record corrupt, factory password not sealed");
+    } else if (!hash_ok_) {
         char plain[kPassMax] = {};
         snprintf(plain, sizeof(plain), "admin");
         nvs_handle_t h{};
@@ -320,9 +536,6 @@ void HttpAuth::begin()
         }
         sealPlain(plain);
         memset(plain, 0, sizeof(plain));
-        if (hash_ok_) {
-            ESP_LOGI(TAG, "password sealed");
-        }
     } else {
         /* Хеш уже есть — старый ключ pass больше не нужен. */
         nvs_handle_t h{};
@@ -334,13 +547,19 @@ void HttpAuth::begin()
         }
     }
     if (api_token_[0] == '\0') {
-        mintToken();
-        save();
-        ESP_LOGI(TAG, "API token minted");
+        char minted[kTokenLen + 1];
+        fillAlnum(minted, kTokenLen);
+        if (!storeToken(minted)) {
+            ESP_LOGW(TAG, "API token not stored");
+        } else {
+            memcpy(api_token_, minted, sizeof(api_token_));
+            ESP_LOGI(TAG, "API token minted");
+        }
     }
     clearSession();
     clearNonce();
-    ESP_LOGI(TAG, "auth ready user=%s ttl=%us", user_, static_cast<unsigned>(sess_ttl_sec_));
+    ESP_LOGI(TAG, "auth ready user=%s ttl=%us", user_,
+             static_cast<unsigned>(sess_ttl_sec_.load(std::memory_order_relaxed)));
 }
 
 bool HttpAuth::fromPage(httpd_req_t *req) const
@@ -371,6 +590,43 @@ bool HttpAuth::cookieEquals(httpd_req_t *req) const
 bool HttpAuth::cookieMatches(httpd_req_t *req) const
 {
     return sessionValid() && cookieEquals(req);
+}
+
+bool HttpAuth::operatorSession(httpd_req_t *req, bool slide)
+{
+    if (!fromPage(req)) {
+        return false;
+    }
+    if (mu_ != nullptr) {
+        xSemaphoreTake(mu_, portMAX_DELAY);
+    }
+    bool ok = false;
+    if (sessionValid() && cookieEquals(req)) {
+        if (slide) {
+            touchSession();
+        }
+        ok = true;
+    }
+    if (mu_ != nullptr) {
+        xSemaphoreGive(mu_);
+    }
+    return ok;
+}
+
+bool HttpAuth::bearerMatches(httpd_req_t *req) const
+{
+    if (!req || api_token_[0] == '\0') {
+        return false;
+    }
+    char hdr[96] = {};
+    const esp_err_t rc = httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr));
+    if (rc != ESP_OK) {
+        return false;
+    }
+    if (strncmp(hdr, "Bearer ", 7) != 0) {
+        return false;
+    }
+    return constEq(hdr + 7, api_token_);
 }
 
 bool HttpAuth::authorized(httpd_req_t *req, bool slide)
@@ -467,7 +723,7 @@ void HttpAuth::expireIdle()
         const int64_t touch = sess_touch_us_.load(std::memory_order_acquire);
         ESP_LOGW(TAG, "session end age=%llds ttl=%us",
                  static_cast<long long>((esp_timer_get_time() - touch) / 1000000LL),
-                 static_cast<unsigned>(sess_ttl_sec_));
+                 static_cast<unsigned>(sess_ttl_sec_.load(std::memory_order_relaxed)));
         clearSession();
         sess_ended_.store(true);
     }
@@ -481,28 +737,42 @@ bool HttpAuth::takeEnded()
     return sess_ended_.exchange(false);
 }
 
-bool HttpAuth::setPassword(const char *proof_hex, const char *new_hash_hex)
+AuthWrite HttpAuth::setPassword(const char *proof_hex, const char *new_hash_hex)
 {
     uint8_t ns[kSaltLen];
     memcpy(ns, newsalt_, sizeof(ns));
     if (!consumeProof(proof_hex)) {
-        return false;
+        return AuthWrite::Rejected;
     }
     uint8_t nh[kHashLen];
     if (!hexToRaw(new_hash_hex, nh, sizeof(nh))) {
-        return false;
+        return AuthWrite::Rejected;
+    }
+    if (!storePassword(ns, nh)) {
+        return AuthWrite::StoreFailed;
     }
     memcpy(salt_, ns, sizeof(salt_));
     memcpy(hash_, nh, sizeof(hash_));
     hash_ok_ = true;
-    save();
-    return true;
+    return AuthWrite::Applied;
 }
 
-void HttpAuth::reissueToken()
+bool HttpAuth::reissueToken()
 {
-    mintToken();
-    save();
+    char next[kTokenLen + 1];
+    bool differ = false;
+    for (int i = 0; i < 8; ++i) {
+        fillAlnum(next, kTokenLen);
+        if (!constEq(next, api_token_)) {
+            differ = true;
+            break;
+        }
+    }
+    if (!differ || !storeToken(next)) {
+        return false;
+    }
+    memcpy(api_token_, next, sizeof(api_token_));
+    return true;
 }
 
 bool HttpAuth::setSessionTtlSec(uint32_t sec)
@@ -510,7 +780,12 @@ bool HttpAuth::setSessionTtlSec(uint32_t sec)
     if (sec < kSessTtlMinSec || sec > kSessTtlMaxSec) {
         return false;
     }
-    sess_ttl_sec_ = sec;
-    save();
+    if (sec == sess_ttl_sec_.load(std::memory_order_relaxed)) {
+        return true;
+    }
+    if (!storeTtl(sec)) {
+        return false;
+    }
+    sess_ttl_sec_.store(sec, std::memory_order_relaxed);
     return true;
 }

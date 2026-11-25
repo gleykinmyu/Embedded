@@ -152,6 +152,7 @@ Ph350Ctrl::~Ph350Ctrl() {
 void Ph350Ctrl::destroyDevices() {
     health_.bind(nullptr);
     health_.bindCam(nullptr);
+    health_.reset();
     if (pt_) {
         pt_->~PtDeviceBase();
         pt_ = nullptr;
@@ -167,6 +168,7 @@ void Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::Cam
     DeviceLock guard(*this);
 
     destroyDevices();
+    publishHealth();
     pt_id_ = pt;
     cam_id_ = cam;
 
@@ -232,12 +234,39 @@ void Ph350Ctrl::healthTask(void* arg) {
             if (!otaIsBusy() && self->pt_ != nullptr) {
                 self->health_.tick(Ph350Ctrl::nowMs());
             }
+            self->publishHealth();
         }
         vTaskDelay(pdMS_TO_TICKS(200));
     }
     self->health_task_ = nullptr;
     self->health_alive_ = false;
     vTaskDelete(nullptr);
+}
+
+void Ph350Ctrl::publishHealth() {
+    HealthView next{};
+    next.alive = health_.alive();
+    next.powered = health_.powered();
+    next.optics_alive = health_.opticsAlive();
+    next.cam_alive = health_.camAlive();
+    next.cam_tx = health_.camTxLikely();
+    next.power_code = health_.powerCode();
+    next.fail_count = health_.failStreak();
+    next.optics_fail = health_.opticsFailStreak();
+    next.cam_fail = health_.camFailStreak();
+    const char *id = health_.camId();
+    if (id != nullptr) {
+        snprintf(next.cam_id, sizeof(next.cam_id), "%s", id);
+    }
+    portENTER_CRITICAL(&health_mux_);
+    health_view_ = next;
+    portEXIT_CRITICAL(&health_mux_);
+}
+
+void Ph350Ctrl::copyHealth(HealthView &out) const {
+    portENTER_CRITICAL(&health_mux_);
+    out = health_view_;
+    portEXIT_CRITICAL(&health_mux_);
 }
 
 void Ph350Ctrl::startHealthTask() {

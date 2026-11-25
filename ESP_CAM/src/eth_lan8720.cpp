@@ -58,8 +58,34 @@ bool EthLan8720::apply_static_ip() {
     dns.ip.type = ESP_IPADDR_TYPE_V4;
     dns.ip.u_addr.ip4.addr = cfg_dns_;
     (void)esp_netif_set_dns_info(netif_, ESP_NETIF_DNS_MAIN, &dns);
-    fmt_ip4(ip_, sizeof(ip_), cfg_ip_);
+    char live[sizeof(ip_)] = {};
+    fmt_ip4(live, sizeof(live), cfg_ip_);
+    portENTER_CRITICAL(&live_mux_);
+    memcpy(ip_, live, sizeof(ip_));
+    portEXIT_CRITICAL(&live_mux_);
     return true;
+}
+
+void EthLan8720::copyLive(Live &out) const {
+    char address[sizeof(ip_)] = {};
+    uint32_t mask = 0;
+    uint32_t gw = 0;
+    uint8_t mac[6] = {};
+    bool link = false;
+    portENTER_CRITICAL(&live_mux_);
+    link = link_up_;
+    memcpy(address, ip_, sizeof(address));
+    mask = cfg_mask_;
+    gw = cfg_gw_;
+    memcpy(mac, mac_, sizeof(mac));
+    portEXIT_CRITICAL(&live_mux_);
+    address[sizeof(address) - 1] = '\0';
+    out.link = link;
+    snprintf(out.address, sizeof(out.address), "%s", address[0] ? address : "0.0.0.0");
+    fmt_ip4(out.mask, sizeof(out.mask), mask);
+    fmt_ip4(out.gateway, sizeof(out.gateway), gw);
+    snprintf(out.mac, sizeof(out.mac), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3],
+             mac[4], mac[5]);
 }
 
 bool EthLan8720::apply_now() {
@@ -320,9 +346,11 @@ void EthLan8720::reset() {
         return;
     }
     ESP_LOGW(TAG, "PHY power cycle");
+    portENTER_CRITICAL(&live_mux_);
     link_up_ = false;
     got_ip_ = false;
-    snprintf(ip_, sizeof(ip_), "0.0.0.0");
+    memcpy(ip_, "0.0.0.0", sizeof("0.0.0.0"));
+    portEXIT_CRITICAL(&live_mux_);
     if (http_) {
         http_->stop();
     }
@@ -339,17 +367,23 @@ void EthLan8720::reset() {
 void EthLan8720::on_eth_event(int32_t event_id, void *event_data) {
     switch (event_id) {
         case ETHERNET_EVENT_CONNECTED: {
-            link_up_ = true;
             auto handle = *static_cast<esp_eth_handle_t *>(event_data);
-            (void)esp_eth_ioctl(handle, ETH_CMD_G_MAC_ADDR, mac_);
-            ESP_LOGI(TAG, "ETH link up, MAC %02X:%02X:%02X:%02X:%02X:%02X", mac_[0], mac_[1], mac_[2],
-                     mac_[3], mac_[4], mac_[5]);
+            uint8_t mac[6] = {};
+            (void)esp_eth_ioctl(handle, ETH_CMD_G_MAC_ADDR, mac);
+            portENTER_CRITICAL(&live_mux_);
+            link_up_ = true;
+            memcpy(mac_, mac, sizeof(mac_));
+            portEXIT_CRITICAL(&live_mux_);
+            ESP_LOGI(TAG, "ETH link up, MAC %02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2],
+                     mac[3], mac[4], mac[5]);
             break;
         }
         case ETHERNET_EVENT_DISCONNECTED:
+            portENTER_CRITICAL(&live_mux_);
             link_up_ = false;
             got_ip_ = false;
-            snprintf(ip_, sizeof(ip_), "0.0.0.0");
+            memcpy(ip_, "0.0.0.0", sizeof("0.0.0.0"));
+            portEXIT_CRITICAL(&live_mux_);
             if (http_) {
                 http_->stop();
             }
@@ -361,9 +395,13 @@ void EthLan8720::on_eth_event(int32_t event_id, void *event_data) {
 }
 
 void EthLan8720::on_got_ip(const ip_event_got_ip_t *event) {
+    char live[sizeof(ip_)] = {};
+    snprintf(live, sizeof(live), IPSTR, IP2STR(&event->ip_info.ip));
+    portENTER_CRITICAL(&live_mux_);
     got_ip_ = true;
-    snprintf(ip_, sizeof(ip_), IPSTR, IP2STR(&event->ip_info.ip));
-    ESP_LOGI(TAG, "IP %s", ip_);
+    memcpy(ip_, live, sizeof(ip_));
+    portEXIT_CRITICAL(&live_mux_);
+    ESP_LOGI(TAG, "IP %s", live);
     if (http_) {
         http_->start();
     }
@@ -426,8 +464,12 @@ void EthLan8720::begin(HttpStatus *http) {
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
     ESP_ERROR_CHECK(esp_eth_driver_install(&config, &handle_));
 
-    ESP_ERROR_CHECK(esp_read_mac(mac_, ESP_MAC_ETH));
-    ESP_ERROR_CHECK(esp_eth_ioctl(handle_, ETH_CMD_S_MAC_ADDR, mac_));
+    uint8_t mac_bytes[6] = {};
+    ESP_ERROR_CHECK(esp_read_mac(mac_bytes, ESP_MAC_ETH));
+    ESP_ERROR_CHECK(esp_eth_ioctl(handle_, ETH_CMD_S_MAC_ADDR, mac_bytes));
+    portENTER_CRITICAL(&live_mux_);
+    memcpy(mac_, mac_bytes, sizeof(mac_));
+    portEXIT_CRITICAL(&live_mux_);
     ESP_ERROR_CHECK(esp_netif_attach(netif_, esp_eth_new_netif_glue(handle_)));
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event, this));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event, this));

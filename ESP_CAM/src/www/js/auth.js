@@ -117,6 +117,13 @@ Object.assign(AUTH,{
     if($('auth_who')) $('auth_who').textContent=t;
     if($('auth_session_hint')) $('auth_session_hint').textContent=t;
   },
+  /** Старый {status:auth} и новый конверт unauthorized. Остальные legacy-ответы не трогает. */
+  authDenied(d){
+    if(!d) return null;
+    if(d.status==='auth') return {live:d.sess_live===true};
+    if(d.ok===false && d.error && d.error.code==='unauthorized') return {live:false};
+    return null;
+  },
   noteLeft(d){
     if(!d) return;
     this.applyTtlUi(d);

@@ -29,6 +29,12 @@ idf_component_register(
         "eth_lan8720.cpp"
         "http_status.cpp"
         "http_auth.cpp"
+        "http_reply.cpp"
+        "http_body.cpp"
+        "http_gate.cpp"
+        "http_api.cpp"
+        "http_observe.cpp"
+        "http_session.cpp"
         "cli_eth01.cpp"
         "rs422_uart.cpp"
         "ph350_ctrl.cpp"
@@ -51,7 +57,7 @@ idf_component_register(
         "${BIF_DIR}"
     REQUIRES
         driver esp_eth esp_netif esp_event nvs_flash console esp_http_server lwip esp_timer
-        app_update mbedtls
+        app_update mbedtls json
 )
 
 if(CMAKE_BUILD_EARLY_EXPANSION)

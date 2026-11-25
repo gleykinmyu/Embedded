@@ -1,0 +1,2 @@
+# Host-side check for api/openapi.yaml. Not linked into firmware.
+openapi-spec-validator>=0.7.1

@@ -73,9 +73,24 @@ public:
     ccam::devices::PtCaps ptCaps() const { return pt_->capabilities(); }
     ccam::devices::CamCaps camCaps() const { return cam_->capabilities(); }
 
-    /** Watchdog #O (ccam::PtLinkHealth). */
+    /** Watchdog #O (ccam::PtLinkHealth). Прямое чтение полей гоняется с задачей health. */
     const ccam::devices::PtLinkHealth& linkHealth() const { return health_; }
     ccam::devices::PtLinkHealth& linkHealth() { return health_; }
+
+    /** Снимок полей, которые Status читает. Копирование короткое, без шины. */
+    struct HealthView {
+        bool alive{false};
+        bool powered{false};
+        bool optics_alive{false};
+        bool cam_alive{false};
+        bool cam_tx{false};
+        uint8_t power_code{0xFF};
+        uint8_t fail_count{0};
+        uint8_t optics_fail{0};
+        uint8_t cam_fail{0};
+        char cam_id[24]{};
+    };
+    void copyHealth(HealthView &out) const;
 
     /** UI/CLI скорость в %: 1=медленно .. 100=быстро (для ±move). */
     uint8_t defaultRate() const { return rate_; }
@@ -128,6 +143,7 @@ private:
     void destroyDevices();
     void constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam);
     void startHealthTask();
+    void publishHealth();
 
     static constexpr size_t kPtSize = ph350_detail::MaxN<
         sizeof(ccam::devices::Ph350Pt), sizeof(ccam::devices::Ph360Pt),
@@ -167,6 +183,8 @@ private:
     uint8_t limits_{0};
 
     ccam::devices::PtLinkHealth health_{1000, 3};
+    mutable portMUX_TYPE health_mux_ = portMUX_INITIALIZER_UNLOCKED;
+    HealthView health_view_{};
     SemaphoreHandle_t dev_mu_{};
     TaskHandle_t health_task_{nullptr};
     volatile bool health_run_{false};

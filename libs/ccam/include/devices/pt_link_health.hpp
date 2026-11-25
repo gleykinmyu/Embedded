@@ -104,6 +104,8 @@ public:
 
     void bind(PtDeviceBase* pt) { pt_dev_ = pt; }
     void bindCam(CameraDeviceBase* cam) { cam_dev_ = cam; }
+    /** Сброс кэша опроса без обращения к шине. Указатели устройств не трогает. */
+    void reset();
     PtDeviceBase* device() const { return pt_dev_; }
     CameraDeviceBase* camera() const { return cam_dev_; }
 

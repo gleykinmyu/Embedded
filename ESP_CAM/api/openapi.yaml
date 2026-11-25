@@ -1,0 +1,5079 @@
+openapi: 3.1.0
+info:
+  title: ESP_CAM Bridge API
+  version: 0.1.0
+  summary: Semantic HTTP API for the pan/tilt head, the camera, and the bridge.
+  description: |
+    This document is the only description of the bridge HTTP API.
+    Firmware in this repository does not implement it yet.
+
+    The bridge is an ESP32 in front of a pan/tilt head and a camera.
+    Clients talk about aim, motion, optics, presets, and picture settings.
+    They do not send protocol command names.
+
+    ## Resources
+
+    Motion is continuous pan, tilt, zoom, and focus. Home means "go to the
+    home pose". On some heads that pose is a stored preset; the client still
+    does not send a preset number.
+
+    Aim is pan and tilt as a pose. Optics is the head lens (zoom, focus, iris).
+    They are different resources because a head can support one without the
+    other. The bridge must not invent a center aim when the head cannot report
+    pan and tilt. Camera exposure iris is not head optics: it lives under
+    `/api/camera/iris`.
+
+    Picture settings are camera-menu values. `GET /api/camera/catalog` and
+    `GET /api/camera/osd/catalog` describe the selected model. Those payloads
+    are built from ccam. This file fixes their shape, not the per-model lists.
+    A write whose token is absent from that catalog is `invalid_parameter`.
+
+    `GET /api/status` is one observation for the poll. The body is nested so
+    network, head, camera, motion, presets, and limits stay separate objects.
+    It does not accept writes.
+
+    Installation, accessories, and bridge settings are separate writes.
+    They are not fields of one configuration object.
+
+    ## Capabilities
+
+    `head.capabilities` and `camera.capabilities` in the status body are the
+    ccam flags for the models selected on the bridge. An operation with
+    `x-capability` returns 403 `unsupported` and does not use the bus when
+    that flag is false. `x-capability-when` names the flag for one case only:
+    plain power-on does not need `power_camera_link`, and menu keys other than
+    left and right do not need `menu_left_right`. An operation with neither
+    extension is offered for every model; the device may still answer with
+    `device_rejected`.
+
+    A query with no user value that the model class does not implement is
+    `unsupported`. A value the device refuses after the capability check is
+    `device_rejected`.
+
+    ## Envelope
+
+    Success JSON is `{"ok": true, "data": ...}`.
+    Errors are `{"ok": false, "error": {"code", "message", "details"?}}`
+    and use the HTTP status of the failure. A device failure is not HTTP 200.
+
+    `GET /api/camera/values` is the exception. The body is `application/x-ndjson`:
+    one JSON object per line, not an array and not the success envelope.
+    If the camera transmitter is already down, the bridge returns 503 JSON
+    and does not start the stream.
+
+    JSON responses send `Cache-Control: no-store`.
+    Request bodies are JSON objects. Unknown fields are `invalid_parameter`.
+    Numbers are rejected when trailing junk is present. The largest accepted
+    JSON body is 1024 bytes.
+
+    ## Authorization
+
+    `operator` is the cookie `esp_sess` plus header `X-Esp-Client: ui`.
+    The cookie is HttpOnly and SameSite=Lax. Idle life is 30 to 300 seconds.
+    On `GET /api/status`, an operator cookie slides that timer only when
+    `X-Esp-Active` is exactly `1`. A missing header and any other value do
+    nothing. A service token ignores the header. Ending the
+    session, including logout and idle expiry, stops pan, tilt, zoom, and focus.
+    Session idle and the movement safety timeout are independent. Stopping
+    axes because the session expired does not replace the movement watchdog.
+
+    `service` is `Authorization: Bearer`. The token does not expire. It is for
+    a backend talking to the bridge. It cannot change the password, the session
+    lifetime, the token, or raw-protocol access.
+
+    Challenge and login are anonymous and still require `X-Esp-Client: ui`.
+    The session probe is anonymous; a presented credential is reported in the body.
+
+    `proof` is SHA-256 of the one-time nonce and the stored password hash.
+    SHA-256 has no work factor. A party that sees the salt, that nonce, and a
+    matching proof can test password guesses without talking to the bridge.
+    `new_password_hash` is the same kind of hash: SHA-256 of `next_salt` and
+    the new password. The password itself is not sent.
+
+    Direct mode: the page and this API share an origin, and the page uses the
+    operator cookie. External mode: a backend implements this same contract
+    toward the browser and calls the bridge with the bearer token. The browser
+    does not receive that token. The bridge does not enable cross-origin access.
+
+    Secrets (token, password proof, password hash) are never placed in a URL
+    or written to a log.
+
+    ## Raw protocol
+
+    `POST /api/diagnostics/protocol/head` and `.../camera` bypass the semantic
+    API. Access is `disabled`, `operator` (the default), or `all`.
+    Only an operator can change it, so a service token cannot unlock raw frames
+    for itself. The serial CLI is outside this policy.
+
+    ## Dispatcher
+
+    The bridge registers a static ESP-IDF `httpd` table and uses the built-in
+    wildcard match only for the patterns in `x-dispatcher`. Camera writes share
+    one handler because they share authentication, the JSON check, and the
+    device lock. Unknown `/api` paths return 404 `not_found` with this error
+    envelope. That table is not a general HTTP framework.
+
+servers:
+  - url: /
+    description: |
+      Same-origin base. In direct mode this is the bridge. In external mode
+      this is a backend that implements this contract.
+
+tags:
+  - name: Session
+    description: Operator sign-in, session lifetime, and the service token.
+  - name: Status
+    description: One read-only observation of the bridge, the head, and the camera.
+  - name: Motion
+    description: Continuous movement, full stop, home, and the default rate.
+  - name: Power
+    description: Head power.
+  - name: Aim
+    description: Reported or absolute pan/tilt. Absent when the head cannot provide it.
+  - name: Optics
+    description: Head lens pose. Not the camera exposure iris.
+  - name: Presets
+    description: Stored poses and how the head travels to them.
+  - name: Limits
+    description: End-of-travel limits.
+  - name: Installation
+    description: How the head is mounted.
+  - name: Accessories
+    description: Head outputs that are not part of aiming.
+  - name: Bridge
+    description: Which models the bridge speaks, and the bridge IPv4 settings.
+  - name: Camera
+    description: Camera picture, menu, and OSD. Ranges come from the catalog.
+  - name: Diagnostics
+    description: Separate status reads, plus the optional raw protocol.
+
+security:
+  - uiSession: []
+  - bearerAuth: []
+
+x-dispatcher:
+  runtime: esp-idf-httpd
+  match: httpd_uri_match_wildcard
+  note: >
+    Register specific paths before wildcards, and register /api/* last.
+    Raise max_uri_handlers to the size of this table. Inside /api/camera/*
+    and /api/diagnostics/* a fixed suffix table selects the operation.
+    Any other suffix is 404 not_found.
+  handlers:
+    - {uri: /api/status, methods: [GET]}
+    - {uri: /api/auth/*, methods: [GET, POST, PUT]}
+    - {uri: /api/motion, methods: [POST]}
+    - {uri: /api/motion/*, methods: [POST, PUT]}
+    - {uri: /api/power, methods: [POST]}
+    - {uri: /api/aim, methods: [GET, PUT]}
+    - {uri: /api/optics, methods: [GET, PATCH]}
+    - {uri: /api/optics/*, methods: [PUT]}
+    - {uri: /api/presets, methods: [GET]}
+    - {uri: /api/presets/*, methods: [GET, POST, PUT, DELETE]}
+    - {uri: /api/limits/*, methods: [POST, PUT]}
+    - {uri: /api/installation/*, methods: [PUT, PATCH]}
+    - {uri: /api/fans/*, methods: [PUT]}
+    - {uri: /api/tally, methods: [PUT]}
+    - {uri: /api/wireless-control, methods: [PUT]}
+    - {uri: /api/washer, methods: [PUT]}
+    - {uri: /api/option-output, methods: [PUT]}
+    - {uri: /api/wiper, methods: [PUT]}
+    - {uri: /api/bridge/models, methods: [PUT]}
+    - {uri: /api/network, methods: [PUT]}
+    - {uri: /api/camera/*, methods: [GET, PUT, POST]}
+    - {uri: /api/diagnostics/*, methods: [GET, PUT, POST]}
+    - {uri: /api/*, methods: [GET, POST, PUT, PATCH, DELETE]}
+
+paths:
+  /api/auth/challenge:
+    post:
+      tags: [Session]
+      operationId: createAuthChallenge
+      summary: Start an operator login
+      description: |
+        Anonymous. Requires `X-Esp-Client: ui`. Returns the current salt,
+        a one-time nonce, and the salt to use for a later password change.
+        The password is not sent. `proof` for login is SHA-256(nonce concatenated
+        with the stored password hash).
+      x-auth: [anonymous]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      responses:
+        "200":
+          description: Challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengeResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/login:
+    post:
+      tags: [Session]
+      operationId: login
+      summary: Open an operator session
+      description: |
+        Anonymous. Requires `X-Esp-Client: ui`. On success the bridge sets
+        cookie `esp_sess`. A new login ends any other operator session.
+      x-auth: [anonymous]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session opened
+          headers:
+            Set-Cookie:
+              description: '`esp_sess=<token>; Path=/; HttpOnly; SameSite=Lax`'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/logout:
+    post:
+      tags: [Session]
+      operationId: logout
+      summary: End the operator session
+      description: |
+        Operator only. Clears the cookie. The bridge then stops pan, tilt,
+        zoom, and focus, because the page may have been holding a move.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      responses:
+        "200":
+          description: Session ended
+          headers:
+            Set-Cookie:
+              description: Cookie cleared with Max-Age=0.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auth/session:
+    get:
+      tags: [Session]
+      operationId: getSession
+      summary: Report who is calling
+      description: |
+        Anonymous. A cookie or bearer token may be sent and is reflected in
+        `method`. This call does not fail with 401 when nobody is signed in.
+      x-auth: [anonymous, operator, service]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Current caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResult"
+
+  /api/auth/password:
+    put:
+      tags: [Session]
+      operationId: changePassword
+      summary: Change the operator password
+      description: |
+        Operator only. A service token is `forbidden`.
+        `proof` is SHA-256(nonce concatenated with the current hash).
+        `new_password_hash` is SHA-256(next_salt concatenated with the new password).
+        The password itself is not in the body. Fetch a challenge first.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auth/session/ttl:
+    put:
+      tags: [Session]
+      operationId: setSessionTtl
+      summary: Set the operator idle lifetime
+      description: Operator only. Does not affect the service token.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionTtl"
+      responses:
+        "200":
+          description: Lifetime updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTtlResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auth/token:
+    get:
+      tags: [Session]
+      operationId: getApiToken
+      summary: Read the service token
+      description: |
+        Operator only. Exists so a person at the bridge can copy the token
+        into a backend. An external web page must not call this. Do not log
+        the token.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      responses:
+        "200":
+          description: Current service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auth/token/reissue:
+    post:
+      tags: [Session]
+      operationId: reissueApiToken
+      summary: Replace the service token
+      description: |
+        Operator only. The previous bearer token stops working immediately.
+        Do not log the new token.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      responses:
+        "200":
+          description: New service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/status:
+    get:
+      tags: [Status]
+      operationId: getStatus
+      summary: Read the bridge observation
+      description: |
+        Does not query the head or the camera. Link health, capabilities,
+        and the last known limits are cached on the bridge.
+        For an operator cookie, idle slides only when `X-Esp-Active` is
+        exactly `1`. A missing header and any other value are ignored.
+        A service token ignores the header. `500` means the bridge could
+        not encode its own state (`internal` or `buffer`).
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/EspActive"
+      responses:
+        "200":
+          description: Current observation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/motion:
+    post:
+      tags: [Motion]
+      operationId: move
+      summary: Move one or more axes
+      description: |
+        At least one axis is required. An omitted axis is left as it is,
+        and its movement deadline is not renewed. `stop` on an axis stops
+        that axis immediately and clears its deadline. `rate` is 1 (slow)
+        to 100 (fast); when omitted, the bridge uses the stored default.
+
+        A successfully accepted command starts or renews movement on the
+        named axes. The client repeats the command about every 250 ms while
+        movement should continue. The bridge uses a fixed 800 ms safety
+        timeout. Each axis has its own deadline. A repeat that is accepted
+        updates the deadline of each axis named in that command. If an axis
+        is not renewed in time, the bridge stops that axis itself.
+
+        Pan and tilt are applied together when both are directions.
+        Zoom and focus follow. If a later axis fails, earlier axes may
+        already be moving: `details.applied_axes` lists them and
+        `details.failed_axis` names the failure. The client should then stop.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MotionCommand"
+            example:
+              pan: left
+              tilt: up
+              rate: 30
+      responses:
+        "200":
+          description: Axes accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MotionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/motion/stop:
+    post:
+      tags: [Motion]
+      operationId: stopMotion
+      summary: Stop pan, tilt, zoom, and focus
+      description: |
+        No body. This is the release path for a held control. It always
+        targets all four axes, including when the pointer is cancelled.
+        It stops pan, tilt, zoom, and focus immediately and clears every
+        movement deadline.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Stop accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/motion/home:
+    post:
+      tags: [Motion]
+      operationId: goHome
+      summary: Go to the home pose
+      description: |
+        The home pose is defined by the head. The client does not choose a
+        preset. The bridge cancels current velocity holds before home begins.
+        The next status read shows whether a preset is now active.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Home accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/motion/rate:
+    put:
+      tags: [Motion]
+      operationId: setMotionRate
+      summary: Store the default move rate
+      description: |
+        Used when a move omits `rate`. This does not move the head.
+        Changing the default rate does not renew a movement lease.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateSetting"
+      responses:
+        "200":
+          description: Rate stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/power:
+    post:
+      tags: [Power]
+      operationId: setPower
+      summary: Set head power
+      description: |
+        `camera_link` selects whether power-on also enables the camera
+        transmitter. It is allowed only when `power_camera_link` is true.
+        Omit it for a plain power-on. It cannot be combined with `off`.
+      x-auth: [operator, service]
+      x-capability-when:
+        camera_link: power_camera_link
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PowerCommand"
+            example:
+              state: "on"
+      responses:
+        "200":
+          description: Power command accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PowerResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/aim:
+    get:
+      tags: [Aim]
+      operationId: getAim
+      summary: Read pan and tilt
+      description: |
+        `view=control` needs capability `aim_control`.
+        `view=displayed` needs capability `aim_displayed`.
+        The body is pan and tilt only. Lens values are `GET /api/optics`.
+        When the capability for the requested view is false the status is
+        403 `unsupported`. The bridge does not fill pan and tilt with the
+        center value.
+      x-auth: [operator, service]
+      x-capability-when:
+        control: aim_control
+        displayed: aim_displayed
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/AimView"
+      responses:
+        "200":
+          description: Aim reported by the head
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AimResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+    put:
+      tags: [Aim]
+      operationId: setAim
+      summary: Set absolute pan and tilt
+      description: |
+        Needs capability `absolute_aim`. Both axes are required.
+        Units are device units, 0 to 65535, not degrees.
+      x-auth: [operator, service]
+      x-capability: absolute_aim
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AimTarget"
+      responses:
+        "200":
+          description: Aim command accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AimTargetResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/optics:
+    get:
+      tags: [Optics]
+      operationId: getOptics
+      summary: Read zoom, focus, and iris
+      description: |
+        Head lens pose. Needs capability `optics`.
+        This is not the camera exposure iris and not an aim reading.
+      x-auth: [operator, service]
+      x-capability: optics
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Lens pose
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpticsResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+    patch:
+      tags: [Optics]
+      operationId: setOptics
+      summary: Set one or more lens axes
+      description: |
+        Needs capability `optics`. At least one of zoom, focus, iris.
+        An omitted axis is left unchanged. `null` is not a value and is
+        `invalid_parameter`. An empty object is `invalid_parameter`.
+        Units match `GET /api/optics`.
+      x-auth: [operator, service]
+      x-capability: optics
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpticsTarget"
+      responses:
+        "200":
+          description: Lens command accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpticsTargetResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/optics/position-control:
+    put:
+      tags: [Optics]
+      operationId: setOpticsPositionControl
+      summary: Enable lens position control
+      description: |
+        Needs capability `preset_options`. Allows the head to drive the lens
+        when a preset is recalled. This is not camera auto-focus or auto-iris.
+      x-auth: [operator, service]
+      x-capability: preset_options
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Lens position control updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets:
+    get:
+      tags: [Presets]
+      operationId: listPresets
+      summary: List occupied preset numbers
+      description: |
+        Needs capability `preset_map`. Numbers are 1 to 99.
+        Recall, store, and delete do not need this capability.
+      x-auth: [operator, service]
+      x-capability: preset_map
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Occupied presets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetListResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/latest:
+    get:
+      tags: [Presets]
+      operationId: getLatestPreset
+      summary: Read the preset the head last recalled
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Latest preset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestPresetResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/{preset}/recall:
+    post:
+      tags: [Presets]
+      operationId: recallPreset
+      summary: Move to a stored preset
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/PresetId"
+      responses:
+        "200":
+          description: Recall accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetNumberResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/{preset}:
+    put:
+      tags: [Presets]
+      operationId: storePreset
+      summary: Store the current pose as a preset
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/PresetId"
+      responses:
+        "200":
+          description: Preset stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetNumberResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+    delete:
+      tags: [Presets]
+      operationId: deletePreset
+      summary: Delete a preset
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/PresetId"
+      responses:
+        "200":
+          description: Preset deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetNumberResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/travel/path:
+    put:
+      tags: [Presets]
+      operationId: setPresetPath
+      summary: Set the path used to reach a preset
+      description: Needs capability `preset_options`.
+      x-auth: [operator, service]
+      x-capability: preset_options
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresetPath"
+      responses:
+        "200":
+          description: Path stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetPathResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/travel/speed:
+    put:
+      tags: [Presets]
+      operationId: setPresetSpeed
+      summary: Set the speed class used to reach a preset
+      description: Needs capability `preset_options`.
+      x-auth: [operator, service]
+      x-capability: preset_options
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresetSpeed"
+      responses:
+        "200":
+          description: Speed class stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetSpeedResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/presets/travel/table:
+    put:
+      tags: [Presets]
+      operationId: setPresetSpeedTable
+      summary: Set the preset speed table entry
+      description: |
+        Needs capability `preset_options`. `value` is a 12-bit table entry,
+        0 to 4095. The bridge formats it for the head.
+      x-auth: [operator, service]
+      x-capability: preset_options
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresetSpeedTable"
+      responses:
+        "200":
+          description: Table entry stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetSpeedTableResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/limits/{axis}/toggle:
+    post:
+      tags: [Limits]
+      operationId: toggleLimit
+      summary: Toggle the limit at the current position
+      description: |
+        Needs capability `limit_toggle`. Drive the head to the stop before
+        setting a limit. The response is the state after the toggle.
+      x-auth: [operator, service]
+      x-capability: limit_toggle
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/LimitAxis"
+      responses:
+        "200":
+          description: Limit toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/limits/{axis}:
+    put:
+      tags: [Limits]
+      operationId: setLimit
+      summary: Set or clear a limit explicitly
+      description: Needs capability `limit_set`. This is not a toggle.
+      x-auth: [operator, service]
+      x-capability: limit_set
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/LimitAxis"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LimitWrite"
+      responses:
+        "200":
+          description: Limit updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/installation/axes:
+    patch:
+      tags: [Installation]
+      operationId: setAxisOrientation
+      summary: Reverse control directions
+      description: |
+        Bridge mounting correction. At least one axis. An omitted axis stays
+        as it is. `null` is not a value and is `invalid_parameter`. An empty
+        object is `invalid_parameter`. The response is the full orientation
+        after the change. This does not send a move.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AxisOrientationPatch"
+      responses:
+        "200":
+          description: Orientation stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AxisOrientationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/installation/tilt-span:
+    put:
+      tags: [Installation]
+      operationId: setTiltSpan
+      summary: Set the mechanical tilt span
+      description: |
+        Needs capability `tilt_span`. `narrow` and `wide` are the head's two
+        mechanical ranges. The exact degrees depend on the model.
+      x-auth: [operator, service]
+      x-capability: tilt_span
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TiltSpan"
+      responses:
+        "200":
+          description: Tilt span stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TiltSpanResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/tally:
+    put:
+      tags: [Accessories]
+      operationId: setTally
+      summary: Enable the tally lamp
+      x-auth: [operator, service]
+      x-capability: tally
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Tally updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/wireless-control:
+    put:
+      tags: [Accessories]
+      operationId: setWirelessControl
+      summary: Enable wireless control
+      x-auth: [operator, service]
+      x-capability: wireless
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Wireless control updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/washer:
+    put:
+      tags: [Accessories]
+      operationId: setWasher
+      summary: Set the washer output
+      x-auth: [operator, service]
+      x-capability: washer
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Washer updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/option-output:
+    put:
+      tags: [Accessories]
+      operationId: setOptionOutput
+      summary: Set the general-purpose option output
+      x-auth: [operator, service]
+      x-capability: option
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Option output updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/wiper:
+    put:
+      tags: [Accessories]
+      operationId: setWiper
+      summary: Set the wiper mode
+      x-auth: [operator, service]
+      x-capability: wiper
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WiperMode"
+      responses:
+        "200":
+          description: Wiper updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WiperModeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/fans/{fan}:
+    put:
+      tags: [Accessories]
+      operationId: setFan
+      summary: Set a fan profile
+      description: "`primary` and `secondary` are the head's two fans."
+      x-auth: [operator, service]
+      x-capability: fan
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/FanId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FanMode"
+      responses:
+        "200":
+          description: Fan updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FanModeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/bridge/models:
+    put:
+      tags: [Bridge]
+      operationId: setBridgeModels
+      summary: Select the head and camera models
+      description: |
+        Both values are required. They choose which ccam model the bridge
+        uses. Capabilities in the next status read follow that choice.
+        Unknown keys are `invalid_parameter`.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BridgeModels"
+      responses:
+        "200":
+          description: Models stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeModelsResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/network:
+    put:
+      tags: [Bridge]
+      operationId: setNetwork
+      summary: Store IPv4 settings and reboot
+      description: |
+        Writes the bridge address, not the camera. `gateway` may be omitted.
+        The response repeats the address that will be used after reboot.
+        The live address in `GET /api/status` stays unchanged until the reboot,
+        which the bridge schedules after this response is sent.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NetworkConfig"
+      responses:
+        "200":
+          description: Settings stored and reboot scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/camera/catalog:
+    get:
+      tags: [Camera]
+      operationId: getCameraCatalog
+      summary: Describe picture settings for the selected camera
+      description: |
+        No bus traffic. Built from ccam for the selected camera model.
+        Choice lists and numeric ranges in this payload are the authority
+        for later writes. This document does not freeze those lists.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Catalog for the selected model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CameraCatalogResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/camera/values:
+    get:
+      tags: [Camera]
+      operationId: readCameraValues
+      summary: Stream current picture values
+      description: |
+        Finite NDJSON stream. The body is not a JSON array and not the
+        success envelope. Each line is one CameraValueLine terminated by LF.
+        The media type is application/x-ndjson.
+
+        The first line is start. Later lines are phase, sample, and a final
+        end. A failed sample sets error and omits value; the stream continues.
+        scope=dependencies reads only values whose gate the bridge has just
+        evaluated. The client does not send gates. name may be repeated to
+        keep a subset.
+
+        If the camera transmitter is down before the stream starts, the
+        response is 503 JSON camera_unavailable and no line is sent.
+        If the link fails mid-stream, the last line is end with complete false.
+      x-auth: [operator, service]
+      x-ndjson: true
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/ValueScope"
+        - $ref: "#/components/parameters/ValueNames"
+      responses:
+        "200":
+          description: NDJSON lines. The schema describes one line, not the whole body.
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/CameraValueLine"
+              x-ndjson: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /api/camera/identity/model:
+    get:
+      tags: [Camera]
+      operationId: getCameraModelName
+      summary: Read the model name from the camera
+      description: Queried from the camera. This is not the bridge model key.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Model name reported by the camera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelNameResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/identity/version:
+    get:
+      tags: [Camera]
+      operationId: getCameraVersion
+      summary: Read the camera software version
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Version reported by the camera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/osd/catalog:
+    get:
+      tags: [Camera]
+      operationId: getOsdCatalog
+      summary: Describe OSD settings for the selected camera
+      description: |
+        No bus traffic. Names and scales come from ccam. A write uses the
+        catalog name and a value token that ccam accepts for that model.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: OSD catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OsdCatalogResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/camera/osd/{name}:
+    get:
+      tags: [Camera]
+      operationId: getOsdSetting
+      summary: Read one OSD setting
+      description: Unknown name is 404 not_found. value is the catalog token.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/OsdName"
+      responses:
+        "200":
+          description: OSD value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OsdSettingResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+    put:
+      tags: [Camera]
+      operationId: setOsdSetting
+      summary: Write one OSD setting
+      description: value is the catalog token, not a display number.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+        - $ref: "#/components/parameters/OsdName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OsdWrite"
+      responses:
+        "200":
+          description: OSD value stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OsdSettingResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/menu:
+    put:
+      tags: [Camera]
+      operationId: setCameraMenu
+      summary: Open or close the camera menu
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuOpen"
+      responses:
+        "200":
+          description: Menu state accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuOpenResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/menu/keys:
+    post:
+      tags: [Camera]
+      operationId: pressCameraKey
+      summary: Press a camera menu key
+      description: left and right need capability menu_left_right. Other keys do not.
+      x-auth: [operator, service]
+      x-capability-when:
+        left: menu_left_right
+        right: menu_left_right
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuKey"
+      responses:
+        "200":
+          description: Key accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+  /api/camera/shutter:
+    put:
+      tags: [Camera]
+      operationId: setShutter
+      summary: Set the shutter mode
+      description: Must match catalog parameter shutter.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: Shutter accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/synchro-scan:
+    put:
+      tags: [Camera]
+      operationId: setSynchroScan
+      summary: Set synchro scan
+      description: Needs capability synchro. Must match catalog parameter synchro.
+      x-auth: [operator, service]
+      x-capability: synchro
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: Synchro scan accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/gain:
+    put:
+      tags: [Camera]
+      operationId: setGain
+      summary: Set AGC or a manual gain step
+      description: Manual step uses the camera menu numbering.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GainSetting"
+      responses:
+        "200":
+          description: Gain accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GainResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/iris:
+    put:
+      tags: [Camera]
+      operationId: setIris
+      summary: Set camera exposure iris
+      description: Camera-menu iris, not PATCH /api/optics. position is only for manual.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IrisSetting"
+      responses:
+        "200":
+          description: Iris accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IrisResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/nd-filter:
+    put:
+      tags: [Camera]
+      operationId: setNdFilter
+      summary: Set the ND filter step
+      description: The camera rejects a step it does not have.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NdFilter"
+      responses:
+        "200":
+          description: ND filter accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NdFilterResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/white-balance:
+    put:
+      tags: [Camera]
+      operationId: setWhiteBalance
+      summary: Set the white-balance mode
+      description: Must match catalog parameter white_balance.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: White balance accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/white-balance/sample:
+    post:
+      tags: [Camera]
+      operationId: sampleWhiteBalance
+      summary: Run a white-balance sample
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Sample started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/black-balance/sample:
+    post:
+      tags: [Camera]
+      operationId: sampleBlackBalance
+      summary: Run a black-balance sample
+      description: Needs capability black_balance.
+      x-auth: [operator, service]
+      x-capability: black_balance
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Sample started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/chroma:
+    put:
+      tags: [Camera]
+      operationId: setChroma
+      summary: Set chroma level
+      description: Needs capability chroma. Level is -3 to +3.
+      x-auth: [operator, service]
+      x-capability: chroma
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Chroma"
+      responses:
+        "200":
+          description: Chroma accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChromaResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/paint/gain:
+    put:
+      tags: [Camera]
+      operationId: setPaintGain
+      summary: Set red or blue paint gain
+      description: Needs capability paint. offset is -30 to +30 in camera steps.
+      x-auth: [operator, service]
+      x-capability: paint
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaintGain"
+      responses:
+        "200":
+          description: Paint gain accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaintGainResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/paint/pedestal:
+    put:
+      tags: [Camera]
+      operationId: setPaintPedestal
+      summary: Set a paint pedestal
+      description: Needs capability paint. master is the total pedestal.
+      x-auth: [operator, service]
+      x-capability: paint
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaintPedestal"
+      responses:
+        "200":
+          description: Pedestal accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaintPedestalResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/detail:
+    put:
+      tags: [Camera]
+      operationId: setDetail
+      summary: Set detail level
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetailLevel"
+      responses:
+        "200":
+          description: Detail accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailLevelResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/detail/hd:
+    put:
+      tags: [Camera]
+      operationId: setHdDetail
+      summary: Set HD detail level
+      description: Needs capability hd_detail.
+      x-auth: [operator, service]
+      x-capability: hd_detail
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetailLevel"
+      responses:
+        "200":
+          description: HD detail accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailLevelResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/detail/master:
+    put:
+      tags: [Camera]
+      operationId: setMasterDetail
+      summary: Set master detail
+      description: Needs capability master_detail. Must match catalog parameter master_detail.
+      x-auth: [operator, service]
+      x-capability: master_detail
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: Master detail accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/gamma:
+    put:
+      tags: [Camera]
+      operationId: setGamma
+      summary: Set gamma
+      description: Needs capability gamma. Must match catalog parameter gamma.
+      x-auth: [operator, service]
+      x-capability: gamma
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: Gamma accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/noise-reduction:
+    put:
+      tags: [Camera]
+      operationId: setNoiseReduction
+      summary: Set 3D noise reduction
+      description: 0 is the lowest step and 2 is the highest.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoiseReduction"
+      responses:
+        "200":
+          description: Noise reduction accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoiseReductionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/shading:
+    put:
+      tags: [Camera]
+      operationId: setShading
+      summary: Enable black shading correction
+      description: Needs capability black_shade.
+      x-auth: [operator, service]
+      x-capability: black_shade
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Enabled"
+      responses:
+        "200":
+          description: Shading accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnabledResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/bars:
+    put:
+      tags: [Camera]
+      operationId: setBars
+      summary: Show color bars or the camera picture
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Bars"
+      responses:
+        "200":
+          description: Bars accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarsResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/polarity:
+    put:
+      tags: [Camera]
+      operationId: setPolarity
+      summary: Set negative or positive picture
+      description: Needs capability negative.
+      x-auth: [operator, service]
+      x-capability: negative
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Polarity"
+      responses:
+        "200":
+          description: Polarity accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolarityResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/scan:
+    put:
+      tags: [Camera]
+      operationId: setScanMode
+      summary: Set field or frame scan
+      description: Needs capability scan.
+      x-auth: [operator, service]
+      x-capability: scan
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanMode"
+      responses:
+        "200":
+          description: Scan mode accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanModeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/digital-gain:
+    put:
+      tags: [Camera]
+      operationId: setDigitalGain
+      summary: Set digital gain
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DigitalGain"
+      responses:
+        "200":
+          description: Digital gain accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DigitalGainResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/metering/area:
+    put:
+      tags: [Camera]
+      operationId: setMeteringArea
+      summary: Set the exposure metering area
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeteringArea"
+      responses:
+        "200":
+          description: Metering area accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeteringAreaResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/metering/peak:
+    put:
+      tags: [Camera]
+      operationId: setMeteringPeak
+      summary: Set peak versus average metering
+      description: 0 and 100 are the two ends of the control. The bridge does not rescale them.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeteringPeak"
+      responses:
+        "200":
+          description: Metering peak accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeteringPeakResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/scene:
+    put:
+      tags: [Camera]
+      operationId: setScene
+      summary: Select a scene file
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SceneFile"
+      responses:
+        "200":
+          description: Scene accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SceneFileResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/scene/memory:
+    put:
+      tags: [Camera]
+      operationId: setSceneMemory
+      summary: Select a scene memory bank
+      description: Short token understood by the selected camera.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SceneMemory"
+      responses:
+        "200":
+          description: Scene memory accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SceneMemoryResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/genlock:
+    put:
+      tags: [Camera]
+      operationId: setGenlock
+      summary: Set genlock
+      description: Needs capability genlock. Must match catalog parameter genlock.
+      x-auth: [operator, service]
+      x-capability: genlock
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: Genlock accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/agc-ceiling:
+    put:
+      tags: [Camera]
+      operationId: setAgcCeiling
+      summary: Set the AGC ceiling
+      description: Needs capability agc_ceiling. Must match catalog parameter agc_ceiling.
+      x-auth: [operator, service]
+      x-capability: agc_ceiling
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValue"
+      responses:
+        "200":
+          description: AGC ceiling accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogValueResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/monitor:
+    put:
+      tags: [Camera]
+      operationId: setMonitorOutput
+      summary: Set the monitor output codes
+      description: Needs capability monitor. page and value are monitor-menu codes.
+      x-auth: [operator, service]
+      x-capability: monitor
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MonitorOutput"
+      responses:
+        "200":
+          description: Monitor output accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorOutputResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/lens-interface:
+    put:
+      tags: [Camera]
+      operationId: setLensInterface
+      summary: Set the lens-contact code
+      description: Needs capability lens_interface. Service setting, not the lens pose.
+      x-auth: [operator, service]
+      x-capability: lens_interface
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LensInterface"
+      responses:
+        "200":
+          description: Lens interface accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LensInterfaceResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/camera/focus:
+    put:
+      tags: [Camera]
+      operationId: setFocusMode
+      summary: Set auto or manual focus
+      description: Camera focus mode. Velocity focus is POST /api/motion.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusMode"
+      responses:
+        "200":
+          description: Focus mode accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusModeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+  /api/diagnostics/exposure:
+    get:
+      tags: [Diagnostics]
+      operationId: getExposureReading
+      summary: Read the head exposure report
+      description: Needs capability exposure_reading. This is not the camera menu stream.
+      x-auth: [operator, service]
+      x-capability: exposure_reading
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Exposure report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExposureResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/fault:
+    get:
+      tags: [Diagnostics]
+      operationId: getHeadFault
+      summary: Read the head fault register
+      description: The numeric code is the head register, not an HTTP error.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Fault register
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeadFaultResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/landing:
+    get:
+      tags: [Diagnostics]
+      operationId: getLandingMode
+      summary: Read the landing mode
+      description: Needs capability landing.
+      x-auth: [operator, service]
+      x-capability: landing
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Landing mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LandingResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/head/version:
+    get:
+      tags: [Diagnostics]
+      operationId: getHeadVersion
+      summary: Read the head software version
+      description: Needs capability head_version. Not the camera version.
+      x-auth: [operator, service]
+      x-capability: head_version
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Head version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/heater:
+    get:
+      tags: [Diagnostics]
+      operationId: getHeaterStatus
+      summary: Read the heater status byte
+      description: |
+        Needs capability heater. The bridge returns the byte and does not
+        translate it. A model flag with no implementation is 403 unsupported.
+      x-auth: [operator, service]
+      x-capability: heater
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Heater status byte
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusByteResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/defroster:
+    get:
+      tags: [Diagnostics]
+      operationId: getDefrosterStatus
+      summary: Read the defroster status byte
+      description: Needs capability defroster. The byte is not translated.
+      x-auth: [operator, service]
+      x-capability: defroster
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Defroster status byte
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusByteResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/protocol:
+    get:
+      tags: [Diagnostics]
+      operationId: getProtocolAccess
+      summary: Read raw-protocol access
+      description: Default is operator. Both operator and service may read it.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      responses:
+        "200":
+          description: Current raw-protocol access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProtocolAccessResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Diagnostics]
+      operationId: setProtocolAccess
+      summary: Change raw-protocol access
+      description: |
+        Operator only. disabled rejects every raw call. operator allows only
+        the cookie session. all also allows the service token. A service
+        token cannot call this, even when access is already all.
+      x-auth: [operator]
+      security:
+        - uiSession: []
+      parameters:
+        - $ref: "#/components/parameters/UiClientRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProtocolAccess"
+      responses:
+        "200":
+          description: Access updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProtocolAccessResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/diagnostics/protocol/head:
+    post:
+      tags: [Diagnostics]
+      operationId: sendHeadFrame
+      summary: Send a raw head frame
+      description: |
+        Bypasses the semantic API and capability checks. Allowed only when
+        raw access permits this caller. The default is operator, so a service
+        token receives 403 protocol_disabled until an operator sets all.
+        command has no leading marker and no terminator.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeadFrame"
+      responses:
+        "200":
+          description: Frame sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrameReplyResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+
+  /api/diagnostics/protocol/camera:
+    post:
+      tags: [Diagnostics]
+      operationId: sendCameraFrame
+      summary: Send a raw camera frame
+      description: |
+        Same access rule as the head frame. await_reply false returns an
+        empty reply after a send with no read.
+      x-auth: [operator, service]
+      parameters:
+        - $ref: "#/components/parameters/UiClientOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CameraFrame"
+      responses:
+        "200":
+          description: Frame sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrameReplyResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        "504":
+          $ref: "#/components/responses/Timeout"
+components:
+  securitySchemes:
+    uiSession:
+      type: apiKey
+      in: cookie
+      name: esp_sess
+      description: |
+        Operator session. HttpOnly, SameSite=Lax, idle life 30 to 300 seconds.
+        Requests also send X-Esp-Client: ui. Ending the session stops pan,
+        tilt, zoom, and focus. A service token does not open this session.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Server-to-device token. It does not expire. It cannot change the
+        password, the session lifetime, the token, or raw-protocol access.
+        Do not put it in a URL, a browser application, or a log.
+
+  parameters:
+    UiClientRequired:
+      name: X-Esp-Client
+      in: header
+      required: true
+      schema:
+        const: ui
+      description: Marks the call as coming from the bridge page.
+    UiClientOptional:
+      name: X-Esp-Client
+      in: header
+      required: false
+      schema:
+        const: ui
+      description: Required together with the operator cookie. Omit it for a service token.
+    EspActive:
+      name: X-Esp-Active
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Used by GET /api/status. For an operator cookie, the exact value
+        "1" slides the idle timer. A missing header and any other value
+        are ignored. A service token ignores this header.
+    AimView:
+      name: view
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/AimView"
+      description: Defaults to control.
+    PresetId:
+      name: preset
+      in: path
+      required: true
+      description: Canonical decimal 1 to 99, without a sign, leading zeros, or trailing characters.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 99
+    LimitAxis:
+      name: axis
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/LimitAxis"
+    FanId:
+      name: fan
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/FanId"
+    OsdName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9_]{0,31}$"
+    ValueScope:
+      name: scope
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [full, dependencies]
+        default: full
+      description: |
+        full reads the picture. dependencies reads only values gated by the
+        primary state the bridge just measured.
+    ValueNames:
+      name: name
+      in: query
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          minLength: 1
+          maxLength: 64
+      description: When set, the stream reads only these sample names.
+
+  responses:
+    BadRequest:
+      description: A field is missing, the wrong type, out of range, or not in the model catalog.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error:
+              code: invalid_parameter
+              message: rate must be 1..100
+              details:
+                field: rate
+    Unauthorized:
+      description: The credential is missing or rejected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error:
+              code: unauthorized
+              message: Authentication required
+              details:
+                session_seconds_left: 0
+                session_ttl_seconds: 300
+                session_active: false
+    Forbidden:
+      description: |
+        The caller is authenticated but not allowed. code is forbidden for the
+        wrong credential class, unsupported when a capability flag is false,
+        and protocol_disabled when raw access blocks this caller.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            error:
+              code: unsupported
+              message: This head does not report pan and tilt
+              details:
+                capability: aim_control
+    NotFound:
+      description: The path or OSD name does not exist. code is not_found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: The head or camera rejected the command. code is device_rejected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InternalError:
+      description: Bridge failure. code is buffer or internal.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unavailable:
+      description: |
+        Temporary. ota_busy while firmware is uploading, device_io when the
+        bus transfer fails, camera_unavailable when the camera transmitter is down.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Timeout:
+      description: The head or camera did not answer in time. code is device_timeout.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: |
+        invalid_parameter is HTTP 400. unauthorized is 401.
+        forbidden, unsupported, and protocol_disabled are 403.
+        not_found is 404. device_rejected is 409.
+        buffer and internal are 500.
+        ota_busy, device_io, and camera_unavailable are 503.
+        device_timeout is 504.
+      enum:
+        - invalid_parameter
+        - unauthorized
+        - forbidden
+        - unsupported
+        - protocol_disabled
+        - not_found
+        - device_rejected
+        - buffer
+        - internal
+        - ota_busy
+        - device_io
+        - camera_unavailable
+        - device_timeout
+    ErrorDetails:
+      type: object
+      description: Present only when the error has extra fields. Unknown keys may be added later.
+      properties:
+        field:
+          type: string
+        capability:
+          type: string
+        failed_axis:
+          enum: [pan, tilt, zoom, focus]
+        applied_axes:
+          type: array
+          uniqueItems: true
+          description: Axes already accepted before the failure. Each axis at most once.
+          items:
+            enum: [pan, tilt, zoom, focus]
+        session_seconds_left:
+          type: integer
+          minimum: 0
+        session_ttl_seconds:
+          type: integer
+          minimum: 0
+        session_active:
+          type: boolean
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          minLength: 1
+        details:
+          $ref: "#/components/schemas/ErrorDetails"
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          $ref: "#/components/schemas/Error"
+    Ack:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          type: object
+          additionalProperties: false
+          required: [applied]
+          properties:
+            applied:
+              type: boolean
+              const: true
+    Sha256Hex:
+      type: string
+      pattern: "^[0-9a-fA-F]{64}$"
+    SaltHex:
+      type: string
+      pattern: "^[0-9a-fA-F]{32}$"
+    DeviceUnit:
+      type: integer
+      minimum: 0
+      maximum: 65535
+      description: Device units. Not degrees and not a focal length. Center is 32768 where the head uses that convention.
+    AimView:
+      type: string
+      enum: [control, displayed]
+    LimitAxis:
+      type: string
+      enum: [tilt_up, tilt_down, pan_left, pan_right]
+    LimitIndicator:
+      type: string
+      enum: [unknown, clear, set]
+    FanId:
+      type: string
+      enum: [primary, secondary]
+    HeadModel:
+      type: string
+      enum: [ph350, ph360, ph650, ph405, he130, he870, ue150, iptz]
+    CameraModel:
+      type: string
+      enum: [e650, e600, he130, he870, ue150]
+    Ipv4:
+      type: string
+      format: ipv4
+    Challenge:
+      type: object
+      additionalProperties: false
+      required: [salt, nonce, next_salt]
+      properties:
+        salt:
+          $ref: "#/components/schemas/SaltHex"
+        nonce:
+          $ref: "#/components/schemas/SaltHex"
+        next_salt:
+          $ref: "#/components/schemas/SaltHex"
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [user, proof]
+      properties:
+        user:
+          type: string
+          minLength: 1
+          maxLength: 32
+        proof:
+          $ref: "#/components/schemas/Sha256Hex"
+    LoginSession:
+      type: object
+      additionalProperties: false
+      required: [user, ttl_seconds]
+      properties:
+        user:
+          type: string
+        ttl_seconds:
+          type: integer
+          minimum: 30
+          maximum: 300
+    SessionView:
+      type: object
+      additionalProperties: false
+      required: [authenticated, method]
+      properties:
+        authenticated:
+          type: boolean
+        method:
+          enum: [none, operator, service]
+        user:
+          type: string
+        ttl_seconds:
+          type: integer
+          minimum: 30
+          maximum: 300
+        seconds_left:
+          type: [integer, "null"]
+          minimum: 0
+        ttl_min_seconds:
+          type: integer
+        ttl_max_seconds:
+          type: integer
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [proof, new_password_hash]
+      properties:
+        proof:
+          $ref: "#/components/schemas/Sha256Hex"
+        new_password_hash:
+          $ref: "#/components/schemas/Sha256Hex"
+    SessionTtl:
+      type: object
+      additionalProperties: false
+      required: [ttl_seconds]
+      properties:
+        ttl_seconds:
+          type: integer
+          minimum: 30
+          maximum: 300
+    Token:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          pattern: "^[A-Za-z0-9]{32}$"
+    HeadCapabilities:
+      type: object
+      additionalProperties: false
+      description: ccam flags for the selected head. An operation with the same x-capability is unsupported when the flag is false.
+      required:
+        - absolute_aim
+        - absolute_aim_speed
+        - preset_map
+        - preset_options
+        - limit_set
+        - limit_toggle
+        - tally
+        - fan
+        - wiper
+        - washer
+        - wireless
+        - option
+        - tilt_span
+        - heater
+        - defroster
+        - aim_control
+        - aim_displayed
+        - optics
+        - exposure_reading
+        - landing
+        - head_version
+        - power_camera_link
+      properties:
+        absolute_aim: {type: boolean}
+        absolute_aim_speed: {type: boolean}
+        preset_map: {type: boolean}
+        preset_options: {type: boolean}
+        limit_set: {type: boolean}
+        limit_toggle: {type: boolean}
+        tally: {type: boolean}
+        fan: {type: boolean}
+        wiper: {type: boolean}
+        washer: {type: boolean}
+        wireless: {type: boolean}
+        option: {type: boolean}
+        tilt_span: {type: boolean}
+        heater: {type: boolean}
+        defroster: {type: boolean}
+        aim_control: {type: boolean}
+        aim_displayed: {type: boolean}
+        optics: {type: boolean}
+        exposure_reading: {type: boolean}
+        landing: {type: boolean}
+        head_version: {type: boolean}
+        power_camera_link: {type: boolean}
+    CameraCapabilities:
+      type: object
+      additionalProperties: false
+      description: ccam flags for the selected camera.
+      required:
+        - hd_detail
+        - negative
+        - scan
+        - chroma
+        - black_shade
+        - synchro
+        - black_balance
+        - paint
+        - genlock
+        - gamma
+        - agc_ceiling
+        - master_detail
+        - monitor
+        - lens_interface
+        - menu_left_right
+      properties:
+        hd_detail: {type: boolean}
+        negative: {type: boolean}
+        scan: {type: boolean}
+        chroma: {type: boolean}
+        black_shade: {type: boolean}
+        synchro: {type: boolean}
+        black_balance: {type: boolean}
+        paint: {type: boolean}
+        genlock: {type: boolean}
+        gamma: {type: boolean}
+        agc_ceiling: {type: boolean}
+        master_detail: {type: boolean}
+        monitor: {type: boolean}
+        lens_interface: {type: boolean}
+        menu_left_right: {type: boolean}
+    NetworkLive:
+      type: object
+      additionalProperties: false
+      required: [link, address, mask, gateway, mac]
+      properties:
+        link: {type: boolean}
+        address: {$ref: "#/components/schemas/Ipv4"}
+        mask: {$ref: "#/components/schemas/Ipv4"}
+        gateway: {$ref: "#/components/schemas/Ipv4"}
+        mac:
+          type: string
+          pattern: "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+    SessionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [ttl_seconds, seconds_left]
+      properties:
+        ttl_seconds:
+          type: integer
+          minimum: 30
+          maximum: 300
+        seconds_left:
+          type: [integer, "null"]
+          minimum: 0
+          description: Null when the caller is a service token.
+    HeadPower:
+      type: object
+      additionalProperties: false
+      required: [state, label]
+      properties:
+        state:
+          enum: ["off", "on", "on_camera_tx", "on_no_camera_tx", starting, control_off, unknown]
+        label:
+          type: string
+        code:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 255
+          description: Raw power byte. Null when the head has not reported one.
+    HeadSnapshot:
+      type: object
+      additionalProperties: false
+      required: [model, name, alive, power, powered, optics_alive, optics_fail_count, fail_count, error_code, capabilities]
+      properties:
+        model: {$ref: "#/components/schemas/HeadModel"}
+        name: {type: string}
+        alive: {type: boolean}
+        power: {$ref: "#/components/schemas/HeadPower"}
+        powered: {type: boolean}
+        optics_alive: {type: boolean}
+        optics_fail_count: {type: integer, minimum: 0}
+        fail_count: {type: integer, minimum: 0}
+        error_code:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 255
+          description: Null when the head has not reported a fault code.
+        capabilities: {$ref: "#/components/schemas/HeadCapabilities"}
+    CameraSnapshot:
+      type: object
+      additionalProperties: false
+      required: [model, name, transmitter, alive, identifier, fail_count, capabilities]
+      properties:
+        model: {$ref: "#/components/schemas/CameraModel"}
+        name: {type: string}
+        transmitter: {type: boolean}
+        alive: {type: boolean}
+        identifier:
+          type: string
+          description: Camera id string. Empty when the camera has not answered.
+        fail_count: {type: integer, minimum: 0}
+        capabilities: {$ref: "#/components/schemas/CameraCapabilities"}
+    AxisOrientation:
+      type: object
+      additionalProperties: false
+      required: [pan, tilt, zoom, focus]
+      properties:
+        pan: {type: boolean}
+        tilt: {type: boolean}
+        zoom: {type: boolean}
+        focus: {type: boolean}
+      description: True means the bridge reverses that control direction.
+    AxisOrientationPatch:
+      type: object
+      additionalProperties: false
+      description: |
+        At least one axis. An omitted axis is unchanged. null is invalid.
+        The booleans do not include null.
+      minProperties: 1
+      anyOf:
+        - required: [pan]
+        - required: [tilt]
+        - required: [zoom]
+        - required: [focus]
+      properties:
+        pan: {type: boolean}
+        tilt: {type: boolean}
+        zoom: {type: boolean}
+        focus: {type: boolean}
+    MotionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [rate, orientation]
+      properties:
+        rate:
+          type: integer
+          minimum: 1
+          maximum: 100
+        orientation:
+          $ref: "#/components/schemas/AxisOrientation"
+    PresetSnapshot:
+      type: object
+      additionalProperties: false
+      required: [latest, active]
+      properties:
+        latest:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 99
+        active: {type: boolean}
+    LimitSnapshot:
+      type: object
+      additionalProperties: false
+      required: [tilt_up, tilt_down, pan_left, pan_right]
+      properties:
+        tilt_up: {$ref: "#/components/schemas/LimitIndicator"}
+        tilt_down: {$ref: "#/components/schemas/LimitIndicator"}
+        pan_left: {$ref: "#/components/schemas/LimitIndicator"}
+        pan_right: {$ref: "#/components/schemas/LimitIndicator"}
+    BridgeStatus:
+      type: object
+      additionalProperties: false
+      required: [network, uptime_seconds, session, head, camera, motion, presets, limits]
+      properties:
+        network: {$ref: "#/components/schemas/NetworkLive"}
+        uptime_seconds: {type: integer, minimum: 0}
+        session: {$ref: "#/components/schemas/SessionSnapshot"}
+        head: {$ref: "#/components/schemas/HeadSnapshot"}
+        camera: {$ref: "#/components/schemas/CameraSnapshot"}
+        motion: {$ref: "#/components/schemas/MotionSnapshot"}
+        presets: {$ref: "#/components/schemas/PresetSnapshot"}
+        limits: {$ref: "#/components/schemas/LimitSnapshot"}
+    MotionCommand:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [pan]
+        - required: [tilt]
+        - required: [zoom]
+        - required: [focus]
+      properties:
+        pan: {enum: [left, right, stop]}
+        tilt: {enum: [up, down, stop]}
+        zoom: {enum: [tele, wide, stop]}
+        focus: {enum: [far, near, stop]}
+        rate: {type: integer, minimum: 1, maximum: 100}
+    MotionAccepted:
+      type: object
+      additionalProperties: false
+      required: [axes, rate]
+      properties:
+        axes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {enum: [pan, tilt, zoom, focus]}
+        rate: {type: integer, minimum: 1, maximum: 100}
+    StopAccepted:
+      type: object
+      additionalProperties: false
+      required: [axes]
+      properties:
+        axes:
+          type: array
+          minItems: 4
+          maxItems: 4
+          uniqueItems: true
+          description: Each of pan, tilt, zoom, and focus, once.
+          items: {enum: [pan, tilt, zoom, focus]}
+    RateSetting:
+      type: object
+      additionalProperties: false
+      required: [rate]
+      properties:
+        rate: {type: integer, minimum: 1, maximum: 100}
+    PowerCommand:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [state]
+          properties:
+            state: {const: "off"}
+        - type: object
+          additionalProperties: false
+          required: [state]
+          properties:
+            state: {const: "on"}
+            camera_link: {enum: [enable, disable]}
+    AimReading:
+      type: object
+      additionalProperties: false
+      required: [view, pan, tilt]
+      properties:
+        view: {$ref: "#/components/schemas/AimView"}
+        pan: {$ref: "#/components/schemas/DeviceUnit"}
+        tilt: {$ref: "#/components/schemas/DeviceUnit"}
+    AimTarget:
+      type: object
+      additionalProperties: false
+      required: [pan, tilt]
+      properties:
+        pan: {$ref: "#/components/schemas/DeviceUnit"}
+        tilt: {$ref: "#/components/schemas/DeviceUnit"}
+    OpticsReading:
+      type: object
+      additionalProperties: false
+      required: [zoom, focus, iris]
+      description: Normalized head-lens units, 0 toward wide, near, and closed.
+      properties:
+        zoom: {$ref: "#/components/schemas/DeviceUnit"}
+        focus: {$ref: "#/components/schemas/DeviceUnit"}
+        iris: {$ref: "#/components/schemas/DeviceUnit"}
+    OpticsTarget:
+      type: object
+      additionalProperties: false
+      description: |
+        At least one of zoom, focus, and iris. An omitted axis is unchanged.
+        null is invalid. The types do not include null.
+      anyOf:
+        - required: [zoom]
+        - required: [focus]
+        - required: [iris]
+      properties:
+        zoom: {$ref: "#/components/schemas/DeviceUnit"}
+        focus: {$ref: "#/components/schemas/DeviceUnit"}
+        iris: {$ref: "#/components/schemas/DeviceUnit"}
+    Enabled:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled: {type: boolean}
+    PresetList:
+      type: object
+      additionalProperties: false
+      required: [occupied]
+      properties:
+        occupied:
+          type: array
+          uniqueItems: true
+          description: Occupied preset numbers. Each number appears once.
+          items: {type: integer, minimum: 1, maximum: 99}
+    LatestPreset:
+      type: object
+      additionalProperties: false
+      required: [number, active]
+      properties:
+        number:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 99
+        active: {type: boolean}
+    PresetNumber:
+      type: object
+      additionalProperties: false
+      required: [number]
+      properties:
+        number: {type: integer, minimum: 1, maximum: 99}
+    PresetPath:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path: {enum: [normal, diagonal]}
+    PresetSpeed:
+      type: object
+      additionalProperties: false
+      required: [speed]
+      properties:
+        speed: {enum: [slow, mid, fast]}
+    PresetSpeedTable:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: integer
+          minimum: 0
+          maximum: 4095
+          description: 12-bit preset speed table entry.
+    LimitWrite:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: {enum: [clear, set]}
+    LimitState:
+      type: object
+      additionalProperties: false
+      required: [axis, state]
+      properties:
+        axis: {$ref: "#/components/schemas/LimitAxis"}
+        state: {enum: [clear, set]}
+    TiltSpan:
+      type: object
+      additionalProperties: false
+      required: [span]
+      properties:
+        span: {enum: [narrow, wide]}
+    WiperMode:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {enum: ["off", fast, slow]}
+    FanMode:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {enum: [auto, high, mid, low]}
+    FanApplied:
+      type: object
+      additionalProperties: false
+      required: [fan, mode]
+      properties:
+        fan: {$ref: "#/components/schemas/FanId"}
+        mode: {enum: [auto, high, mid, low]}
+    BridgeModels:
+      type: object
+      additionalProperties: false
+      required: [head, camera]
+      properties:
+        head: {$ref: "#/components/schemas/HeadModel"}
+        camera: {$ref: "#/components/schemas/CameraModel"}
+    BridgeModelsApplied:
+      type: object
+      additionalProperties: false
+      required: [head, camera, head_name, camera_name]
+      properties:
+        head: {$ref: "#/components/schemas/HeadModel"}
+        camera: {$ref: "#/components/schemas/CameraModel"}
+        head_name: {type: string}
+        camera_name: {type: string}
+    NetworkConfig:
+      type: object
+      additionalProperties: false
+      required: [address, mask]
+      properties:
+        address: {$ref: "#/components/schemas/Ipv4"}
+        mask: {$ref: "#/components/schemas/Ipv4"}
+        gateway: {$ref: "#/components/schemas/Ipv4"}
+    NetworkApplied:
+      type: object
+      additionalProperties: false
+      required: [address, mask, gateway, reboot]
+      properties:
+        address: {$ref: "#/components/schemas/Ipv4"}
+        mask: {$ref: "#/components/schemas/Ipv4"}
+        gateway: {$ref: "#/components/schemas/Ipv4"}
+        reboot: {type: boolean, const: true}
+    LabeledChoice:
+      type: object
+      additionalProperties: false
+      required: [value, label]
+      properties:
+        value: {type: string}
+        label: {type: string}
+    ChoiceParameter:
+      type: object
+      additionalProperties: false
+      required: [kind, choices]
+      properties:
+        kind: {const: choices}
+        choices:
+          type: array
+          items: {$ref: "#/components/schemas/LabeledChoice"}
+    RangeParameter:
+      type: object
+      additionalProperties: false
+      description: |
+        Inclusive range published in the camera catalog. The bridge emits
+        this object only when minimum is less than or equal to maximum.
+        That check is made while the catalog is built. This schema does not
+        compare the two fields.
+      required: [kind, minimum, maximum, digits]
+      properties:
+        kind: {const: hex_range}
+        minimum: {type: integer, minimum: 0}
+        maximum: {type: integer, minimum: 0}
+        digits: {type: integer, minimum: 1, maximum: 8}
+    ParameterSpec:
+      oneOf:
+        - $ref: "#/components/schemas/ChoiceParameter"
+        - $ref: "#/components/schemas/RangeParameter"
+    CameraParameterSet:
+      type: object
+      additionalProperties: false
+      description: |
+        Present keys depend on the selected camera. Names are the API names.
+        ccam catalog keys map as awc to white_balance, agc_max to agc_ceiling,
+        total_dtl to master_detail, and colorbar to bars. The other names match.
+      properties:
+        white_balance: {$ref: "#/components/schemas/ParameterSpec"}
+        scene: {$ref: "#/components/schemas/ParameterSpec"}
+        shutter: {$ref: "#/components/schemas/ParameterSpec"}
+        synchro: {$ref: "#/components/schemas/ParameterSpec"}
+        gamma: {$ref: "#/components/schemas/ParameterSpec"}
+        agc_ceiling: {$ref: "#/components/schemas/ParameterSpec"}
+        master_detail: {$ref: "#/components/schemas/ParameterSpec"}
+        genlock: {$ref: "#/components/schemas/ParameterSpec"}
+        bars: {$ref: "#/components/schemas/ParameterSpec"}
+    CameraDependency:
+      type: object
+      additionalProperties: false
+      required: [name, gate]
+      properties:
+        name: {type: string}
+        gate:
+          type: string
+          description: Gate id from the ccam menu table. The client does not send gates back.
+    CameraCatalog:
+      type: object
+      additionalProperties: false
+      required: [camera, parameters, dependencies]
+      properties:
+        camera: {$ref: "#/components/schemas/CameraModel"}
+        parameters: {$ref: "#/components/schemas/CameraParameterSet"}
+        dependencies:
+          type: array
+          items: {$ref: "#/components/schemas/CameraDependency"}
+    OsdLinear:
+      type: object
+      additionalProperties: false
+      required: [name, group, title, kind, minimum, maximum]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,31}$"
+        group: {type: string}
+        title: {type: string}
+        note: {type: string}
+        kind: {const: linear}
+        minimum: {type: integer}
+        maximum: {type: integer}
+        bias: {type: integer}
+        unit: {type: string}
+        low_label: {type: string}
+        high_label: {type: string}
+    OsdChoices:
+      type: object
+      additionalProperties: false
+      required: [name, group, title, kind, choices]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,31}$"
+        group: {type: string}
+        title: {type: string}
+        note: {type: string}
+        kind: {const: choices}
+        choices:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/LabeledChoice"}
+    OsdDescriptor:
+      description: |
+        linear requires minimum and maximum and has no choices.
+        choices requires a non-empty choices list and has no scale fields.
+      oneOf:
+        - $ref: "#/components/schemas/OsdLinear"
+        - $ref: "#/components/schemas/OsdChoices"
+      discriminator:
+        propertyName: kind
+        mapping:
+          linear: "#/components/schemas/OsdLinear"
+          choices: "#/components/schemas/OsdChoices"
+    OsdCatalog:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/OsdDescriptor"}
+    CatalogChoice:
+      type: object
+      additionalProperties: false
+      required: [choice]
+      properties:
+        choice: {type: string, minLength: 1, maxLength: 16}
+    CatalogNumber:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value: {type: integer, minimum: 0}
+    CatalogValue:
+      description: choice for a choice parameter, value for a hex range. The bridge checks it against the live ccam catalog.
+      oneOf:
+        - $ref: "#/components/schemas/CatalogChoice"
+        - $ref: "#/components/schemas/CatalogNumber"
+    CameraValuesStarted:
+      type: object
+      additionalProperties: false
+      required: [event, scope, camera]
+      properties:
+        event: {const: start}
+        scope: {enum: [full, dependencies]}
+        camera: {$ref: "#/components/schemas/CameraModel"}
+    CameraSampleName:
+      type: string
+      minLength: 1
+      maxLength: 64
+      description: |
+        Core names are shutter, synchro, gain_mode, gain_step, iris_mode,
+        iris, nd, white_balance, chroma, red_gain, blue_gain, red_pedestal,
+        blue_pedestal, master_pedestal, detail, hd_detail, master_detail,
+        gamma, agc_ceiling, noise_reduction, shading, bars, polarity, scan,
+        digital_gain, metering_area, metering_peak, scene, genlock, focus,
+        menu, model, and version. OSD samples use osd.<catalog name>.
+    CameraSampleValue:
+      type: object
+      additionalProperties: false
+      required: [event, name, value]
+      properties:
+        event: {const: sample}
+        name: {$ref: "#/components/schemas/CameraSampleName"}
+        value:
+          oneOf:
+            - {type: string}
+            - {type: number}
+            - {type: boolean}
+    CameraSampleError:
+      type: object
+      additionalProperties: false
+      required: [event, name, error]
+      properties:
+        event: {const: sample}
+        name: {$ref: "#/components/schemas/CameraSampleName"}
+        error: {$ref: "#/components/schemas/ErrorCode"}
+    CameraValueSample:
+      description: One sample. Exactly one of value or error.
+      oneOf:
+        - $ref: "#/components/schemas/CameraSampleValue"
+        - $ref: "#/components/schemas/CameraSampleError"
+    CameraValuesPhase:
+      type: object
+      additionalProperties: false
+      required: [event, phase]
+      properties:
+        event: {const: phase}
+        phase: {enum: [primary, dependent, remaining]}
+    CameraValuesFinished:
+      type: object
+      additionalProperties: false
+      required: [event, complete]
+      properties:
+        event: {const: end}
+        complete: {type: boolean}
+        reason:
+          enum: [camera_unavailable, device_timeout, device_io, buffer]
+      if:
+        properties:
+          complete: {const: false}
+        required: [complete]
+      then:
+        required: [event, complete, reason]
+      else:
+        not:
+          required: [reason]
+    CameraValueLine:
+      description: One NDJSON line. The HTTP body is a sequence of these objects, not a JSON array.
+      oneOf:
+        - $ref: "#/components/schemas/CameraValuesStarted"
+        - $ref: "#/components/schemas/CameraValueSample"
+        - $ref: "#/components/schemas/CameraValuesPhase"
+        - $ref: "#/components/schemas/CameraValuesFinished"
+    ModelName:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string}
+    VersionText:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: string}
+    OsdWrite:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 16
+          pattern: "^[0-9A-Za-z]+$"
+    OsdSetting:
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,31}$"
+        value:
+          type: string
+    MenuOpen:
+      type: object
+      additionalProperties: false
+      required: [open]
+      properties:
+        open: {type: boolean}
+    MenuKey:
+      type: object
+      additionalProperties: false
+      required: [key]
+      properties:
+        key: {enum: [enter, item, "yes", "no", left, right]}
+    GainManual:
+      type: object
+      additionalProperties: false
+      required: [mode, step]
+      properties:
+        mode: {const: manual}
+        step: {type: integer}
+    GainAgc:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {const: agc}
+    GainSetting:
+      oneOf:
+        - $ref: "#/components/schemas/GainAgc"
+        - $ref: "#/components/schemas/GainManual"
+    IrisAuto:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {const: auto}
+    IrisManual:
+      type: object
+      additionalProperties: false
+      required: [mode, position]
+      properties:
+        mode: {const: manual}
+        position: {$ref: "#/components/schemas/DeviceUnit"}
+    IrisSetting:
+      oneOf:
+        - $ref: "#/components/schemas/IrisAuto"
+        - $ref: "#/components/schemas/IrisManual"
+    NdFilter:
+      type: object
+      additionalProperties: false
+      required: [step]
+      properties:
+        step: {type: integer, minimum: 0, maximum: 15}
+    Chroma:
+      type: object
+      additionalProperties: false
+      required: [level]
+      properties:
+        level: {type: integer, minimum: -3, maximum: 3}
+    PaintGain:
+      type: object
+      additionalProperties: false
+      required: [channel, offset]
+      properties:
+        channel: {enum: [red, blue]}
+        offset: {type: integer, minimum: -30, maximum: 30}
+    PaintPedestal:
+      type: object
+      additionalProperties: false
+      required: [channel, offset]
+      properties:
+        channel: {enum: [red, blue, master]}
+        offset: {type: integer, minimum: -30, maximum: 30}
+    DetailLevel:
+      type: object
+      additionalProperties: false
+      required: [level]
+      properties:
+        level: {type: integer, minimum: 0, maximum: 255}
+    NoiseReduction:
+      type: object
+      additionalProperties: false
+      required: [level]
+      properties:
+        level: {type: integer, minimum: 0, maximum: 2}
+    Bars:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {enum: [picture, bars]}
+    Polarity:
+      type: object
+      additionalProperties: false
+      required: [negative]
+      properties:
+        negative: {type: boolean}
+    ScanMode:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {enum: [field, frame, frame_2]}
+    DigitalGain:
+      type: object
+      additionalProperties: false
+      required: [level]
+      properties:
+        level: {type: integer, minimum: 0, maximum: 5}
+    MeteringArea:
+      type: object
+      additionalProperties: false
+      required: [index]
+      properties:
+        index: {type: integer, minimum: 0, maximum: 255}
+    MeteringPeak:
+      type: object
+      additionalProperties: false
+      required: [balance]
+      properties:
+        balance: {type: integer, minimum: 0, maximum: 100}
+    SceneFile:
+      type: object
+      additionalProperties: false
+      required: [file]
+      properties:
+        file: {type: integer, minimum: 0, maximum: 3}
+    SceneMemory:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 8
+          pattern: "^[0-9A-Za-z]+$"
+    MonitorOutput:
+      type: object
+      additionalProperties: false
+      required: [page, value]
+      properties:
+        page:
+          type: string
+          pattern: "^[0-9A-Fa-f]{2}$"
+        value:
+          type: string
+          pattern: "^[0-9A-Fa-f]{1,2}$"
+    LensInterface:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9A-Fa-f]{2}$"
+    FocusMode:
+      type: object
+      additionalProperties: false
+      required: [automatic]
+      properties:
+        automatic: {type: boolean}
+    ExposureReading:
+      type: object
+      additionalProperties: false
+      required: [gain, shutter, nd]
+      properties:
+        gain: {type: integer, minimum: 0}
+        shutter: {type: integer, minimum: 0}
+        nd: {type: integer, minimum: 0}
+    HeadFault:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: {type: integer, minimum: 0, maximum: 255}
+    Landing:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {enum: [just, soft]}
+    StatusByte:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: {type: integer, minimum: 0, maximum: 255}
+    ProtocolAccess:
+      type: object
+      additionalProperties: false
+      required: [access]
+      properties:
+        access:
+          enum: [disabled, operator, all]
+          description: disabled blocks every caller. operator is the default. all also allows the service token.
+    HeadFrame:
+      type: object
+      additionalProperties: false
+      required: [command]
+      properties:
+        command:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]{0,15}$"
+        payload:
+          type: string
+          maxLength: 24
+          pattern: "^[A-Za-z0-9]*$"
+        await_reply:
+          type: boolean
+          default: true
+    CameraFrame:
+      type: object
+      additionalProperties: false
+      required: [command]
+      properties:
+        command:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]{2,7}$"
+        payload:
+          type: string
+          maxLength: 24
+          pattern: "^[A-Za-z0-9]*$"
+        await_reply:
+          type: boolean
+          default: true
+    FrameReply:
+      type: object
+      additionalProperties: false
+      required: [reply]
+      properties:
+        reply:
+          type: string
+          description: Printable reply. Empty when await_reply is false.
+    ChallengeResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Challenge"
+    LoginResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/LoginSession"
+    SessionResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SessionView"
+    SessionTtlResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SessionTtl"
+    TokenResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Token"
+    StatusResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/BridgeStatus"
+    MotionResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/MotionAccepted"
+    StopResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/StopAccepted"
+    RateResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/RateSetting"
+    PowerResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PowerCommand"
+    AimResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AimReading"
+    AimTargetResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AimTarget"
+    OpticsResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/OpticsReading"
+    OpticsTargetResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/OpticsTarget"
+    EnabledResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Enabled"
+    PresetListResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PresetList"
+    LatestPresetResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/LatestPreset"
+    PresetNumberResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PresetNumber"
+    PresetPathResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PresetPath"
+    PresetSpeedResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PresetSpeed"
+    PresetSpeedTableResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PresetSpeedTable"
+    LimitResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/LimitState"
+    AxisOrientationResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AxisOrientation"
+    TiltSpanResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/TiltSpan"
+    WiperModeResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/WiperMode"
+    FanModeResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/FanApplied"
+    BridgeModelsResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/BridgeModelsApplied"
+    NetworkResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/NetworkApplied"
+    CameraCatalogResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/CameraCatalog"
+    ModelNameResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ModelName"
+    VersionResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/VersionText"
+    OsdCatalogResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/OsdCatalog"
+    OsdSettingResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/OsdSetting"
+    MenuOpenResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/MenuOpen"
+    CatalogValueResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/CatalogValue"
+    GainResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/GainSetting"
+    IrisResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/IrisSetting"
+    NdFilterResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/NdFilter"
+    ChromaResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Chroma"
+    PaintGainResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PaintGain"
+    PaintPedestalResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PaintPedestal"
+    DetailLevelResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/DetailLevel"
+    NoiseReductionResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/NoiseReduction"
+    BarsResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Bars"
+    PolarityResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Polarity"
+    ScanModeResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ScanMode"
+    DigitalGainResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/DigitalGain"
+    MeteringAreaResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/MeteringArea"
+    MeteringPeakResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/MeteringPeak"
+    SceneFileResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SceneFile"
+    SceneMemoryResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SceneMemory"
+    MonitorOutputResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/MonitorOutput"
+    LensInterfaceResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/LensInterface"
+    FocusModeResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/FocusMode"
+    ExposureResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ExposureReading"
+    HeadFaultResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/HeadFault"
+    LandingResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/Landing"
+    StatusByteResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/StatusByte"
+    ProtocolAccessResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ProtocolAccess"
+    FrameReplyResult:
+      type: object
+      additionalProperties: false
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/FrameReply"

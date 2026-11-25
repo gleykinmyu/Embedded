@@ -13,10 +13,13 @@ public:
     void start();
     void stop();
     bool listening() const { return srv_ != nullptr; }
+    HttpAuth &auth() { return auth_; }
+    const HttpAuth &auth() const { return auth_; }
+    EthLan8720 &eth() { return eth_; }
+    Ph350Ctrl &pt() { return pt_; }
 
 private:
     esp_err_t on_root(httpd_req_t *req);
-    esp_err_t on_status(httpd_req_t *req);
     esp_err_t on_ptz(httpd_req_t *req);
     esp_err_t on_cam(httpd_req_t *req);
     esp_err_t on_auth(httpd_req_t *req);
@@ -28,7 +31,6 @@ private:
 
     static HttpStatus &self(httpd_req_t *req);
     static esp_err_t root_get(httpd_req_t *req);
-    static esp_err_t status_get(httpd_req_t *req);
     static esp_err_t ptz_get(httpd_req_t *req);
     static esp_err_t cam_get(httpd_req_t *req);
     static esp_err_t auth_get(httpd_req_t *req);
