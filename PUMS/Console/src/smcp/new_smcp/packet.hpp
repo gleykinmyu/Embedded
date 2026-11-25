@@ -70,7 +70,7 @@ struct Packet {
         }
         msg.payload.clear();
         if (data != nullptr && dlc != 0u) {
-            msg.payload.push(data, dlc);
+            comm::PayloadWriter{msg.payload}.push(data, dlc);
         }
         return true;
     }

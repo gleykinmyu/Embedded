@@ -36,31 +36,38 @@
 
 namespace comm {
 
-template <typename Frame>
-class IProto : public mem::ListNode {
+template <typename Payload>
+struct IFrame {
+    Payload frame;
+    IFrame * next = nullptr;
+};
+
+template <typename Payload, typename Params>
+struct InterfaceFrame {
+    IFrame<Payload> frame;
+    Params params;
+};
+
+template <typename BaseFrame>
+class IProto {
 public:
-    using frame_type = Frame;
+    using frame_type = BaseFrame;
 
     /**
      * Заполнить @a out следующим исходящим и записать владельца в @a owner.
      * @return false — нечего слать (@a out и @a owner не менять).
      */
-    [[nodiscard]] virtual bool peekTx(IProto*& owner, Frame& out,
-                                      MISC::time_t now) noexcept = 0;
-    /** Исход отправки (слот зовёт владельца из peekTx). */
-    virtual void onTxDone(const Frame& frame, bool ok) noexcept
+    
+
+    virtual void onTxEvent(const BaseFrame& frame, bool ok) noexcept
     {
         (void)frame;
         (void)ok;
     }
-    /** Входящий кадр: true — съел (дальше не предлагать). */
-    [[nodiscard]] virtual bool onPacket(const Frame& frame, MISC::time_t now) noexcept = 0;
-    /** Таймауты / повторы / доставка итогов. */
-    virtual void tick(MISC::time_t now) noexcept = 0;
-    /** Сброс работы (закрытие сессии / узла). */
+
+    virtual void onReceive(const BaseFrame& frame) noexcept = 0;
+
     virtual void abort() noexcept = 0;
-    /** Дети / инварианты в порядке (рекурсивно у контейнеров). */
-    [[nodiscard]] virtual bool ok() const noexcept { return true; }
 
 protected:
     IProto() = default;
@@ -69,31 +76,5 @@ protected:
     IProto& operator=(const IProto&) = delete;
 };
 
-/**
- * Лист: владелец TX — всегда this.
- *
- * peekTx(owner, …) закрыт (private final). Наследник пишет peekTx(Frame&, now)
- * и при необходимости onTxDone(frame, ok).
- */
-template <typename Frame>
-class ProtoBase : public IProto<Frame> {
-protected:
-    ProtoBase() = default;
-    ~ProtoBase() = default;
-
-    /** Заполнить кадр. true — TX взят (обёртка запишет owner = this). */
-    [[nodiscard]] virtual bool peekTx(Frame& out, MISC::time_t now) noexcept = 0;
-
-private:
-    [[nodiscard]] bool peekTx(IProto<Frame>*& owner, Frame& out,
-                              MISC::time_t now) noexcept final
-    {
-        if (!peekTx(out, now)) {
-            return false;
-        }
-        owner = this;
-        return true;
-    }
-};
 
 } // namespace comm

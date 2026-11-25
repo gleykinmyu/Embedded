@@ -2,8 +2,8 @@
  * @file new_smcp/pdu.hpp
  * @brief Тонкие PDU: pack/unpack через comm::Payload.
  *
- * pack пишет с начала payload и оставляет длину в payload.len().
- * unpack читает тот же префикс через load(offset), в порядке pack.
+ * pack пишет через PayloadWriter и оставляет длину в payload.len().
+ * unpack читает через PayloadReader::load(offset), в порядке pack.
  */
 
 #pragma once
@@ -56,15 +56,17 @@ struct Nack {
     {
         m.id = kId;
         m.payload.clear();
-        m.payload.push(error);
-        m.payload.pushU32(detail);
+        comm::PayloadWriter w{m.payload};
+        w.push(error);
+        w.pushU32(detail);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 5u) {
             return false;
         }
-        return m.payload.load(error, 0) && m.payload.load(detail, 1);
+        comm::PayloadReader r{m.payload};
+        return r.load(error, 0) && r.load(detail, 1);
     }
 };
 
@@ -86,8 +88,9 @@ struct Fault {
         assert(detail_len <= kDetailMax);
         const uint8_t n = detail_len <= kDetailMax ? detail_len : kDetailMax;
         m.payload.clear();
-        m.payload.push(reason);
-        m.payload.push(detail, n);
+        comm::PayloadWriter w{m.payload};
+        w.push(reason);
+        w.push(detail, n);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
@@ -95,10 +98,11 @@ struct Fault {
             return false;
         }
         detail_len = static_cast<uint8_t>(m.payload.len() - 1u);
-        if (!m.payload.load(reason, 0)) {
+        comm::PayloadReader r{m.payload};
+        if (!r.load(reason, 0)) {
             return false;
         }
-        return detail_len == 0u || m.payload.load(detail, detail_len, 1);
+        return detail_len == 0u || r.load(detail, detail_len, 1);
     }
 };
 
@@ -122,7 +126,7 @@ struct Heartbeat {
         m.id = kId;
         m.payload.clear();
         if (msg != Msg::KeepAlive) {
-            m.payload.push(msg);
+            comm::PayloadWriter{m.payload}.push(msg);
         }
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
@@ -137,7 +141,7 @@ struct Heartbeat {
         if (m.payload.len() != 1u) {
             return false;
         }
-        return m.payload.load(msg, 0);
+        return comm::PayloadReader{m.payload}.load(msg, 0);
     }
 };
 
@@ -150,15 +154,17 @@ struct Get {
     {
         m.id = kId;
         m.payload.clear();
-        m.payload.push(tag);
-        m.payload.push(index);
+        comm::PayloadWriter w{m.payload};
+        w.push(tag);
+        w.push(index);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 2u) {
             return false;
         }
-        return m.payload.load(tag, 0) && m.payload.load(index, 1);
+        comm::PayloadReader r{m.payload};
+        return r.load(tag, 0) && r.load(index, 1);
     }
 };
 
@@ -175,9 +181,10 @@ struct Set {
         assert(len <= proto::msg::kInlineMax);
         const uint8_t n = len <= proto::msg::kInlineMax ? len : proto::msg::kInlineMax;
         m.payload.clear();
-        m.payload.push(tag);
-        m.payload.push(index);
-        m.payload.push(data, n);
+        comm::PayloadWriter w{m.payload};
+        w.push(tag);
+        w.push(index);
+        w.push(data, n);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
@@ -185,10 +192,11 @@ struct Set {
             return false;
         }
         len = static_cast<uint8_t>(m.payload.len() - 2u);
-        if (!m.payload.load(tag, 0) || !m.payload.load(index, 1)) {
+        comm::PayloadReader r{m.payload};
+        if (!r.load(tag, 0) || !r.load(index, 1)) {
             return false;
         }
-        return len == 0u || m.payload.load(data, len, 2);
+        return len == 0u || r.load(data, len, 2);
     }
 };
 
@@ -204,18 +212,20 @@ struct DataBegin {
     {
         m.id = kId;
         m.payload.clear();
-        m.payload.push(tag);
-        m.payload.push(index);
-        m.payload.pushU16(size);
-        m.payload.pushU32(crc32);
+        comm::PayloadWriter w{m.payload};
+        w.push(tag);
+        w.push(index);
+        w.pushU16(size);
+        w.pushU32(crc32);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 8u) {
             return false;
         }
-        return m.payload.load(tag, 0) && m.payload.load(index, 1)
-            && m.payload.load(size, 2) && m.payload.load(crc32, 4)
+        comm::PayloadReader r{m.payload};
+        return r.load(tag, 0) && r.load(index, 1)
+            && r.load(size, 2) && r.load(crc32, 4)
             && size >= 1u;
     }
 };
@@ -232,8 +242,9 @@ struct Data {
         assert(len <= proto::msg::kInlineMax);
         const uint8_t n = len <= proto::msg::kInlineMax ? len : proto::msg::kInlineMax;
         m.payload.clear();
-        m.payload.pushU16(seq);
-        m.payload.push(data, n);
+        comm::PayloadWriter w{m.payload};
+        w.pushU16(seq);
+        w.push(data, n);
     }
     [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
     {
@@ -241,10 +252,11 @@ struct Data {
             return false;
         }
         len = static_cast<uint8_t>(m.payload.len() - 2u);
-        if (!m.payload.load(seq, 0)) {
+        comm::PayloadReader r{m.payload};
+        if (!r.load(seq, 0)) {
             return false;
         }
-        return len == 0u || m.payload.load(data, len, 2);
+        return len == 0u || r.load(data, len, 2);
     }
 };
 

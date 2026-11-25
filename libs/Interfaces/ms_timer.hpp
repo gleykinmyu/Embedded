@@ -45,11 +45,23 @@ public:
         if (!isRunning()) {
             return false;
         }
-        constexpr time_t kHalfModulus = time_t{1} << 31;
         return (now_ms - _expires_ms) < kHalfModulus;
     }
 
+    /**
+     * Свой срок строго раньше @a other.
+     * Оба таймера идут; окно то же, что у timedOut (2^31).
+     * Равные сроки — false.
+     */
+    [[nodiscard]] bool expiresBefore(const MsTimer& other) const noexcept
+    {
+        return _expires_ms != other._expires_ms
+            && (other._expires_ms - _expires_ms) < kHalfModulus;
+    }
+
 private:
+    static constexpr time_t kHalfModulus = time_t{1} << 31;
+
     time_t _expires_ms = kStopped;
 };
 

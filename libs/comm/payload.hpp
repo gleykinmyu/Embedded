@@ -1,15 +1,17 @@
 /**
  * @file comm/payload.hpp
- * @brief comm::Payload / BitPayload — буфер байт и битовое слово.
+ * @brief comm::Payload / PayloadWriter / PayloadReader / BitPayload.
  *
- * Payload: push дописывает в конец, load(переменная, offset) читает байты.
+ * Payload — буфер: длина и байты. Writer дописывает, Reader читает по offset.
+ * Оба — вид без копии буфера, ctor от любого Payload.
  * BitPayload&lt;Bits&gt;: слово на Bits бит (uint8/16/32), поля от младших битов.
  *
  *   #include "comm/payload.hpp"   // -I …/libs
  *
  *   comm::Payload<0, 8> buf;
  *   buf.clear();
- *   buf.push(0x01);
+ *   comm::PayloadWriter w{buf};
+ *   w.push(0x01);
  */
 
 #pragma once
@@ -103,8 +105,12 @@ struct is_u8_enum<E, true> : std::is_same<std::underlying_type_t<E>, uint8_t> {}
      word_t _bits{};
  };
  
+class PayloadWriter;
+class PayloadReader;
+
 /**
  * Буфер байт фиксированной ёмкости и текущая длина.
+ * Запись — PayloadWriter, чтение — PayloadReader.
  *
  * @tparam LenMin  начальное _len
  * @tparam LenMax  ёмкость _data
@@ -126,13 +132,33 @@ public:
         std::memset(_data, 0, LenMax);
     }
 
+private:
+    friend class PayloadWriter;
+    friend class PayloadReader;
+
+    uint8_t _len = LenMin;
+    uint8_t _data[LenMax]{};
+};
+
+/** Вид для записи в Payload. Буфер не копирует. */
+class PayloadWriter {
+public:
+    template <uint8_t LenMin, uint8_t LenMax>
+    explicit PayloadWriter(Payload<LenMin, LenMax>& buf) noexcept
+        : _data(buf._data)
+        , _len(&buf._len)
+        , _cap(LenMax)
+    {}
+
+    [[nodiscard]] uint8_t len() const noexcept { return *_len; }
+
     void push(uint8_t b) noexcept
     {
-        assert(_len < LenMax);
-        if (_len >= LenMax) {
+        assert(*_len < _cap);
+        if (*_len >= _cap) {
             return;
         }
-        _data[_len++] = b;
+        _data[(*_len)++] = b;
     }
 
     void push(const uint8_t* src, std::size_t n) noexcept
@@ -140,27 +166,27 @@ public:
         if (n == 0u) {
             return;
         }
-        assert(src != nullptr && n <= static_cast<std::size_t>(LenMax - _len));
-        if (src == nullptr || n > static_cast<std::size_t>(LenMax - _len)) {
+        assert(src != nullptr && n <= static_cast<std::size_t>(_cap - *_len));
+        if (src == nullptr || n > static_cast<std::size_t>(_cap - *_len)) {
             return;
         }
-        std::memcpy(_data + _len, src, n);
-        _len = static_cast<uint8_t>(_len + n);
+        std::memcpy(_data + *_len, src, n);
+        *_len = static_cast<uint8_t>(*_len + n);
     }
 
-    /** enum class : uint8_t — тот же байт на проводе. */
+    /** enum class : uint8_t — тот же байт. */
     template <typename E, std::enable_if_t<detail::is_u8_enum<E>::value, int> = 0>
     void push(E v) noexcept
     {
         push(static_cast<uint8_t>(v));
     }
 
-    /** Дописать байты другого Payload. Не влезло — не пишем. */
-    template <uint8_t SrcMin, uint8_t SrcMax>
-    void push(const Payload<SrcMin, SrcMax>& src) noexcept
-    {
-        push(src._data, src._len);
-    }
+    /** Дописать байты, которые видит @a src. Не влезло — не пишем. */
+    void push(const PayloadReader& src) noexcept;
+
+    /** Дописать текущее содержимое @a src. Не влезло — не пишем. */
+    template <uint8_t LenMin, uint8_t LenMax>
+    void push(const Payload<LenMin, LenMax>& src) noexcept;
 
     /** Слово BitPayload — little-endian, ширина хранилища (1, 2 или 4 байта). */
     template <uint8_t Bits>
@@ -178,8 +204,8 @@ public:
 
     void pushU16(uint16_t v) noexcept
     {
-        assert(static_cast<uint8_t>(LenMax - _len) >= 2u);
-        if (static_cast<uint8_t>(LenMax - _len) < 2u) {
+        assert(static_cast<uint8_t>(_cap - *_len) >= 2u);
+        if (static_cast<uint8_t>(_cap - *_len) < 2u) {
             return;
         }
         push(static_cast<uint8_t>(v));
@@ -188,18 +214,38 @@ public:
 
     void pushU32(uint32_t v) noexcept
     {
-        assert(static_cast<uint8_t>(LenMax - _len) >= 4u);
-        if (static_cast<uint8_t>(LenMax - _len) < 4u) {
+        assert(static_cast<uint8_t>(_cap - *_len) >= 4u);
+        if (static_cast<uint8_t>(_cap - *_len) < 4u) {
             return;
         }
         pushU16(static_cast<uint16_t>(v));
         pushU16(static_cast<uint16_t>(v >> 16));
     }
 
-    /** Байт в @a out с @a offset. false — вне [0, len). _len не меняется. */
+private:
+    friend class PayloadReader;
+
+    uint8_t* _data;
+    uint8_t* _len;
+    uint8_t _cap;
+};
+
+/** Вид для чтения Payload. Буфер не копирует. */
+class PayloadReader {
+public:
+    template <uint8_t LenMin, uint8_t LenMax>
+    explicit PayloadReader(const Payload<LenMin, LenMax>& buf) noexcept
+        : _data(buf._data)
+        , _len(&buf._len)
+    {}
+
+    [[nodiscard]] uint8_t len() const noexcept { return *_len; }
+    [[nodiscard]] const uint8_t* data() const noexcept { return _data; }
+
+    /** Байт в @a out с @a offset. false — вне [0, len). */
     [[nodiscard]] bool load(uint8_t& out, uint8_t offset) const noexcept
     {
-        if (offset >= _len) {
+        if (offset >= *_len) {
             return false;
         }
         out = _data[offset];
@@ -220,7 +266,7 @@ public:
 
     [[nodiscard]] bool load(uint16_t& out, uint8_t offset) const noexcept
     {
-        if (offset >= _len || static_cast<uint8_t>(_len - offset) < 2u) {
+        if (offset >= *_len || static_cast<uint8_t>(*_len - offset) < 2u) {
             return false;
         }
         const uint8_t lo = _data[offset];
@@ -231,7 +277,7 @@ public:
 
     [[nodiscard]] bool load(uint32_t& out, uint8_t offset) const noexcept
     {
-        if (offset >= _len || static_cast<uint8_t>(_len - offset) < 4u) {
+        if (offset >= *_len || static_cast<uint8_t>(*_len - offset) < 4u) {
             return false;
         }
         uint16_t lo = 0;
@@ -262,38 +308,55 @@ public:
         if (n == 0u) {
             return true;
         }
-        if (dst == nullptr || offset >= _len || n > static_cast<std::size_t>(_len - offset)) {
+        if (dst == nullptr || offset >= *_len || n > static_cast<std::size_t>(*_len - offset)) {
             return false;
         }
         std::memcpy(dst, _data + offset, n);
         return true;
     }
 
-    /** Байты с @a offset до конца — в @a dst. false — не влезло, @a dst не меняется. */
-    template <uint8_t DstMin, uint8_t DstMax>
-    [[nodiscard]] bool load(Payload<DstMin, DstMax>& dst, uint8_t offset) const noexcept
+    /**
+     * Байты с @a offset до конца — содержимое @a dst.
+     * false — не влезло в ёмкость, @a dst не меняется.
+     */
+    template <uint8_t LenMin, uint8_t LenMax>
+    [[nodiscard]] bool load(Payload<LenMin, LenMax>& dst, uint8_t offset) const noexcept
     {
-        if (offset > _len) {
+        return load(PayloadWriter{dst}, offset);
+    }
+
+    /** То же, что load в Payload: вид уже знает ёмкость. */
+    [[nodiscard]] bool load(PayloadWriter dst, uint8_t offset) const noexcept
+    {
+        if (offset > *_len) {
             return false;
         }
-        const uint8_t n = static_cast<uint8_t>(_len - offset);
-        if (n > DstMax) {
+        const uint8_t n = static_cast<uint8_t>(*_len - offset);
+        if (n > dst._cap) {
             return false;
         }
-        std::memset(dst._data, 0, DstMax);
+        std::memset(dst._data, 0, dst._cap);
         if (n != 0u) {
             std::memcpy(dst._data, _data + offset, n);
         }
-        dst._len = n;
+        *dst._len = n;
         return true;
     }
 
 private:
-    template <uint8_t, uint8_t>
-    friend class Payload;
-
-    uint8_t _len = LenMin;
-    uint8_t _data[LenMax]{};
+    const uint8_t* _data;
+    const uint8_t* _len;
 };
+
+inline void PayloadWriter::push(const PayloadReader& src) noexcept
+{
+    push(src.data(), src.len());
+}
+
+template <uint8_t LenMin, uint8_t LenMax>
+void PayloadWriter::push(const Payload<LenMin, LenMax>& src) noexcept
+{
+    push(PayloadReader{src});
+}
 
 } // namespace comm

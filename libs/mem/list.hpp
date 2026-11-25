@@ -110,6 +110,13 @@ public:
         return insertBefore(*_sen._next, item);
     }
 
+    /** O(1). Вставить @a item перед @a pos. @a pos из этого списка.
+     *  @return false — @a item уже в каком-то списке. */
+    [[nodiscard]] bool insertBefore(T& pos, T& item) noexcept
+    {
+        return insertBefore(static_cast<ListNode&>(pos), item);
+    }
+
     /** O(1). @return снятый элемент или nullptr. */
     T* popFront() noexcept
     {

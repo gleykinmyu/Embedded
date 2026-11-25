@@ -19,6 +19,8 @@
 
 namespace smcp::proto::msg {
 
+/** Байт тела после слова заголовка BitPayload<12> (uint16). */
+inline constexpr uint8_t kBodyOff = sizeof(uint16_t);
 inline constexpr uint8_t kTxnIdMax = 0x3Fu;
 inline constexpr uint8_t kIndexAll = 0xFFu;
 inline constexpr uint8_t kInlineMax = 6u; ///< 8 − (tag|index) или 8 − (seq u16)
@@ -28,7 +30,7 @@ enum class Type : uint8_t {
     AppMsg = 0x01,
 };
 
-using payload_t = comm::Payload<0, base::payload_t::kLenMax - base::payload_t::kLenMin>;
+using payload_t = comm::Payload<0, base::payload_t::kLenMax - kBodyOff>;
 
 enum class CtrlId : uint8_t {
     Ack = 0x00,
@@ -157,19 +159,18 @@ struct Frame {
         AppMsg app;
     };
 
-    void pack(base::payload_t& out) const noexcept;
-    [[nodiscard]] bool unpack(const base::payload_t& in) noexcept;
+    /** Дописывает в @a out. Буфер перед вызовом очищает вызывающий. */
+    void pack(comm::PayloadWriter out) const noexcept;
+    [[nodiscard]] bool unpack(comm::PayloadReader in) noexcept;
 };
 
-inline void Frame::pack(base::payload_t& out) const noexcept
+inline void Frame::pack(comm::PayloadWriter out) const noexcept
 {
     const uint8_t id = (type == Type::AppMsg) ? app.msg_id : static_cast<uint8_t>(ctrl.id);
     comm::BitPayload<12> head;
     head.push(type, 11, 1);
     head.push(txn, 5, 6);
     head.push(id, 0, 5);
-
-    out.clear();
     out.push(head);
 
     if (type == Type::AppMsg) {
@@ -200,7 +201,7 @@ inline void Frame::pack(base::payload_t& out) const noexcept
     }
 }
 
-inline bool Frame::unpack(const base::payload_t& in) noexcept
+inline bool Frame::unpack(comm::PayloadReader in) noexcept
 {
     if (in.len() < base::payload_t::kLenMin) {
         return false;
@@ -220,7 +221,7 @@ inline bool Frame::unpack(const base::payload_t& in) noexcept
 
     if (type == Type::AppMsg) {
         app.msg_id = id;
-        return in.load(app.payload, base::payload_t::kLenMin);
+        return in.load(app.payload, kBodyOff);
     }
 
     ctrl.id = static_cast<CtrlId>(id);
@@ -229,15 +230,15 @@ inline bool Frame::unpack(const base::payload_t& in) noexcept
         return in.len() == base::payload_t::kLenMin;
     case CtrlId::Nack:
         return in.len() == static_cast<uint8_t>(base::payload_t::kLenMin + 1u)
-            && in.load(ctrl.nack.error, 2);
+            && in.load(ctrl.nack.error, kBodyOff);
     case CtrlId::SegData: {
         if (in.len() < base::payload_t::kLenMin + sizeof(uint16_t)) {
             return false;
         }
-        if (!in.load(ctrl.segData.seg, base::payload_t::kLenMin)) {
+        if (!in.load(ctrl.segData.seg, kBodyOff)) {
             return false;
         }
-        const uint8_t off = static_cast<uint8_t>(base::payload_t::kLenMin + sizeof(uint16_t));
+        const uint8_t off = static_cast<uint8_t>(kBodyOff + sizeof(uint16_t));
         const uint8_t n = static_cast<uint8_t>(in.len() - off);
         if (ctrl.segData.isBegin()) {
             return n == sizeof(uint16_t) && in.load(ctrl.segData.count, off);
