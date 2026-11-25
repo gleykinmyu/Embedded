@@ -22,8 +22,8 @@
 #include "freertos/semphr.h"
 
 namespace {
-constexpr adc_channel_t channels[]={ADC_CHANNEL_0,ADC_CHANNEL_3,ADC_CHANNEL_7}; // GPIO36,39,35
-constexpr gpio_num_t button=GPIO_NUM_32;
+constexpr adc_channel_t channels[]={ADC_CHANNEL_3,ADC_CHANNEL_0,ADC_CHANNEL_7}; // GPIO39,36,35
+constexpr gpio_num_t button=GPIO_NUM_14;
 struct Settings { uint16_t zero[3]={2048,2048,2048}; uint16_t dead=80; uint8_t curve=0; };
 Settings settings;
 joystick::Axis axes[3];
