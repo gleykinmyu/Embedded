@@ -50,7 +50,7 @@ public:
     uint32_t nowMs() const { return now_ms_ != nullptr ? now_ms_() : 0; }
     void purge() { stream_.purge(); }
 
-    /** Только передача (без ожидания ACK/ответа). */
+    /** Передача без ожидания ответа. Ok — все байты в драйвере и TX завершён. */
     Status send(const uint8_t* data, size_t len);
 
     /**

@@ -142,7 +142,7 @@ bool rawEq(const uint8_t *a, const uint8_t *b, size_t n)
 void HttpAuth::mintSession()
 {
     if (sessionValid()) {
-        sess_ended_.store(true); /* новый вход выбивает старый браузер */
+        end_.note();
     }
     fillAlnum(sess_, kSessLen);
     touchSession();
@@ -706,7 +706,7 @@ void HttpAuth::logout()
         xSemaphoreTake(mu_, portMAX_DELAY);
     }
     if (sess_[0] != '\0') {
-        sess_ended_.store(true);
+        end_.note();
     }
     clearSession();
     if (mu_ != nullptr) {
@@ -724,17 +724,52 @@ void HttpAuth::expireIdle()
         ESP_LOGW(TAG, "session end age=%llds ttl=%us",
                  static_cast<long long>((esp_timer_get_time() - touch) / 1000000LL),
                  static_cast<unsigned>(sess_ttl_sec_.load(std::memory_order_relaxed)));
+        end_.note();
         clearSession();
-        sess_ended_.store(true);
     }
     if (mu_ != nullptr) {
         xSemaphoreGive(mu_);
     }
 }
 
-bool HttpAuth::takeEnded()
+bool HttpAuth::takeSessionEnd()
 {
-    return sess_ended_.exchange(false);
+    if (mu_ != nullptr) {
+        xSemaphoreTake(mu_, portMAX_DELAY);
+    }
+    const bool had = end_.take();
+    if (mu_ != nullptr) {
+        xSemaphoreGive(mu_);
+    }
+    return had;
+}
+
+bool HttpAuth::sessionEndPending() const
+{
+    if (mu_ != nullptr) {
+        xSemaphoreTake(mu_, portMAX_DELAY);
+    }
+    const bool pending = end_.isPending();
+    if (mu_ != nullptr) {
+        xSemaphoreGive(mu_);
+    }
+    return pending;
+}
+
+bool HttpAuth::motionAdmit(httpd_req_t *req) const
+{
+    const bool bearer = req != nullptr && bearerMatches(req);
+    if (mu_ != nullptr) {
+        xSemaphoreTake(mu_, portMAX_DELAY);
+    }
+    bool ok = !end_.isPending();
+    if (ok && req != nullptr && !bearer) {
+        ok = fromPage(req) && sessionValid() && cookieEquals(req);
+    }
+    if (mu_ != nullptr) {
+        xSemaphoreGive(mu_);
+    }
+    return ok;
 }
 
 AuthWrite HttpAuth::setPassword(const char *proof_hex, const char *new_hash_hex)

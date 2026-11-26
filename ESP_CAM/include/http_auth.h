@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_http_server.h"
+#include "session_end.hpp"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -77,8 +78,16 @@ public:
     uint32_t sessionRemainSec() const;
     /** Периодически: истёкшая по idle сессия очищается и помечается как оборванная. */
     void expireIdle();
-    /** true один раз после обрыва сессии (idle, logout, вход с другого места). */
-    bool takeEnded();
+    /** Снимает ожидающий конец сессии. false — флага не было. Mutex отпускается до возврата. */
+    bool takeSessionEnd();
+    /** Не снимает флаг. */
+    bool sessionEndPending() const;
+    /**
+     * Допуск уже после STOP: флага нет и запрос всё ещё авторизован.
+     * req == nullptr — CLI, проверяется только флаг.
+     * Mutex отпускается до возврата.
+     */
+    bool motionAdmit(httpd_req_t *req) const;
 
 private:
     void load();
@@ -115,6 +124,7 @@ private:
     std::atomic<uint32_t> sess_ttl_sec_{kSessTtlDefSec};
     /** atomic: на ESP32 int64_t иначе читается «рвано» → ложный expiry. */
     std::atomic<int64_t> sess_touch_us_{0};
-    std::atomic<bool> sess_ended_{false};
+    /** Ожидающий конец operator-сессии. Писать и читать под mu_. */
+    SessionEndFlag end_{};
     mutable SemaphoreHandle_t mu_{nullptr};
 };

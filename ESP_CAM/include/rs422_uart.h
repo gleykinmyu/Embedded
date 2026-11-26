@@ -15,6 +15,7 @@ public:
     void purge() override;
     void purgeOutput() override;
     void flush() override;
+    bool flushTx() override;
     bool open(uint32_t baud) override;
     void close() override;
     bool isOpen() override;

@@ -19,11 +19,27 @@ static const char *TAG = "ota";
 static volatile bool g_ota_busy = false;
 static void (*g_quiesce)(void *) = nullptr;
 static void *g_quiesce_ctx = nullptr;
+static bool (*g_halt)(void *) = nullptr;
+static void *g_halt_ctx = nullptr;
 
 void otaBindQuiesce(void (*fn)(void *), void *ctx)
 {
     g_quiesce = fn;
     g_quiesce_ctx = ctx;
+}
+
+void otaBindHalt(bool (*fn)(void *), void *ctx)
+{
+    g_halt = fn;
+    g_halt_ctx = ctx;
+}
+
+bool otaHaltMotion()
+{
+    if (g_halt == nullptr) {
+        return true;
+    }
+    return g_halt(g_halt_ctx);
 }
 
 void otaWaitHealthQuiet()
@@ -39,7 +55,7 @@ constexpr int kOtaPort = 3232;
 constexpr int kCmdFlash = 0;
 constexpr int kCmdAuth = 200;
 constexpr size_t kChunk = 1460;
-/** Выше pt_health/http (обычно 5), ниже lwIP/timer. */
+/** Выше pt_health и httpd (5) и sess_wd (6), ниже lwIP tcpip (18). */
 constexpr UBaseType_t kOtaFlashPriority = 12;
 
 struct OtaFlashGuard {
@@ -309,6 +325,12 @@ void handle_invite(int sock, char *msg, const struct sockaddr_in *from, socklen_
     otaWaitHealthQuiet();
 
     if (!auth_ok(sock, from, fromlen)) {
+        g_ota_busy = false;
+        return;
+    }
+    if (!otaHaltMotion()) {
+        ESP_LOGE(TAG, "axis stop failed, flash not started");
+        udp_reply(sock, from, fromlen, "ERR");
         g_ota_busy = false;
         return;
     }

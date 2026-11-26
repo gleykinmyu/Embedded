@@ -27,12 +27,56 @@ void PtLinkHealth::reset()
     error_code_ = 0xFF;
 }
 
-void PtLinkHealth::tick(uint32_t now_ms)
+bool PtLinkHealth::powerDue(uint32_t now_ms) const
+{
+    return pt_dev_ != nullptr && pt_.due(now_ms);
+}
+
+PtLinkHealth::PollStep PtLinkHealth::stepPower(uint32_t now_ms)
 {
     if (pt_dev_ == nullptr) {
-        return;
+        return PollStep::Idle;
     }
-    if (!pt_.due(now_ms)) {
+    uint8_t code = 0xFF;
+    const Status st = pt_dev_->requestPower(code);
+    pt_.last = st;
+    if (st == Status::Ok) {
+        pt_.markOk(now_ms);
+        power_code_ = code;
+        return PollStep::Optics;
+    }
+    pt_.markFail(now_ms);
+    if (!pt_.alive) {
+        clearOptics();
+        clearCam();
+        error_code_ = 0xFF;
+    }
+    return PollStep::Idle;
+}
+
+PtLinkHealth::PollStep PtLinkHealth::stepOptics(uint32_t now_ms)
+{
+    pollOptics(now_ms);
+    if (!camTxLikely()) {
+        if (power_code_ != kPowerStarting) {
+            clearCam();
+        }
+        return PollStep::Idle;
+    }
+    if (cam_dev_ != nullptr && cam_.due(now_ms)) {
+        return PollStep::Cam;
+    }
+    return PollStep::Idle;
+}
+
+void PtLinkHealth::stepCam(uint32_t now_ms)
+{
+    pollCam(now_ms);
+}
+
+void PtLinkHealth::tick(uint32_t now_ms)
+{
+    if (!powerDue(now_ms)) {
         return;
     }
     (void)doPoll(now_ms);
@@ -48,33 +92,10 @@ Status PtLinkHealth::pollNow(uint32_t now_ms)
 
 Status PtLinkHealth::doPoll(uint32_t now_ms)
 {
-    uint8_t code = 0xFF;
-    const Status st = pt_dev_->requestPower(code);
-    pt_.last = st;
-    if (st == Status::Ok) {
-        pt_.markOk(now_ms);
-        power_code_ = code;
-
-        // #GZ: hex = головка в норме; "---" / Io = выкл / оптика не готова (не QID).
-        pollOptics(now_ms);
-
-        if (!camTxLikely()) {
-            if (power_code_ != kPowerStarting) {
-                clearCam();
-            }
-        } else if (cam_dev_ != nullptr && cam_.due(now_ms)) {
-            pollCam(now_ms);
-        }
-        return st;
+    if (stepPower(now_ms) == PollStep::Optics && stepOptics(now_ms) == PollStep::Cam) {
+        stepCam(now_ms);
     }
-
-    pt_.markFail(now_ms);
-    if (!pt_.alive) {
-        clearOptics();
-        clearCam();
-        error_code_ = 0xFF;
-    }
-    return st;
+    return pt_.last;
 }
 
 void PtLinkHealth::pollOptics(uint32_t now_ms)

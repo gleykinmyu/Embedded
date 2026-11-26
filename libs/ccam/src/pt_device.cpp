@@ -274,13 +274,14 @@ Status PtDeviceBase::stop()
         pt::Axis::Roll,
         pt::Axis::Iris,
     };
+    Status first = Status::Ok;
     for (pt::Axis axis : kAxes) {
-        Status st = move(axis, 0);
-        if (st != Status::Ok) {
-            return st;
+        const Status st = move(axis, 0);
+        if (st != Status::Ok && first == Status::Ok) {
+            first = st;
         }
     }
-    return Status::Ok;
+    return first;
 }
 
 Status PtDeviceBase::goHome()

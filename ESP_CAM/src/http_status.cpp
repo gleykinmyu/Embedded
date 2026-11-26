@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "device_guard.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -238,11 +239,19 @@ esp_err_t reply_st(httpd_req_t *req, ccam::Status st, const char *extra = nullpt
     return send_json(req, buf);
 }
 
-esp_err_t reply_cam(httpd_req_t *req, Ph350Ctrl &pt, ccam::Status st, const char *extra = nullptr) {
-    char tx[160];
-    char rx[160];
-    format_wire(pt.cam().lastTx(), pt.cam().lastTxLen(), tx, sizeof(tx));
-    format_wire(pt.cam().lastRx(), pt.cam().lastRxLen(), rx, sizeof(rx));
+void copy_cam_trace(Ph350Ctrl &pt, char *tx, size_t tx_n, char *rx, size_t rx_n) {
+    format_wire(pt.cam().lastTx(), pt.cam().lastTxLen(), tx, tx_n);
+    format_wire(pt.cam().lastRx(), pt.cam().lastRxLen(), rx, rx_n);
+}
+
+esp_err_t reply_cam(httpd_req_t *req, ccam::Status st, const char *tx, const char *rx,
+                    const char *extra = nullptr) {
+    if (tx == nullptr) {
+        tx = "";
+    }
+    if (rx == nullptr) {
+        rx = "";
+    }
     char buf[768];
     if (extra && extra[0]) {
         char esc[256];
@@ -286,7 +295,7 @@ struct HttpMu {
 HttpStatus::HttpStatus(EthLan8720 &eth, Ph350Ctrl &pt) : eth_(eth), pt_(pt) {
     mu_ = xSemaphoreCreateMutex();
     auth_.begin();
-    if (xTaskCreate(&HttpStatus::sessionWatchTask, "sess_wd", 3072, this, 4, nullptr) != pdPASS) {
+    if (xTaskCreate(&HttpStatus::sessionWatchTask, "sess_wd", 3072, this, 6, nullptr) != pdPASS) {
         ESP_LOGE(TAG, "sess_wd task failed");
     }
 }
@@ -294,22 +303,18 @@ HttpStatus::HttpStatus(EthLan8720 &eth, Ph350Ctrl &pt) : eth_(eth), pt_(pt) {
 void HttpStatus::sessionWatchTask(void *arg)
 {
     auto *self = static_cast<HttpStatus *>(arg);
-    static constexpr pt::Axis kAxes[] = {
-        pt::Axis::Pan, pt::Axis::Tilt, pt::Axis::Zoom, pt::Axis::Focus,
-    };
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
         self->auth_.expireIdle();
-        if (!self->auth_.takeEnded() || otaIsBusy()) {
+        Ph350Ctrl::DeviceLock dev(self->pt_);
+        if (otaIsBusy()) {
+            /* Флаг конца сессии не снимать: STOP во время записи flash потеряется. */
             continue;
         }
-        ESP_LOGW(TAG, "session ended → stop pan/tilt/zoom/focus");
-        Ph350Ctrl::DeviceLock dev(self->pt_);
-        auto &head = self->pt_.pt();
-        /* Каждая ось отдельно: отказ одной не должен оставить другие в движении. */
-        for (pt::Axis axis : kAxes) {
-            (void)head.move(axis, 0);
+        if (self->admitMotion(nullptr, nullptr) == MotionGate::StopFailed) {
+            ESP_LOGW(TAG, "session end stop incomplete");
         }
+        self->pt_.expireMotion();
     }
 }
 
@@ -466,6 +471,41 @@ esp_err_t reply_ota_busy(httpd_req_t *req) {
     return send_json(req, "{\"ok\":false,\"status\":\"ota\"}");
 }
 
+namespace {
+
+bool headMotionCommand(const char *cmd)
+{
+    static const char *kCmds[] = {
+        "pan_left", "pan_right", "tilt_up", "tilt_down", "zoom_tele", "zoom_wide",
+        "focus_far", "focus_near", "home", "set_pt", "preset_recall", "set_lens",
+        "set_zoom", "set_focus", "set_iris", "raw", "raw_send",
+    };
+    if (cmd == nullptr) {
+        return false;
+    }
+    for (const char *name : kCmds) {
+        if (strcmp(name, cmd) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+MotionGate HttpStatus::admitMotion(httpd_req_t *req, ccam::Status *stop_status)
+{
+    /* DeviceLock уже удерживается. haltMotion берёт его повторно с этой задачи. */
+    const MotionGateResult result = gateMotion(
+        otaIsBusy(), pt_.globalStopOpen(), [&] { return auth_.takeSessionEnd(); },
+        [&] { return pt_.haltMotion(); }, [&] { return auth_.sessionEndPending(); },
+        [&] { return auth_.motionAdmit(req); });
+    if (stop_status != nullptr) {
+        *stop_status = result.stop_status;
+    }
+    return result.gate;
+}
+
 esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
     if (require_auth(req) != ESP_OK) {
         return ESP_OK;
@@ -486,12 +526,8 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         return reply_st(req, ccam::Status::Param);
     }
 
-    Ph350Ctrl::DeviceLock dev(pt_);
     const uint8_t rate = clamp_rate(as_int(q.rate, -1), pt_.defaultRate());
     const uint8_t preset = static_cast<uint8_t>(preset_n >= 1 && preset_n <= 99 ? preset_n : 1);
-    ccam::Status st = ccam::Status::Param;
-    char extra[96] = {};
-    char buf[384];
 
     if (strcmp(q.cmd, "set_rate") == 0) {
         pt_.setDefaultRate(rate);
@@ -507,17 +543,30 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             !pt_.setModels(pt_id, cam_id, true)) {
             return reply_st(req, ccam::Status::Param);
         }
+        char pt_name[16] = {};
+        char cam_name[16] = {};
+        char pt_label[32] = {};
+        char cam_label[32] = {};
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            snprintf(pt_name, sizeof(pt_name), "%s", ccam::devices::ptModelKey(pt_.ptModel()));
+            snprintf(cam_name, sizeof(cam_name), "%s", ccam::devices::camModelKey(pt_.camModel()));
+            snprintf(pt_label, sizeof(pt_label), "%s", pt_.pt().modelLabel());
+            snprintf(cam_label, sizeof(cam_label), "%s", pt_.cam().modelLabel());
+        }
+        char buf[384];
         snprintf(buf, sizeof(buf),
                  "{\"ok\":true,\"status\":\"ok\",\"pt_id\":\"%s\",\"cam_id\":\"%s\","
                  "\"model\":\"%s\",\"cam\":\"%s\"}",
-                 ccam::devices::ptModelKey(pt_.ptModel()),
-                 ccam::devices::camModelKey(pt_.camModel()), pt_.pt().modelLabel(),
-                 pt_.cam().modelLabel());
+                 pt_name, cam_name, pt_label, cam_label);
         return send_json(req, buf);
     }
     if (strcmp(q.cmd, "set_invert") == 0) {
-        // v=pan v2=tilt v3=zoom v4=focus — 0/1
-        pt::AxisInvert inv = pt_.axisInvert();
+        pt::AxisInvert inv{};
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            inv = pt_.axisInvert();
+        }
         if (q.v[0]) {
             inv.pan = as_int(q.v) != 0;
         }
@@ -531,7 +580,7 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             inv.focus = as_int(q.v4) != 0;
         }
         pt_.setAxisInvert(inv, true);
-        st = ccam::Status::Ok;
+        char buf[384];
         snprintf(buf, sizeof(buf),
                  "{\"ok\":true,\"status\":\"ok\",\"inv_pan\":%s,\"inv_tilt\":%s,"
                  "\"inv_zoom\":%s,\"inv_focus\":%s}",
@@ -540,36 +589,70 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         return send_json(req, buf);
     }
 
+    ccam::Status st = ccam::Status::Param;
+    char extra[96] = {};
+    char body[640] = {};
+    enum class Kind : uint8_t { Status, Body, Ota, Auth };
+    Kind kind = Kind::Status;
+    {
+    Ph350Ctrl::DeviceLock dev(pt_);
+    if (otaIsBusy()) {
+        kind = Kind::Ota;
+    } else if (!auth_.authorized(req, false)) {
+        kind = Kind::Auth;
+    } else {
     auto &head = pt_.pt();
     const int8_t spd = Ph350Ctrl::rateToSigned(rate, +1);
     const int8_t nspd = Ph350Ctrl::rateToSigned(rate, -1);
+    bool run = true;
+    if (headMotionCommand(q.cmd)) {
+        ccam::Status detail = ccam::Status::Ok;
+        const MotionGate gate = admitMotion(req, &detail);
+        if (gate == MotionGate::Denied) {
+            kind = Kind::Auth;
+            run = false;
+        } else if (gate == MotionGate::OtaBusy) {
+            kind = Kind::Ota;
+            run = false;
+        } else if (gate == MotionGate::StopFailed) {
+            st = detail;
+            run = false;
+        } else if (gate != MotionGate::Proceed) {
+            st = detail != ccam::Status::Ok ? detail : ccam::Status::Io;
+            run = false;
+        }
+    }
+    if (run) {
 
     if (strcmp(q.cmd, "pan_left") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Pan, nspd);
+        st = pt_.driveAxis(pt::Axis::Pan, nspd);
     } else if (strcmp(q.cmd, "pan_right") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Pan, spd);
+        st = pt_.driveAxis(pt::Axis::Pan, spd);
     } else if (strcmp(q.cmd, "tilt_up") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Tilt, spd);
+        st = pt_.driveAxis(pt::Axis::Tilt, spd);
     } else if (strcmp(q.cmd, "tilt_down") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Tilt, nspd);
+        st = pt_.driveAxis(pt::Axis::Tilt, nspd);
     } else if (strcmp(q.cmd, "zoom_tele") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Zoom, spd);
+        st = pt_.driveAxis(pt::Axis::Zoom, spd);
     } else if (strcmp(q.cmd, "zoom_wide") == 0) {
         pt_.clearAtLatest();
-        st = head.move(pt::Axis::Zoom, nspd);
+        st = pt_.driveAxis(pt::Axis::Zoom, nspd);
     } else if (strcmp(q.cmd, "focus_far") == 0) {
-        st = head.move(pt::Axis::Focus, spd);
+        st = pt_.driveAxis(pt::Axis::Focus, spd);
     } else if (strcmp(q.cmd, "focus_near") == 0) {
-        st = head.move(pt::Axis::Focus, nspd);
+        st = pt_.driveAxis(pt::Axis::Focus, nspd);
     } else if (strcmp(q.cmd, "stop") == 0) {
-        st = head.stop();
+        st = pt_.stopLegacy();
     } else if (strcmp(q.cmd, "home") == 0) {
-        st = head.goHome();
+        st = pt_.haltMotion();
+        if (st == ccam::Status::Ok) {
+            st = head.goHome();
+        }
         if (st == ccam::Status::Ok) {
             uint8_t p = 0;
             if (head.requestLatestPreset(p) == ccam::Status::Ok && p >= 1) {
@@ -588,7 +671,10 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         if (head.capabilities().abs_pt) {
             pt_.clearAtLatest();
             auto *ipt = static_cast<ccam::devices::IntegratedPtzBase *>(&head);
-            st = ipt->setPT(pt::PT{as_u16(q.v, 0x8000), as_u16(q.v2, 0x8000)});
+            st = pt_.stopAxes(Ph350Ctrl::kAimAxes, 2);
+            if (st == ccam::Status::Ok) {
+                st = ipt->setPT(pt::PT{as_u16(q.v, 0x8000), as_u16(q.v2, 0x8000)});
+            }
         }
     } else if (strcmp(q.cmd, "preset_map") == 0) {
         if (head.capabilities().preset_map) {
@@ -618,17 +704,23 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
                     mapbuf[o++] = ']';
                     mapbuf[o++] = '}';
                     mapbuf[o] = '\0';
-                    return send_json(req, mapbuf);
+                    snprintf(body, sizeof(body), "%s", mapbuf);
+                    kind = Kind::Body;
+                } else {
+                    st = ccam::Status::Buffer;
                 }
-                st = ccam::Status::Buffer;
             }
         }
     } else if (strcmp(q.cmd, "preset_recall") == 0) {
-        st = head.recallPreset(preset);
+        st = pt_.haltMotion();
+        if (st == ccam::Status::Ok) {
+            st = head.recallPreset(preset);
+        }
         if (st == ccam::Status::Ok) {
             pt_.noteLatestPreset(preset);
         }
     } else if (strcmp(q.cmd, "preset_save") == 0) {
+        /* Сохранение пресета не двигает оси и не меняет Hold/Lease. */
         st = head.savePreset(preset);
         if (st == ccam::Status::Ok) {
             pt_.noteLatestPreset(preset);
@@ -643,10 +735,10 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         st = head.requestLatestPreset(p);
         if (st == ccam::Status::Ok) {
             pt_.noteLatestPreset(p);
-            snprintf(buf, sizeof(buf),
+            snprintf(body, sizeof(body),
                      "{\"ok\":true,\"status\":\"ok\",\"preset\":%u,\"latest_preset\":%u,\"at_latest\":true}",
                      p, p);
-            return send_json(req, buf);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "preset_mode") == 0) {
         st = head.setPresetMode(static_cast<ccam::PrMode>(as_int(q.v) & 1));
@@ -661,11 +753,11 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         pt::Position pos{};
         st = (strcmp(q.cmd, "pos") == 0) ? head.requestPosition(pos) : head.requestPositionDisplay(pos);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf),
+            snprintf(body, sizeof(body),
                      "{\"ok\":true,\"status\":\"ok\",\"pan\":%u,\"tilt\":%u,\"zoom\":%u,\"focus\":%u,"
                      "\"iris\":%u}",
                      pos.pt.pan, pos.pt.tilt, pos.lens.zoom, pos.lens.focus, pos.lens.iris);
-            return send_json(req, buf);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "set_lens") == 0) {
         pt::Lens lens{as_u16(q.v3), as_u16(q.data), as_u16(q.v4)};
@@ -682,32 +774,32 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         uint16_t v = 0;
         st = head.getZoom(v);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"zoom\":%u}", v);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"zoom\":%u}", v);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_focus") == 0 || strcmp(q.cmd, "get_focus") == 0
                || strcmp(q.cmd, "da_focus") == 0) {
         uint16_t v = 0;
         st = head.getFocus(v);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"focus\":%u}", v);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"focus\":%u}", v);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_iris") == 0 || strcmp(q.cmd, "get_iris") == 0
                || strcmp(q.cmd, "da_iris") == 0) {
         uint16_t v = 0;
         st = head.getIris(v);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"iris\":%u}", v);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"iris\":%u}", v);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_lens") == 0) {
         uint16_t z = 0, f = 0, i = 0;
         st = head.requestLensPositionInfo(z, f, i);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf),
+            snprintf(body, sizeof(body),
                      "{\"ok\":true,\"status\":\"ok\",\"zoom\":%u,\"focus\":%u,\"iris\":%u}", z, f, i);
-            return send_json(req, buf);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "lens_ctrl") == 0) {
         st = head.setLensCtrl(static_cast<ccam::Switch>(as_int(q.v) & 1));
@@ -715,42 +807,41 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
         pt::Exposure ex{};
         st = head.requestExposure(ex);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf),
+            snprintf(body, sizeof(body),
                      "{\"ok\":true,\"status\":\"ok\",\"gain\":%u,\"shutter\":%u,\"nd\":%u}", ex.gain,
                      ex.shutter, ex.nd);
-            return send_json(req, buf);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_error") == 0) {
         uint8_t err = 0;
         st = head.requestError(err);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"error\":%u}", err);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"error\":%u}", err);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_landing") == 0) {
         ccam::LandingMode mode{};
         st = head.requestLandingMode(mode);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}",
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}",
                      static_cast<unsigned>(mode));
-            return send_json(req, buf);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_ver") == 0) {
         st = head.requestSoftwareVersion(extra, sizeof(extra));
-        return reply_st(req, st, extra);
     } else if (strcmp(q.cmd, "req_heater") == 0) {
         uint8_t v = 0;
         st = head.queryHeaterStatus(v);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}", v);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}", v);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "req_defrost") == 0) {
         uint8_t v = 0;
         st = head.queryDefrosterStatus(v);
         if (st == ccam::Status::Ok) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}", v);
-            return send_json(req, buf);
+            snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"ok\",\"value\":%u}", v);
+            kind = Kind::Body;
         }
     } else if (strcmp(q.cmd, "limitation") == 0 || strcmp(q.cmd, "limit_toggle") == 0) {
         // PDF: #L[1..4] toggle → l0/l1. PH350: да. Подъехать к упору перед Set.
@@ -760,10 +851,10 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             st = head.toggleLimitation(static_cast<ccam::LimitAxis>(ax), &state);
             if (st == ccam::Status::Ok) {
                 pt_.noteLimit(static_cast<ccam::LimitAxis>(ax), state);
-                snprintf(buf, sizeof(buf),
+                snprintf(body, sizeof(body),
                          "{\"ok\":true,\"status\":\"ok\",\"axis\":%d,\"limit\":\"%s\",\"data\":\"#L%d\"}",
                          ax, state == ccam::Limitation::Set ? "set" : "release", ax);
-                return send_json(req, buf);
+                kind = Kind::Body;
             }
         }
     } else if (strcmp(q.cmd, "limit_ctrl") == 0) {
@@ -776,10 +867,10 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
                                            static_cast<ccam::Limitation>(act));
             if (st == ccam::Status::Ok) {
                 pt_.noteLimit(static_cast<ccam::LimitAxis>(ax), static_cast<ccam::Limitation>(act));
-                snprintf(buf, sizeof(buf),
+                snprintf(body, sizeof(body),
                          "{\"ok\":true,\"status\":\"ok\",\"axis\":%d,\"limit\":\"%s\",\"data\":\"#LC\"}",
                          ax, act ? "set" : "release");
-                return send_json(req, buf);
+                kind = Kind::Body;
             }
         }
     } else if (strcmp(q.cmd, "tilt_range") == 0) {
@@ -804,6 +895,7 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
             st = head.setWiper(static_cast<ccam::WiperMode>(n));
         }
     } else if (strcmp(q.cmd, "raw") == 0 || strcmp(q.cmd, "raw_send") == 0) {
+        /* Сырой кадр не разбирается: velocity внутри него не обновляет состояние осей. */
         const char *cmd = q.data[0] ? q.data : "O";
         if (cmd[0] == '#') {
             ++cmd;
@@ -819,10 +911,21 @@ esp_err_t HttpStatus::on_ptz(httpd_req_t *req) {
                 ascii_rx(rx, n, extra, sizeof(extra));
             }
         }
-        return reply_st(req, st, extra);
     }
 
-    return reply_st(req, st);
+    }
+    }
+    }
+    if (kind == Kind::Auth) {
+        return require_auth(req);
+    }
+    if (kind == Kind::Ota) {
+        return reply_ota_busy(req);
+    }
+    if (kind == Kind::Body) {
+        return send_json(req, body);
+    }
+    return reply_st(req, st, extra[0] ? extra : nullptr);
 }
 
 esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
@@ -834,27 +937,36 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
     }
     Q q;
     load_q(req, q);
-    Ph350Ctrl::DeviceLock dev(pt_);
     if (!q.cmd[0]) {
-        return reply_cam(req, pt_, ccam::Status::Param);
+        char tx[160] = {};
+        char rx[160] = {};
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            copy_cam_trace(pt_, tx, sizeof(tx), rx, sizeof(rx));
+        }
+        return reply_cam(req, ccam::Status::Param, tx, rx);
     }
 
-    auto &cam = pt_.cam();
     ccam::Status st = ccam::Status::Param;
     char extra[96] = {};
 
     if (strcmp(q.cmd, "ranges") == 0) {
         // Каталог + menu_deps из ccam (не HTML). Без шины. Heap — как osd_ranges.
+        ccam::devices::CameraModelId cam_id;
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            cam_id = pt_.camModel();
+        }
         constexpr size_t kCap = 6144;
         char *json = static_cast<char *>(malloc(kCap));
         if (!json) {
             return reply_st(req, ccam::Status::Buffer);
         }
-        const auto &cat = ccam::devices::camParamCatalog(pt_.camModel());
+        const auto &cat = ccam::devices::camParamCatalog(cam_id);
         int n = snprintf(
             json, kCap,
             "{\"ok\":true,\"status\":\"ok\",\"cam_id\":\"%s\",\"ranges\":{",
-            ccam::devices::camModelKey(pt_.camModel()));
+            ccam::devices::camModelKey(cam_id));
         if (n < 0 || static_cast<size_t>(n) >= kCap) {
             free(json);
             return reply_st(req, ccam::Status::Buffer);
@@ -894,6 +1006,11 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         return rc;
     }
     if (strcmp(q.cmd, "osd_ranges") == 0) {
+        ccam::devices::CameraModelId cam_id;
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            cam_id = pt_.camModel();
+        }
         char *json = static_cast<char *>(malloc(20480));
         if (!json) {
             return reply_st(req, ccam::Status::Buffer);
@@ -904,7 +1021,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             return reply_st(req, ccam::Status::Buffer);
         }
         const int m = ccam::devices::osdParamCatalogToJson(
-            pt_.camModel(), json + n, 20480 - static_cast<size_t>(n) - 2);
+            cam_id, json + n, 20480 - static_cast<size_t>(n) - 2);
         if (m < 0) {
             free(json);
             return reply_st(req, ccam::Status::Buffer);
@@ -920,25 +1037,56 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         free(json);
         return rc;
     }
-    if (strcmp(q.cmd, "model") == 0) {
-        st = cam.requestModel(extra, sizeof(extra));
-        return reply_cam(req, pt_, st, extra);
-    }
-    if (strcmp(q.cmd, "version") == 0) {
-        st = cam.requestSoftwareVersion(extra, sizeof(extra));
-        return reply_cam(req, pt_, st, extra);
+    if (strcmp(q.cmd, "model") == 0 || strcmp(q.cmd, "version") == 0) {
+        char tx[160] = {};
+        char rx[160] = {};
+        bool busy = false;
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            if (otaIsBusy()) {
+                busy = true;
+            } else {
+                auto &cam = pt_.cam();
+                st = (strcmp(q.cmd, "model") == 0) ? cam.requestModel(extra, sizeof(extra))
+                                                   : cam.requestSoftwareVersion(extra, sizeof(extra));
+                copy_cam_trace(pt_, tx, sizeof(tx), rx, sizeof(rx));
+            }
+        }
+        if (busy) {
+            return reply_ota_busy(req);
+        }
+        return reply_cam(req, st, tx, rx, extra);
     }
     if (strcmp(q.cmd, "params") == 0) {
         const bool deps_only = (strcmp(q.scope, "deps") == 0);
-        httpd_resp_set_type(req, "application/x-ndjson");
-        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-        httpd_resp_set_hdr(req, "X-Content-Type-Options", "nosniff");
+        ccam::devices::CameraDeviceBase *cam = nullptr;
+        struct NdHold {
+            char a[160]{};
+            char b[160]{};
+            int n{0};
+            bool add(const char *line) {
+                if (line == nullptr || n >= 2) {
+                    return false;
+                }
+                char *dst = (n == 0) ? a : b;
+                const int k = snprintf(dst, 160, "%s", line);
+                if (k <= 0 || k >= 160) {
+                    return false;
+                }
+                ++n;
+                return true;
+            }
+        } slot;
+        NdHold *hold = nullptr;
 
         bool any_ok = false;
         auto gap = []() { vTaskDelay(pdMS_TO_TICKS(20)); };
         auto emit = [&](const char *line) -> bool {
             if (!line) {
                 return false;
+            }
+            if (hold != nullptr) {
+                return hold->add(line);
             }
             const size_t n = strlen(line);
             if (httpd_resp_send_chunk(req, line, n) != ESP_OK) {
@@ -982,7 +1130,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         };
         auto emit_osd_wire = [&](const char *key, ccam::catalog::OsdItem item) -> bool {
             char raw[40] = {};
-            ccam::Status qs = cam.requestOsd(item, raw, sizeof(raw));
+            ccam::Status qs = cam->requestOsd(item, raw, sizeof(raw));
             const char *wire = raw;
             for (const char *p = raw; *p; ++p) {
                 if (*p == ':') {
@@ -993,7 +1141,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         };
         auto emit_osd_u = [&](const char *key, ccam::catalog::OsdItem item) -> bool {
             char raw[40] = {};
-            ccam::Status qs = cam.requestOsd(item, raw, sizeof(raw));
+            ccam::Status qs = cam->requestOsd(item, raw, sizeof(raw));
             const char *wire = raw;
             for (const char *p = raw; *p; ++p) {
                 if (*p == ':') {
@@ -1008,7 +1156,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         };
         auto emit_video_wire = [&](const char *key, ccam::catalog::VideoMenuItem item) -> bool {
             char raw[40] = {};
-            ccam::Status qs = cam.requestVideoMenu(item, raw, sizeof(raw));
+            ccam::Status qs = cam->requestVideoMenu(item, raw, sizeof(raw));
             const char *wire = raw;
             for (const char *p = raw; *p; ++p) {
                 if (*p == ':') {
@@ -1018,15 +1166,38 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             return emit_str(key, qs, (qs == ccam::Status::Ok) ? wire : "");
         };
 
+        bool cam_tx = false;
+        bool busy = false;
+        uint32_t epoch = 0;
+        ccam::devices::CamCaps cc{};
+        ccam::devices::CameraModelId cam_id{};
+        {
+            Ph350Ctrl::DeviceLock dev(pt_);
+            if (otaIsBusy()) {
+                busy = true;
+            } else {
+                epoch = pt_.deviceEpoch();
+                cam_tx = pt_.linkHealth().camTxLikely();
+                cc = pt_.cam().capabilities();
+                cam_id = pt_.camModel();
+            }
+        }
+        if (busy) {
+            return reply_ota_busy(req);
+        }
+
+        httpd_resp_set_type(req, "application/x-ndjson");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        httpd_resp_set_hdr(req, "X-Content-Type-Options", "nosniff");
+
         if (!emit(deps_only ? "{\"ok\":true,\"stream\":true,\"deps\":true,\"status\":\"ok\"}"
                             : "{\"ok\":true,\"stream\":true,\"status\":\"ok\"}")) {
             httpd_resp_send_chunk(req, nullptr, 0);
             return ESP_FAIL;
         }
 
-        /* Без CamTX каждый Qxx/OSD уходит в таймаут → минуты под DeviceLock →
-         * UI status/power встают. Сразу закрываем поток. */
-        if (!pt_.linkHealth().camTxLikely()) {
+        /* Без CamTX каждый Qxx/OSD уходит в таймаут. Поток закрываем сразу. */
+        if (!cam_tx) {
             if (!emit("{\"done\":true,\"ok\":false,\"status\":\"cam_off\"}")) {
                 httpd_resp_send_chunk(req, nullptr, 0);
                 return ESP_FAIL;
@@ -1036,11 +1207,10 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
 
         uint8_t u8 = 0;
         uint16_t u16 = 0;
-        const auto &cc = cam.capabilities();
         ccam::devices::CamMenuPrimaryState pst{};
-        pst.he_awc = ccam::devices::camMenuUsesHeAwc(pt_.camModel());
+        pst.he_awc = ccam::devices::camMenuUsesHeAwc(cam_id);
         {
-            const auto &cat = ccam::devices::camParamCatalog(pt_.camModel());
+            const auto &cat = ccam::devices::camParamCatalog(cam_id);
             if (cat.shutter.kind == ccam::devices::CamParamKind::Choices && cat.shutter.choices) {
                 for (size_t i = 0; i < cat.shutter.choice_count; ++i) {
                     const auto &ch = cat.shutter.choices[i];
@@ -1066,7 +1236,7 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             case Fmt::GainMode: {
                 int gain_db = 0;
                 bool gain_agc = false;
-                qs = cam.requestGain(gain_db, gain_agc);
+                qs = cam->requestGain(gain_db, gain_agc);
                 pst.gain_agc = gain_agc;
                 if (deps_only) {
                     return true;
@@ -1082,48 +1252,48 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             case Fmt::GainDb: {
                 int db = 0;
                 bool agc = false;
-                qs = cam.requestGain(db, agc);
+                qs = cam->requestGain(db, agc);
                 if (qs == ccam::Status::Ok && !agc) {
                     return emit_i(key, qs, db);
                 }
                 return emit_str(key, qs, "");
             }
             case Fmt::TrackShutter:
-                qs = cam.requestShutter(u8);
+                qs = cam->requestShutter(u8);
                 pst.shutter = u8;
                 return deps_only ? true : emit_u(key, qs, u8);
             case Fmt::IrisAm: {
                 ccam::IrisAutoManual iris_am = ccam::IrisAutoManual::Manual;
-                qs = cam.requestIrisAutoManual(iris_am);
+                qs = cam->requestIrisAutoManual(iris_am);
                 pst.iris_am = static_cast<uint8_t>(iris_am);
                 return deps_only ? true : emit_u(key, qs, static_cast<unsigned>(iris_am));
             }
             case Fmt::TrackAwc:
-                qs = cam.requestAwcMode(u8);
+                qs = cam->requestAwcMode(u8);
                 pst.awc = u8;
                 return deps_only ? true : emit_u(key, qs, u8);
             case Fmt::IrisNorm:
-                qs = cam.requestManualIris(u16);
+                qs = cam->requestManualIris(u16);
                 return emit_u(key, qs, u16);
             case Fmt::Synchro:
-                qs = cam.requestSynchroScan(u16);
+                qs = cam->requestSynchroScan(u16);
                 return emit_u(key, qs, u16);
             case Fmt::HexU16:
                 switch (as_cam()) {
                 case ccam::catalog::CameraCmd::RGain:
-                    qs = cam.requestRGain(u16);
+                    qs = cam->requestRGain(u16);
                     break;
                 case ccam::catalog::CameraCmd::BGain:
-                    qs = cam.requestBGain(u16);
+                    qs = cam->requestBGain(u16);
                     break;
                 case ccam::catalog::CameraCmd::RPedestal:
-                    qs = cam.requestRPedestal(u16);
+                    qs = cam->requestRPedestal(u16);
                     break;
                 case ccam::catalog::CameraCmd::BPedestal:
-                    qs = cam.requestBPedestal(u16);
+                    qs = cam->requestBPedestal(u16);
                     break;
                 case ccam::catalog::CameraCmd::TPedestal:
-                    qs = cam.requestTPedestal(u16);
+                    qs = cam->requestTPedestal(u16);
                     break;
                 default:
                     return true;
@@ -1135,39 +1305,39 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
                 }
                 switch (as_cam()) {
                 case ccam::catalog::CameraCmd::SceneFile:
-                    qs = cam.requestSceneFile(u8);
+                    qs = cam->requestSceneFile(u8);
                     break;
                 case ccam::catalog::CameraCmd::DigitalGainUp:
-                    qs = cam.requestDigitalGainUp(u8);
+                    qs = cam->requestDigitalGainUp(u8);
                     break;
                 case ccam::catalog::CameraCmd::LightPeakAvg:
-                    qs = cam.requestLightPeakAvg(u8);
+                    qs = cam->requestLightPeakAvg(u8);
                     break;
                 case ccam::catalog::CameraCmd::LightArea:
-                    qs = cam.requestLightArea(u8);
+                    qs = cam->requestLightArea(u8);
                     break;
                 case ccam::catalog::CameraCmd::Detail:
-                    qs = cam.requestDetail(u8);
+                    qs = cam->requestDetail(u8);
                     break;
                 case ccam::catalog::CameraCmd::HdDetail:
-                    qs = cam.requestHdDetail(u8);
+                    qs = cam->requestHdDetail(u8);
                     break;
                 case ccam::catalog::CameraCmd::Dnr3d:
-                    qs = cam.requestDnr3d(u8);
+                    qs = cam->requestDnr3d(u8);
                     break;
                 case ccam::catalog::CameraCmd::FilterNd:
-                    qs = cam.requestFilter(u8);
+                    qs = cam->requestFilter(u8);
                     break;
                 default:
                     return true;
                 }
                 return emit_u(key, qs, u8);
             case Fmt::ChromaSigned:
-                qs = cam.requestChromaLevel(u8);
+                qs = cam->requestChromaLevel(u8);
                 return emit_i(key, qs, static_cast<int>(u8) - 3);
             case Fmt::AirisSigned: {
                 char raw[40] = {};
-                qs = cam.requestOsd(as_osd(), raw, sizeof(raw));
+                qs = cam->requestOsd(as_osd(), raw, sizeof(raw));
                 const char *wire = raw;
                 for (const char *p = raw; *p; ++p) {
                     if (*p == ':') {
@@ -1194,20 +1364,20 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
                 return emit_video_wire(key, as_vid());
             case Fmt::ColorBar: {
                 ccam::ColorBarMode cbar = ccam::ColorBarMode::Camera;
-                qs = cam.requestColorBar(cbar);
+                qs = cam->requestColorBar(cbar);
                 return emit_u(key, qs, static_cast<unsigned>(cbar));
             }
             case Fmt::Switch: {
                 ccam::Switch sw = ccam::Switch::Off;
                 switch (as_cam()) {
                 case ccam::catalog::CameraCmd::AutoFocus:
-                    qs = cam.requestAutoFocus(sw);
+                    qs = cam->requestAutoFocus(sw);
                     break;
                 case ccam::catalog::CameraCmd::NegPos:
-                    qs = cam.requestNegPos(sw);
+                    qs = cam->requestNegPos(sw);
                     break;
                 case ccam::catalog::CameraCmd::MenuOnOff:
-                    qs = cam.requestMenuOnOff(sw);
+                    qs = cam->requestMenuOnOff(sw);
                     break;
                 default:
                     return true;
@@ -1216,17 +1386,17 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             }
             case Fmt::FieldFrame: {
                 ccam::FieldFrameMode ff = ccam::FieldFrameMode::Field;
-                qs = cam.requestFieldFrame(ff);
+                qs = cam->requestFieldFrame(ff);
                 return emit_u(key, qs, static_cast<unsigned>(ff));
             }
             case Fmt::Model: {
                 char model[24] = {};
-                qs = cam.requestModel(model, sizeof(model));
+                qs = cam->requestModel(model, sizeof(model));
                 return emit_str(key, qs, model);
             }
             case Fmt::Version: {
                 char version[24] = {};
-                qs = cam.requestSoftwareVersion(version, sizeof(version));
+                qs = cam->requestSoftwareVersion(version, sizeof(version));
                 return emit_str(key, qs, version);
             }
             default:
@@ -1274,7 +1444,27 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
                 }
             }
 
-            if (!emit_slot(e)) {
+            slot.n = 0;
+            hold = &slot;
+            bool stop_stream = false;
+            bool slot_ok = true;
+            {
+                Ph350Ctrl::DeviceLock dev(pt_);
+                if (device_guard(epoch, pt_.deviceEpoch(), otaIsBusy()) != DeviceGuard::Ok
+                    || !auth_.authorized(req, false)) {
+                    stop_stream = true;
+                } else {
+                    pt_.expireMotion();
+                    cam = &pt_.cam();
+                    slot_ok = emit_slot(e);
+                    cam = nullptr;
+                }
+            }
+            hold = nullptr;
+            if (stop_stream) {
+                break;
+            }
+            if (!slot_ok || (slot.n > 0 && !emit(slot.a)) || (slot.n > 1 && !emit(slot.b))) {
                 httpd_resp_send_chunk(req, nullptr, 0);
                 return ESP_FAIL;
             }
@@ -1289,6 +1479,20 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
         }
         return httpd_resp_send_chunk(req, nullptr, 0);
     }
+
+    char tx[160] = {};
+    char rx[160] = {};
+    bool busy = false;
+    bool denied = false;
+    {
+        Ph350Ctrl::DeviceLock dev(pt_);
+        if (otaIsBusy()) {
+            busy = true;
+        } else if (!auth_.authorized(req, false)) {
+            denied = true;
+        } else {
+            pt_.expireMotion();
+            auto &cam = pt_.cam();
     if (strcmp(q.cmd, "awc_start") == 0) {
         st = cam.awcStart();
     } else if (strcmp(q.cmd, "abc_start") == 0) {
@@ -1404,6 +1608,16 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
     } else if (strcmp(q.cmd, "scene_data") == 0) {
         st = cam.selectScene(q.data[0] ? q.data : "0");
     } else if (strcmp(q.cmd, "raw") == 0 || strcmp(q.cmd, "raw_send") == 0) {
+        /* Та же шина, что у головы: кадр не разбирается, но может быть скоростью. */
+        ccam::Status detail = ccam::Status::Ok;
+        const MotionGate gate = admitMotion(req, &detail);
+        if (gate == MotionGate::Denied) {
+            denied = true;
+        } else if (gate == MotionGate::OtaBusy) {
+            busy = true;
+        } else if (gate != MotionGate::Proceed) {
+            st = detail != ccam::Status::Ok ? detail : ccam::Status::Io;
+        } else {
         // data = cmd3 (OAW/QAW/OWS…), data2 = payload после ':' (пусто → trigger/query)
         const char *cmd3 = q.data[0] ? q.data : "";
         const char *payload = q.data2[0] ? q.data2 : nullptr;
@@ -1413,16 +1627,23 @@ esp_err_t HttpStatus::on_cam(httpd_req_t *req) {
             st = cam.sendRaw(cmd3, payload);
         } else {
             st = cam.requestRaw(cmd3, extra, sizeof(extra));
-            return reply_cam(req, pt_, st, extra);
+        }
         }
     } else if (strcmp(q.cmd, "osd_get") == 0) {
         st = ccam::devices::getOsdParam(cam, q.v, extra, sizeof(extra));
-        return reply_cam(req, pt_, st, extra);
     } else if (strcmp(q.cmd, "osd_set") == 0) {
         st = ccam::devices::setOsdParam(cam, q.v, q.data);
     }
-
-    return reply_cam(req, pt_, st);
+            copy_cam_trace(pt_, tx, sizeof(tx), rx, sizeof(rx));
+        }
+    }
+    if (denied) {
+        return require_auth(req);
+    }
+    if (busy) {
+        return reply_ota_busy(req);
+    }
+    return reply_cam(req, st, tx, rx, extra);
 }
 
 esp_err_t HttpStatus::root_get(httpd_req_t *req) {

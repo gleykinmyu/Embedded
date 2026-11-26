@@ -124,6 +124,19 @@ public:
     void tick(uint32_t now_ms);
     Status pollNow(uint32_t now_ms);
 
+    /** Срок опроса питания. Без шины. */
+    bool powerDue(uint32_t now_ms) const;
+
+    /**
+     * Один завершённый запрос. Следующий шаг выполняется отдельно,
+     * чтобы между запросами можно было отпустить внешний mutex.
+     * Idle — дальше в этом проходе шина не нужна.
+     */
+    enum class PollStep : uint8_t { Idle, Optics, Cam };
+    PollStep stepPower(uint32_t now_ms);
+    PollStep stepOptics(uint32_t now_ms);
+    void stepCam(uint32_t now_ms);
+
     bool alive() const { return pt_.alive; }
     /** Головка реально «на питании»: живой #O-линк и валидный #GZ (не ---). */
     bool powered() const { return pt_.alive && optics_.alive; }

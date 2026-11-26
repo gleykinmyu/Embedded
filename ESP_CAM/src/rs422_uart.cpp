@@ -50,10 +50,16 @@ void Rs422Uart::purge() {
 
 void Rs422Uart::purgeOutput() {}
 
-void Rs422Uart::flush() {
-    if (open_) {
-        (void)uart_wait_tx_done(static_cast<uart_port_t>(RS422_UART_NUM), pdMS_TO_TICKS(100));
+bool Rs422Uart::flushTx() {
+    if (!open_) {
+        return false;
     }
+    const esp_err_t rc = uart_wait_tx_done(static_cast<uart_port_t>(RS422_UART_NUM), pdMS_TO_TICKS(100));
+    return rc == ESP_OK;
+}
+
+void Rs422Uart::flush() {
+    (void)flushTx();
 }
 
 bool Rs422Uart::open(uint32_t baud) {

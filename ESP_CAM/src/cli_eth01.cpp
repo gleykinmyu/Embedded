@@ -19,6 +19,21 @@
 CliEth01::CliEth01(EthLan8720 &eth, HttpStatus &http, Ph350Ctrl &pt)
     : eth_(eth), http_(http), pt_(pt) {}
 
+namespace {
+
+bool admit_move(HttpStatus &http, ccam::Status &st)
+{
+    ccam::Status detail = ccam::Status::Ok;
+    const MotionGate gate = http.admitMotion(nullptr, &detail);
+    if (gate == MotionGate::Proceed) {
+        return true;
+    }
+    st = detail != ccam::Status::Ok ? detail : ccam::Status::Io;
+    return false;
+}
+
+} // namespace
+
 uint8_t CliEth01::rate_arg(Ph350Ctrl &pt, int argc, char **argv, int idx) {
     if (argc > idx) {
         const int n = atoi(argv[idx]);
@@ -33,14 +48,19 @@ int CliEth01::cmd_status(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
+    char model[32] = {};
+    uint8_t rate = 0;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        snprintf(model, sizeof(model), "%s", cli->pt_.pt().modelLabel());
+        rate = cli->pt_.defaultRate();
+    }
     char ip[16] = {};
     char mac[18] = {};
     cli->eth_.ip_text(ip, sizeof(ip));
     cli->eth_.mac_text(mac, sizeof(mac));
     printf("eth=%s ip=%s mac=%s http=%s pt=%s rate=%u\n", cli->eth_.link_up() ? "up" : "down", ip,
-           mac, cli->http_.listening() ? "listen" : "down", cli->pt_.pt().modelLabel(),
-           static_cast<unsigned>(cli->pt_.defaultRate()));
+           mac, cli->http_.listening() ? "listen" : "down", model, static_cast<unsigned>(rate));
     cli->eth_.print();
     return 0;
 }
@@ -220,88 +240,128 @@ int CliEth01::cmd_ping(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_pan(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("pan left|right|stop [1..100]\n");
         return 1;
     }
-    auto &head = cli->pt_.pt();
-    if (strcmp(argv[1], "stop") == 0) {
-        print_st(head.move(pt::Axis::Pan, 0));
-        return 0;
+    ccam::Status st = ccam::Status::Param;
+    bool ran = false;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        if (strcmp(argv[1], "stop") == 0) {
+            st = cli->pt_.stopAxis(pt::Axis::Pan);
+            ran = true;
+        } else if (strcmp(argv[1], "left") == 0) {
+            const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
+            if (admit_move(cli->http_, st)) {
+                st = cli->pt_.driveAxis(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, -1));
+            }
+            ran = true;
+        } else if (strcmp(argv[1], "right") == 0) {
+            const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
+            if (admit_move(cli->http_, st)) {
+                st = cli->pt_.driveAxis(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, +1));
+            }
+            ran = true;
+        }
     }
-    const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
-    if (strcmp(argv[1], "left") == 0) {
-        print_st(head.move(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, -1)));
-        return 0;
+    if (!ran) {
+        printf("pan left|right|stop [1..100]\n");
+        return 1;
     }
-    if (strcmp(argv[1], "right") == 0) {
-        print_st(head.move(pt::Axis::Pan, Ph350Ctrl::rateToSigned(rate, +1)));
-        return 0;
-    }
-    printf("pan left|right|stop [1..100]\n");
-    return 1;
+    print_st(st);
+    return 0;
 }
 
 int CliEth01::cmd_tilt(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("tilt up|down|stop [1..100]\n");
         return 1;
     }
-    auto &head = cli->pt_.pt();
-    if (strcmp(argv[1], "stop") == 0) {
-        print_st(head.move(pt::Axis::Tilt, 0));
-        return 0;
+    ccam::Status st = ccam::Status::Param;
+    bool ran = false;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        if (strcmp(argv[1], "stop") == 0) {
+            st = cli->pt_.stopAxis(pt::Axis::Tilt);
+            ran = true;
+        } else if (strcmp(argv[1], "up") == 0) {
+            const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
+            if (admit_move(cli->http_, st)) {
+                st = cli->pt_.driveAxis(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, +1));
+            }
+            ran = true;
+        } else if (strcmp(argv[1], "down") == 0) {
+            const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
+            if (admit_move(cli->http_, st)) {
+                st = cli->pt_.driveAxis(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, -1));
+            }
+            ran = true;
+        }
     }
-    const uint8_t rate = rate_arg(cli->pt_, argc, argv, 2);
-    if (strcmp(argv[1], "up") == 0) {
-        print_st(head.move(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, +1)));
-        return 0;
+    if (!ran) {
+        printf("tilt up|down|stop [1..100]\n");
+        return 1;
     }
-    if (strcmp(argv[1], "down") == 0) {
-        print_st(head.move(pt::Axis::Tilt, Ph350Ctrl::rateToSigned(rate, -1)));
-        return 0;
-    }
-    printf("tilt up|down|stop [1..100]\n");
-    return 1;
+    print_st(st);
+    return 0;
 }
 
 int CliEth01::cmd_stop(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
-    print_st(cli->pt_.pt().stop());
+    ccam::Status st;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        st = cli->pt_.stopLegacy();
+    }
+    print_st(st);
     return 0;
 }
 
 int CliEth01::cmd_power(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("power on|off\n");
         return 1;
     }
-    if (strcmp(argv[1], "on") == 0) {
-        print_st(cli->pt_.pt().power(pt::PowerMode::On));
-        return 0;
+    ccam::Status st = ccam::Status::Param;
+    bool ran = false;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        if (strcmp(argv[1], "on") == 0) {
+            st = cli->pt_.pt().power(pt::PowerMode::On);
+            ran = true;
+        } else if (strcmp(argv[1], "off") == 0) {
+            st = cli->pt_.pt().power(pt::PowerMode::Off);
+            ran = true;
+        }
     }
-    if (strcmp(argv[1], "off") == 0) {
-        print_st(cli->pt_.pt().power(pt::PowerMode::Off));
-        return 0;
+    if (!ran) {
+        printf("power on|off\n");
+        return 1;
     }
-    printf("power on|off\n");
-    return 1;
+    print_st(st);
+    return 0;
 }
 
 int CliEth01::cmd_home(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
-    print_st(cli->pt_.pt().goHome());
+    ccam::Status st;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        if (admit_move(cli->http_, st)) {
+            st = cli->pt_.haltMotion();
+            if (st == ccam::Status::Ok) {
+                st = cli->pt_.pt().goHome();
+            }
+        }
+    }
+    print_st(st);
     return 0;
 }
 
@@ -323,7 +383,6 @@ int CliEth01::cmd_speed(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_preset(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 3) {
         printf("preset recall|save <1..99>\n");
         return 1;
@@ -333,30 +392,48 @@ int CliEth01::cmd_preset(void *ctx, int argc, char **argv) {
         printf("preset 1..99\n");
         return 1;
     }
-    if (strcmp(argv[1], "recall") == 0) {
-        print_st(cli->pt_.pt().recallPreset(static_cast<uint8_t>(n)));
-        return 0;
+    ccam::Status st = ccam::Status::Param;
+    bool ran = false;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        if (strcmp(argv[1], "recall") == 0) {
+            if (admit_move(cli->http_, st)) {
+                st = cli->pt_.haltMotion();
+                if (st == ccam::Status::Ok) {
+                    st = cli->pt_.pt().recallPreset(static_cast<uint8_t>(n));
+                }
+            }
+            ran = true;
+        } else if (strcmp(argv[1], "save") == 0) {
+            st = cli->pt_.pt().savePreset(static_cast<uint8_t>(n));
+            ran = true;
+        }
     }
-    if (strcmp(argv[1], "save") == 0) {
-        print_st(cli->pt_.pt().savePreset(static_cast<uint8_t>(n)));
-        return 0;
+    if (!ran) {
+        printf("preset recall|save <1..99>\n");
+        return 1;
     }
-    printf("preset recall|save <1..99>\n");
-    return 1;
+    print_st(st);
+    return 0;
 }
 
 int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
     (void)argc;
     (void)argv;
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     pt::Position pos{};
-    const ccam::Status st = cli->pt_.pt().requestPosition(pos);
+    ccam::Status st;
+    bool show_pt = false;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        st = cli->pt_.pt().requestPosition(pos);
+        show_pt = cli->pt_.ptCaps().pt_pos;
+    }
     if (st != ccam::Status::Ok) {
         print_st(st);
         return 1;
     }
-    if (!cli->pt_.ptCaps().pt_pos) {
+    if (!show_pt) {
         printf("pan/tilt n/a zoom=0x%04X focus=0x%04X iris=0x%04X\n", pos.lens.zoom, pos.lens.focus,
                pos.lens.iris);
         return 0;
@@ -368,7 +445,6 @@ int CliEth01::cmd_pos(void *ctx, int argc, char **argv) {
 
 int CliEth01::cmd_raw(void *ctx, int argc, char **argv) {
     auto *cli = static_cast<CliEth01 *>(ctx);
-    Ph350Ctrl::DeviceLock dev(cli->pt_);
     if (argc < 2) {
         printf("raw <CMD> [payload]   example: raw O 1\n");
         return 1;
@@ -380,13 +456,18 @@ int CliEth01::cmd_raw(void *ctx, int argc, char **argv) {
     const char *payload = (argc >= 3) ? argv[2] : nullptr;
     uint8_t rx[ccam::kPtFrameMax] = {};
     size_t n = 0;
-    const ccam::Status st =
-        cli->pt_.pt().transactCommand(cmd, payload, rx, sizeof(rx), &n, ccam::kDefaultRxTimeoutMs);
+    ccam::Status st;
+    {
+        Ph350Ctrl::DeviceLock dev(cli->pt_);
+        /* Сырой кадр не обновляет состояние движения. Конец сессии применяется до кадра. */
+        if (admit_move(cli->http_, st)) {
+            st = cli->pt_.pt().transactCommand(cmd, payload, rx, sizeof(rx), &n, ccam::kDefaultRxTimeoutMs);
+        }
+    }
     if (st != ccam::Status::Ok) {
         print_st(st);
         return 1;
     }
-    // ASCII-строка (непечатаемое → '.'), CR/LF не печатаем
     printf("rx: ");
     for (size_t i = 0; i < n; ++i) {
         const uint8_t b = rx[i];

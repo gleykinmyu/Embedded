@@ -225,8 +225,8 @@ esp_err_t http_auth_login(httpd_req_t *req)
 
     /*
      * Сессия уже создана. http_send_ok выделяет конверт после этого.
-     * Ошибка Set-Cookie или отправки не откатывает сессию: старый watchdog
-     * уже мог получить sess_ended_. Клиенту уходит один ответ.
+     * Ошибка Set-Cookie или отправки не откатывает сессию: сторож
+     * уже мог забрать конец предыдущей сессии. Клиенту уходит один ответ.
      */
     char cookie[96];
     const int cn = snprintf(cookie, sizeof(cookie), "esp_sess=%s; Path=/; HttpOnly; SameSite=Lax", sess);

@@ -38,6 +38,7 @@ idf_component_register(
         "cli_eth01.cpp"
         "rs422_uart.cpp"
         "ph350_ctrl.cpp"
+        "motion_axes.cpp"
         "ota_espota.cpp"
         "${STATUS_HTML_ASM}"
         "${CCAM_DIR}/src/transport.cpp"

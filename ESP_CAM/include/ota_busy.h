@@ -7,6 +7,13 @@ bool otaIsBusy();
 void otaBindQuiesce(void (*fn)(void *ctx), void *ctx);
 
 /**
+ * STOP осей до стирания flash. true — можно продолжать обновление.
+ * Вызывать после успешной авторизации OTA, когда otaIsBusy() уже true.
+ */
+void otaBindHalt(bool (*fn)(void *ctx), void *ctx);
+bool otaHaltMotion();
+
+/**
  * Ждёт, пока опрос здоровья отпустит шину.
  * Вызывать только после того, как otaIsBusy() уже true.
  */

@@ -18,6 +18,12 @@ public:
     EthLan8720 &eth() { return eth_; }
     Ph350Ctrl &pt() { return pt_; }
 
+    /**
+     * Один проход конца operator-сессии. Вызывающий уже держит DeviceLock.
+     * req == nullptr — CLI. Mutex HttpAuth не удерживается во время STOP.
+     */
+    MotionGate admitMotion(httpd_req_t *req, ccam::Status *stop_status);
+
 private:
     esp_err_t on_root(httpd_req_t *req);
     esp_err_t on_ptz(httpd_req_t *req);

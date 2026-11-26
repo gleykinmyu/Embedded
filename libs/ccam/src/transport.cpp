@@ -29,6 +29,12 @@ Status Transport::sendUnlocked(const uint8_t* data, size_t len)
         return Status::Io;
     }
 
+    // Предыдущий кадр мог ещё выходить из UART. Не дописывать новый, пока линия не освободилась.
+    // Буфер TX не сбрасывается: драйвер сам досылает уже поставленные байты.
+    if (!stream_.flushTx()) {
+        return Status::Io;
+    }
+
     // Старые ответы (eR1 / поздний aPC и т.п.) иначе портят следующий transact.
     stream_.purge();
 
@@ -48,7 +54,9 @@ Status Transport::sendUnlocked(const uint8_t* data, size_t len)
         }
     }
 
-    stream_.flush();
+    if (!stream_.flushTx()) {
+        return Status::Io;
+    }
     emitTrace('T', data, len);
     return Status::Ok;
 }

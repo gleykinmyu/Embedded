@@ -14,6 +14,7 @@
 #include "devices/pt_device.hpp"
 #include "devices/pt_link_health.hpp"
 #include "freertos_lock.h"
+#include "motion_axes.hpp"
 #include "rs422_uart.h"
 #include "transport/transport.hpp"
 #include "transport/types.hpp"
@@ -92,6 +93,12 @@ public:
     };
     void copyHealth(HealthView &out) const;
 
+    /**
+     * Поколение объектов pt/cam. Читать только под DeviceLock.
+     * Растёт, когда объекты действительно пересозданы.
+     */
+    uint32_t deviceEpoch() const { return device_epoch_; }
+
     /** UI/CLI скорость в %: 1=медленно .. 100=быстро (для ±move). */
     uint8_t defaultRate() const { return rate_; }
     void setDefaultRate(uint8_t rate_1_to_100, bool persist = true);
@@ -118,6 +125,26 @@ public:
     /** 1..100% + знак → int8_t для move() (−100..+100). */
     static int8_t rateToSigned(uint8_t rate_1_to_100, int sign);
 
+    static constexpr pt::Axis kTrackedAxes[] = {
+        pt::Axis::Pan, pt::Axis::Tilt, pt::Axis::Zoom, pt::Axis::Focus,
+    };
+    static constexpr pt::Axis kAimAxes[] = {pt::Axis::Pan, pt::Axis::Tilt};
+
+    /**
+     * lease_us == 0 — Hold, > 0 — Lease, < 0 при ненулевой скорости — Param.
+     * speed == 0 — STOP.
+     * Время читается уже под DeviceLock. Ok — UART TX завершён, не ответ головы.
+     */
+    ccam::Status driveAxis(pt::Axis axis, int8_t speed, int64_t lease_us = 0);
+    ccam::Status stopAxis(pt::Axis axis);
+    ccam::Status stopAxes(const pt::Axis *axes, size_t count);
+    void expireMotion();
+    /** Четыре оси, включая Idle. Неполный STOP оставляет globalStopOpen(). */
+    ccam::Status haltMotion();
+    bool globalStopOpen();
+    /** Шесть осей. Состояние обновляется у pan/tilt/zoom/focus. */
+    ccam::Status stopLegacy();
+
     static const char* statusText(ccam::Status st);
 
     /** Сериализует смену моделей и опрос #O. Повторный захват с той же задачи — no-op. */
@@ -135,13 +162,16 @@ public:
 
 private:
     static uint32_t nowMs();
+    static int64_t nowUs();
+    static bool otaHalt(void *ctx);
     static void healthTask(void* arg);
     void loadSettings();
     void saveSettings() const;
     void saveLimits() const;
     uint8_t physLimitIndex(ccam::LimitAxis axis) const;
     void destroyDevices();
-    void constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam);
+    /** false — STOP четырёх осей не удался, объекты не уничтожаются. */
+    bool constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam);
     void startHealthTask();
     void publishHealth();
 
@@ -186,6 +216,8 @@ private:
     mutable portMUX_TYPE health_mux_ = portMUX_INITIALIZER_UNLOCKED;
     HealthView health_view_{};
     SemaphoreHandle_t dev_mu_{};
+    MotionAxes motion_{};
+    uint32_t device_epoch_{0};
     TaskHandle_t health_task_{nullptr};
     volatile bool health_run_{false};
     volatile bool health_alive_{false};

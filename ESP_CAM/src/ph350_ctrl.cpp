@@ -1,5 +1,6 @@
 #include "ph350_ctrl.h"
 
+#include "device_guard.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -16,6 +17,10 @@ static const char* TAG_BUS = "ccam";
 
 uint32_t Ph350Ctrl::nowMs() {
     return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+}
+
+int64_t Ph350Ctrl::nowUs() {
+    return esp_timer_get_time();
 }
 
 namespace {
@@ -129,8 +134,20 @@ static void ota_quiesce(void *p)
     Ph350Ctrl::DeviceLock lock(*self);
 }
 
+bool Ph350Ctrl::otaHalt(void *p)
+{
+    auto *self = static_cast<Ph350Ctrl *>(p);
+    if (self == nullptr || self->pt_ == nullptr) {
+        return false;
+    }
+    DeviceLock lock(*self);
+    /* otaIsBusy уже true: это не новая скорость, а обязательный STOP до flash. */
+    return self->motion_.haltTracked(*self->pt_, &Ph350Ctrl::nowUs) == ccam::Status::Ok;
+}
+
 Ph350Ctrl::~Ph350Ctrl() {
     otaBindQuiesce(nullptr, nullptr);
+    otaBindHalt(nullptr, nullptr);
     health_run_ = false;
     for (int i = 0; i < 80 && health_alive_; ++i) {
         vTaskDelay(pdMS_TO_TICKS(25));
@@ -163,9 +180,13 @@ void Ph350Ctrl::destroyDevices() {
     }
 }
 
-void Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam) {
+bool Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::CameraModelId cam) {
     using namespace ccam::devices;
     DeviceLock guard(*this);
+    if (pt_ != nullptr && motion_.haltTracked(*pt_, &Ph350Ctrl::nowUs) != ccam::Status::Ok) {
+        /* StopPending на старом объекте. Не уничтожать его и не менять модель. */
+        return false;
+    }
 
     destroyDevices();
     publishHealth();
@@ -224,17 +245,52 @@ void Ph350Ctrl::constructDevices(ccam::devices::PtModelId pt, ccam::devices::Cam
     pt_->setAxisInvert(invert_);
     health_.bind(pt_);
     health_.bindCam(cam_);
+    device_epoch_ += 1;
+    return true;
 }
 
 void Ph350Ctrl::healthTask(void* arg) {
     auto* self = static_cast<Ph350Ctrl*>(arg);
     while (self->health_run_) {
+        const uint32_t now = Ph350Ctrl::nowMs();
+        uint32_t epoch = 0;
+        ccam::devices::PtLinkHealth::PollStep next = ccam::devices::PtLinkHealth::PollStep::Idle;
         {
             DeviceLock guard(*self);
-            if (!otaIsBusy() && self->pt_ != nullptr) {
-                self->health_.tick(Ph350Ctrl::nowMs());
+            epoch = self->device_epoch_;
+            if (!otaIsBusy() && self->health_.powerDue(now)) {
+                self->expireMotion();
+                next = self->health_.stepPower(now);
             }
-            self->publishHealth();
+            if (next == ccam::devices::PtLinkHealth::PollStep::Idle) {
+                self->publishHealth();
+            }
+        }
+        if (next == ccam::devices::PtLinkHealth::PollStep::Optics) {
+            DeviceLock guard(*self);
+            const DeviceGuard gate = device_guard(epoch, self->device_epoch_, otaIsBusy());
+            if (gate == DeviceGuard::EpochChanged || self->pt_ == nullptr) {
+                next = ccam::devices::PtLinkHealth::PollStep::Idle;
+            } else if (gate == DeviceGuard::OtaBusy) {
+                /* Питание этого прохода уже записано в health_, оптика — ещё нет.
+                   Не публиковать смешанный снимок: снаружи остаётся последний целый. */
+                next = ccam::devices::PtLinkHealth::PollStep::Idle;
+            } else {
+                self->expireMotion();
+                next = self->health_.stepOptics(now);
+                if (next == ccam::devices::PtLinkHealth::PollStep::Idle) {
+                    self->publishHealth();
+                }
+            }
+        }
+        if (next == ccam::devices::PtLinkHealth::PollStep::Cam) {
+            DeviceLock guard(*self);
+            const DeviceGuard gate = device_guard(epoch, self->device_epoch_, otaIsBusy());
+            if (gate == DeviceGuard::Ok && self->cam_ != nullptr) {
+                self->expireMotion();
+                self->health_.stepCam(now);
+                self->publishHealth();
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(200));
     }
@@ -296,6 +352,7 @@ bool Ph350Ctrl::begin() {
     loadSettings();
     bus_.setTrace(&bus_trace);
     otaBindQuiesce(&ota_quiesce, this);
+    otaBindHalt(&Ph350Ctrl::otaHalt, this);
     startHealthTask();
     ESP_LOGI(TAG, "ready pt=%s (%s) cam=%s (%s) rate=%u inv=p%u/t%u/z%u/f%u",
              pt_->modelLabel(), ccam::devices::ptModelKey(pt_id_), cam_->modelLabel(),
@@ -337,7 +394,9 @@ void Ph350Ctrl::loadSettings() {
     const auto cam =
         have_cam ? ccam::devices::camModelFromKey(cam_key) : ccam::devices::CameraModelId::E650;
     if (pt != pt_id_ || cam != cam_id_) {
-        constructDevices(pt, cam);
+        if (!constructDevices(pt, cam)) {
+            ESP_LOGW(TAG, "NVS models kept aside, axis stop failed");
+        }
     } else {
         setAxisInvert(invert_, false);
     }
@@ -364,7 +423,9 @@ bool Ph350Ctrl::setModels(ccam::devices::PtModelId pt, ccam::devices::CameraMode
         return false;
     }
     const bool pt_changed = pt != pt_id_;
-    constructDevices(pt, cam);
+    if (!constructDevices(pt, cam)) {
+        return false;
+    }
     if (pt_changed && limits_ != 0) {
         /* Лимиты живут в головке: у другой модели они неизвестны. */
         limits_ = 0;
@@ -379,6 +440,7 @@ bool Ph350Ctrl::setModels(ccam::devices::PtModelId pt, ccam::devices::CameraMode
 }
 
 void Ph350Ctrl::setDefaultRate(uint8_t rate_1_to_100, bool persist) {
+    /* Скорость по умолчанию не меняет Hold/Lease и не шлёт кадр. */
     if (rate_1_to_100 < 1) {
         rate_1_to_100 = 1;
     }
@@ -481,6 +543,59 @@ int8_t Ph350Ctrl::rateToSigned(uint8_t rate_1_to_100, int sign) {
     }
     return static_cast<int8_t>(sign < 0 ? -static_cast<int>(rate_1_to_100)
                                         : static_cast<int>(rate_1_to_100));
+}
+
+ccam::Status Ph350Ctrl::driveAxis(pt::Axis axis, int8_t speed, int64_t lease_us) {
+    DeviceLock guard(*this);
+    if (pt_ == nullptr) {
+        return ccam::Status::Io;
+    }
+    return motion_.drive(*pt_, &Ph350Ctrl::nowUs, axis, speed, lease_us, !otaIsBusy());
+}
+
+ccam::Status Ph350Ctrl::stopAxis(pt::Axis axis) {
+    DeviceLock guard(*this);
+    if (pt_ == nullptr) {
+        return ccam::Status::Io;
+    }
+    return motion_.stopAxis(*pt_, &Ph350Ctrl::nowUs, axis);
+}
+
+ccam::Status Ph350Ctrl::stopAxes(const pt::Axis *axes, size_t count) {
+    DeviceLock guard(*this);
+    if (pt_ == nullptr) {
+        return ccam::Status::Io;
+    }
+    return motion_.stopAxes(*pt_, &Ph350Ctrl::nowUs, axes, count);
+}
+
+void Ph350Ctrl::expireMotion() {
+    DeviceLock guard(*this);
+    if (otaIsBusy() || pt_ == nullptr) {
+        return;
+    }
+    motion_.expire(*pt_, &Ph350Ctrl::nowUs);
+}
+
+ccam::Status Ph350Ctrl::haltMotion() {
+    DeviceLock guard(*this);
+    if (pt_ == nullptr) {
+        return ccam::Status::Io;
+    }
+    return motion_.haltTracked(*pt_, &Ph350Ctrl::nowUs);
+}
+
+bool Ph350Ctrl::globalStopOpen() {
+    DeviceLock guard(*this);
+    return motion_.globalStopOpen();
+}
+
+ccam::Status Ph350Ctrl::stopLegacy() {
+    DeviceLock guard(*this);
+    if (pt_ == nullptr) {
+        return ccam::Status::Io;
+    }
+    return motion_.stopLegacy(*pt_, &Ph350Ctrl::nowUs);
 }
 
 const char* Ph350Ctrl::statusText(ccam::Status st) {
