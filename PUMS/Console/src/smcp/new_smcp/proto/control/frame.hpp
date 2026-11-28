@@ -1,6 +1,6 @@
 /**
  * @file new_smcp/proto/control/frame.hpp
- * @brief smcp::proto::control::Frame — кадр протокола Control.
+ * @brief smcp::proto::control::Header — шапка протокола Control.
  *
  * Заголовок — op в data[0], 4 бита. Тело с data[1].
  * HeartBeat: msg в data[1]. Request, Ack, InvalidVersion — FwVersion в байтах 2..5. Busy — без версии.
@@ -12,9 +12,21 @@
 
 #include <cstdint>
 
-#include "comm/payload.hpp"
 #include "fw_version.hpp"
-#include "smcp/new_smcp/proto/base/frame.hpp"
+#include "smcp/new_smcp/proto/bitsery.hpp"
+
+namespace MISC {
+
+/** На проводе — pack(): patch_lo, patch_hi, minor, major. */
+template <typename S>
+void serialize(S& s, FwVersion& v)
+{
+    uint32_t raw = v.pack();
+    s.value4b(raw);
+    v = FwVersion::unpack(raw);
+}
+
+} // namespace MISC
 
 namespace smcp::proto::control {
 
@@ -26,7 +38,7 @@ enum class Type : uint8_t {
 
 inline constexpr uint8_t kBodyOff = 1;
 
-using payload_t = comm::Payload<0, base::payload_t::kLenMax - kBodyOff>;
+using payload_t = comm::Payload<0, 10u - kBodyOff>;
 
 /**
  * Type::HeartBeat. msg в data[1].
@@ -45,6 +57,16 @@ struct HeartBeat {
 
     Msg msg = Msg::Request;
     MISC::FwVersion version{};
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.value1b(msg);
+        if (msg == Msg::Busy) {
+            return;
+        }
+        s.object(version);
+    }
 };
 
 /** Type::Fault. detail — байты 1..2, name — остаток тела. */
@@ -54,6 +76,16 @@ struct Fault {
 
     uint16_t detail = 0;
     char name[kNameLen]{};
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.value2b(detail);
+        auto* raw = reinterpret_cast<uint8_t*>(name);
+        for (uint8_t i = 0; i < kNameLen; ++i) {
+            s.value1b(raw[i]);
+        }
+    }
 };
 
 /**
@@ -71,6 +103,16 @@ struct Arp {
 
     Op op = Op::Req;
     char name[kNameLen]{};
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.value1b(op);
+        auto* raw = reinterpret_cast<uint8_t*>(name);
+        for (uint8_t i = 0; i < kNameLen; ++i) {
+            s.value1b(raw[i]);
+        }
+    }
 };
 
 /*
@@ -107,95 +149,22 @@ struct Arp {
  * +-----------+-----------------------+-----------------------------------------------------------------------+
  */
 
-struct Frame {
+/** op — 4 бита, потолок 15. Тело кадра сюда не входит. */
+struct Header {
     Type op = Type::HeartBeat;
-    union {
-        HeartBeat hb{};
-        Fault fault;
-        Arp arp;
-    };
 
-    /** Дописывает в @a out. Буфер перед вызовом очищает вызывающий. */
-    void pack(comm::PayloadWriter out) const noexcept;
-    [[nodiscard]] bool unpack(comm::PayloadReader in) noexcept;
+    template <typename S>
+    void serialize(S& s)
+    {
+        uint8_t op_b = 0;
+        if constexpr (isWriter<S>) {
+            op_b = static_cast<uint8_t>(static_cast<uint8_t>(op) & 0x0Fu);
+        }
+        s.ext(op_b, bitsery::ext::ValueRange<uint8_t>{uint8_t{0}, uint8_t{0x0F}});
+        if constexpr (!isWriter<S>) {
+            op = static_cast<Type>(op_b);
+        }
+    }
 };
-
-inline void Frame::pack(comm::PayloadWriter out) const noexcept
-{
-    comm::BitPayload<4> head;
-    head.push(op, 0, 4);
-    out.push(head);
-
-    switch (op) {
-    case Type::HeartBeat:
-        out.push(hb.msg);
-        if (hb.msg != HeartBeat::Msg::Busy) {
-            out.pushU32(hb.version.pack());
-        }
-        break;
-    case Type::Fault:
-        out.pushU16(fault.detail);
-        out.push(reinterpret_cast<const uint8_t*>(fault.name), Fault::kNameLen);
-        break;
-    case Type::Arp:
-        out.push(arp.op);
-        out.push(reinterpret_cast<const uint8_t*>(arp.name), Arp::kNameLen);
-        break;
-    }
-}
-
-inline bool Frame::unpack(comm::PayloadReader in) noexcept
-{
-    if (in.len() < kBodyOff) {
-        return false;
-    }
-    comm::BitPayload<4> head;
-    if (!in.load(head, 0)) {
-        return false;
-    }
-    uint8_t op_b = 0;
-    if (!head.load(op_b, 0, 4)) {
-        return false;
-    }
-    op = static_cast<Type>(op_b);
-
-    switch (op) {
-    case Type::HeartBeat: {
-        if (!in.load(hb.msg, kBodyOff)) {
-            return false;
-        }
-        if (hb.msg == HeartBeat::Msg::Busy) {
-            return in.len() == static_cast<uint8_t>(kBodyOff + 1u);
-        }
-        if (hb.msg != HeartBeat::Msg::Request && hb.msg != HeartBeat::Msg::Ack
-            && hb.msg != HeartBeat::Msg::InvalidVersion) {
-            return false;
-        }
-        uint32_t raw = 0;
-        const uint8_t ver = static_cast<uint8_t>(kBodyOff + 1u);
-        const bool ok = in.len() == static_cast<uint8_t>(ver + sizeof(uint32_t)) && in.load(raw, ver);
-        if (ok) {
-            hb.version = MISC::FwVersion::unpack(raw);
-        }
-        return ok;
-    }
-    case Type::Fault:
-        return in.len() == static_cast<uint8_t>(kBodyOff + sizeof(uint16_t) + Fault::kNameLen)
-            && in.load(fault.detail, kBodyOff)
-            && in.load(reinterpret_cast<uint8_t*>(fault.name), Fault::kNameLen,
-                static_cast<uint8_t>(kBodyOff + sizeof(uint16_t)));
-    case Type::Arp: {
-        const uint8_t name_at = static_cast<uint8_t>(kBodyOff + 1u);
-        if (in.len() != static_cast<uint8_t>(name_at + Arp::kNameLen) || !in.load(arp.op, kBodyOff)) {
-            return false;
-        }
-        if (arp.op != Arp::Op::Req && arp.op != Arp::Op::Rep) {
-            return false;
-        }
-        return in.load(reinterpret_cast<uint8_t*>(arp.name), Arp::kNameLen, name_at);
-    }
-    }
-    return false;
-}
 
 } // namespace smcp::proto::control

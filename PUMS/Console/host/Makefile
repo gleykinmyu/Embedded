@@ -16,6 +16,7 @@ CXXFLAGS  := -std=c++17 -Wall -Wextra -O0 -g \
 	-DSMCP_TRACE_LINK \
 	-I$(IFACES) \
 	-I$(EMBEDDED)/libs \
+	-I$(EMBEDDED)/libs/bitsery/include \
 	-I$(EMBEDDED)/libs/smcp \
 	-I$(EMBEDDED)/libs/showFile \
 	-I$(ROOT)/src \
@@ -46,7 +47,7 @@ COMM_TEST := $(EMBEDDED)/libs/comm/test
 SMCP_TEST := $(EMBEDDED)/libs/smcp/test
 
 .PHONY: all clean dirs bus node check pool-check mem-check job-check proto-check \
-	comm-check reply-hb-check proto-rest-check segment-check
+	comm-check reply-hb-check proto-rest-check segment-check frame-check msb-check
 
 all: dirs bus node $(CHECK) $(SEGMENT)
 
@@ -93,6 +94,31 @@ $(PROTO_REST): proto_rest_check.cpp $(NEW_LINK_HB) | dirs
 
 proto-rest-check: $(PROTO_REST)
 	$(PROTO_REST)
+
+FRAME_CHECK := $(BUILD)/frame_bitsery_check
+
+$(FRAME_CHECK): frame_bitsery_check.cpp \
+	$(ROOT)/src/smcp/new_smcp/proto/bitsery.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/base/frame.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/control/frame.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/msg/frame.hpp | dirs
+	$(CXX) $(CXXFLAGS) -o $@ frame_bitsery_check.cpp
+
+frame-check: $(FRAME_CHECK)
+	$(FRAME_CHECK)
+
+MSB_CHECK := $(BUILD)/msb_bitpack_check
+
+$(MSB_CHECK): msb_bitpack_check.cpp \
+	$(ROOT)/src/smcp/new_smcp/proto/msb_bitpack.hpp | dirs
+	$(CXX) $(CXXFLAGS) -Werror -o $@ msb_bitpack_check.cpp
+
+msb-check: $(MSB_CHECK)
+	$(MSB_CHECK)
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -Werror -o $(BUILD)/msb_bitpack_check_rel msb_bitpack_check.cpp
+	$(BUILD)/msb_bitpack_check_rel
+	$(CXX) $(CXXFLAGS) -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -o $(BUILD)/msb_bitpack_check_san msb_bitpack_check.cpp
+	$(BUILD)/msb_bitpack_check_san
 
 SEGMENT_OBJS := \
 	$(BUILD)/console.o \

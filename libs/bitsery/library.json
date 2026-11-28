@@ -1,0 +1,9 @@
+{
+  "name": "bitsery",
+  "version": "5.2.5",
+  "description": "Header-only binary serialization (fraillt/bitsery v5.2.5, MIT)",
+  "build": {
+    "libArchive": false,
+    "includeDir": "include"
+  }
+}

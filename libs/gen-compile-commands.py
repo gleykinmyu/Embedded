@@ -56,6 +56,7 @@ def include_dirs() -> list[str]:
         LIBS / "board",
         LIBS / "mem",
         LIBS / "ccam" / "include",
+        LIBS / "bitsery" / "include",
         LIBS / "ccam" / "src",
     ]
     rels: list[str] = []
@@ -106,7 +107,8 @@ def arm_gxx() -> str | None:
     """Тулчейн PlatformIO: clangd через --query-driver берёт у него <cstdint>."""
     found = shutil.which("arm-none-eabi-g++") or shutil.which("arm-none-eabi-g++.exe")
     if found:
-        return str(Path(found).resolve())
+        # Не resolve(): g++ — симлинк на c++, а --query-driver ловит имя g++.
+        return str(Path(found).absolute())
     roots = []
     if os.environ.get("PLATFORMIO_CORE_DIR"):
         roots.append(Path(os.environ["PLATFORMIO_CORE_DIR"]))
@@ -120,7 +122,7 @@ def arm_gxx() -> str | None:
         exe = [p for p in hits if p.suffix.lower() == ".exe"]
         pick = exe[-1] if exe else (hits[-1] if hits else None)
         if pick and pick.is_file():
-            return str(pick.resolve())
+            return str(pick.absolute())
     return None
 
 

@@ -3,7 +3,7 @@
  * @brief smcp::Packet — Frame для comm::Node / ILink.
  *
  * CAN ID (29 bit): msg[28:22] | dst[21:14] | src[13:6] | txn[5:0]
- * data[0..7] — proto::msg::Frame payload (txn в ID, не в data).
+ * data[0..7] — proto::msg::Header payload (txn в ID, не в data).
  */
 
 #pragma once
@@ -30,7 +30,7 @@
  * dst  addr_t, кому.  0x00 none, 0x01…0x0F console, 0x10…0xEF server, 0xFF broadcast.
  * src  addr_t, от кого. Те же диапазоны.
  * txn  0 — вне транзакции, 1…0x3F — id транзакции (proto::msg::kTxnIdMax).
- * data[0..7] — payload proto::msg::Frame; txn в ID, не в data.
+ * data[0..7] — payload proto::msg::Header; txn в ID, не в data.
  */
 
 namespace smcp {
@@ -47,7 +47,7 @@ struct Packet {
     addr_t src{};
     addr_t dst{};
     uint8_t txn = 0; ///< 0 — вне транзакции
-    proto::msg::Frame msg{};
+    proto::msg::Header msg{};
 
     [[nodiscard]] uint32_t canId() const noexcept
     {
@@ -65,8 +65,8 @@ struct Packet {
         dst.v = static_cast<uint8_t>((can_id >> kCanIdDstPos) & 0xFFu);
         src.v = static_cast<uint8_t>((can_id >> kCanIdSrcPos) & 0xFFu);
         txn = static_cast<uint8_t>((can_id >> kCanIdTxnPos) & proto::msg::kTxnIdMax);
-        if (dlc > proto::msg::Frame::kMaxDlc) {
-            dlc = proto::msg::Frame::kMaxDlc;
+        if (dlc > proto::msg::Header::kMaxDlc) {
+            dlc = proto::msg::Header::kMaxDlc;
         }
         msg.payload.clear();
         if (data != nullptr && dlc != 0u) {

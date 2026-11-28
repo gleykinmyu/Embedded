@@ -22,13 +22,13 @@ struct Ack {
     static constexpr MISC::time_t kTimeoutMs = 100u;
     static constexpr uint8_t kRetry = 3u;
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         m.payload.clear();
     }
 
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) const noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) const noexcept
     {
         return m.id == kId && m.payload.len() == 0u;
     }
@@ -52,7 +52,7 @@ struct Nack {
     Err error = Err::None;
     uint32_t detail = kDetailNone;
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         m.payload.clear();
@@ -60,7 +60,7 @@ struct Nack {
         w.push(error);
         w.pushU32(detail);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 5u) {
             return false;
@@ -72,7 +72,7 @@ struct Nack {
 
 struct Fault {
     static constexpr proto::msg::Id kId = proto::msg::Id::Fault;
-    static constexpr uint8_t kDetailMax = proto::msg::Frame::kMaxDlc - 1u;
+    static constexpr uint8_t kDetailMax = proto::msg::Header::kMaxDlc - 1u;
 
     enum class Code : uint8_t {
         IdConflict = 0x01,
@@ -82,7 +82,7 @@ struct Fault {
     uint8_t detail_len = 0;
     uint8_t detail[kDetailMax]{};
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         assert(detail_len <= kDetailMax);
@@ -92,9 +92,9 @@ struct Fault {
         w.push(reason);
         w.push(detail, n);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
-        if (m.id != kId || m.payload.len() < 1u || m.payload.len() > proto::msg::Frame::kMaxDlc) {
+        if (m.id != kId || m.payload.len() < 1u || m.payload.len() > proto::msg::Header::kMaxDlc) {
             return false;
         }
         detail_len = static_cast<uint8_t>(m.payload.len() - 1u);
@@ -121,7 +121,7 @@ struct Heartbeat {
 
     Msg msg = Msg::KeepAlive;
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         m.payload.clear();
@@ -129,7 +129,7 @@ struct Heartbeat {
             comm::PayloadWriter{m.payload}.push(msg);
         }
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
         if (m.id != kId) {
             return false;
@@ -150,7 +150,7 @@ struct Get {
     uint8_t tag = 0;
     uint8_t index = proto::msg::kIndexAll;
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         m.payload.clear();
@@ -158,7 +158,7 @@ struct Get {
         w.push(tag);
         w.push(index);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 2u) {
             return false;
@@ -175,7 +175,7 @@ struct Set {
     uint8_t len = 0;
     uint8_t data[proto::msg::kInlineMax]{};
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         assert(len <= proto::msg::kInlineMax);
@@ -186,9 +186,9 @@ struct Set {
         w.push(index);
         w.push(data, n);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
-        if (m.id != kId || m.payload.len() < 2u || m.payload.len() > proto::msg::Frame::kMaxDlc) {
+        if (m.id != kId || m.payload.len() < 2u || m.payload.len() > proto::msg::Header::kMaxDlc) {
             return false;
         }
         len = static_cast<uint8_t>(m.payload.len() - 2u);
@@ -208,7 +208,7 @@ struct DataBegin {
     uint16_t size = 0;
     uint32_t crc32 = 0;
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         m.payload.clear();
@@ -218,7 +218,7 @@ struct DataBegin {
         w.pushU16(size);
         w.pushU32(crc32);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
         if (m.id != kId || m.payload.len() != 8u) {
             return false;
@@ -236,7 +236,7 @@ struct Data {
     uint8_t len = 0;
     uint8_t data[proto::msg::kInlineMax]{};
 
-    void pack(proto::msg::Frame& m) const noexcept
+    void pack(proto::msg::Header& m) const noexcept
     {
         m.id = kId;
         assert(len <= proto::msg::kInlineMax);
@@ -246,9 +246,9 @@ struct Data {
         w.pushU16(seq);
         w.push(data, n);
     }
-    [[nodiscard]] bool unpack(const proto::msg::Frame& m) noexcept
+    [[nodiscard]] bool unpack(const proto::msg::Header& m) noexcept
     {
-        if (m.id != kId || m.payload.len() < 2u || m.payload.len() > proto::msg::Frame::kMaxDlc) {
+        if (m.id != kId || m.payload.len() < 2u || m.payload.len() > proto::msg::Header::kMaxDlc) {
             return false;
         }
         len = static_cast<uint8_t>(m.payload.len() - 2u);

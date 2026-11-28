@@ -15,9 +15,9 @@
 
 namespace smcp::proto {
 
-/** Задача short RPC: исходящий proto::msg::Frame + итог Nack при Failed. */
+/** Задача short RPC: исходящий proto::msg::Header + итог Nack при Failed. */
 struct RequestJob : comm::JobNet {
-    proto::msg::Frame req{};
+    proto::msg::Header req{};
     Nack nack{}; ///< при Failed / Timeout (error=Timeout)
 };
 

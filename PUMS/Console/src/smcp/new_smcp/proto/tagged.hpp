@@ -163,7 +163,7 @@ public:
             d.seq = 0;
             d.len = static_cast<uint8_t>(buf.size);
             std::memcpy(d.data, buf.data, d.len);
-            queueOut(txn, [&](proto::msg::Frame& m) { d.pack(m); });
+            queueOut(txn, [&](proto::msg::Header& m) { d.pack(m); });
             return true;
         }
         if (isBusy()) {
@@ -178,7 +178,7 @@ public:
 
     void sendAck(uint8_t txn) noexcept
     {
-        queueOut(txn, [](proto::msg::Frame& m) { Ack{}.pack(m); });
+        queueOut(txn, [](proto::msg::Header& m) { Ack{}.pack(m); });
     }
 
     void sendNack(uint8_t txn, Err err, uint32_t detail = Nack::kDetailNone) noexcept
@@ -186,7 +186,7 @@ public:
         Nack n{};
         n.error = err;
         n.detail = detail;
-        queueOut(txn, [&](proto::msg::Frame& m) { n.pack(m); });
+        queueOut(txn, [&](proto::msg::Header& m) { n.pack(m); });
     }
 
     [[nodiscard]] bool onPacket(const Packet& pkt, MISC::time_t now) noexcept override
@@ -391,7 +391,7 @@ private:
         uint8_t tag = 0;
         uint8_t index = 0;
         bool sent = false;
-        proto::msg::Frame msg{};
+        proto::msg::Header msg{};
     };
 
     [[nodiscard]] bool isSetOut() const noexcept

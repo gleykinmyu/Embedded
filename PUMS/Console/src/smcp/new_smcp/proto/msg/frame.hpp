@@ -1,6 +1,6 @@
 /**
  * @file new_smcp/proto/msg/frame.hpp
- * @brief smcp::proto::msg::Id + Frame — один enum на весь узел (транспорт + northbound).
+ * @brief smcp::proto::msg::Header — шапка протокола Message.
  *
  * Нумерация (меньший id — выше приоритет на шине):
  *   Ack/Nack/Fault  0x01…
@@ -14,8 +14,7 @@
 
 #include <cstdint>
 
-#include "comm/payload.hpp"
-#include "smcp/new_smcp/proto/base/frame.hpp"
+#include "smcp/new_smcp/proto/bitsery.hpp"
 
 namespace smcp::proto::msg {
 
@@ -30,7 +29,6 @@ enum class Type : uint8_t {
     AppMsg = 0x01,
 };
 
-using payload_t = comm::Payload<0, base::payload_t::kLenMax - kBodyOff>;
 
 enum class CtrlId : uint8_t {
     Ack = 0x00,
@@ -41,6 +39,9 @@ enum class CtrlId : uint8_t {
 /** CtrlId, msg_id = CtrlId::Ack. Тело пустое, txn в заголовке кадра. */
 struct Ack {
     static constexpr CtrlId kId = CtrlId::Ack;
+
+    template <typename S>
+    void serialize(S&) {}
 };
 
 /** CtrlId, msg_id = CtrlId::Nack. error — байт тела. */
@@ -62,6 +63,12 @@ struct Nack {
     };
 
     Error error = Error::None;
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.value1b(error);
+    }
 };
 
 /**
@@ -73,33 +80,102 @@ struct SegData {
     static constexpr uint16_t kBegin = 0;
     static constexpr uint16_t kEnd = 0xFFFFu;
     static constexpr CtrlId kId = CtrlId::SegData;
-    static constexpr uint8_t kPayloadMax = payload_t::kLenMax - sizeof(uint16_t);
+
+    /** seg = 0. count — байты 4..5. */
+    struct Begin {
+        uint16_t count = 0;
+
+        template <typename S>
+        void serialize(S& s)
+        {
+            s.value2b(count);
+        }
+    };
+
+    /** seg = 0xFFFF. crc32 — байты 4..7. */
+    struct End {
+        uint32_t crc = 0;
+
+        template <typename S>
+        void serialize(S& s)
+        {
+            s.value4b(crc);
+        }
+    };
+
+    /** Иначе Data. payload — байты 4.. до конца. */
+    struct Data {
+        comm::Payload<0, kPayloadMax> payload{};
+
+        template <typename S>
+        void serialize(S& s)
+        {
+            s.ext(payload, WireTail{});
+        }
+    };
 
     uint16_t seg = kBegin;
     union {
-        uint16_t count = 0;
-        uint32_t crc;
-        comm::Payload<0, kPayloadMax> payload;
+        Begin begin{};
+        End end;
+        Data data;
     };
 
     [[nodiscard]] bool isBegin() const noexcept { return seg == kBegin; }
     [[nodiscard]] bool isEnd() const noexcept { return seg == kEnd; }
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.value2b(seg);
+        if (isBegin()) {
+            s.object(begin);
+            return;
+        }
+        if (isEnd()) {
+            s.object(end);
+            return;
+        }
+        s.object(data);
+    }
 };
 
-/** AppMsg: msg_id — 5 бит заголовка, payload — остаток тела. */
+/** AppMsg: payload — байты после слова кадра. msg_id пишет Header. */
 struct AppMsg {
     uint8_t msg_id = 0;
     payload_t payload{};
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.ext(payload, WireTail{});
+    }
 };
 
-/** CtrlMsg: id — 5 бит заголовка, тело — Ack, Nack или SegData. */
+/** CtrlMsg: тело Ack, Nack или SegData. id пишет Header. */
 struct CtrlMsg {
-    CtrlId id;
+    CtrlId id = CtrlId::Ack;
     union {
-        Ack ack;
+        Ack ack{};
         Nack nack;
         SegData segData;
     };
+
+    template <typename S>
+    void serialize(S& s)
+    {
+        switch (id) {
+        case CtrlId::Ack:
+            s.object(ack);
+            break;
+        case CtrlId::Nack:
+            s.object(nack);
+            break;
+        case CtrlId::SegData:
+            s.object(segData);
+            break;
+        }
+    }
 };
 
 /*
@@ -151,109 +227,30 @@ struct CtrlMsg {
  *                      +--------------+-----------------------------------------------------------------------+
  */
 
-struct Frame {
+/** 12 бит: type, txn, id. Тело кадра сюда не входит. */
+struct Header {
     Type type = Type::CtrlMsg;
-    uint8_t txn;
-    union {
-        CtrlMsg ctrl;
-        AppMsg app;
-    };
-
-    /** Дописывает в @a out. Буфер перед вызовом очищает вызывающий. */
-    void pack(comm::PayloadWriter out) const noexcept;
-    [[nodiscard]] bool unpack(comm::PayloadReader in) noexcept;
-};
-
-inline void Frame::pack(comm::PayloadWriter out) const noexcept
-{
-    const uint8_t id = (type == Type::AppMsg) ? app.msg_id : static_cast<uint8_t>(ctrl.id);
-    comm::BitPayload<12> head;
-    head.push(type, 11, 1);
-    head.push(txn, 5, 6);
-    head.push(id, 0, 5);
-    out.push(head);
-
-    if (type == Type::AppMsg) {
-        out.push(app.payload);
-        return;
-    }
-
-    switch (ctrl.id) {
-    case CtrlId::Ack:
-        break;
-    case CtrlId::Nack:
-        out.push(ctrl.nack.error);
-        break;
-    case CtrlId::SegData: {
-        const SegData& seg = ctrl.segData;
-        out.pushU16(seg.seg);
-        if (seg.isBegin()) {
-            out.pushU16(seg.count);
-            break;
-        }
-        if (seg.isEnd()) {
-            out.pushU32(seg.crc);
-            break;
-        }
-        out.push(seg.payload);
-        break;
-    }
-    }
-}
-
-inline bool Frame::unpack(comm::PayloadReader in) noexcept
-{
-    if (in.len() < base::payload_t::kLenMin) {
-        return false;
-    }
-    comm::BitPayload<12> head;
-    if (!in.load(head, 0)) {
-        return false;
-    }
-    uint8_t type_b = 0;
+    uint8_t txn = 0;
     uint8_t id = 0;
-    if (!head.load(type_b, 11, 1) || 
-        !head.load(txn, 5, 6) || 
-        !head.load(id, 0, 5)) {
-        return false;
-    }
-    type = static_cast<Type>(type_b);
 
-    if (type == Type::AppMsg) {
-        app.msg_id = id;
-        return in.load(app.payload, kBodyOff);
+    template <typename S>
+    void serialize(S& s)
+    {
+        s.ext(type, bitsery::ext::ValueRange<Type>{Type::CtrlMsg, Type::AppMsg});
+        uint8_t txn_b = 0;
+        uint8_t id_b = 0;
+        if constexpr (isWriter<S>) {
+            txn_b = static_cast<uint8_t>(txn & kTxnIdMax);
+            id_b = static_cast<uint8_t>(id & 0x1Fu);
+        }
+        s.ext(txn_b, bitsery::ext::ValueRange<uint8_t>{uint8_t{0}, uint8_t{kTxnIdMax}});
+        s.ext(id_b, bitsery::ext::ValueRange<uint8_t>{uint8_t{0}, uint8_t{0x1Fu}});
+        if constexpr (!isWriter<S>) {
+            txn = txn_b;
+            id = id_b;
+        }
     }
-
-    ctrl.id = static_cast<CtrlId>(id);
-    switch (ctrl.id) {
-    case CtrlId::Ack:
-        return in.len() == base::payload_t::kLenMin;
-    case CtrlId::Nack:
-        return in.len() == static_cast<uint8_t>(base::payload_t::kLenMin + 1u)
-            && in.load(ctrl.nack.error, kBodyOff);
-    case CtrlId::SegData: {
-        if (in.len() < base::payload_t::kLenMin + sizeof(uint16_t)) {
-            return false;
-        }
-        if (!in.load(ctrl.segData.seg, kBodyOff)) {
-            return false;
-        }
-        const uint8_t off = static_cast<uint8_t>(kBodyOff + sizeof(uint16_t));
-        const uint8_t n = static_cast<uint8_t>(in.len() - off);
-        if (ctrl.segData.isBegin()) {
-            return n == sizeof(uint16_t) && in.load(ctrl.segData.count, off);
-        }
-        if (ctrl.segData.isEnd()) {
-            return n == sizeof(uint32_t) && in.load(ctrl.segData.crc, off);
-        }
-        if (n > SegData::kPayloadMax) {
-            return false;
-        }
-        return in.load(ctrl.segData.payload, off);
-    }
-    }
-    return false;
-}
+};
 
 } // namespace smcp::proto::msg
 
