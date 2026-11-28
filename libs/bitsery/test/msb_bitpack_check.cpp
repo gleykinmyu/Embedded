@@ -13,7 +13,8 @@
 #include <bitsery/traits/array.h>
 #include <bitsery/traits/vector.h>
 
-#include "smcp/new_smcp/proto/msb_bitpack.hpp"
+#include "custom/extensions.hpp"
+#include "custom/msb_bitpack.hpp"
 
 namespace {
 
@@ -58,8 +59,8 @@ void refWrite(uint8_t* buf, size_t& bitPos, uint64_t value, size_t bits)
     }
 }
 
-using Out = smcp::proto::msb::OutputAdapter<>;
-using In = smcp::proto::msb::InputAdapter<>;
+using Out = bitsery::custom::msb::OutputAdapter<>;
+using In = bitsery::custom::msb::InputAdapter<>;
 
 struct BeConfig : bitsery::DefaultConfig {
     static constexpr bitsery::EndiannessType Endianness = bitsery::EndiannessType::BigEndian;
@@ -73,7 +74,7 @@ void testSpecPatterns()
     out.writeBits(uint16_t{0x1234}, 16);
     out.writeBits(uint8_t{19}, 5);
     const uint8_t exp[] = {0xA2, 0x46, 0x93};
-    check(out.error() == smcp::proto::msb::WriteError::NoError, "spec write err");
+    check(out.error() == bitsery::custom::msb::WriteError::NoError, "spec write err");
     check(out.bitPos() == 24u, "spec bits");
     expectBytes(buf, 3, exp, "spec");
 
@@ -118,7 +119,7 @@ void testWidthsAndLimits()
     out.writeBits(uint16_t{0xFFFF}, 16);
     out.writeBits(uint32_t{0xFFFFFFFFu}, 32);
     out.writeBits(uint64_t{0xFFFFFFFFFFFFFFFFull}, 64);
-    check(out.error() == smcp::proto::msb::WriteError::NoError, "limits write");
+    check(out.error() == bitsery::custom::msb::WriteError::NoError, "limits write");
 
     In in{buf, out.writtenBytesCount()};
     uint8_t a = 0;
@@ -163,7 +164,7 @@ void testEndianSplit()
     expectBytes(le, 2, leExp, "value2b le");
 
     uint8_t be[2]{};
-    using BeOut = smcp::proto::msb::OutputAdapter<BeConfig>;
+    using BeOut = bitsery::custom::msb::OutputAdapter<BeConfig>;
     BeOut beOut{be, 2};
     bitsery::Serializer<BeOut> beSer{beOut};
     beSer.value2b(value);
@@ -212,7 +213,7 @@ void testOffsetMatrix()
                 }
                 const size_t nbytes = (static_cast<size_t>(offset) + width + 7u) / 8u;
                 expectBytes(got, nbytes, exp, "offset writeBits");
-                check(out.error() == smcp::proto::msb::WriteError::NoError, "offset write err");
+                check(out.error() == bitsery::custom::msb::WriteError::NoError, "offset write err");
 
                 In in{got, nbytes};
                 if (offset > 0) {
@@ -275,8 +276,8 @@ void testValueAtOffsets()
                 }
                 expectBytes(buf, (static_cast<size_t>(offset) + 32u + 7u) / 8u, exp, "value4b le bytes");
             } else {
-                using BeOut = smcp::proto::msb::OutputAdapter<BeConfig>;
-                using BeIn = smcp::proto::msb::InputAdapter<BeConfig>;
+                using BeOut = bitsery::custom::msb::OutputAdapter<BeConfig>;
+                using BeIn = bitsery::custom::msb::InputAdapter<BeConfig>;
                 BeOut out{buf, sizeof buf};
                 if (offset > 0) {
                     out.writeBits(uint8_t{0}, static_cast<size_t>(offset));
@@ -363,8 +364,8 @@ void testObjectsAndMeasure()
     const uint8_t exp[] = {0xA5, 0x6A};
     expectBytes(buf, 2, exp, "chain");
 
-    smcp::proto::msb::MeasureAdapter<> measure;
-    bitsery::Serializer<smcp::proto::msb::MeasureAdapter<>> mser{measure};
+    bitsery::custom::msb::MeasureAdapter<> measure;
+    bitsery::Serializer<bitsery::custom::msb::MeasureAdapter<>> mser{measure};
     mser.object(chain);
     check(mser.adapter().bitPos() == 16u, "measure bits");
     check(mser.adapter().writtenBytesCount() == 2u, "measure bytes");
@@ -439,9 +440,9 @@ void testOverflow()
     uint8_t one[1]{};
     Out out{one, 1};
     out.writeBits(uint32_t{0xFFFFFFFFu}, 32);
-    check(out.error() == smcp::proto::msb::WriteError::BufferOverflow, "short out");
+    check(out.error() == bitsery::custom::msb::WriteError::BufferOverflow, "short out");
     out.writeBits(uint8_t{1}, 1);
-    check(out.error() == smcp::proto::msb::WriteError::BufferOverflow, "sticky write");
+    check(out.error() == bitsery::custom::msb::WriteError::BufferOverflow, "sticky write");
 
     uint8_t tiny[1] = {0xFF};
     In in{tiny, 1};
@@ -465,7 +466,7 @@ void testBytesMixAndReuse()
     const uint8_t raw[] = {0x11, 0x22};
     out.writeBuffer<1>(raw, 2);
     out.writeBits(uint8_t{0x1}, 1);
-    check(out.error() == smcp::proto::msb::WriteError::NoError, "mix");
+    check(out.error() == bitsery::custom::msb::WriteError::NoError, "mix");
 
     In in{buf, out.writtenBytesCount()};
     uint8_t top = 0;
@@ -479,7 +480,7 @@ void testBytesMixAndReuse()
     uint8_t again[1]{};
     out.reset(again, 1);
     out.writeBits(uint8_t{0xA5}, 8);
-    check(again[0] == 0xA5 && out.error() == smcp::proto::msb::WriteError::NoError, "reuse");
+    check(again[0] == 0xA5 && out.error() == bitsery::custom::msb::WriteError::NoError, "reuse");
 }
 
 void testSignedEnumFloat()
@@ -569,10 +570,164 @@ void testMeasureMixed()
     ser.object(mixed);
     const size_t actual = ser.adapter().writtenBytesCount();
 
-    bitsery::Serializer<smcp::proto::msb::MeasureAdapter<>> mser{smcp::proto::msb::MeasureAdapter<>{}};
+    bitsery::Serializer<bitsery::custom::msb::MeasureAdapter<>> mser{bitsery::custom::msb::MeasureAdapter<>{}};
     mser.object(mixed);
     check(mser.adapter().writtenBytesCount() == actual, "mixed measure");
     check(mser.adapter().bitPos() == ser.adapter().bitPos(), "mixed bits");
+}
+
+void testZeroWidthAndReject()
+{
+    uint8_t buf[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+    Out out{buf, sizeof buf};
+    out.writeBits(uint8_t{0}, 0);
+    check(out.error() == bitsery::custom::msb::WriteError::NoError && out.bitPos() == 0u, "zero bits");
+    out.writeBits(uint8_t{1}, 0);
+    check(out.error() == bitsery::custom::msb::WriteError::InvalidValue && out.bitPos() == 0u, "zero trunc");
+    check(buf[0] == 0xFF, "zero no write");
+
+    out.reset(buf, sizeof buf);
+    buf[0] = 0;
+    out.writeBits(uint8_t{0x1F}, 3);
+    check(out.error() == bitsery::custom::msb::WriteError::InvalidValue && out.bitPos() == 0u && buf[0] == 0,
+          "no trunc");
+    out.writeBits(uint8_t{1}, 1);
+    check(out.error() == bitsery::custom::msb::WriteError::InvalidValue && out.bitPos() == 0u, "sticky invalid");
+
+    bitsery::custom::msb::MeasureAdapter<> measure;
+    measure.writeBits(uint8_t{0}, 0);
+    check(measure.bitPos() == 0u && measure.error() == bitsery::custom::msb::WriteError::NoError, "measure zero");
+    measure.writeBits(uint8_t{0x1F}, 3);
+    check(measure.error() == bitsery::custom::msb::WriteError::InvalidValue && measure.bitPos() == 0u,
+          "measure no trunc");
+    measure.writeBits(uint8_t{1}, 8);
+    check(measure.bitPos() == 0u && measure.error() == bitsery::custom::msb::WriteError::InvalidValue,
+          "measure sticky");
+    measure.reset();
+    measure.writeBits(uint8_t{1}, 3);
+    check(measure.bitPos() == 3u && measure.error() == bitsery::custom::msb::WriteError::NoError, "measure reset");
+
+    out.reset(buf, sizeof buf);
+    bitsery::Serializer<Out> ser{out};
+    uint8_t only = 5;
+    ser.ext(only, bitsery::ext::ValueRange<uint8_t>{uint8_t{5}, uint8_t{5}});
+    check(ser.adapter().error() == bitsery::custom::msb::WriteError::NoError && ser.adapter().bitPos() == 0u,
+          "range zero");
+    In in{buf, 1};
+    uint8_t back = 0;
+    bitsery::Deserializer<In> des{in};
+    des.ext(back, bitsery::ext::ValueRange<uint8_t>{uint8_t{5}, uint8_t{5}});
+    check(back == 5 && des.adapter().error() == bitsery::ReaderError::NoError, "range zero read");
+
+    uint8_t addr = 0x80;
+    bitsery::custom::Writer writer{bitsery::custom::msb::OutputAdapter<>{buf, sizeof buf}};
+    bitsery::custom::putBits(writer, addr, uint8_t{0x7F});
+    check(writer.adapter().error() == bitsery::custom::msb::WriteError::InvalidValue
+              && writer.adapter().bitPos() == 0u,
+          "putBits");
+    bitsery::custom::Measure measured{bitsery::custom::msb::MeasureAdapter<>{}};
+    bitsery::custom::putBits(measured, addr, uint8_t{0x7F});
+    check(measured.adapter().error() == bitsery::custom::msb::WriteError::InvalidValue
+              && measured.adapter().bitPos() == 0u,
+          "putBits measure");
+}
+
+void testReadEnd()
+{
+    uint8_t buf[4] = {0xA2, 0x46, 0x93, 0xFF};
+    In in{buf, sizeof buf};
+    in.currentReadEndPos(3);
+    check(in.currentReadEndPos() == 3u, "end pos");
+    check(in.bitsRemaining() == 24u, "end remaining");
+    uint8_t flags = 0;
+    uint16_t value = 0;
+    uint8_t type = 0;
+    in.readBits(flags, 3);
+    in.readBits(value, 16);
+    in.readBits(type, 5);
+    check(flags == 5 && value == 0x1234 && type == 19, "end read");
+    check(in.bitsRemaining() == 0u, "end consumed");
+    check(in.isCompletedSuccessfully(), "end complete ignores tail");
+    uint8_t extra = 0;
+    in.readBits(extra, 1);
+    check(in.error() == bitsery::ReaderError::DataOverflow, "past end");
+    const auto first = in.error();
+    in.error(bitsery::ReaderError::InvalidData);
+    check(in.error() == first, "end sticky");
+
+    In cut{buf, sizeof buf};
+    cut.currentReadEndPos(1);
+    check(cut.bitsRemaining() == 8u, "one byte window");
+    uint16_t wide = 1;
+    cut.readBits(wide, 16);
+    check(cut.error() == bitsery::ReaderError::DataOverflow && cut.bitPos() == 0u, "no partial read");
+    check(wide == 0, "failed read cleared");
+    check(buf[3] == 0xFF, "buffer stays");
+
+    cut.reset(buf, 1);
+    check(cut.error() == bitsery::ReaderError::NoError && cut.bitsRemaining() == 8u, "input reset");
+    cut.currentReadEndPos(4);
+    check(cut.error() == bitsery::ReaderError::DataOverflow, "end past cap");
+}
+
+void testPutBitsWidth()
+{
+    enum class Code : uint8_t { Off = 0, On = 1 };
+
+    uint8_t buf[16]{};
+    bitsery::custom::Writer writer{bitsery::custom::msb::OutputAdapter<>{buf, sizeof buf}};
+    uint8_t three = 5;
+    uint16_t wide = 0x1234;
+    uint32_t full32 = 0xA1B2C3D4u;
+    uint64_t full64 = 0x0123456789ABCDEFull;
+    Code code = Code::On;
+    bitsery::custom::putBits<3>(writer, three);
+    bitsery::custom::putBits<16>(writer, wide);
+    bitsery::custom::putBits<3>(writer, code);
+    bitsery::custom::putBits<32>(writer, full32);
+    bitsery::custom::putBits<64>(writer, full64);
+    check(writer.adapter().error() == bitsery::custom::msb::WriteError::NoError, "putBits write");
+    check(writer.adapter().bitPos() == 3u + 16u + 3u + 32u + 64u, "putBits width");
+
+    const uint8_t exp[] = {
+        0xA2, 0x46, 0x86, 0x86, 0xCB, 0x0F, 0x50,
+        0x04, 0x8D, 0x15, 0x9E, 0x26, 0xAF, 0x37, 0xBC,
+    };
+    expectBytes(buf, sizeof exp, exp, "putBits bytes");
+
+    bitsery::custom::Measure measured{bitsery::custom::msb::MeasureAdapter<>{}};
+    bitsery::custom::putBits<3>(measured, three);
+    bitsery::custom::putBits<16>(measured, wide);
+    bitsery::custom::putBits<3>(measured, code);
+    bitsery::custom::putBits<32>(measured, full32);
+    bitsery::custom::putBits<64>(measured, full64);
+    check(measured.adapter().bitPos() == writer.adapter().bitPos(), "putBits measure");
+    check(measured.adapter().writtenBytesCount() == writer.adapter().writtenBytesCount(), "putBits size");
+
+    uint8_t back3 = 0;
+    uint16_t back16 = 0;
+    Code backCode = Code::Off;
+    uint32_t back32 = 0;
+    uint64_t back64 = 0;
+    bitsery::custom::Reader reader{bitsery::custom::msb::InputAdapter<>{buf, sizeof exp}};
+    bitsery::custom::putBits<3>(reader, back3);
+    bitsery::custom::putBits<16>(reader, back16);
+    bitsery::custom::putBits<3>(reader, backCode);
+    bitsery::custom::putBits<32>(reader, back32);
+    bitsery::custom::putBits<64>(reader, back64);
+    check(back3 == 5 && back16 == 0x1234 && backCode == Code::On, "putBits read");
+    check(back32 == full32 && back64 == full64, "putBits full");
+
+    uint8_t bad = 8;
+    bitsery::custom::Writer reject{bitsery::custom::msb::OutputAdapter<>{buf, sizeof buf}};
+    bitsery::custom::putBits<3>(reject, bad);
+    check(reject.adapter().error() == bitsery::custom::msb::WriteError::InvalidValue, "putBits reject");
+    check(reject.adapter().bitPos() == 0u, "putBits no trunc");
+    bitsery::custom::Measure rejectM{bitsery::custom::msb::MeasureAdapter<>{}};
+    bitsery::custom::putBits<3>(rejectM, bad);
+    check(rejectM.adapter().error() == bitsery::custom::msb::WriteError::InvalidValue
+              && rejectM.adapter().bitPos() == 0u,
+          "putBits measure reject");
 }
 
 } // namespace
@@ -592,6 +747,9 @@ int main()
     testBytesMixAndReuse();
     testSignedEnumFloat();
     testMeasureMixed();
+    testZeroWidthAndReject();
+    testReadEnd();
+    testPutBitsWidth();
     if (g_fail != 0) {
         std::cerr << g_fail << " failed\n";
         return 1;

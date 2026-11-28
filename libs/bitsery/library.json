@@ -1,7 +1,7 @@
 {
   "name": "bitsery",
   "version": "5.2.5",
-  "description": "Header-only binary serialization (fraillt/bitsery v5.2.5, MIT)",
+  "description": "Header-only binary serialization (fraillt/bitsery v5.2.5, MIT). Custom adapters live in custom/.",
   "build": {
     "libArchive": false,
     "includeDir": "include"

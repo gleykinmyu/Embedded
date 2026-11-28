@@ -1,37 +1,18 @@
 # new_smcp
 
-Пересборка SMCP на `libs/comm` (Node / Session / IProto). Старый `libs/smcp` не трогаем.
+Описания бинарных протоколов. Реализация обмена, сессий и Jobs сюда не входит.
 
-## Слой
+Сериализация — `libs/bitsery/custom`, пространство имён `bitsery::custom`: MSB-first адаптеры, `Writer`, `Reader`, `Measure`, `putBits`.
 
-| файл | роль |
-|---|---|
-| `addr.hpp` | `addr_t` для `comm::Node` |
-| `proto/msg/frame.hpp` | **один** `MsgId` + `Message` |
-| `packet.hpp` | `Packet` = Frame (`src`/`dst`/`txn`/`msg`) |
-| `pdu.hpp` | pack/unpack служебных PDU |
-| `session_bank.hpp` | `SessionBank<N>`: сессии + `LinkHbRoute` |
-| `ibuf.hpp` | `IBuf` для тел Get/Set |
-| `proto/` | протоколы (`IProto`) |
+```text
+proto/
+    base/header.hpp       17 бит: prio, dst, src, proto
+    control/header.hpp    4 бита: op
+    control/pdu.hpp       HeartBeat, Fault, Arp
+    msg/header.hpp        7 бит: txn, type
+    msg/pdu.hpp           CtrlHeader, Ack, Nack, seg::Header, Begin, End
+```
 
-## proto/
+Каждый заголовок и PDU пишет только свои поля. Курсор один на всю цепочку, между объектами выравнивания нет.
 
-| | |
-|---|---|
-| `ncp` | Listen / AddrConflict (`comm::Ncp`) |
-| `fault` | broadcast Fault → `Node::onFault` |
-| `link_hb` | Heartbeat: Request/Ack на рукопожатии, дальше пустой кадр |
-| `link_hb_route` | первый Request без сессии → слот или Heartbeat Busy (член `SessionBank`, в списке узла после банка) |
-| `reply` | short RPC Ack\|Nack (`JobListNet`, окно 1) |
-| `tagged` | Get / Set + `ITaggedSink` (длинное тело → MultiByte) |
-| `multibyte` | DataBegin / Data |
-| `segment` | northbound demux + `ISegmentSink` (без Console/Server) |
-
-Уведомления вверх: protected-метод владельца (`Node::onFault`, `Session::onLink` / `onAck`, …) либо sink у протокола (`ITaggedSink`, `ISegmentSink`). Исходящий short RPC сегмента — через `Reply`.
-
-## Дальше
-
-1. CanLink / host ILink под `Packet`
-2. Session leaf: состав протоколов + общий `TxnAlloc`
-3. Segment PDU pack/unpack и разделение ролей при необходимости
-4. Длинный Get/Set (DataBegin→Data*) — host-тесты
+Бюджет кадра — 93 бита (`CanLimits`). Каждый уровень вычитает только свой заголовок. `SegData` занимает остаток после `SegHeader`: 6 байт.

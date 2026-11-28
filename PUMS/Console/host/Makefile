@@ -16,6 +16,7 @@ CXXFLAGS  := -std=c++17 -Wall -Wextra -O0 -g \
 	-DSMCP_TRACE_LINK \
 	-I$(IFACES) \
 	-I$(EMBEDDED)/libs \
+	-I$(EMBEDDED)/libs/bitsery \
 	-I$(EMBEDDED)/libs/bitsery/include \
 	-I$(EMBEDDED)/libs/smcp \
 	-I$(EMBEDDED)/libs/showFile \
@@ -47,7 +48,7 @@ COMM_TEST := $(EMBEDDED)/libs/comm/test
 SMCP_TEST := $(EMBEDDED)/libs/smcp/test
 
 .PHONY: all clean dirs bus node check pool-check mem-check job-check proto-check \
-	comm-check reply-hb-check proto-rest-check segment-check frame-check msb-check
+	comm-check segment-check frame-check msb-check
 
 all: dirs bus node $(CHECK) $(SEGMENT)
 
@@ -78,47 +79,31 @@ pool-check mem-check:
 job-check proto-check comm-check:
 	$(MAKE) -C $(COMM_TEST) $@
 
-REPLY_HB := $(BUILD)/reply_hb_check
-NEW_LINK_HB := $(ROOT)/src/smcp/new_smcp/proto/link_hb.cpp
-
-$(REPLY_HB): reply_hb_check.cpp $(NEW_LINK_HB) | dirs
-	$(CXX) $(CXXFLAGS) -o $@ reply_hb_check.cpp $(NEW_LINK_HB)
-
-reply-hb-check: $(REPLY_HB)
-	$(REPLY_HB)
-
-PROTO_REST := $(BUILD)/proto_rest_check
-
-$(PROTO_REST): proto_rest_check.cpp $(NEW_LINK_HB) | dirs
-	$(CXX) $(CXXFLAGS) -o $@ proto_rest_check.cpp $(NEW_LINK_HB)
-
-proto-rest-check: $(PROTO_REST)
-	$(PROTO_REST)
-
 FRAME_CHECK := $(BUILD)/frame_bitsery_check
+SER_HDRS := \
+	$(EMBEDDED)/libs/bitsery/custom/msb_bitpack.hpp \
+	$(EMBEDDED)/libs/bitsery/custom/serializer.hpp \
+	$(EMBEDDED)/libs/bitsery/custom/extensions.hpp
+PROTO_HDRS := \
+	$(ROOT)/src/smcp/new_smcp/proto/can.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/base/header.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/control/header.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/control/pdu.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/msg/header.hpp \
+	$(ROOT)/src/smcp/new_smcp/proto/msg/pdu.hpp
 
-$(FRAME_CHECK): frame_bitsery_check.cpp \
-	$(ROOT)/src/smcp/new_smcp/proto/bitsery.hpp \
-	$(ROOT)/src/smcp/new_smcp/proto/base/frame.hpp \
-	$(ROOT)/src/smcp/new_smcp/proto/control/frame.hpp \
-	$(ROOT)/src/smcp/new_smcp/proto/msg/frame.hpp | dirs
-	$(CXX) $(CXXFLAGS) -o $@ frame_bitsery_check.cpp
+$(FRAME_CHECK): frame_bitsery_check.cpp $(SER_HDRS) $(PROTO_HDRS) | dirs
+	$(CXX) $(CXXFLAGS) -Werror -fno-exceptions -fno-rtti -o $@ frame_bitsery_check.cpp
 
 frame-check: $(FRAME_CHECK)
 	$(FRAME_CHECK)
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -Werror -fno-exceptions -fno-rtti -o $(BUILD)/frame_bitsery_check_rel frame_bitsery_check.cpp
+	$(BUILD)/frame_bitsery_check_rel
+	$(CXX) $(CXXFLAGS) -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined -fno-omit-frame-pointer -o $(BUILD)/frame_bitsery_check_san frame_bitsery_check.cpp
+	$(BUILD)/frame_bitsery_check_san
 
-MSB_CHECK := $(BUILD)/msb_bitpack_check
-
-$(MSB_CHECK): msb_bitpack_check.cpp \
-	$(ROOT)/src/smcp/new_smcp/proto/msb_bitpack.hpp | dirs
-	$(CXX) $(CXXFLAGS) -Werror -o $@ msb_bitpack_check.cpp
-
-msb-check: $(MSB_CHECK)
-	$(MSB_CHECK)
-	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -Werror -o $(BUILD)/msb_bitpack_check_rel msb_bitpack_check.cpp
-	$(BUILD)/msb_bitpack_check_rel
-	$(CXX) $(CXXFLAGS) -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -o $(BUILD)/msb_bitpack_check_san msb_bitpack_check.cpp
-	$(BUILD)/msb_bitpack_check_san
+msb-check:
+	$(MAKE) -C $(EMBEDDED)/libs/bitsery/test check
 
 SEGMENT_OBJS := \
 	$(BUILD)/console.o \

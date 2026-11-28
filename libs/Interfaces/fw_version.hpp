@@ -1,10 +1,8 @@
 /**
  * @file fw_version.hpp
- * @brief MISC::FwVersion — версия прошивки одним словом uint32_t.
+ * @brief MISC::FwVersion — версия прошивки: major, minor, patch.
  *
- * Слово: major [31:24] | minor [23:16] | patch [15:0].
- * На проводе — это слово, младший байт первый (pushU32 / load uint32_t):
- * patch_lo, patch_hi, minor, major.
+ * На проводе в порядке полей: major, minor, затем patch младшим байтом вперёд.
  *
  * major — прошивки вместе не работают.
  * minor — расширение внутри того же major.
@@ -25,20 +23,12 @@ struct FwVersion {
     uint8_t minor = 0;
     uint16_t patch = 0;
 
-    [[nodiscard]] constexpr uint32_t pack() const noexcept
+    template <typename S>
+    void serialize(S& s)
     {
-        return (static_cast<uint32_t>(major) << 24)
-            | (static_cast<uint32_t>(minor) << 16)
-            | static_cast<uint32_t>(patch);
-    }
-
-    [[nodiscard]] static constexpr FwVersion unpack(uint32_t w) noexcept
-    {
-        return FwVersion{
-            static_cast<uint8_t>(w >> 24),
-            static_cast<uint8_t>(w >> 16),
-            static_cast<uint16_t>(w),
-        };
+        s.value1b(major);
+        s.value1b(minor);
+        s.value2b(patch);
     }
 };
 
@@ -74,10 +64,6 @@ enum class FwFit : uint8_t {
 
 inline constexpr FwVersion kFw{FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH};
 
-static_assert(FwVersion{1, 2, 3}.pack() == 0x01020003u);
-static_assert(FwVersion::unpack(0x01020003u).major == 1u);
-static_assert(FwVersion::unpack(0x01020003u).minor == 2u);
-static_assert(FwVersion::unpack(0x01020003u).patch == 3u);
 static_assert(fwFit(FwVersion{1, 2, 0}, FwVersion{1, 2, 9}) == FwFit::Ok);
 static_assert(fwFit(FwVersion{1, 2, 0}, FwVersion{1, 1, 0}) == FwFit::Ok);
 static_assert(fwFit(FwVersion{1, 2, 0}, FwVersion{1, 3, 0}) == FwFit::Ahead);

@@ -56,6 +56,7 @@ def include_dirs() -> list[str]:
         LIBS / "board",
         LIBS / "mem",
         LIBS / "ccam" / "include",
+        LIBS / "bitsery",  # "custom/extensions.hpp"
         LIBS / "bitsery" / "include",
         LIBS / "ccam" / "src",
     ]

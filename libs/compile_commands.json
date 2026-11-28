@@ -19,6 +19,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/diskio.h"
@@ -45,6 +46,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/ff.c"
@@ -70,6 +72,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/ff.h"
@@ -95,6 +98,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/ffconf_template.h"
@@ -120,6 +124,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/integer.h"
@@ -146,6 +151,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/option/ccsbcs.c"
@@ -172,6 +178,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/option/syscall.c"
@@ -198,6 +205,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "FatFs/option/unicode.c"
@@ -223,6 +231,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/bitmask.hpp"
@@ -248,6 +257,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/crc.hpp"
@@ -273,6 +283,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/enum_value.hpp"
@@ -298,6 +309,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ev_timer.hpp"
@@ -323,6 +335,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/fw_version.hpp"
@@ -348,6 +361,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/iFile.hpp"
@@ -373,6 +387,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/iFileSystem.hpp"
@@ -398,6 +413,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ibyte_stream.hpp"
@@ -423,6 +439,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ican.hpp"
@@ -448,6 +465,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/idigital_pin.hpp"
@@ -472,6 +490,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/idisk/diskio.cpp"
@@ -496,6 +515,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/idisk/idisk.cpp"
@@ -521,6 +541,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/idisk.hpp"
@@ -546,6 +567,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/idmx.hpp"
@@ -571,6 +593,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/iex_byte_stream.hpp"
@@ -596,6 +619,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ilockable.hpp"
@@ -621,6 +645,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/iserial.hpp"
@@ -646,6 +671,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/iudp.hpp"
@@ -671,6 +697,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ms_timer.hpp"
@@ -696,6 +723,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/obj_bank.hpp"
@@ -721,6 +749,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/ringbuffer.hpp"
@@ -746,6 +775,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/slot_pool.hpp"
@@ -770,6 +800,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Interfaces/test/timer_check.cpp"
@@ -794,6 +825,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexApplication.cpp"
@@ -819,6 +851,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexApplication.hpp"
@@ -843,6 +876,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexApplicationAddons.cpp"
@@ -867,6 +901,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexApplicationFacades.cpp"
@@ -892,6 +927,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexApplicationFacades.hpp"
@@ -916,6 +952,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexErrorFormat.cpp"
@@ -941,6 +978,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexErrors.hpp"
@@ -966,6 +1004,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexOvlApp.hpp"
@@ -990,6 +1029,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexPublicFacades.cpp"
@@ -1015,6 +1055,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexPublicFacades.hpp"
@@ -1039,6 +1080,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexSysVars.cpp"
@@ -1064,6 +1106,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/app/nexSysVars.hpp"
@@ -1088,6 +1131,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexAppUI.cpp"
@@ -1113,6 +1157,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexAppUI.hpp"
@@ -1138,6 +1183,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexAttrLexemes.hpp"
@@ -1162,6 +1208,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexAttributes.cpp"
@@ -1187,6 +1234,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexAttributes.hpp"
@@ -1211,6 +1259,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexCanvas.cpp"
@@ -1236,6 +1285,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexCanvas.hpp"
@@ -1260,6 +1310,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexCompImpl.cpp"
@@ -1285,6 +1336,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexCompImpl.hpp"
@@ -1310,6 +1362,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexComponentBase.hpp"
@@ -1335,6 +1388,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexComponents.hpp"
@@ -1359,6 +1413,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexComponentsBase.cpp"
@@ -1384,6 +1439,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexExComponents.hpp"
@@ -1409,6 +1465,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/nexSlidingLog.hpp"
@@ -1434,6 +1491,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/background.hpp"
@@ -1459,6 +1517,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/comboBox.hpp"
@@ -1484,6 +1543,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/cursor.hpp"
@@ -1509,6 +1569,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/font.hpp"
@@ -1534,6 +1595,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/gauge.hpp"
@@ -1559,6 +1621,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/pressed.hpp"
@@ -1584,6 +1647,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/progressBar.hpp"
@@ -1609,6 +1673,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/comp/resources/waveform.hpp"
@@ -1633,6 +1698,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexCommands.cpp"
@@ -1658,6 +1724,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexCommands.hpp"
@@ -1683,6 +1750,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexDebug.hpp"
@@ -1707,6 +1775,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexGateway.cpp"
@@ -1732,6 +1801,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexGateway.hpp"
@@ -1757,6 +1827,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexMessages.hpp"
@@ -1782,6 +1853,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexProtocol.hpp"
@@ -1806,6 +1878,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexSession.cpp"
@@ -1831,6 +1904,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexSession.hpp"
@@ -1856,6 +1930,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexStatusMask.hpp"
@@ -1881,6 +1956,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexTimeout.hpp"
@@ -1906,6 +1982,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/core/nexTypes.hpp"
@@ -1931,6 +2008,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/nex.hpp"
@@ -1956,6 +2034,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/nexConfig.hpp"
@@ -1980,6 +2059,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlButton.cpp"
@@ -2005,6 +2085,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlButton.hpp"
@@ -2029,6 +2110,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlMsgBox.cpp"
@@ -2054,6 +2136,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlMsgBox.hpp"
@@ -2078,6 +2161,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlMsgButton.cpp"
@@ -2103,6 +2187,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/comp/ovlMsgButton.hpp"
@@ -2128,6 +2213,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovl.hpp"
@@ -2152,6 +2238,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlObject.cpp"
@@ -2177,6 +2264,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlObject.hpp"
@@ -2201,6 +2289,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlOverlay.cpp"
@@ -2226,6 +2315,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlOverlay.hpp"
@@ -2251,6 +2341,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlStyle.hpp"
@@ -2275,6 +2366,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlWidget.cpp"
@@ -2300,6 +2392,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/overlay/ovlWidget.hpp"
@@ -2324,6 +2417,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/smartApp/nexIdMap.cpp"
@@ -2349,6 +2443,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/smartApp/nexIdMap.hpp"
@@ -2373,6 +2468,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/smartApp/nexSmartApp.cpp"
@@ -2398,6 +2494,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "Nextion/smartApp/nexSmartApp.hpp"
@@ -2424,6 +2521,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/lib/asyncfatfs.c"
@@ -2449,6 +2547,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/lib/asyncfatfs.h"
@@ -2475,6 +2574,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/lib/fat_standard.c"
@@ -2500,6 +2600,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/lib/fat_standard.h"
@@ -2525,6 +2626,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/lib/sdcard.h"
@@ -2551,6 +2653,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/common.c"
@@ -2576,6 +2679,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/common.h"
@@ -2602,6 +2706,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/sdcard_sim.c"
@@ -2627,6 +2732,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/sdcard_sim.h"
@@ -2653,6 +2759,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_file_delete.c"
@@ -2679,6 +2786,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_file_modes.c"
@@ -2705,6 +2813,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_file_size.c"
@@ -2731,6 +2840,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_file_size_powerloss.c"
@@ -2757,6 +2867,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_logging_workload.c"
@@ -2783,6 +2894,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_root_fill.c"
@@ -2809,6 +2921,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_subdir_fill.c"
@@ -2835,6 +2948,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tests/test_volume_fill.c"
@@ -2861,9 +2975,88 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "afs/tools/profile_decode.c"
+        ]
+    },
+    {
+        "directory": "/Users/gleykinmyu/Documents/GitHub/Embedded/libs",
+        "file": "bitsery/custom/extensions.hpp",
+        "arguments": [
+            "/Users/gleykinmyu/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++",
+            "-x",
+            "c++-header",
+            "-Wall",
+            "-Wextra",
+            "-I.",
+            "-IInterfaces",
+            "-Ismcp",
+            "-INextion",
+            "-IshowFile",
+            "-Idebug",
+            "-Idmx",
+            "-IFatFs",
+            "-Iboard",
+            "-Imem",
+            "-Iccam/include",
+            "-Ibitsery",
+            "-Ibitsery/include",
+            "-Iccam/src",
+            "bitsery/custom/extensions.hpp"
+        ]
+    },
+    {
+        "directory": "/Users/gleykinmyu/Documents/GitHub/Embedded/libs",
+        "file": "bitsery/custom/msb_bitpack.hpp",
+        "arguments": [
+            "/Users/gleykinmyu/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++",
+            "-x",
+            "c++-header",
+            "-Wall",
+            "-Wextra",
+            "-I.",
+            "-IInterfaces",
+            "-Ismcp",
+            "-INextion",
+            "-IshowFile",
+            "-Idebug",
+            "-Idmx",
+            "-IFatFs",
+            "-Iboard",
+            "-Imem",
+            "-Iccam/include",
+            "-Ibitsery",
+            "-Ibitsery/include",
+            "-Iccam/src",
+            "bitsery/custom/msb_bitpack.hpp"
+        ]
+    },
+    {
+        "directory": "/Users/gleykinmyu/Documents/GitHub/Embedded/libs",
+        "file": "bitsery/custom/serializer.hpp",
+        "arguments": [
+            "/Users/gleykinmyu/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++",
+            "-x",
+            "c++-header",
+            "-Wall",
+            "-Wextra",
+            "-I.",
+            "-IInterfaces",
+            "-Ismcp",
+            "-INextion",
+            "-IshowFile",
+            "-Idebug",
+            "-Idmx",
+            "-IFatFs",
+            "-Iboard",
+            "-Imem",
+            "-Iccam/include",
+            "-Ibitsery",
+            "-Ibitsery/include",
+            "-Iccam/src",
+            "bitsery/custom/serializer.hpp"
         ]
     },
     {
@@ -2886,6 +3079,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/adapter/buffer.h"
@@ -2911,6 +3105,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/adapter/measure_size.h"
@@ -2936,6 +3131,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/adapter/stream.h"
@@ -2961,6 +3157,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/bitsery.h"
@@ -2986,6 +3183,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/array.h"
@@ -3011,6 +3209,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/atomic.h"
@@ -3036,6 +3235,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/bitset.h"
@@ -3061,6 +3261,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/chrono.h"
@@ -3086,6 +3287,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/deque.h"
@@ -3111,6 +3313,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/forward_list.h"
@@ -3136,6 +3339,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/list.h"
@@ -3161,6 +3365,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/map.h"
@@ -3186,6 +3391,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/memory.h"
@@ -3211,6 +3417,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/optional.h"
@@ -3236,6 +3443,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/queue.h"
@@ -3261,6 +3469,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/set.h"
@@ -3286,6 +3495,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/stack.h"
@@ -3311,6 +3521,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/string.h"
@@ -3336,6 +3547,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/tuple.h"
@@ -3361,6 +3573,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/unordered_map.h"
@@ -3386,6 +3599,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/unordered_set.h"
@@ -3411,6 +3625,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/variant.h"
@@ -3436,6 +3651,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax/vector.h"
@@ -3461,6 +3677,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/brief_syntax.h"
@@ -3486,6 +3703,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/common.h"
@@ -3511,6 +3729,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/deserializer.h"
@@ -3536,6 +3755,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/details/adapter_bit_packing.h"
@@ -3561,6 +3781,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/details/adapter_common.h"
@@ -3586,6 +3807,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/details/brief_syntax_common.h"
@@ -3611,6 +3833,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/details/not_defined_type.h"
@@ -3636,6 +3859,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/details/serialization_common.h"
@@ -3661,6 +3885,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/compact_value.h"
@@ -3686,6 +3911,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/entropy.h"
@@ -3711,6 +3937,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/growable.h"
@@ -3736,6 +3963,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/inheritance.h"
@@ -3761,6 +3989,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/pointer.h"
@@ -3786,6 +4015,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_atomic.h"
@@ -3811,6 +4041,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_bitset.h"
@@ -3836,6 +4067,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_chrono.h"
@@ -3861,6 +4093,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_map.h"
@@ -3886,6 +4119,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_optional.h"
@@ -3911,6 +4145,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_queue.h"
@@ -3936,6 +4171,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_set.h"
@@ -3961,6 +4197,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_smart_ptr.h"
@@ -3986,6 +4223,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_stack.h"
@@ -4011,6 +4249,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_tuple.h"
@@ -4036,6 +4275,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/std_variant.h"
@@ -4061,6 +4301,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/utils/composite_type_overloads.h"
@@ -4086,6 +4327,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/utils/memory_resource.h"
@@ -4111,6 +4353,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/utils/pointer_utils.h"
@@ -4136,6 +4379,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/utils/polymorphism_utils.h"
@@ -4161,6 +4405,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/utils/rtti_utils.h"
@@ -4186,6 +4431,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/ext/value_range.h"
@@ -4211,6 +4457,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/serializer.h"
@@ -4236,6 +4483,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/array.h"
@@ -4261,6 +4509,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/core/std_defaults.h"
@@ -4286,6 +4535,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/core/traits.h"
@@ -4311,6 +4561,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/deque.h"
@@ -4336,6 +4587,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/forward_list.h"
@@ -4361,6 +4613,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/list.h"
@@ -4386,6 +4639,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/string.h"
@@ -4411,9 +4665,35 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "bitsery/include/bitsery/traits/vector.h"
+        ]
+    },
+    {
+        "directory": "/Users/gleykinmyu/Documents/GitHub/Embedded/libs",
+        "file": "bitsery/test/msb_bitpack_check.cpp",
+        "arguments": [
+            "/Users/gleykinmyu/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++",
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-I.",
+            "-IInterfaces",
+            "-Ismcp",
+            "-INextion",
+            "-IshowFile",
+            "-Idebug",
+            "-Idmx",
+            "-IFatFs",
+            "-Iboard",
+            "-Imem",
+            "-Iccam/include",
+            "-Ibitsery",
+            "-Ibitsery/include",
+            "-Iccam/src",
+            "bitsery/test/msb_bitpack_check.cpp"
         ]
     },
     {
@@ -4435,6 +4715,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/STMboard.cpp"
@@ -4460,6 +4741,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/STMboard.h"
@@ -4485,6 +4767,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/boardLED.h"
@@ -4510,6 +4793,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/config.h"
@@ -4534,6 +4818,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/crash_dump.cpp"
@@ -4559,6 +4844,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/crash_dump.hpp"
@@ -4584,6 +4870,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/critical_section.hpp"
@@ -4609,6 +4896,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/gpio.h"
@@ -4634,6 +4922,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/irq.hpp"
@@ -4658,6 +4947,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/memstat.cpp"
@@ -4683,6 +4973,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/memstat.hpp"
@@ -4708,6 +4999,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/phl_defs.hpp"
@@ -4733,6 +5025,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/property.hpp"
@@ -4757,6 +5050,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/vector_table_ram.cpp"
@@ -4782,6 +5076,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/core/vector_table_ram.hpp"
@@ -4807,6 +5102,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/impl/can_bus.hpp"
@@ -4832,6 +5128,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/impl/sd_disk.hpp"
@@ -4857,6 +5154,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/impl/serial.hpp"
@@ -4882,6 +5180,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/impl/spi_stream.hpp"
@@ -4907,6 +5206,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/impl/w25q.hpp"
@@ -4932,6 +5232,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/mcp2515.hpp"
@@ -4957,6 +5258,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/can.hpp"
@@ -4982,6 +5284,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/phl.h"
@@ -5007,6 +5310,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/rtc.hpp"
@@ -5032,6 +5336,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/sdio.hpp"
@@ -5057,6 +5362,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/spi.hpp"
@@ -5082,6 +5388,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/uart.hpp"
@@ -5107,6 +5414,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "board/phl/watchdog.hpp"
@@ -5132,6 +5440,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/examples/ptz_panel/src/app/joystick.hpp"
@@ -5156,6 +5465,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/examples/ptz_panel/src/app/ptz_operator.cpp"
@@ -5181,6 +5491,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/examples/ptz_panel/src/app/ptz_operator.hpp"
@@ -5206,6 +5517,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/examples/ptz_panel/src/app/touch_panel.hpp"
@@ -5230,6 +5542,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/examples/ptz_panel/src/main.cpp"
@@ -5255,6 +5568,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/camera_commands.hpp"
@@ -5280,6 +5594,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/catalog.hpp"
@@ -5305,6 +5620,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/catalog_helpers.hpp"
@@ -5330,6 +5646,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/command_ids.hpp"
@@ -5355,6 +5672,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/extended_j_menu.hpp"
@@ -5380,6 +5698,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/menu_catalog.hpp"
@@ -5405,6 +5724,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/menu_entry.hpp"
@@ -5430,6 +5750,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/osd_menu.hpp"
@@ -5455,6 +5776,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/protocol_patterns.hpp"
@@ -5480,6 +5802,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/pt_commands.hpp"
@@ -5505,6 +5828,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/catalog/video_menu.hpp"
@@ -5530,6 +5854,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/ccam.hpp"
@@ -5555,6 +5880,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/camera_device.hpp"
@@ -5580,6 +5906,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/device_types.hpp"
@@ -5605,6 +5932,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/devices.hpp"
@@ -5630,6 +5958,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/e600.hpp"
@@ -5655,6 +5984,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/e650.hpp"
@@ -5680,6 +6010,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/generic.hpp"
@@ -5705,6 +6036,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/he130.hpp"
@@ -5730,6 +6062,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/he870.hpp"
@@ -5755,6 +6088,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/ph350.hpp"
@@ -5780,6 +6114,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/ph360.hpp"
@@ -5805,6 +6140,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/models/ue150.hpp"
@@ -5830,6 +6166,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/protocol_values.hpp"
@@ -5855,6 +6192,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/devices/pt_device.hpp"
@@ -5880,6 +6218,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/protocol/camera_protocol.hpp"
@@ -5905,6 +6244,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/protocol/protocol_encoding.hpp"
@@ -5930,6 +6270,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/protocol/pt_types.hpp"
@@ -5955,6 +6296,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/transport/frame.hpp"
@@ -5980,6 +6322,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/transport/rs485_transport.hpp"
@@ -6005,6 +6348,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/include/transport/types.hpp"
@@ -6029,6 +6373,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/src/camera_device.cpp"
@@ -6053,6 +6398,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/src/camera_protocol.cpp"
@@ -6077,6 +6423,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/src/pt_device.cpp"
@@ -6101,6 +6448,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "ccam/src/rs485_transport.cpp"
@@ -6126,6 +6474,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/comm.hpp"
@@ -6151,6 +6500,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/container.hpp"
@@ -6176,6 +6526,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/ilink.hpp"
@@ -6201,6 +6552,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/iproto.hpp"
@@ -6226,6 +6578,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/job.hpp"
@@ -6251,6 +6604,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/job_net.hpp"
@@ -6276,6 +6630,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/node.hpp"
@@ -6301,6 +6656,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/payload.hpp"
@@ -6326,6 +6682,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/proto.hpp"
@@ -6351,6 +6708,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/session.hpp"
@@ -6375,6 +6733,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/test/comm_check.cpp"
@@ -6399,6 +6758,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/test/job_check.cpp"
@@ -6423,6 +6783,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "comm/test/proto_check.cpp"
@@ -6447,6 +6808,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "debug/Debug.cpp"
@@ -6472,6 +6834,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "debug/Debug.h"
@@ -6497,6 +6860,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "debug/serialConsole.hpp"
@@ -6522,6 +6886,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "dmx/artnet/artnet.hpp"
@@ -6547,6 +6912,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "dmx/artnet/netutil.hpp"
@@ -6572,6 +6938,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "dmx/dmx_data.hpp"
@@ -6597,6 +6964,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "dmx/wire.hpp"
@@ -6622,6 +6990,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/list.hpp"
@@ -6647,6 +7016,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/obj_registry.hpp"
@@ -6672,6 +7042,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/polyslot.hpp"
@@ -6697,6 +7068,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/range_alloc.hpp"
@@ -6722,6 +7094,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/slot.hpp"
@@ -6746,6 +7119,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/test/mem_check.cpp"
@@ -6770,6 +7144,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/test/range_pool_check.cpp"
@@ -6795,6 +7170,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "mem/visit.hpp"
@@ -6819,6 +7195,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/browser.cpp"
@@ -6844,6 +7221,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/browser.hpp"
@@ -6869,6 +7247,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/debug.hpp"
@@ -6893,6 +7272,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/fio.cpp"
@@ -6918,6 +7298,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/fio.hpp"
@@ -6943,6 +7324,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/section_pool.hpp"
@@ -6967,6 +7349,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/showFile.cpp"
@@ -6992,6 +7375,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/showFile.hpp"
@@ -7017,6 +7401,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "showFile/tags.hpp"
@@ -7041,6 +7426,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/axis.cpp"
@@ -7066,6 +7452,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/axis.hpp"
@@ -7090,6 +7477,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/console.cpp"
@@ -7115,6 +7503,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/console.hpp"
@@ -7140,6 +7529,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/message.hpp"
@@ -7165,6 +7555,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/selection.hpp"
@@ -7189,6 +7580,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/server.cpp"
@@ -7214,6 +7606,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/segment/server.hpp"
@@ -7238,6 +7631,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/can_link.cpp"
@@ -7263,6 +7657,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/can_link.hpp"
@@ -7287,6 +7682,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/debug.cpp"
@@ -7312,6 +7708,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/debug.hpp"
@@ -7336,6 +7733,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/ilink.cpp"
@@ -7361,6 +7759,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/ilink.hpp"
@@ -7385,6 +7784,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/message.cpp"
@@ -7410,6 +7810,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/message.hpp"
@@ -7434,6 +7835,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/node.cpp"
@@ -7459,6 +7861,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/node.hpp"
@@ -7483,6 +7886,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/link_hb.cpp"
@@ -7508,6 +7912,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/link_hb.hpp"
@@ -7532,6 +7937,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/multi_byte.cpp"
@@ -7557,6 +7963,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/multi_byte.hpp"
@@ -7581,6 +7988,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/reply_wnd.cpp"
@@ -7606,6 +8014,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/reply_wnd.hpp"
@@ -7630,6 +8039,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/tagged_ops.cpp"
@@ -7655,6 +8065,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session/tagged_ops.hpp"
@@ -7679,6 +8090,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session.cpp"
@@ -7704,6 +8116,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/smcp/session.hpp"
@@ -7728,6 +8141,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/test/check_main.cpp"
@@ -7752,6 +8166,7 @@
             "-Iboard",
             "-Imem",
             "-Iccam/include",
+            "-Ibitsery",
             "-Ibitsery/include",
             "-Iccam/src",
             "smcp/test/segment_check.cpp"

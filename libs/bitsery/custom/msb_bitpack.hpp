@@ -1,14 +1,18 @@
 /**
- * @file new_smcp/proto/msb_bitpack.hpp
- * @brief MSB-first битовый адаптер Bitsery.
+ * @file bitsery/custom/msb_bitpack.hpp
+ * @brief MSB-first битовые адаптеры Bitsery.
  *
  * Внутри байта бит 7 идёт первым, дальше к биту 0. Следующий байт — больший индекс.
  * В поле первым пишется его старший бит. Между полями выравнивания нет.
- * Деструктор байт не добивает: один адаптер держит курсор на всю цепочку заголовков.
+ * Деструктор байт не добивает: один адаптер держит курсор на всю цепочку.
  * align() и flush() добивают текущий байт явно.
  *
- * writeBits — числовое поле MSB-first, без Endianness.
- * writeBytes/valueNb — байты с учётом Endianness конфигурации, с текущей битовой позиции.
+ * writeBits — числовое поле MSB-first, без Endianness. Значение, которое не
+ * помещается в заданную разрядность, не усекается: это InvalidValue.
+ * Нулевая разрядность допустима только для значения 0.
+ * writeBytes — байты с учётом Endianness конфигурации, с текущей битовой позиции.
+ *
+ * Ошибка сохраняется до reset(). Повторный сбой её не заменяет.
  */
 
 #pragma once
@@ -21,20 +25,21 @@
 #include <bitsery/bitsery.h>
 #include <bitsery/details/adapter_common.h>
 
-namespace smcp::proto::msb {
+namespace bitsery::custom::msb {
 
 enum class WriteError : uint8_t {
     NoError = 0,
     BufferOverflow,
     InvalidBits,
+    InvalidValue,
 };
 
 namespace detail {
 
 inline constexpr uint64_t lowMask(size_t bits) noexcept
 {
-    if (bits >= 64u) {
-        return ~uint64_t{0};
+    if (bits == 0u || bits >= 64u) {
+        return bits == 0u ? 0u : ~uint64_t{0};
     }
     return (uint64_t{1} << bits) - 1u;
 }
@@ -86,11 +91,19 @@ public:
         if (_err != WriteError::NoError) {
             return;
         }
-        if (bits == 0u || bits > sizeof(T) * 8u) {
+        if (bits > sizeof(T) * 8u) {
             fail(WriteError::InvalidBits);
             return;
         }
-        uint64_t v = static_cast<uint64_t>(value) & detail::lowMask(bits);
+        const uint64_t v0 = static_cast<uint64_t>(value);
+        if (bits < 64u && v0 > detail::lowMask(bits)) {
+            fail(WriteError::InvalidValue);
+            return;
+        }
+        if (bits == 0u) {
+            return;
+        }
+        uint64_t v = v0;
         while (bits > 0u) {
             const size_t inByte = _bits % 8u;
             const size_t space = 8u - inByte;
@@ -148,6 +161,8 @@ public:
 
     WriteError error() const noexcept { return _err; }
 
+    void error(WriteError err) noexcept { fail(err); }
+
     void reset(uint8_t* data, size_t size) noexcept
     {
         _data = data;
@@ -159,7 +174,7 @@ public:
 private:
     void fail(WriteError err) noexcept
     {
-        if (_err == WriteError::NoError) {
+        if (_err == WriteError::NoError && err != WriteError::NoError) {
             _err = err;
         }
     }
@@ -180,6 +195,7 @@ public:
     InputAdapter(const uint8_t* data, size_t size) noexcept
         : _data(data)
         , _cap(size)
+        , _end(size)
     {
     }
 
@@ -220,8 +236,17 @@ public:
             value = {};
             return;
         }
-        if (bits == 0u || bits > sizeof(T) * 8u) {
+        if (bits > sizeof(T) * 8u) {
             fail(bitsery::ReaderError::InvalidData);
+            value = {};
+            return;
+        }
+        if (bits == 0u) {
+            value = {};
+            return;
+        }
+        if (bits > bitsRemaining()) {
+            fail(bitsery::ReaderError::DataOverflow);
             value = {};
             return;
         }
@@ -232,7 +257,7 @@ public:
             const size_t space = 8u - inByte;
             const size_t take = left < space ? left : space;
             const size_t index = _bits / 8u;
-            if (index >= _cap) {
+            if (index >= _end || index >= _cap) {
                 fail(bitsery::ReaderError::DataOverflow);
                 value = {};
                 return;
@@ -262,40 +287,57 @@ public:
 
     void currentReadPos(size_t pos)
     {
-        if (pos > _cap) {
+        if (pos > _end) {
             fail(bitsery::ReaderError::DataOverflow);
             return;
         }
         _bits = pos * 8u;
     }
 
-    size_t currentReadPos() const noexcept { return (_bits + 7u) / 8u; }
+    /** Байт, на котором стоит курсор. Битовая позиция — bitPos(). */
+    size_t currentReadPos() const noexcept { return _bits / 8u; }
 
-    void currentReadEndPos(size_t pos) noexcept { _end = pos; }
+    void currentReadEndPos(size_t pos)
+    {
+        if (pos > _cap) {
+            fail(bitsery::ReaderError::DataOverflow);
+            return;
+        }
+        _end = pos;
+    }
 
-    size_t currentReadEndPos() const noexcept { return _end == 0u ? _cap : _end; }
+    size_t currentReadEndPos() const noexcept { return _end; }
 
     size_t bitPos() const noexcept { return _bits; }
 
     size_t bitsRemaining() const noexcept
     {
-        const size_t total = _cap * 8u;
-        return _bits >= total ? 0u : total - _bits;
+        const size_t endBits = _end * 8u;
+        return _bits >= endBits ? 0u : endBits - _bits;
     }
 
     bool isCompletedSuccessfully() const noexcept
     {
-        return _err == bitsery::ReaderError::NoError && currentReadPos() == _cap && _bits == _cap * 8u;
+        return _err == bitsery::ReaderError::NoError && _bits == _end * 8u;
     }
 
     bitsery::ReaderError error() const noexcept { return _err; }
 
     void error(bitsery::ReaderError err) noexcept { fail(err); }
 
+    void reset(const uint8_t* data, size_t size) noexcept
+    {
+        _data = data;
+        _cap = size;
+        _end = size;
+        _bits = 0;
+        _err = bitsery::ReaderError::NoError;
+    }
+
 private:
     void fail(bitsery::ReaderError err) noexcept
     {
-        if (_err == bitsery::ReaderError::NoError) {
+        if (_err == bitsery::ReaderError::NoError && err != bitsery::ReaderError::NoError) {
             _err = err;
         }
     }
@@ -320,7 +362,10 @@ public:
     {
         static_assert(std::is_integral<T>::value, "");
         static_assert(sizeof(T) == SIZE, "");
-        addBits(SIZE * 8u);
+        if (_err != WriteError::NoError) {
+            return;
+        }
+        _bits += SIZE * 8u;
     }
 
     template <size_t SIZE, typename T>
@@ -328,28 +373,37 @@ public:
     {
         static_assert(std::is_integral<T>::value, "");
         static_assert(sizeof(T) == SIZE, "");
-        addBits(SIZE * 8u * count);
+        for (size_t i = 0; i < count; ++i) {
+            writeBytes<SIZE>(T{});
+        }
     }
 
     template <typename T>
-    void writeBits(const T&, size_t bits)
+    void writeBits(const T& value, size_t bits)
     {
         static_assert(std::is_unsigned<T>::value, "");
-        if (bits == 0u || bits > sizeof(T) * 8u) {
-            if (_err == WriteError::NoError) {
-                _err = WriteError::InvalidBits;
-            }
+        if (_err != WriteError::NoError) {
             return;
         }
-        addBits(bits);
+        if (bits > sizeof(T) * 8u) {
+            fail(WriteError::InvalidBits);
+            return;
+        }
+        const uint64_t v = static_cast<uint64_t>(value);
+        if (bits < 64u && v > detail::lowMask(bits)) {
+            fail(WriteError::InvalidValue);
+            return;
+        }
+        _bits += bits;
     }
 
     void align()
     {
         const size_t inByte = _bits % 8u;
-        if (inByte != 0u) {
-            _bits += 8u - inByte;
+        if (inByte == 0u) {
+            return;
         }
+        writeBits(uint8_t{0}, 8u - inByte);
     }
 
     void flush() { align(); }
@@ -368,11 +422,19 @@ public:
 
     WriteError error() const noexcept { return _err; }
 
-private:
-    void addBits(size_t bits) noexcept
+    void error(WriteError err) noexcept { fail(err); }
+
+    void reset() noexcept
     {
-        if (_err == WriteError::NoError) {
-            _bits += bits;
+        _bits = 0;
+        _err = WriteError::NoError;
+    }
+
+private:
+    void fail(WriteError err) noexcept
+    {
+        if (_err == WriteError::NoError && err != WriteError::NoError) {
+            _err = err;
         }
     }
 
@@ -380,4 +442,4 @@ private:
     WriteError _err = WriteError::NoError;
 };
 
-} // namespace smcp::proto::msb
+} // namespace bitsery::custom::msb
