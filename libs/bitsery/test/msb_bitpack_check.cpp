@@ -13,8 +13,8 @@
 #include <bitsery/traits/array.h>
 #include <bitsery/traits/vector.h>
 
-#include "custom/extensions.hpp"
-#include "custom/msb_bitpack.hpp"
+#include "bitsery/custom/extensions.hpp"
+#include "bitsery/custom/msb_bitpack.hpp"
 
 namespace {
 

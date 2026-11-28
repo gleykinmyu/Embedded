@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "custom/extensions.hpp"
+#include "bitsery/custom/extensions.hpp"
 #include "smcp/new_smcp/proto/base/header.hpp"
 
 namespace smcp::proto::control {

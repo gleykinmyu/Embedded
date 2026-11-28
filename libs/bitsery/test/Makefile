@@ -3,12 +3,13 @@
 #   make -C libs/bitsery/test check
 
 CXX      ?= clang++
-ROOT     := $(abspath ..)
+BITS     := $(abspath ..)
+LIBS     := $(abspath $(BITS)/..)
 BUILD    := build
 
 CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
-	-I$(ROOT) \
-	-I$(ROOT)/include
+	-I$(LIBS) \
+	-I$(BITS)/include
 
 .PHONY: check clean
 

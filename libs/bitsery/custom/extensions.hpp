@@ -18,7 +18,7 @@
 
 #include <bitsery/ext/value_range.h>
 
-#include "serializer.hpp"
+#include "bitsery/custom/serializer.hpp"
 
 namespace bitsery::custom {
 

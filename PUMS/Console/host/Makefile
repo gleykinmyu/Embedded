@@ -16,7 +16,6 @@ CXXFLAGS  := -std=c++17 -Wall -Wextra -O0 -g \
 	-DSMCP_TRACE_LINK \
 	-I$(IFACES) \
 	-I$(EMBEDDED)/libs \
-	-I$(EMBEDDED)/libs/bitsery \
 	-I$(EMBEDDED)/libs/bitsery/include \
 	-I$(EMBEDDED)/libs/smcp \
 	-I$(EMBEDDED)/libs/showFile \
@@ -48,7 +47,7 @@ COMM_TEST := $(EMBEDDED)/libs/comm/test
 SMCP_TEST := $(EMBEDDED)/libs/smcp/test
 
 .PHONY: all clean dirs bus node check pool-check mem-check job-check proto-check \
-	comm-check segment-check frame-check msb-check
+	comm-check wire-check stack-check segment-check frame-check msb-check
 
 all: dirs bus node $(CHECK) $(SEGMENT)
 
@@ -76,7 +75,7 @@ check: $(CHECK)
 pool-check mem-check:
 	$(MAKE) -C $(MEM_TEST) $@
 
-job-check proto-check comm-check:
+job-check proto-check comm-check wire-check stack-check:
 	$(MAKE) -C $(COMM_TEST) $@
 
 FRAME_CHECK := $(BUILD)/frame_bitsery_check

@@ -56,8 +56,7 @@ def include_dirs() -> list[str]:
         LIBS / "board",
         LIBS / "mem",
         LIBS / "ccam" / "include",
-        LIBS / "bitsery",  # "custom/extensions.hpp"
-        LIBS / "bitsery" / "include",
+        LIBS / "bitsery" / "include",  # <bitsery/...>
         LIBS / "ccam" / "src",
     ]
     rels: list[str] = []

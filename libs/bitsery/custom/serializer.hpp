@@ -9,7 +9,7 @@
 
 #include <bitsery/bitsery.h>
 
-#include "msb_bitpack.hpp"
+#include "bitsery/custom/msb_bitpack.hpp"
 
 namespace bitsery::custom {
 

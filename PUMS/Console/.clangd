@@ -2,7 +2,7 @@
 # QueryDriver нужен, чтобы clangd подхватил libstdc++ (<cstdint> и т.д.) из arm-none-eabi-g++
 CompileFlags:
   CompilationDatabase: .
-  Add: [-I../../libs/bitsery, -I../../libs/bitsery/include]
+  Add: [-I../../libs, -I../../libs/bitsery/include]
 
 ---
 If:

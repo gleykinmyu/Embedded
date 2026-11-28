@@ -135,7 +135,7 @@ public:
             b._timer.stop();
         }
         // после remove узел свободен → push не может вернуть false
-        _active.pushBack(job);
+        (void)_active.pushBack(job);
         return true;
     }
 
@@ -159,7 +159,7 @@ public:
             return false;
         }
         b._status = st;
-        _done.pushBack(job);
+        (void)_done.pushBack(job);
         return true;
     }
 
@@ -183,7 +183,7 @@ public:
             return false;
         }
         b._status = St::Aborted;
-        _done.pushBack(job);
+        (void)_done.pushBack(job);
         deliver();
         return true;
     }
@@ -200,12 +200,12 @@ public:
     {
         while (T* j = _queued.popFront()) {
             base(*j)._status = St::Aborted;
-            _done.pushBack(*j);
+            (void)_done.pushBack(*j);
         }
         while (T* j = _active.popFront()) {
             --_nActive;
             base(*j)._status = St::Aborted;
-            _done.pushBack(*j);
+            (void)_done.pushBack(*j);
         }
         deliver();
     }
@@ -262,7 +262,7 @@ protected:
         --_nActive;
         b._status = St::Queued;
         b._timer.stop();
-        _queued.pushFront(job);
+        (void)_queued.pushFront(job);
     }
 
     /**
@@ -273,7 +273,7 @@ protected:
     {
         mem::List<T> batch;
         while (T* j = _done.popFront()) {
-            batch.pushBack(*j);
+            (void)batch.pushBack(*j);
         }
         while (T* j = batch.popFront()) {
             if (j->owner != nullptr) {
